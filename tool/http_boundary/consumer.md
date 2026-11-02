@@ -8,7 +8,7 @@ with both frozen captures of the controller's hash-bound handoff, and report wha
 still differs. Nothing here is a compatibility claim, and nothing here can turn a
 difference into a pass.
 
-The active corpus is **version 3**: 16 sources, 44 observations, 51 ordinary
+The historical corpus is **version 3**: 16 sources, 44 observations, 51 ordinary
 requests and five declared cohorts. It covers native-return string probes, Java-Map
 member collisions and URL-option execution through the actual four-stage product
 path. The same/fresh details pair consumes the identical retained hit and publishes
@@ -19,6 +19,24 @@ anchor `276a625e4aef0104240beac1908e597c6023ef93`. That handoff keeps the actual
 producer/build commit, corpus asset, signed harness and original positive/negative
 run identities. The destination checkout, runner and native library have their own
 execution binding. Earlier v2 captures retain their v2 identity.
+
+## Selected-reference commands
+
+The historical v3 captures retain their identity. Use the separate selected v4
+corpus explicitly for a fresh selected product run and its comparison:
+
+```bash
+dart run tool/http_boundary/runner.dart <fjs.dll> <fresh-root> <report.json> \
+  --corpus=tool/http_boundary/fixtures-selected.json
+
+dart run tool/http_boundary/compare.dart --handoff=<selected-handoff.json> \
+  --product=<report.json> --evidence=<fresh-evidence-dir> \
+  --corpus=tool/http_boundary/fixtures-selected.json
+```
+
+`io.liber.oracle.nested.SelectedHttpBoundaryOracle` is the selected native
+instrumentation entry. Capture remains controller-owned and is not established
+by these commands or by selecting a corpus.
 
 ## What runs
 

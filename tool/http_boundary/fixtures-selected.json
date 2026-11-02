@@ -1,0 +1,2030 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "HTTP-BOUNDARY-01",
+  "corpusVersion": 4,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "entryPoint": "io.legado.app.help.JsExtensions.ajax/ajaxAll/connect + io.legado.app.data.entities.BaseSource.getHeaderMap + io.legado.app.model.analyzeRule.AnalyzeUrl.evalJS + io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "origins": {
+    "replay": "http://127.0.0.1:18771"
+  },
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+    "manifest": "docs/compatibility/legado-compatibility-baseline.md"
+  },
+  "scratch": {
+    "rootName": "liber-http-boundary-01",
+    "preferencesPrefix": "liber_http_boundary_01_",
+    "databaseName": "legado.db",
+    "preferencesLocation": "task-owned scratch root under the target cacheDir; preferences use the liber_http_boundary_01_ name prefix outside the root by name only",
+    "ownerFile": "owner.json"
+  },
+  "runtime": {
+    "threadCountPreference": "threadCount",
+    "threadCountDefault": 32,
+    "threadCountSource": "io.legado.app.help.config.AppConfig.threadCount read through the storage-only scratch appCtx at a7d37f1; the source default is a declaration, the recorded value is the actual read"
+  },
+  "sources": [
+    {
+      "id": "H1",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 H1",
+        "bookSourceUrl": "http://127.0.0.1:18771/h1",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source H1 (static header, helper entries). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"h1\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/h1/search?keyword={{key}}&page={{page}}"
+      }
+    },
+    {
+      "id": "H2",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 H2",
+        "bookSourceUrl": "http://127.0.0.1:18771/h2",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source H2 (@js: script header). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "@js:JSON.stringify({'X-Script':'s1','User-Agent':'HTTP-BOUNDARY-01/1.0'})"
+      }
+    },
+    {
+      "id": "H3",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 H3",
+        "bookSourceUrl": "http://127.0.0.1:18771/h3",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source H3 (<js> script header). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "<js>JSON.stringify({'X-Ltjs':'s2','User-Agent':'HTTP-BOUNDARY-01/1.0'})</js>"
+      }
+    },
+    {
+      "id": "S",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 S",
+        "bookSourceUrl": "http://127.0.0.1:18771/s",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source S (HTML stages, retry 2, list pagination). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"s\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/s/search?keyword={{key}}&page={{page}},{\"retry\":2}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "kind": "html",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href",
+          "nextTocUrl": ".next a@href"
+        },
+        "ruleContent": {
+          "content": ".c@text",
+          "nextContentUrl": ".next a@href"
+        }
+      }
+    },
+    {
+      "id": "R",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 R",
+        "bookSourceUrl": "http://127.0.0.1:18771/r",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source R (synthetic concurrentRate 1/2000). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"r\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "concurrentRate": "1/2000",
+        "searchUrl": "/r/search?keyword={{key}}&page={{page}}"
+      }
+    },
+    {
+      "id": "F",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 F",
+        "bookSourceUrl": "http://127.0.0.1:$FAILPORT/f",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source F (task-owned accept-and-close endpoint, retry 0). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"f\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/f/search?keyword={{key}}&page={{page}},{\"retry\":0}"
+      }
+    },
+    {
+      "id": "HG0",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 HG0",
+        "bookSourceUrl": "http://127.0.0.1:18771/hg0",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay header-map header-map collision control HG0 (no data key collision). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"hg0\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
+      }
+    },
+    {
+      "id": "HG1",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 HG1",
+        "bookSourceUrl": "http://127.0.0.1:18771/hg1",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay header-map header-map collision case HG1 (own data key get). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"hg1\", \"get\": \"data-get\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
+      }
+    },
+    {
+      "id": "HG2",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 HG2",
+        "bookSourceUrl": "http://127.0.0.1:18771/hg2",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay header-map header-map collision case HG2 (own data key keySet). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"hg2\", \"keySet\": \"data-keyset\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
+      }
+    },
+    {
+      "id": "HG3",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 HG3",
+        "bookSourceUrl": "http://127.0.0.1:18771/hg3",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay header-map header-map collision case HG3 (both data keys). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"hg3\", \"get\": \"data-get\", \"keySet\": \"data-keyset\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
+      }
+    },
+    {
+      "id": "V",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 V",
+        "bookSourceUrl": "http://127.0.0.1:18771/v",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source V (native-return book/chapter/source variables, bound text and a chained extraction result). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"v\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/v/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "lastChapter": ".probe@text@js:(function(){var before=book.getVariable('bk');var putRet=book.putVariable('bk','bv');var after=book.getVariable('bk');var chained=java.getString('.probe@text');var srcBefore=source.getVariable();source.setVariable('sv');var srcAfter=source.getVariable();return JSON.stringify({directType:typeof result,directStrict:result==='direct',directText:String(result),chainedType:typeof chained,chainedStrict:chained==='direct',chainedLoose:chained=='direct',chainedText:String(chained),bookBeforeType:typeof before,bookBeforeStrict:before==='',bookBeforeText:String(before),bookPutType:typeof putRet,bookPutStrict:putRet===true,bookAfterType:typeof after,bookAfterStrict:after==='bv',bookAfterLoose:after=='bv',bookAfterText:String(after),sourceBeforeType:typeof srcBefore,sourceBeforeStrict:srcBefore==='',sourceBeforeText:String(srcBefore),sourceAfterType:typeof srcAfter,sourceAfterStrict:srcAfter==='sv',sourceAfterLoose:srcAfter=='sv',sourceAfterText:String(srcAfter)});})()",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".c@text@js:(function(){var chBefore=chapter.getVariable('ch');var chPut=chapter.putVariable('ch','cv');var chAfter=chapter.getVariable('ch');var bookAfter=book.getVariable('bk');var sourceAfter=source.getVariable();return JSON.stringify({directType:typeof result,directStrict:result==='P1',directText:String(result),chapterBeforeType:typeof chBefore,chapterBeforeStrict:chBefore==='',chapterBeforeText:String(chBefore),chapterPutType:typeof chPut,chapterPutStrict:chPut===true,chapterAfterType:typeof chAfter,chapterAfterStrict:chAfter==='cv',chapterAfterLoose:chAfter=='cv',chapterAfterText:String(chAfter),bookPersistType:typeof bookAfter,bookPersistStrict:bookAfter==='bv',bookPersistLoose:bookAfter=='bv',bookPersistText:String(bookAfter),sourcePersistType:typeof sourceAfter,sourcePersistStrict:sourceAfter==='sv',sourcePersistLoose:sourceAfter=='sv',sourcePersistText:String(sourceAfter)});})()"
+        }
+      }
+    },
+    {
+      "id": "O",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 O",
+        "bookSourceUrl": "http://127.0.0.1:18771/o",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source O (selected-hit bookUrl js; same and fresh analysis carriers). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"o\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/o/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "bookUrl": "a.0@href@js:'http://127.0.0.1:18771' + result + ',' + JSON.stringify({js:\"(function(){var n=(Number(String(source.get('oRuns')))||0)+1;source.put('oRuns',String(n));return result+'/'+n;})()\"})"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".c@text"
+        }
+      }
+    },
+    {
+      "id": "T",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 T",
+        "bookSourceUrl": "http://127.0.0.1:18771/t",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source T (declared ruleBookInfo.tocUrl URL-option js). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"t\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/t/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "tocUrl": "@js:'http://127.0.0.1:18771/t/toc,' + JSON.stringify({js:\"result + '/2'\"})"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".c@text"
+        }
+      }
+    },
+    {
+      "id": "P",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 P",
+        "bookSourceUrl": "http://127.0.0.1:18771/p",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source P (nextTocUrl discovery and two declared next pages with URL-option tails). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"p\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/p/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "text",
+          "chapterUrl": "href",
+          "nextTocUrl": ".next a@href"
+        },
+        "ruleContent": {
+          "content": ".c@text"
+        }
+      }
+    },
+    {
+      "id": "N",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 N",
+        "bookSourceUrl": "http://127.0.0.1:18771/n",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source N (null-return option js with a real source-scoped counter read by the details and TOC stages). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"n\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/n/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "bookUrl": "a.0@href@js:'http://127.0.0.1:18771' + result + ',' + JSON.stringify({js:\"source.put('optRuns',(source.get('optRuns')||'')+'x');null\"})"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "intro": ".intro@text",
+          "lastChapter": "@js:source.get('optRuns')",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li a",
+          "chapterName": "@js:source.get('optRuns')",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".c@text"
+        }
+      }
+    },
+    {
+      "id": "J",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 J",
+        "bookSourceUrl": "http://127.0.0.1:18771/j",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay JSON source J (a selected hit whose bookUrl option js runs once per construction). Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "header": "{\"X-Declared\": \"j\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "/j/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items[*]",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "intro": "$.intro",
+          "tocUrl": "$.toc"
+        }
+      }
+    },
+    {
+      "id": "PL",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 PL",
+        "bookSourceUrl": "http://127.0.0.1:18771/pl",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "HTTP-BOUNDARY-01 controlled replay source PL: a plain 2000 ms interval, used only by the two-member helper cohort that proves an unfinished first request does not add a wait. Never a live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "concurrentRate": "2000",
+        "header": "{\"X-Declared\": \"pl\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}"
+      }
+    },
+    {
+      "id": "RW",
+      "bookSource": {
+        "bookSourceName": "Liber HTTP-BOUNDARY-01 RW",
+        "bookSourceUrl": "http://127.0.0.1:18771/rw",
+        "bookSourceGroup": "Liber corpus",
+        "bookSourceComment": "Controlled rate-wait cancellation source; no live site.",
+        "bookSourceType": 0,
+        "enabledCookieJar": false,
+        "concurrentRate": "1/10000",
+        "header": "{\"X-Declared\": \"rw\", \"User-Agent\": \"HTTP-BOUNDARY-01/1.0\"}",
+        "searchUrl": "<js>(function(){if(key=='wait'){source.put('rateWaitMarker','entered');}return 'http://127.0.0.1:18771/rw/'+key;})()</js>",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a@text@js:(function(){if(source.get('rateWaitMarker')=='entered')source.put('rateWaitLate','late');return result;})()",
+          "bookUrl": "a@href"
+        }
+      }
+    }
+  ],
+  "books": [
+    {
+      "id": "book-1",
+      "source": "S",
+      "bookUrl": "http://127.0.0.1:18771/s/book/1"
+    },
+    {
+      "id": "book-2",
+      "source": "S",
+      "bookUrl": "http://127.0.0.1:18771/s/book/2"
+    },
+    {
+      "id": "book-4",
+      "source": "S",
+      "bookUrl": "http://127.0.0.1:18771/s/book/4"
+    },
+    {
+      "id": "book-5",
+      "source": "S",
+      "bookUrl": "http://127.0.0.1:18771/s/book/5"
+    },
+    {
+      "id": "v-book-1",
+      "source": "V",
+      "bookUrl": "http://127.0.0.1:18771/v/book/1"
+    },
+    {
+      "id": "t-book-1",
+      "source": "T",
+      "bookUrl": "http://127.0.0.1:18771/t/book/1"
+    },
+    {
+      "id": "p-book-1",
+      "source": "P",
+      "bookUrl": "http://127.0.0.1:18771/p/book/1"
+    },
+    {
+      "id": "n-book-1",
+      "source": "N",
+      "bookUrl": "http://127.0.0.1:18771/n/book,{\"js\":\"source.put('optRuns',(source.get('optRuns')||'')+'x');null\"}"
+    },
+    {
+      "id": "j-book-1",
+      "source": "J",
+      "bookUrl": "http://127.0.0.1:18771/j/book,{\"js\":\"result + '/1'\"}"
+    },
+    {
+      "id": "o-book-1",
+      "source": "O",
+      "bookUrl": "http://127.0.0.1:18771/o/book,{\"js\":\"(function(){var n=(Number(String(source.get('oRuns')))||0)+1;source.put('oRuns',String(n));return result+'/'+n;})()\"}"
+    }
+  ],
+  "responses": [
+    {
+      "id": "rw-prime",
+      "method": "GET",
+      "path": "/rw/prime",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<div class=\"result\"><ul><li><a href=\"/rw/book\">Prime</a></li></ul></div>"
+    },
+    {
+      "id": "rw-follow",
+      "method": "GET",
+      "path": "/rw/follow",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<div class=\"result\"><ul><li><a href=\"/rw/book\">Follow</a></li></ul></div>"
+    },
+    {
+      "id": "h1-single",
+      "method": "GET",
+      "path": "/h1/single",
+      "rawQuery": "",
+      "status": 200,
+      "body": "SINGLE"
+    },
+    {
+      "id": "h1-first",
+      "method": "GET",
+      "path": "/h1/first",
+      "rawQuery": "",
+      "status": 200,
+      "body": "FIRST"
+    },
+    {
+      "id": "h1-order-1",
+      "method": "GET",
+      "path": "/h1/order/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "O1",
+      "cohort": "helper.order"
+    },
+    {
+      "id": "h1-order-2",
+      "method": "GET",
+      "path": "/h1/order/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "O2",
+      "cohort": "helper.order"
+    },
+    {
+      "id": "h1-order-3",
+      "method": "GET",
+      "path": "/h1/order/3",
+      "rawQuery": "",
+      "status": 200,
+      "body": "O3",
+      "cohort": "helper.order"
+    },
+    {
+      "id": "h1-width-1",
+      "method": "GET",
+      "path": "/h1/width/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "W1",
+      "cohort": "helper.width"
+    },
+    {
+      "id": "h1-width-2",
+      "method": "GET",
+      "path": "/h1/width/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "W2",
+      "cohort": "helper.width"
+    },
+    {
+      "id": "h1-width-3",
+      "method": "GET",
+      "path": "/h1/width/3",
+      "rawQuery": "",
+      "status": 200,
+      "body": "W3",
+      "cohort": "helper.width"
+    },
+    {
+      "id": "h1-width-4",
+      "method": "GET",
+      "path": "/h1/width/4",
+      "rawQuery": "",
+      "status": 200,
+      "body": "W4",
+      "cohort": "helper.width"
+    },
+    {
+      "id": "h1-width-5",
+      "method": "GET",
+      "path": "/h1/width/5",
+      "rawQuery": "",
+      "status": 200,
+      "body": "W5",
+      "cohort": "helper.width"
+    },
+    {
+      "id": "h1-connect",
+      "method": "GET",
+      "path": "/h1/connect",
+      "rawQuery": "",
+      "status": 200,
+      "body": "CONNECT"
+    },
+    {
+      "id": "h1-connect-source",
+      "method": "GET",
+      "path": "/h1/connect-source",
+      "rawQuery": "",
+      "status": 200,
+      "body": "CONNECT-SOURCE"
+    },
+    {
+      "id": "r-1",
+      "method": "GET",
+      "path": "/r/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "R1"
+    },
+    {
+      "id": "r-2",
+      "method": "GET",
+      "path": "/r/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "R2"
+    },
+    {
+      "id": "r-3",
+      "method": "GET",
+      "path": "/r/3",
+      "rawQuery": "",
+      "status": 200,
+      "body": "R3"
+    },
+    {
+      "id": "s-search-b1",
+      "method": "GET",
+      "path": "/s/search",
+      "rawQuery": "keyword=b1&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/s/book/1\">B1</a><span class=\"author\">Author1</span></li></ul></body></html>"
+    },
+    {
+      "id": "s-book-1",
+      "method": "GET",
+      "path": "/s/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>B1</h1><div class=\"info\"><span class=\"author\">Author1</span></div><div class=\"intro\">Intro1</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/s/book/1/toc1\">toc</a></div></body></html>"
+    },
+    {
+      "id": "s-book-1-toc1",
+      "method": "GET",
+      "path": "/s/book/1/toc1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/s/book/1/c1\">c1</a></li></ul><div class=\"next\"><a href=\"http://127.0.0.1:18771/s/book/1/toc2\">2</a><a href=\"http://127.0.0.1:18771/s/book/1/toc3\">3</a></div></body></html>"
+    },
+    {
+      "id": "s-book-1-toc2",
+      "method": "GET",
+      "path": "/s/book/1/toc2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/s/book/1/c2\">c2</a></li></ul></body></html>",
+      "cohort": "stage.toc-tail"
+    },
+    {
+      "id": "s-book-1-toc3",
+      "method": "GET",
+      "path": "/s/book/1/toc3",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/s/book/1/c3\">c3</a></li></ul></body></html>",
+      "cohort": "stage.toc-tail"
+    },
+    {
+      "id": "s-book-1-ch1",
+      "method": "GET",
+      "path": "/s/book/1/c1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><div class=\"c\">P1</div><div class=\"next\"><a href=\"http://127.0.0.1:18771/s/book/1/ch1-2\">2</a><a href=\"http://127.0.0.1:18771/s/book/1/ch1-3\">3</a></div></body></html>"
+    },
+    {
+      "id": "s-book-1-ch1-2",
+      "method": "GET",
+      "path": "/s/book/1/ch1-2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><div class=\"c\">P2</div></body></html>",
+      "cohort": "stage.content-tail"
+    },
+    {
+      "id": "s-book-1-ch1-3",
+      "method": "GET",
+      "path": "/s/book/1/ch1-3",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><div class=\"c\">P3</div></body></html>",
+      "cohort": "stage.content-tail"
+    },
+    {
+      "id": "s-search-b2",
+      "method": "GET",
+      "path": "/s/search",
+      "rawQuery": "keyword=b2&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/s/book/2\">B2</a><span class=\"author\">Author2</span></li></ul></body></html>"
+    },
+    {
+      "id": "s-book-2",
+      "method": "GET",
+      "path": "/s/book/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>B2</h1><div class=\"info\"><span class=\"author\">Author2</span></div><div class=\"intro\">Intro2</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/s/book/2/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "s-book-2-toc",
+      "method": "GET",
+      "path": "/s/book/2/toc",
+      "rawQuery": "",
+      "status": 200,
+      "body": ""
+    },
+    {
+      "id": "s-search-b4",
+      "method": "GET",
+      "path": "/s/search",
+      "rawQuery": "keyword=b4&page=1",
+      "status": 502,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/s/book/4\">B4</a><span class=\"author\">Author4</span></li></ul></body></html>"
+    },
+    {
+      "id": "s-search-hold",
+      "method": "GET",
+      "path": "/s/search",
+      "rawQuery": "keyword=hold&page=1",
+      "status": 200,
+      "body": "",
+      "hold": true,
+      "holdTimeoutMs": 20000
+    },
+    {
+      "id": "s-search-after",
+      "method": "GET",
+      "path": "/s/search",
+      "rawQuery": "keyword=after&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/s/book/5\">B5</a><span class=\"author\">Author5</span></li></ul></body></html>"
+    },
+    {
+      "id": "v-search-v",
+      "method": "GET",
+      "path": "/v/search",
+      "rawQuery": "keyword=v&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/v/book/1\">V1</a><span class=\"author\">VA</span></li></ul></body></html>"
+    },
+    {
+      "id": "v-book-1",
+      "method": "GET",
+      "path": "/v/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>V1</h1><div class=\"info\"><span class=\"author\">VA</span></div><div class=\"intro\">VI</div><div class=\"probe\">direct</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/v/book/1/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "v-book-1-toc",
+      "method": "GET",
+      "path": "/v/book/1/toc",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/v/book/1/c1\">c1</a></li></ul></body></html>"
+    },
+    {
+      "id": "v-book-1-c1",
+      "method": "GET",
+      "path": "/v/book/1/c1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><div class=\"c\">P1</div></body></html>"
+    },
+    {
+      "id": "o-search-o",
+      "method": "GET",
+      "path": "/o/search",
+      "rawQuery": "keyword=o&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"/o/book\">O1</a><span class=\"author\">OA</span></li></ul></body></html>"
+    },
+    {
+      "id": "o-book-1",
+      "method": "GET",
+      "path": "/o/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>O1</h1><div class=\"info\"><span class=\"author\">OA</span></div><div class=\"intro\">OI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/o/book/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "o-book-2",
+      "method": "GET",
+      "path": "/o/book/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>O1</h1><div class=\"info\"><span class=\"author\">OA</span></div><div class=\"intro\">OI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/o/book/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "t-search-t",
+      "method": "GET",
+      "path": "/t/search",
+      "rawQuery": "keyword=t&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/t/book/1\">T1</a><span class=\"author\">TA</span></li></ul></body></html>"
+    },
+    {
+      "id": "t-book-1",
+      "method": "GET",
+      "path": "/t/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>T1</h1><div class=\"info\"><span class=\"author\">TA</span></div><div class=\"intro\">TI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/t/book/1/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "t-book-1-toc2",
+      "method": "GET",
+      "path": "/t/toc/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/t/c1\">c1</a></li></ul></body></html>"
+    },
+    {
+      "id": "p-search-p",
+      "method": "GET",
+      "path": "/p/search",
+      "rawQuery": "keyword=p&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"http://127.0.0.1:18771/p/book/1\">P1</a><span class=\"author\">PA</span></li></ul></body></html>"
+    },
+    {
+      "id": "p-book-1",
+      "method": "GET",
+      "path": "/p/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>P1</h1><div class=\"info\"><span class=\"author\">PA</span></div><div class=\"intro\">PI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/p/book/1/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "p-book-1-toc",
+      "method": "GET",
+      "path": "/p/book/1/toc",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/p/c1\">c1</a></li></ul><div class=\"next\"><a href='http://127.0.0.1:18771/p/toc2,{\"js\":\"result + &#39;/2&#39;\"}'>2</a><a href='http://127.0.0.1:18771/p/toc3,{\"js\":\"result + &#39;/3&#39;\"}'>3</a></div></body></html>"
+    },
+    {
+      "id": "p-book-1-toc2",
+      "method": "GET",
+      "path": "/p/toc2/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/p/c2\">c2</a></li></ul></body></html>",
+      "cohort": "stage.toc-option-tail"
+    },
+    {
+      "id": "p-book-1-toc3",
+      "method": "GET",
+      "path": "/p/toc3/3",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/p/c3\">c3</a></li></ul></body></html>",
+      "cohort": "stage.toc-option-tail"
+    },
+    {
+      "id": "n-search-n",
+      "method": "GET",
+      "path": "/n/search",
+      "rawQuery": "keyword=n&page=1",
+      "status": 200,
+      "body": "<html><body><ul class=\"result\"><li><a href=\"/n/book\">N1</a><span class=\"author\">NA</span></li></ul></body></html>"
+    },
+    {
+      "id": "n-book",
+      "method": "GET",
+      "path": "/n/book",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><h1>N1</h1><div class=\"info\"><span class=\"author\">NA</span></div><div class=\"intro\">NI</div><div class=\"toc\"><a href=\"http://127.0.0.1:18771/n/toc\">toc</a></div></body></html>"
+    },
+    {
+      "id": "n-toc",
+      "method": "GET",
+      "path": "/n/toc",
+      "rawQuery": "",
+      "status": 200,
+      "body": "<html><body><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18771/n/c1\">c1</a></li></ul></body></html>"
+    },
+    {
+      "id": "j-search-j",
+      "method": "GET",
+      "path": "/j/search",
+      "rawQuery": "keyword=j&page=1",
+      "status": 200,
+      "body": "{\"items\":[{\"name\":\"J1\",\"author\":\"JA\",\"kind\":\"json\",\"url\":\"http://127.0.0.1:18771/j/book,{\\\"js\\\":\\\"result + '/1'\\\"}\"}]}"
+    },
+    {
+      "id": "j-book-1",
+      "method": "GET",
+      "path": "/j/book/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "{\"title\":\"J1\",\"author\":\"JA\",\"intro\":\"JI\",\"toc\":\"http://127.0.0.1:18771/j/toc\"}"
+    },
+    {
+      "id": "pl-1",
+      "method": "GET",
+      "path": "/pl/1",
+      "rawQuery": "",
+      "status": 200,
+      "body": "PL1",
+      "cohort": "rate.plain-hold"
+    },
+    {
+      "id": "pl-2",
+      "method": "GET",
+      "path": "/pl/2",
+      "rawQuery": "",
+      "status": 200,
+      "body": "PL2",
+      "cohort": "rate.plain-hold"
+    }
+  ],
+  "cohorts": [
+    {
+      "id": "helper.order",
+      "size": 3,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "helper.width",
+      "size": 5,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "stage.toc-tail",
+      "size": 2,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "stage.content-tail",
+      "size": 2,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "stage.toc-option-tail",
+      "size": 2,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "rate.plain-hold",
+      "size": 2,
+      "timeoutMs": 5000
+    }
+  ],
+  "rate": {
+    "source": "R",
+    "concurrentRate": "1/2000",
+    "windowMillis": 2000,
+    "steps": [
+      "rate.record.1",
+      "rate.record.2",
+      "rate.record.3"
+    ],
+    "recordClass": "io.legado.app.model.analyzeRule.AnalyzeUrl$ConcurrentRecord",
+    "recordClassProvenanceOnly": true,
+    "mapField": "concurrentRecordMap",
+    "mapOwnerCandidates": [
+      "io.legado.app.help.ConcurrentRateLimiter",
+      "io.legado.app.help.ConcurrentRateLimiter$Companion"
+    ],
+    "initialSnapshotRequirement": "empty",
+    "policyNote": "The corpus concurrentRate value is a synthetic fixture input. The selected reference (a7d37f1 ConcurrentRateLimiter.kt) admits at most N starts per T-millisecond window with no fetchEnd, so 1/2000 opens a window on the first start and rolls it on each following start. No product policy is changed and no 150ms heuristic exists.",
+    "recordFields": [
+      "time",
+      "frequency"
+    ],
+    "schedule": [
+      {
+        "index": 1,
+        "window": "opens",
+        "frequency": 1
+      },
+      {
+        "index": 2,
+        "window": "rolls",
+        "frequency": 1
+      },
+      {
+        "index": 3,
+        "window": "rolls",
+        "frequency": 1
+      }
+    ],
+    "plain": {
+      "source": "PL",
+      "concurrentRate": "2000",
+      "windowMillis": 2000,
+      "holdStep": "helper.plain-hold",
+      "cohort": "rate.plain-hold",
+      "members": [
+        "pl-1",
+        "pl-2"
+      ],
+      "requirement": "The declared helper batch runs on a plain T interval. A bounded observer samples the source's first actual record and the final record proves an advance of at least T; operation and replay receipt times are producer-local causal evidence, not exact admission timestamps. The first response remains unsent when the second request arrives, and the existing cohort releases by completing, never by its own window. No minimum replay arrival gap or admission-to-receipt latency bound is assumed.",
+      "selectionNote": "The declared helper batch is the existing cohort gate; no second hold, timer substitute or response-delay feature is introduced. A stage page walk cannot carry this relation because the product's declared-page walk is serial by design."
+    }
+  },
+  "failureEndpoint": {
+    "host": "127.0.0.1",
+    "port": 0,
+    "token": "$FAILPORT",
+    "source": "F",
+    "step": "s4.search-connection-failure",
+    "mode": "accept-and-close-without-response",
+    "retryOption": 0,
+    "classification": {
+      "first": "initial",
+      "subsequent": "transport-reconnect",
+      "statusRetryImpossible": "no response is ever written, so the OkHttpUtils.kt:29-43 source-status retry cannot occur"
+    }
+  },
+  "cancellation": {
+    "step": "s5.search-cancelled",
+    "source": "S",
+    "keyword": "hold",
+    "holdTimeoutMs": 20000,
+    "entry": "kotlinx.coroutines.JobKt.Job(null) + CoroutineContext.plus + the two-argument kotlinx.coroutines.BuildersKt.runBlocking + Job.cancel",
+    "stateProbes": [
+      "cancel.probe"
+    ],
+    "dbTables": [
+      "books",
+      "chapters",
+      "caches",
+      "cookies"
+    ],
+    "quietWindowMs": 750,
+    "followUpStep": "s6.search-after-cancel",
+    "followUp": {
+      "step": "s6.search-after-cancel",
+      "jobLevel": "created-parent",
+      "requiresCreatedParentJob": true,
+      "requiresSameSourceObject": true,
+      "requiresSameSourceKey": true
+    }
+  },
+  "negative": {
+    "mode": "replay-omission",
+    "drop": "h1-single",
+    "selector": "GET /h1/single?",
+    "step": "helper.ajax",
+    "expectedOwner": "helper.ajax",
+    "expectedTerminal": "omitted-unmatched",
+    "expectedStatus": 404,
+    "expectedUnmatchedEntries": 1,
+    "requirement": "validate and hash the immutable corpus first, drop one declared ordinary helper response at load time only, let the request reach replay, require exactly the intended unmatched terminal named here, and never promote the report"
+  },
+  "schemaNotes": [
+    "review-repair-01: helper.header-map rows measure three source-script arities; a thrown arity is a real typed outcome and the Kotlin default call is provenance only.",
+    "review-repair-01: cancellation rows derive outcome/category from the measured cancellation and record created-parent job/context/source identities; the follow-up execution is bound before invocation.",
+    "review-repair-01: request records carry explicit terminals and sendSequence; batch capability facts stay in value while planned release and measured send order are provenance.",
+    "review-repair-01: native database table snapshots and the AnalyzeUrl$ConcurrentRecord Java class name are provenance; portable unchanged/record fields stay compared."
+  ],
+  "requestChecks": {
+    "forbiddenHeaders": [
+      "cookie"
+    ]
+  },
+  "steps": [
+    {
+      "id": "rate-wait.cancel",
+      "kind": "rateWaitCancel",
+      "family": "stage",
+      "source": "RW",
+      "marker": "rateWaitMarker",
+      "windowMillis": 10000,
+      "requests": {"ordered": ["rw-prime", "rw-follow"]},
+      "requiredHeaders": {"user-agent": "HTTP-BOUNDARY-01/1.0", "x-declared": "rw"},
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.ajax",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H1",
+      "action": "ajax",
+      "script": "java.ajax('http://127.0.0.1:18771/h1/single')",
+      "requests": {
+        "ordered": [
+          "h1-single"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "h1"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.ajax-list-first",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H1",
+      "action": "ajaxList",
+      "script": "java.ajax(['http://127.0.0.1:18771/h1/first','http://127.0.0.1:18771/h1/second'])",
+      "requests": {
+        "ordered": [
+          "h1-first"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "h1"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.ajaxAll-order",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H1",
+      "action": "ajaxAll",
+      "script": "(function(){var r=java.ajaxAll(['http://127.0.0.1:18771/h1/order/1','http://127.0.0.1:18771/h1/order/2','http://127.0.0.1:18771/h1/order/3']);var o=[];for(var i=0;i<r.length;i++){o.push(String(r[i].body()));}return o.join('|');})()",
+      "requests": {
+        "batch": {
+          "cohort": "helper.order",
+          "members": [
+            "h1-order-1",
+            "h1-order-2",
+            "h1-order-3"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "h1"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.ajaxAll-width",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H1",
+      "action": "ajaxAll",
+      "script": "(function(){var r=java.ajaxAll(['http://127.0.0.1:18771/h1/width/1','http://127.0.0.1:18771/h1/width/2','http://127.0.0.1:18771/h1/width/3','http://127.0.0.1:18771/h1/width/4','http://127.0.0.1:18771/h1/width/5']);var o=[];for(var i=0;i<r.length;i++){o.push(String(r[i].body()));}return o.join('|');})()",
+      "requests": {
+        "batch": {
+          "cohort": "helper.width",
+          "members": [
+            "h1-width-1",
+            "h1-width-2",
+            "h1-width-3",
+            "h1-width-4",
+            "h1-width-5"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "h1"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.plain-hold",
+      "kind": "helper",
+      "family": "helper",
+      "source": "PL",
+      "action": "ajaxAll",
+      "script": "(function(){var r=java.ajaxAll(['http://127.0.0.1:18771/pl/1','http://127.0.0.1:18771/pl/2']);var o=[];for(var i=0;i<r.length;i++){o.push(String(r[i].body()));}return o.join('|');})()",
+      "requests": {
+        "batch": {
+          "cohort": "rate.plain-hold",
+          "members": [
+            "pl-1",
+            "pl-2"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "pl"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.connect-header-string",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H1",
+      "action": "connectHeader",
+      "script": "String(java.connect('http://127.0.0.1:18771/h1/connect','{\"X-From-Header\":\"hstr\",\"User-Agent\":\"UA-STR\"}').body())",
+      "requests": {
+        "ordered": [
+          "h1-connect"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "UA-STR",
+        "x-from-header": "hstr"
+      },
+      "forbiddenHeaders": [
+        "x-declared"
+      ],
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.connect-source-header",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H1",
+      "action": "connectSource",
+      "script": "String(java.connect('http://127.0.0.1:18771/h1/connect-source').body())",
+      "requests": {
+        "ordered": [
+          "h1-connect-source"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "h1"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.header-map-js",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H2",
+      "action": "headerMap",
+      "scripts": {
+        "zero": "(function(){var m=source.getHeaderMap();var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "falseArity": "(function(){var m=source.getHeaderMap(false);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "trueArity": "(function(){var m=source.getHeaderMap(true);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()"
+      },
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.header-map-ltjs",
+      "kind": "helper",
+      "family": "helper",
+      "source": "H3",
+      "action": "headerMap",
+      "scripts": {
+        "zero": "(function(){var m=source.getHeaderMap();var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "falseArity": "(function(){var m=source.getHeaderMap(false);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()",
+        "trueArity": "(function(){var m=source.getHeaderMap(true);var out=[];if(m){var it=m.keySet().iterator();while(it.hasNext()){var k=String(it.next());out.push([k,String(m.get(k))]);}}out.sort(function(a,b){return a[0]<b[0]?-1:(a[0]>b[0]?1:0);});return JSON.stringify({value:out});})()"
+      },
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "rate.record.1",
+      "kind": "rate",
+      "family": "rate",
+      "source": "R",
+      "index": 1,
+      "script": "java.ajax('http://127.0.0.1:18771/r/1')",
+      "requests": {
+        "ordered": [
+          "r-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "r"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "rate.record.2",
+      "kind": "rate",
+      "family": "rate",
+      "source": "R",
+      "index": 2,
+      "script": "java.ajax('http://127.0.0.1:18771/r/2')",
+      "requests": {
+        "ordered": [
+          "r-2"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "r"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "rate.record.3",
+      "kind": "rate",
+      "family": "rate",
+      "source": "R",
+      "index": 3,
+      "script": "java.ajax('http://127.0.0.1:18771/r/3')",
+      "requests": {
+        "ordered": [
+          "r-3"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "r"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "S",
+      "keyword": "b1",
+      "expectBooks": [
+        "book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "s-search-b1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s1.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "S",
+      "book": "book-1",
+      "requests": {
+        "ordered": [
+          "s-book-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s1.toc",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "toc",
+      "source": "S",
+      "book": "book-1",
+      "requests": {
+        "ordered": [
+          "s-book-1-toc1"
+        ],
+        "batch": {
+          "cohort": "stage.toc-tail",
+          "members": [
+            "s-book-1-toc2",
+            "s-book-1-toc3"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s1.content",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "content",
+      "source": "S",
+      "book": "book-1",
+      "chapter": "http://127.0.0.1:18771/s/book/1/c1",
+      "requests": {
+        "ordered": [
+          "s-book-1-ch1"
+        ],
+        "batch": {
+          "cohort": "stage.content-tail",
+          "members": [
+            "s-book-1-ch1-2",
+            "s-book-1-ch1-3"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s2.retry-non2xx",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "S",
+      "keyword": "b4",
+      "expectBooks": [
+        "book-4"
+      ],
+      "requests": {
+        "ordered": [
+          "s-search-b4",
+          "s-search-b4",
+          "s-search-b4"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s3.toc-empty.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "S",
+      "keyword": "b2",
+      "expectBooks": [
+        "book-2"
+      ],
+      "requests": {
+        "ordered": [
+          "s-search-b2"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s3.toc-empty.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "S",
+      "book": "book-2",
+      "requests": {
+        "ordered": [
+          "s-book-2"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "s3.toc-empty.toc",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "toc",
+      "source": "S",
+      "book": "book-2",
+      "requests": {
+        "ordered": [
+          "s-book-2-toc"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "failure",
+      "expectedCategory": "empty-required-result"
+    },
+    {
+      "id": "s4.search-connection-failure",
+      "kind": "failure",
+      "family": "stage",
+      "source": "F",
+      "keyword": "fail",
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "failure",
+      "expectedCategory": "network-failure"
+    },
+    {
+      "id": "s5.search-cancelled",
+      "kind": "cancel",
+      "family": "stage",
+      "source": "S",
+      "keyword": "hold",
+      "requests": {
+        "ordered": [
+          "s-search-hold"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "cancelled",
+      "expectedCategory": "cancellation"
+    },
+    {
+      "id": "s6.search-after-cancel",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "S",
+      "keyword": "after",
+      "expectBooks": [
+        "book-5"
+      ],
+      "requests": {
+        "ordered": [
+          "s-search-after"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "s"
+      },
+      "expectedOutcome": "ok",
+      "executionBound": true,
+      "followUpOf": "s5.search-cancelled"
+    },
+    {
+      "id": "helper.script-probe-hg0",
+      "kind": "helper",
+      "family": "helper",
+      "source": "HG0",
+      "action": "scriptProbe",
+      "script": "(function(){var m=source.getHeaderMap(false);var diagnostics={lookup:{caught:false},enumeration:{caught:false}};function safeName(e){try{return e&&e.name!==undefined?String(e.name):'';}catch(_){return '';}}function caught(e){var message='';var text='';var stack=null;try{message=e&&e.message!==undefined?String(e.message):'';if(message.length>1024)message=message.slice(0,1024);}catch(_){message='';}try{text=String(e);if(text.length>2048)text=text.slice(0,2048);}catch(_){text='';}try{stack=e&&e.stack!==undefined&&e.stack!==null?String(e.stack).slice(0,1024):null;}catch(_){stack=null;}return {caught:true,name:safeName(e),message:message,text:text,stack:stack};}function inspect(v){var t=typeof v;return {type:t,text:t==='function'?null:String(v)};}function lookup(){try{var v=m.get('X-Declared');return {returned:true,type:typeof v,strictLiteral:v==='hg0',looseLiteral:v=='hg0',text:String(v)};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof getDot==='function'||getDot===undefined||getDot===null){throw e;}diagnostics.lookup=caught(e);return {returned:false,errorName:safeName(e)};}}function keys(){try{var it=m.keySet().iterator();var out=[];while(it.hasNext())out.push(String(it.next()));out.sort();return {returned:true,keys:out};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof keySetDot==='function'||keySetDot===undefined||keySetDot===null){throw e;}diagnostics.enumeration=caught(e);return {returned:false,errorName:safeName(e)};}}var getDot=m.get,getBracket=m['get'],keySetDot=m.keySet,keySetBracket=m['keySet'];var portable={getDot:inspect(getDot),getBracket:inspect(getBracket),keySetDot:inspect(keySetDot),keySetBracket:inspect(keySetBracket),lookup:lookup(),enumeration:keys()};return JSON.stringify({portable:portable,diagnostics:diagnostics});})()",
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.script-probe-hg1",
+      "kind": "helper",
+      "family": "helper",
+      "source": "HG1",
+      "action": "scriptProbe",
+      "script": "(function(){var m=source.getHeaderMap(false);var diagnostics={lookup:{caught:false},enumeration:{caught:false}};function safeName(e){try{return e&&e.name!==undefined?String(e.name):'';}catch(_){return '';}}function caught(e){var message='';var text='';var stack=null;try{message=e&&e.message!==undefined?String(e.message):'';if(message.length>1024)message=message.slice(0,1024);}catch(_){message='';}try{text=String(e);if(text.length>2048)text=text.slice(0,2048);}catch(_){text='';}try{stack=e&&e.stack!==undefined&&e.stack!==null?String(e.stack).slice(0,1024):null;}catch(_){stack=null;}return {caught:true,name:safeName(e),message:message,text:text,stack:stack};}function inspect(v){var t=typeof v;return {type:t,text:t==='function'?null:String(v)};}function lookup(){try{var v=m.get('X-Declared');return {returned:true,type:typeof v,strictLiteral:v==='hg1',looseLiteral:v=='hg1',text:String(v)};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof getDot==='function'||getDot===undefined||getDot===null){throw e;}diagnostics.lookup=caught(e);return {returned:false,errorName:safeName(e)};}}function keys(){try{var it=m.keySet().iterator();var out=[];while(it.hasNext())out.push(String(it.next()));out.sort();return {returned:true,keys:out};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof keySetDot==='function'||keySetDot===undefined||keySetDot===null){throw e;}diagnostics.enumeration=caught(e);return {returned:false,errorName:safeName(e)};}}var getDot=m.get,getBracket=m['get'],keySetDot=m.keySet,keySetBracket=m['keySet'];var portable={getDot:inspect(getDot),getBracket:inspect(getBracket),keySetDot:inspect(keySetDot),keySetBracket:inspect(keySetBracket),lookup:lookup(),enumeration:keys()};return JSON.stringify({portable:portable,diagnostics:diagnostics});})()",
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.script-probe-hg2",
+      "kind": "helper",
+      "family": "helper",
+      "source": "HG2",
+      "action": "scriptProbe",
+      "script": "(function(){var m=source.getHeaderMap(false);var diagnostics={lookup:{caught:false},enumeration:{caught:false}};function safeName(e){try{return e&&e.name!==undefined?String(e.name):'';}catch(_){return '';}}function caught(e){var message='';var text='';var stack=null;try{message=e&&e.message!==undefined?String(e.message):'';if(message.length>1024)message=message.slice(0,1024);}catch(_){message='';}try{text=String(e);if(text.length>2048)text=text.slice(0,2048);}catch(_){text='';}try{stack=e&&e.stack!==undefined&&e.stack!==null?String(e.stack).slice(0,1024):null;}catch(_){stack=null;}return {caught:true,name:safeName(e),message:message,text:text,stack:stack};}function inspect(v){var t=typeof v;return {type:t,text:t==='function'?null:String(v)};}function lookup(){try{var v=m.get('X-Declared');return {returned:true,type:typeof v,strictLiteral:v==='hg2',looseLiteral:v=='hg2',text:String(v)};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof getDot==='function'||getDot===undefined||getDot===null){throw e;}diagnostics.lookup=caught(e);return {returned:false,errorName:safeName(e)};}}function keys(){try{var it=m.keySet().iterator();var out=[];while(it.hasNext())out.push(String(it.next()));out.sort();return {returned:true,keys:out};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof keySetDot==='function'||keySetDot===undefined||keySetDot===null){throw e;}diagnostics.enumeration=caught(e);return {returned:false,errorName:safeName(e)};}}var getDot=m.get,getBracket=m['get'],keySetDot=m.keySet,keySetBracket=m['keySet'];var portable={getDot:inspect(getDot),getBracket:inspect(getBracket),keySetDot:inspect(keySetDot),keySetBracket:inspect(keySetBracket),lookup:lookup(),enumeration:keys()};return JSON.stringify({portable:portable,diagnostics:diagnostics});})()",
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "helper.script-probe-hg3",
+      "kind": "helper",
+      "family": "helper",
+      "source": "HG3",
+      "action": "scriptProbe",
+      "script": "(function(){var m=source.getHeaderMap(false);var diagnostics={lookup:{caught:false},enumeration:{caught:false}};function safeName(e){try{return e&&e.name!==undefined?String(e.name):'';}catch(_){return '';}}function caught(e){var message='';var text='';var stack=null;try{message=e&&e.message!==undefined?String(e.message):'';if(message.length>1024)message=message.slice(0,1024);}catch(_){message='';}try{text=String(e);if(text.length>2048)text=text.slice(0,2048);}catch(_){text='';}try{stack=e&&e.stack!==undefined&&e.stack!==null?String(e.stack).slice(0,1024):null;}catch(_){stack=null;}return {caught:true,name:safeName(e),message:message,text:text,stack:stack};}function inspect(v){var t=typeof v;return {type:t,text:t==='function'?null:String(v)};}function lookup(){try{var v=m.get('X-Declared');return {returned:true,type:typeof v,strictLiteral:v==='hg3',looseLiteral:v=='hg3',text:String(v)};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof getDot==='function'||getDot===undefined||getDot===null){throw e;}diagnostics.lookup=caught(e);return {returned:false,errorName:safeName(e)};}}function keys(){try{var it=m.keySet().iterator();var out=[];while(it.hasNext())out.push(String(it.next()));out.sort();return {returned:true,keys:out};}catch(e){if(String(e&&e.name)!=='TypeError'||typeof keySetDot==='function'||keySetDot===undefined||keySetDot===null){throw e;}diagnostics.enumeration=caught(e);return {returned:false,errorName:safeName(e)};}}var getDot=m.get,getBracket=m['get'],keySetDot=m.keySet,keySetBracket=m['keySet'];var portable={getDot:inspect(getDot),getBracket:inspect(getBracket),keySetDot:inspect(keySetDot),keySetBracket:inspect(keySetBracket),lookup:lookup(),enumeration:keys()};return JSON.stringify({portable:portable,diagnostics:diagnostics});})()",
+      "requests": {
+        "ordered": []
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "v1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "V",
+      "keyword": "v",
+      "expectBooks": [
+        "v-book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "v-search-v"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "v"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "v1.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "V",
+      "book": "v-book-1",
+      "requests": {
+        "ordered": [
+          "v-book-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "v"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "v1.toc",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "toc",
+      "source": "V",
+      "book": "v-book-1",
+      "requests": {
+        "ordered": [
+          "v-book-1-toc"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "v"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "v1.content",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "content",
+      "source": "V",
+      "book": "v-book-1",
+      "chapter": "http://127.0.0.1:18771/v/book/1/c1",
+      "requests": {
+        "ordered": [
+          "v-book-1-c1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "v"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "o1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "O",
+      "keyword": "o",
+      "expectBooks": [
+        "o-book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "o-search-o"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "o"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "o1.details-same",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "O",
+      "book": "o-book-1",
+      "carrier": "same",
+      "requests": {
+        "ordered": [
+          "o-book-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "o"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "o1.details-fresh",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "O",
+      "book": "o-book-1",
+      "carrier": "fresh",
+      "requests": {
+        "ordered": [
+          "o-book-2"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "o"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "t1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "T",
+      "keyword": "t",
+      "expectBooks": [
+        "t-book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "t-search-t"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "t"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "t1.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "T",
+      "book": "t-book-1",
+      "requests": {
+        "ordered": [
+          "t-book-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "t"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "t1.toc",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "toc",
+      "source": "T",
+      "book": "t-book-1",
+      "requests": {
+        "ordered": [
+          "t-book-1-toc2"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "t"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "p1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "P",
+      "keyword": "p",
+      "expectBooks": [
+        "p-book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "p-search-p"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "p"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "p1.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "P",
+      "book": "p-book-1",
+      "requests": {
+        "ordered": [
+          "p-book-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "p"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "p1.toc",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "toc",
+      "source": "P",
+      "book": "p-book-1",
+      "requests": {
+        "ordered": [
+          "p-book-1-toc"
+        ],
+        "batch": {
+          "cohort": "stage.toc-option-tail",
+          "members": [
+            "p-book-1-toc2",
+            "p-book-1-toc3"
+          ]
+        }
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "p"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "n1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "N",
+      "keyword": "n",
+      "expectBooks": [
+        "n-book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "n-search-n"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "n"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "n1.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "N",
+      "book": "n-book-1",
+      "requests": {
+        "ordered": [
+          "n-book"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "n"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "n1.toc",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "toc",
+      "source": "N",
+      "book": "n-book-1",
+      "requests": {
+        "ordered": [
+          "n-toc"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "n"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "j1.search",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "search",
+      "source": "J",
+      "keyword": "j",
+      "expectBooks": [
+        "j-book-1"
+      ],
+      "requests": {
+        "ordered": [
+          "j-search-j"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "j"
+      },
+      "expectedOutcome": "ok"
+    },
+    {
+      "id": "j1.details",
+      "kind": "stage",
+      "family": "stage",
+      "stage": "details",
+      "source": "J",
+      "book": "j-book-1",
+      "requests": {
+        "ordered": [
+          "j-book-1"
+        ]
+      },
+      "requiredHeaders": {
+        "user-agent": "HTTP-BOUNDARY-01/1.0",
+        "x-declared": "j"
+      },
+      "expectedOutcome": "ok"
+    }
+  ],
+  "structural": {
+    "observations": 46,
+    "requests": 55,
+    "responses": 53,
+    "helperSelectors": 14,
+    "helperSingletonSelectors": 4,
+    "helperBatchSelectors": 10,
+    "helperBatchSizes": [
+      3,
+      5,
+      2
+    ],
+    "rateSelectors": 3,
+    "stageSelectors": 36,
+    "stageRequests": 38,
+    "familyObservations": {
+      "helper": 13,
+      "rate": 3,
+      "stage": 30
+    },
+    "requestsExceedingSelectors": 2,
+    "requestsExceedingSelectorsReason": "s2.retry-non2xx repeats one declared selector three times (retry=2)"
+  },
+  "nondeterministic": [
+    "recordedAt",
+    "runId",
+    "pid",
+    "stageTrace",
+    "requests[].receivedAtNanos",
+    "requests[].respondedAtNanos",
+    "requests[].stage",
+    "requests[].sendSequence",
+    "observations[].evidence",
+    "observations[].evidence.arityProvenance",
+    "observations[].evidence.execution",
+    "observations[].evidence.followUpExecution",
+    "observations[].evidence.dbProvenance",
+    "observations[].evidence.batch",
+    "observations[].evidence.rate",
+    "rate.record.*.value.recordBefore.time (relation only)",
+    "rate.record.*.value.recordAfter.time (relation only)",
+    "failEndpoint.assignedPort",
+    "failEndpoint.armedAtNanos",
+    "failEndpoint.connections[].acceptedAtNanos",
+    "failEndpoint.connections[].closedAtNanos",
+    "failEndpoint.connections[].headers.host",
+    "cleanup.ownerManifest.createdAt"
+  ],
+  "coverageGaps": [
+    "No WebView, browser, TLS/captcha, login or cookie-jar row; those stay in AUTH-SESSION-01 / Spec B.",
+    "No POST/form/redirect row; those stay in REQUEST-01.",
+    "The selected-reference rows have no installed-app capture yet; the controller's real-phone rows remain not-run.",
+    "The two-capture equality and the negative control are controller executions; this corpus alone is not an observation."
+  ],
+  "sourceDerivedNotes": {
+    "ajaxAllConcurrency": "JsExtensions.kt:139-153 maps with AppConfig.threadCount (default 32 at a7d37f1).",
+    "productAjaxAllWidth": 4,
+    "productAjaxAllWidthPath": "lib/source/source_host_dispatcher.dart:186",
+    "productAjaxAllWidthStatus": "source-derived, not observed by the native producer; the product consumer records its own real peak",
+    "tocPagination": "BookChapterList.kt:65-115 batches only the declared next URLs after the ordered initial page.",
+    "contentPagination": "BookContent.kt:110-135 batches only the declared next URLs after the first page.",
+    "retry": "OkHttpUtils.kt:29-45 returns the first successful or 3xx response and otherwise the last one, so retry=2 is 1 attempt on 2xx/3xx and 3 on 4xx/5xx.",
+    "headerMapScriptArity": "The pinned host probe dispatches source.getHeaderMap(false) on a source-signature carrier and rejects the zero-argument call; that is host carrier provenance, not Android execution. The collector measures the actual Android script outcomes for all three arities.",
+    "scriptProbe": "The scriptProbe helper action evaluates one fixture-authored script through the real AnalyzeUrl.evalJS/source binding (frozen) and the product's own InProcessSourceScriptRuntime; its result is the script's JSON projection, compared before any diagnostic conversion.",
+    "freshCarrier": "A details step declared carrier=fresh opens a genuinely new product BookSourcePipeline over the same source object/key and the identical stored search hit; the frozen details stage constructs its own AnalyzeUrl per stage call for the same retained book. The source-authored URL-option js reads and increments one O-source counter, so the two actual invocations supply the distinct /1 and /2 selectors without a transport rewrite. The declaration is validated at the corpus boundary and the actual hit reference, pipeline/transport/source/host-state identities, counter and request facts are in the observation value/evidence.",
+    "urlOptionJs": "The URL-option rows keep the selected absolute pre-option address and the original raw option tail; no side rebases or manufactures a transformed URL. The product's same-analysis HTML _extracted path does not run the option js (a measured omission), while a fresh analysis and the JSON adapter do.",
+    "changesSinceHistoricalCorpus": {
+      "AnalyzeUrl": "the selected entry has a 16-parameter primary constructor (infoMap, extraParams) and new URL-option timeout/followRedirects/dnsIp/bodyJs handling; the collector resolves the 16-parameter constructor by declared signature and records it.",
+      "getChapterListAwait": "the selected entry takes isFromBookInfo (WebBook.kt:297-302); the collector resolves the widest accepted arity, passes false and records the resolved signature.",
+      "threadCount": "the selected default is 32; the capture records the actual AppConfig.getThreadCount() read.",
+      "rate": "ConcurrentRecord carries time/accessLimit/interval/frequency and the limiter has no fetchEnd; the selected capture records the declared record fields and window schedule, keeping accessLimit/interval as provenance."
+    }
+  },
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}

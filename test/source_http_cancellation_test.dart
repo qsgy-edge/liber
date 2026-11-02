@@ -4,15 +4,116 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/http_source_transport.dart';
+import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
+import 'package:liber/source/source_host_state.dart';
+import 'package:liber/source/source_rate_limiter.dart';
 
 import 'package:liber/source/native_library.dart';
 
 import 'native_library.dart';
 
+class _RecordingTransport implements SourceHttpTransport {
+  final paths = <String>[];
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    paths.add(request.url.path);
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: request.url.path,
+      url: request.url,
+    );
+  }
+}
+
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
-  tearDownAll(NativeLibrary.dispose);
+  tearDownAll(() async {
+    await InProcessSourceScriptRuntime.dispose();
+    NativeLibrary.dispose();
+  });
+  test(
+    'JS deadline settles a pending rate-wait host and permits a fresh request',
+    () async {
+      const sourceKey = 'http://rate-wait.test';
+      final limiter = SourceRateLimiter();
+      final transport = _RecordingTransport();
+      final state = SourceHostState();
+      final dispatcher = SourceHostDispatcher(
+        transport: transport,
+        hostState: state,
+        sourceRef: sourceKey,
+        concurrentRate: '1/1800',
+        rateLimiter: limiter,
+      );
+      await dispatcher.get('http://rate-wait.test/prime');
+      final firstTime = limiter.recordOf(sourceKey)!.time;
+      final runtime = InProcessSourceScriptRuntime(
+        dispatcher: dispatcher,
+        hostState: state,
+      );
+      final timers = <Timer>[];
+      final timerSeen = Completer<void>();
+      final evaluation = runZoned(
+        () => runtime.evaluate(
+          source:
+              'java.ajax("http://rate-wait.test/blocked"); source.put("late", "bad"); "done"',
+          input: const {'sourceKey': sourceKey},
+          timeout: const Duration(milliseconds: 350),
+        ),
+        zoneSpecification: ZoneSpecification(
+          createTimer: (self, parent, zone, duration, callback) {
+            final timer = parent.createTimer(zone, duration, callback);
+            if (duration.inMilliseconds > 500 &&
+                duration.inMilliseconds <= 1800) {
+              timers.add(timer);
+              if (!timerSeen.isCompleted) timerSeen.complete();
+            }
+            return timer;
+          },
+        ),
+      );
+      final rejected = expectLater(
+        evaluation,
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.category,
+            'category',
+            'timeout',
+          ),
+        ),
+      );
+      await timerSeen.future.timeout(const Duration(seconds: 2));
+      await rejected.timeout(const Duration(seconds: 3));
+      expect(timers, hasLength(1));
+      expect(timers.single.isActive, isFalse);
+      expect(transport.paths, ['/prime']);
+      expect(
+        await state.entry(sourceKey, sourceRuleVariableKey(sourceKey, 'late')),
+        isNull,
+      );
+      expect(limiter.recordOf(sourceKey)!.time, firstTime);
+      final remaining =
+          firstTime + 1900 - DateTime.now().millisecondsSinceEpoch;
+      if (remaining > 0) {
+        await Future<void>.delayed(Duration(milliseconds: remaining));
+      }
+      expect(transport.paths, ['/prime']);
+      expect(
+        await state.entry(sourceKey, sourceRuleVariableKey(sourceKey, 'late')),
+        isNull,
+      );
+      final follow = await runtime.evaluate(
+        source: 'java.ajax("http://rate-wait.test/follow")',
+        input: const {'sourceKey': sourceKey},
+        timeout: const Duration(seconds: 5),
+      );
+      expect(follow, '/follow');
+      expect(transport.paths, ['/prime', '/follow']);
+      await InProcessSourceScriptRuntime.dispose();
+    },
+  );
   test('dispatcher cancellation closes the actual HTTP connection', () async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final reached = Completer<void>();

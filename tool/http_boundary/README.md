@@ -16,6 +16,16 @@ structurally checked. No handset execution has happened in this producer lane.**
 report produced by the controller is a capture candidate; only the controller's
 hash-bound handoff (`E/controller/a2-http-session-handoff.json`) can make it evidence.
 
+## Selected-reference entry
+
+The v3 shape and target described below are historical. The selected A2 corpus
+is `tool/http_boundary/fixtures-selected.json` (v4), bound to baseline
+`a7d37f1707a70a459ad708f4fe79341d1e42d716` and `com.legado.app.debug` APK
+SHA-256 `593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5`.
+Its instrumentation entry is `io.liber.oracle.nested.SelectedHttpBoundaryOracle`.
+The controller owns selected native capture; this declaration is not evidence of
+an executed capture. See `consumer.md` for product and comparison commands.
+
 ## Measurement and cleanup contract
 
 - The header-map rows execute one fixture-authored projection per arity through

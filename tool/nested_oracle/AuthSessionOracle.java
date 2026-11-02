@@ -72,10 +72,17 @@ import java.util.concurrent.atomic.AtomicReference;
  * containment and ships {@code tool/auth_session/fixtures.json} as its asset.
  * No Legado class is rebuilt and no row is written directly.
  */
-public final class AuthSessionOracle extends Instrumentation {
+public class AuthSessionOracle extends Instrumentation {
 
+    /** The historical `14dd2494` corpus; its goldens keep that identity. */
     private static final String ASSET = "auth-session-fixtures.json";
+    /** The selected-reference corpus: bound to `a7d37f1` and its instrumentable build. */
+    private static final String ASSET_SELECTED = "auth-session-fixtures-selected.json";
     private static final String STREAM_KEY = "AUTH_SESSION_ORACLE_BASE64";
+    /** SourceLoginDialog's own invocation tail, reproduced verbatim. */
+    private static final String LOGIN_INVOCATION =
+        "if (typeof login=='function'){ login.apply(this); } else {"
+            + " throw('Function login not implements!!!') }";
     private static final String SCRATCH_ROOT_NAME = "liber-auth-session-01";
     private static final String PREFERENCE_PREFIX = "liber_auth_session_01_";
     private static final String WEBVIEW_SUFFIX = "liber-auth-session-01";
@@ -87,6 +94,9 @@ public final class AuthSessionOracle extends Instrumentation {
     private final JSONArray stageTrace = new JSONArray();
     private final JSONArray observations = new JSONArray();
     private final JSONObject inventory = new JSONObject();
+    private final JSONObject entryPoints = new JSONObject();
+    /** Per-source login binding receipt: instrumentation provenance, not compared. */
+    private final JSONObject loginBindings = new JSONObject();
     private final AtomicReference<String> stage = new AtomicReference<>("setup");
     private final AtomicBoolean finished = new AtomicBoolean();
 
@@ -104,13 +114,21 @@ public final class AuthSessionOracle extends Instrumentation {
     private JSONObject webViewReceipt;
     private String webViewSuffixFailure;
     private String webViewPreflightFailure;
+    private String asset = ASSET;
     private boolean cleanupOk;
+
+    // The instrumentation entry fixes both target and corpus; extras cannot retarget it.
+    boolean selectedCorpus() { return false; }
+
+    final boolean handleShortcutException(Object object, Throwable error) {
+        return scratch != null && scratch.handleShortcutException(object, error);
+    }
 
     @Override
     public Application newApplication(ClassLoader cl, String name, Context context)
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
         scratch = new StateSessionOracle.ScratchContext(context, SCRATCH_ROOT_NAME,
-            PREFERENCE_PREFIX);
+            PREFERENCE_PREFIX, selectedCorpus());
         // This is the earliest process point available to instrumentation: before
         // LoadedApk finishes makeApplication, before any ContentProvider and before the
         // frozen Application.onCreate. The API only stores a pre-init suffix; it does not
@@ -133,7 +151,15 @@ public final class AuthSessionOracle extends Instrumentation {
     public void onCreate(Bundle args) {
         super.onCreate(args);
         if (args != null) phase = args.getString("phase");
-        log("onCreate phase=" + phase);
+        String requested = args == null ? null : args.getString("corpus");
+        if (requested != null && (!selectedCorpus() || !"selected".equals(requested))) {
+            Bundle status = new Bundle();
+            status.putString("stream", "Wrong instrumentation entry or corpus; refusing.\n");
+            finish(1, status);
+            return;
+        }
+        asset = selectedCorpus() ? ASSET_SELECTED : ASSET;
+        log("onCreate phase=" + phase + " corpus=" + asset);
         new Handler(Looper.getMainLooper()).post(() -> {
             log("main looper reached; starting the worker thread");
             new Thread(this::run, "auth-session-oracle").start();
@@ -174,7 +200,7 @@ public final class AuthSessionOracle extends Instrumentation {
         JSONObject cleanup = new JSONObject();
         try {
             runId = UUID.randomUUID().toString();
-            corpus = new JSONObject(new String(readAsset(ASSET), StandardCharsets.UTF_8));
+            corpus = new JSONObject(new String(readAsset(asset), StandardCharsets.UTF_8));
             if (!"seed".equals(phase) && !"restart".equals(phase)) {
                 throw new IllegalStateException("phase must be seed or restart, got " + phase);
             }
@@ -199,6 +225,15 @@ public final class AuthSessionOracle extends Instrumentation {
             scratch.bind(phase, identity);
             report.put("isolation", checkIsolation());
             log("isolation ok");
+            // Selected startup must have contained the provider before binding or source work.
+            if (selectedCorpus()) report.put("startupContainment", scratch.shortcutReceipt());
+            // The selected reference needs the host wrapper registry its own App installs
+            // at startup. The historical corpus declares none, so its behaviour is unchanged.
+            if (corpus.has("hostInitialization")) {
+                report.put("hostInitialization", HostRuntimeInit.initialize(loader,
+                    corpus.getJSONObject("hostInitialization")));
+                log("host initialization verified");
+            }
             database = loader.loadClass("io.legado.app.data.AppDatabaseKt")
                 .getMethod("getAppDb").invoke(null);
 
@@ -252,6 +287,8 @@ public final class AuthSessionOracle extends Instrumentation {
                     .put("observationCheck", observationCheckValue != null
                         ? observationCheckValue : observationCheck())
                     .put("inventory", inventory)
+                    .put("entryPoints", entryPoints)
+                    .put("loginBindings", synchronizedSnapshot(loginBindings))
                     .put("webView", webViewReport())
                     .put("cleanup", cleanup)
                     .put("analysisFailure", failure == null ? JSONObject.NULL : failure);
@@ -291,7 +328,7 @@ public final class AuthSessionOracle extends Instrumentation {
         String harnessPackage = getContext().getPackageName();
         String harnessPath = getContext().getPackageManager()
             .getApplicationInfo(harnessPackage, 0).sourceDir;
-        byte[] asset = readAsset(ASSET);
+        byte[] asset = readAsset(this.asset);
         return new JSONObject()
             .put("fixtureId", corpus.getString("fixtureId"))
             .put("corpusVersion", corpus.getInt("corpusVersion"))
@@ -303,7 +340,7 @@ public final class AuthSessionOracle extends Instrumentation {
             .put("harnessPackage", harnessPackage)
             .put("harnessApkPath", harnessPath)
             .put("harnessApkSha256", sha256(new File(harnessPath)))
-            .put("corpusAsset", ASSET)
+            .put("corpusAsset", this.asset)
             .put("corpusAssetSha256", sha256(asset))
             .put("corpusSha256Lf", sha256(lf(asset)));
     }
@@ -453,21 +490,227 @@ public final class AuthSessionOracle extends Instrumentation {
     private void stepLogin(JSONObject step, Map<String, Object> sources) throws Exception {
         Object source = require(sources, step.getString("source"), "source");
         String infoJson = step.getString("loginInfo");
+        JSONObject value = selectedCorpus()
+            ? selectedLogin(source, infoJson, step.getString("id"))
+            : historicalLogin(source, infoJson);
+        value.put("kind", "login")
+            .put("source", step.getString("source"));
+        Object probe = call(source, "get", step.getString("probeKey"));
+        value.put("loginOutcome", probe == null ? "" : probe.toString())
+            .put("loginHeader", nullToNull(call(source, "getLoginHeader")))
+            .put("loginHeaderMap", jsonMapOrNull((Map<?, ?>) call(source, "getLoginHeaderMap")));
+        observe(step.getString("id"), value);
+    }
+
+    /** The historical corpus' loginUi + putLoginInfo + login sequence. */
+    private JSONObject historicalLogin(Object source, String infoJson) throws Exception {
         JSONArray ui = loginUi(source);
         Object put = call(source, "putLoginInfo", infoJson);
         Object info = call(source, "getLoginInfoMap");
         call(source, "login");
-        Object probe = call(source, "get", step.getString("probeKey"));
-        JSONObject value = new JSONObject()
-            .put("kind", "login")
-            .put("source", step.getString("source"))
+        return new JSONObject()
             .put("loginUi", ui)
             .put("putLoginInfo", put == null ? JSONObject.NULL : put)
-            .put("loginInfo", jsonMap((Map<?, ?>) info))
-            .put("loginOutcome", probe == null ? "" : probe.toString())
-            .put("loginHeader", nullToNull(call(source, "getLoginHeader")))
-            .put("loginHeaderMap", jsonMapOrNull((Map<?, ?>) call(source, "getLoginHeaderMap")));
-        observe(step.getString("id"), value);
+            .put("loginInfo", jsonMap((Map<?, ?>) info));
+    }
+
+    /**
+     * The selected reference's static SourceLoginDialog path: the raw loginUi text
+     * is parsed into rows, the login data is the stored login info merged with the
+     * declared text/password values, putLoginInfo stores it, and the source login
+     * script runs through evalJS with java bound to a
+     * SourceLoginJsExtensions(null, source, 0, null) instance plus the dialog's
+     * result/book/chapter/isLongClick bindings (SourceLoginDialog.kt:801-807,845-852).
+     * No login-UI view callback runs and no dynamic login UI is claimed.
+     */
+    private JSONObject selectedLogin(Object source, String infoJson, String step_source)
+            throws Exception {
+        JSONArray ui = loginUiRows(source);
+        Map<String, String> loginData = dialogLoginData(source, ui, infoJson);
+        String loginJson = selectedGson().getClass()
+            .getMethod("toJson", Object.class)
+            .invoke(selectedGson(), loginData).toString();
+        Object put = call(source, "putLoginInfo", loginJson);
+        Object info = call(source, "getLoginInfoMap");
+        String loginScript = loginScript(source);
+        Object extension = loginJsExtensions(source);
+        runLoginScript(source, loginScript, extension, loginData);
+        // The binding receipt is instrumentation provenance, never part of the
+        // compared product value (the product has no such field).
+        synchronized (loginBindings) {
+            loginBindings.put(step_source, new JSONObject()
+                .put("java", "io.legado.app.ui.login.SourceLoginJsExtensions")
+                .put("extensionConstructor", "SourceLoginJsExtensions(null, source, 0, null)")
+                .put("bindings", new JSONArray()
+                    .put("java").put("result").put("book").put("chapter")
+                    .put("isLongClick"))
+                .put("result", "loginData")
+                .put("invocationTail", LOGIN_INVOCATION)
+                .put("uiCallbacksExecuted", false));
+        }
+        return new JSONObject()
+            .put("loginUi", ui)
+            .put("putLoginInfo", put == null ? JSONObject.NULL : put)
+            .put("loginInfo", jsonMap((Map<?, ?>) info));
+    }
+
+    /** The rows the selected dialog parses out of the raw loginUi text. */
+    private JSONArray loginUiRows(Object source) throws Exception {
+        Object raw = call(source, "getLoginUi");
+        JSONArray rows = new JSONArray();
+        if (raw == null || raw.toString().trim().isEmpty()) return rows;
+        Class<?> rowUiClass = loader.loadClass("io.legado.app.data.entities.rule.RowUi");
+        Object listClass = loader.loadClass("java.util.List");
+        Object typeToken = loader.loadClass("com.google.gson.reflect.TypeToken")
+            .getMethod("getParameterized", java.lang.reflect.Type.class,
+                java.lang.reflect.Type[].class)
+            .invoke(null, listClass, new java.lang.reflect.Type[]{rowUiClass});
+        Object declaredType = typeToken.getClass().getMethod("getType").invoke(typeToken);
+        Object parsed = selectedGson().getClass()
+            .getMethod("fromJson", String.class, java.lang.reflect.Type.class)
+            .invoke(selectedGson(), raw.toString(), declaredType);
+        if (!(parsed instanceof List)) return rows;
+        for (Object row : (List<?>) parsed) {
+            rows.put(new JSONObject()
+                .put("name", str(rowUiClass, row, "getName"))
+                .put("type", str(rowUiClass, row, "getType"))
+                .put("action", nullToNull(call(rowUiClass, row, "getAction"))));
+        }
+        return rows;
+    }
+
+    /**
+     * SourceLoginDialog.getLoginData: the stored login info first, then each
+     * text/password row's value. The corpus' declared loginInfo is what the operator
+     * typed into those rows; an undeclared row keeps its own default.
+     */
+    private Map<String, String> dialogLoginData(Object source, JSONArray rows, String infoJson)
+            throws Exception {
+        Map<String, String> typed = new LinkedHashMap<>();
+        if (infoJson != null && !infoJson.trim().isEmpty()) {
+            Object parsed = selectedGson().getClass()
+                .getMethod("fromJson", String.class, Class.class)
+                .invoke(selectedGson(), infoJson, java.util.Map.class);
+            if (parsed instanceof Map) {
+                for (Map.Entry<?, ?> entry : ((Map<?, ?>) parsed).entrySet()) {
+                    typed.put(String.valueOf(entry.getKey()),
+                        entry.getValue() == null ? "" : String.valueOf(entry.getValue()));
+                }
+            }
+        }
+        Map<String, String> loginData = new LinkedHashMap<>();
+        Object stored = call(source, "getLoginInfoMap");
+        if (stored instanceof Map) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) stored).entrySet()) {
+                loginData.put(String.valueOf(entry.getKey()),
+                    entry.getValue() == null ? "" : String.valueOf(entry.getValue()));
+            }
+        }
+        Class<?> rowUiClass = loader.loadClass("io.legado.app.data.entities.rule.RowUi");
+        for (int index = 0; index < rows.length(); index++) {
+            JSONObject row = rows.getJSONObject(index);
+            String type = row.getString("type");
+            if (!"text".equals(type) && !"password".equals(type)) continue;
+            String name = row.getString("name");
+            String text = typed.get(name);
+            if (text == null) {
+                text = row.has("default") && !row.isNull("default")
+                    ? row.getString("default") : "";
+            }
+            loginData.put(name, text);
+        }
+        return loginData;
+    }
+
+    /**
+     * The login script the selected dialog actually evaluates: the source's own
+     * `getLoginJs()` text plus the dialog's guarded invocation tail
+     * (`SourceLoginDialog.kt:844-846`). `getLoginJs()` only extracts script text, so
+     * without the tail a fixture that declares `function login(){...}` never runs it.
+     */
+    private String loginScript(Object source) throws Exception {
+        Object script = call(source, "getLoginJs");
+        if (script == null || script.toString().isEmpty()) {
+            throw new IllegalStateException("the source declares no login script");
+        }
+        return script.toString() + "\n" + LOGIN_INVOCATION;
+    }
+
+    /** SourceLoginJsExtensions(null, source, 0, null): no activity, no callback. */
+    private Object loginJsExtensions(Object source) throws Exception {
+        Class<?> extension = loader.loadClass("io.legado.app.ui.login.SourceLoginJsExtensions");
+        Class<?> activity = loader.loadClass("androidx.appcompat.app.AppCompatActivity");
+        Class<?> baseSource = loader.loadClass("io.legado.app.data.entities.BaseSource");
+        Class<?> callback = loader.loadClass(
+            "io.legado.app.ui.login.SourceLoginJsExtensions$Callback");
+        return extension.getConstructor(activity, baseSource, Integer.TYPE, callback)
+            .newInstance(null, source, Integer.valueOf(0), null);
+    }
+
+    /**
+     * source.evalJS(script) with the dialog's exact bindings, through the same public
+     * evalJS(String, ScriptBindings.() -> Unit) entry the dialog uses.
+     */
+    private void runLoginScript(Object source, String script, Object extension,
+            Map<String, String> loginData) throws Exception {
+        Class<?> function1 = loader.loadClass("kotlin.jvm.functions.Function1");
+        Object unit = loader.loadClass("kotlin.Unit").getField("INSTANCE").get(null);
+        Object config = java.lang.reflect.Proxy.newProxyInstance(
+            AuthSessionOracle.class.getClassLoader(), new Class<?>[]{function1},
+            (proxy, method, arguments) -> {
+                switch (method.getName()) {
+                    case "invoke":
+                        Object bindings = arguments[0];
+                        putBinding(bindings, "java", extension);
+                        putBinding(bindings, "result", loginData);
+                        putBinding(bindings, "book", null);
+                        putBinding(bindings, "chapter", null);
+                        putBinding(bindings, "isLongClick", Boolean.FALSE);
+                        return unit;
+                    case "toString":
+                        return "SourceLoginDialogBindings";
+                    case "hashCode":
+                        return System.identityHashCode(proxy);
+                    case "equals":
+                        return proxy == arguments[0];
+                    default:
+                        return null;
+                }
+            });
+        Method eval = null;
+        for (Method candidate : source.getClass().getMethods()) {
+            if (!candidate.getName().equals("evalJS")) continue;
+            if (candidate.getParameterCount() != 2) continue;
+            if (candidate.getParameterTypes()[0] != String.class) continue;
+            if (!candidate.getParameterTypes()[1].getName().equals(function1.getName())) {
+                continue;
+            }
+            eval = candidate;
+        }
+        if (eval == null) {
+            throw new IllegalStateException("the selected evalJS(String, bindings) is absent");
+        }
+        try {
+            eval.invoke(source, script, config);
+        } catch (java.lang.reflect.InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            throw cause instanceof Exception ? (Exception) cause
+                : new IllegalStateException(cause);
+        }
+    }
+
+    private void putBinding(Object bindings, String name, Object value) throws Exception {
+        bindings.getClass().getMethod("set", String.class, Object.class)
+            .invoke(bindings, name, value);
+    }
+
+    private Object cachedGson;
+
+    private Object selectedGson() throws Exception {
+        if (cachedGson == null) {
+            cachedGson = loader.loadClass("com.google.gson.Gson").getConstructor().newInstance();
+        }
+        return cachedGson;
     }
 
     private void stepHeaderMap(JSONObject step, Map<String, Object> sources) throws Exception {
@@ -576,8 +819,16 @@ public final class AuthSessionOracle extends Instrumentation {
         Class<?> chapterClass = loader.loadClass("io.legado.app.data.entities.BookChapter");
         String bookId = step.getString("book");
         Object book = require(books, bookId, "book");
-        Object result = runSuspend(loader, continuation -> call(webBookClass, webBook,
-            "getChapterListAwait", 4, new Object[]{source, book, Boolean.FALSE}, continuation));
+        // The selected reference adds `isFromBookInfo` to this declaration; the
+        // historical reference has three parameters. FALSE is the historical value, so
+        // both references run the same scenario, and the resolved arity is recorded.
+        Method tocEntry = resolveSuspend(webBookClass, "getChapterListAwait", 4, 5);
+        boolean withFromBookInfo = tocEntry.getParameterCount() == 5;
+        Object result = runSuspend(loader, continuation -> invokeSuspend(tocEntry, webBook,
+            withFromBookInfo
+                ? new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}
+                : new Object[]{source, book, Boolean.FALSE},
+            continuation));
         List<?> list = unwrapResult(result);
         if (list.isEmpty()) throw new IllegalStateException("table of contents is empty");
         JSONArray observed = new JSONArray();
@@ -1247,7 +1498,19 @@ public final class AuthSessionOracle extends Instrumentation {
         boolean seed = "seed".equals(phase);
         cleanup.put("ownership", seed ? "created-fresh-root" : "validated-seed-owner")
             .put("scratchRoot", scratch.root.getAbsolutePath());
-        if (seed && succeeded) {
+        if (!succeeded || !databaseClosed || !replayOk || !terminalOk) {
+            cleanup.put("preferencesFenced", new JSONArray())
+                .put("preferencesRemoved", new JSONArray())
+                .put("scratchRetained", scratch.root.exists())
+                .put("scratchRemoved", false)
+                .put("ownerFile", new File(scratch.root, OWNER_FILE).getAbsolutePath())
+                .put("preservedForController", true)
+                .put("cleanupFailure", "the phase or its resource checks did not succeed;"
+                    + " startup completion is unproved, so owned residue is retained"
+                    + " for controller force-stop and recovery");
+            return cleanup;
+        }
+        if (seed) {
             JSONArray fenced = new JSONArray();
             boolean allFenced = true;
             for (String name : scratch.ownedPreferences()) {
@@ -1365,8 +1628,10 @@ public final class AuthSessionOracle extends Instrumentation {
             throw new IllegalStateException("corpus is not AUTH-SESSION-01 schema 1");
         }
         JSONObject target = corpus.getJSONObject("target");
-        if (!target.getString("package").equals("io.legado.app.debug")) {
-            throw new IllegalStateException("corpus targets another package");
+        // The entry fixes the target package; the corpus must name the same installed one.
+        if (!target.getString("package").equals(getTargetContext().getPackageName())) {
+            throw new IllegalStateException("corpus targets " + target.getString("package")
+                + ", this entry is bound to " + getTargetContext().getPackageName());
         }
         JSONObject provider = corpus.getJSONObject("webViewProvider");
         if (provider.getString("package").isEmpty()
@@ -1543,6 +1808,63 @@ public final class AuthSessionOracle extends Instrumentation {
         }
     }
 
+    /**
+     * The reference's declaration of one suspend entry point, resolved by declared
+     * types and recorded in the capture. A suspend function whose return type is an
+     * inline value class is name mangled with a hash suffix, so the base name is
+     * matched as a prefix; a reference that adds a defaulted parameter widens the
+     * declaration instead of adding an overload, so every accepted arity is declared
+     * by the caller and the widest one present is used.
+     */
+    private Method resolveSuspend(Class<?> owner, String name, int... parameterCounts)
+            throws Exception {
+        Method target = null;
+        for (Method candidate : owner.getMethods()) {
+            if (!candidate.getName().equals(name)
+                    && !candidate.getName().startsWith(name + "-")) {
+                continue;
+            }
+            if (!candidate.getParameterTypes()[candidate.getParameterCount() - 1].getName()
+                    .equals("kotlin.coroutines.Continuation")) {
+                continue;
+            }
+            boolean accepted = false;
+            for (int count : parameterCounts) accepted |= candidate.getParameterCount() == count;
+            if (!accepted) continue;
+            if (target == null || candidate.getParameterCount() > target.getParameterCount()) {
+                target = candidate;
+            }
+        }
+        if (target == null) {
+            throw new IllegalStateException("frozen suspend entry absent: " + name
+                + java.util.Arrays.toString(parameterCounts));
+        }
+        entryPoints.put(name, signatureOf(target));
+        return target;
+    }
+
+    private static String signatureOf(Method method) {
+        StringBuilder text = new StringBuilder(method.getName()).append('(');
+        Class<?>[] types = method.getParameterTypes();
+        for (int index = 0; index < types.length; index++) {
+            if (index > 0) text.append(',');
+            text.append(types[index].getSimpleName());
+        }
+        return text.append(')').toString();
+    }
+
+    private static Object invokeSuspend(Method target, Object instance, Object[] arguments,
+            Object continuation) throws Throwable {
+        Object[] full = new Object[target.getParameterCount()];
+        System.arraycopy(arguments, 0, full, 0, arguments.length);
+        full[target.getParameterCount() - 1] = continuation;
+        try {
+            return target.invoke(instance, full);
+        } catch (InvocationTargetException error) {
+            throw error.getCause();
+        }
+    }
+
     private static List<?> unwrapResult(Object result) throws Exception {
         if (result instanceof List) return (List<?>) result;
         if (result == null) throw new IllegalStateException("table of contents returned null");
@@ -1687,6 +2009,13 @@ public final class AuthSessionOracle extends Instrumentation {
             }
         }
         return report.toString();
+    }
+
+    /** A copy of a shared provenance object, so the report cannot race later writes. */
+    private static JSONObject synchronizedSnapshot(JSONObject source) throws JSONException {
+        synchronized (source) {
+            return new JSONObject(source.toString());
+        }
     }
 
     private static JSONArray snapshot(JSONArray source) {

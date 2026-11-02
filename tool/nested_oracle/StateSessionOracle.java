@@ -1842,7 +1842,7 @@ public class StateSessionOracle extends Instrumentation {
         private File directory(String name) {
             if (shortcutGuard != null) awaitBinding("directory(" + name + ")");
             File file = new File(root, name);
-            if (isBound() && !file.isDirectory() && !file.mkdirs()) {
+            if (isBound() && !file.isDirectory() && !file.mkdirs() && !file.isDirectory()) {
                 throw new IllegalStateException("cannot create scratch directory " + file);
             }
             return file;

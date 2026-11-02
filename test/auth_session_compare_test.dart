@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../tool/auth_session/compare.dart';
+import '../tool/auth_session/compare.dart' as auth_cli;
 import '../tool/auth_session/runner.dart';
 
 /// The corpus the comparator is written against. It is read from the checkout,
@@ -823,6 +824,46 @@ List<String> surfacesOf(Map<String, Object?> report) => [
 ];
 
 void main() {
+  test(
+    'controls-only CLI persists incomplete controls for a failed baseline',
+    () async {
+      final native = Platform.environment['LIBER_AUTH_CAPTURE_ROOT'];
+      if (native == null) return; // Optional immutable controller reports.
+      final evidence = await Directory.systemTemp.createTemp(
+        'auth-incomplete-',
+      );
+      try {
+        await auth_cli.main([
+          '--controls-only',
+          '--corpus=tool/auth_session/fixtures-selected.json',
+          '--capture=$native/auth-capture01',
+          '--evidence=${evidence.path}',
+          '--seed-product=$native/auth-product-current-01/seed-report.json',
+          '--restart-product=$native/auth-product-current-01/restart-report.json',
+        ]);
+        expect(exitCode, 1);
+        final comparison =
+            jsonDecode(
+                  File('${evidence.path}/comparison.json').readAsStringSync(),
+                )
+                as Map;
+        final controls =
+            jsonDecode(
+                  File(
+                    '${evidence.path}/negative-controls.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        expect(comparison['status'], 'fail');
+        expect(controls['status'], 'incomplete');
+        expect(controls['controls'], isEmpty);
+        expect(controls['immutableCapturesUnchanged'], true);
+      } finally {
+        exitCode = 0;
+        await evidence.delete(recursive: true);
+      }
+    },
+  );
   final corpus = readCorpus();
 
   group('corpus pin', () {
@@ -1947,4 +1988,302 @@ void main() {
       }
     });
   });
+
+  test('selected AUTH login provenance rejects an altered invocation tail', () {
+    // Admission prefix only, not a native capture or a complete envelope.
+    final file = File('tool/auth_session/fixtures-selected.json');
+    final selected = loadAuthSessionCorpus(file.path);
+    final lf = authSessionCorpusSha256Lf(file);
+    final target = authSessionTargetOf(selected);
+    final initialization = selected['hostInitialization'] as Map;
+    final loginSteps = authSessionSteps(
+      selected,
+      'seed',
+    ).where((step) => step['kind'] == 'login');
+    final receipt = <String, Object?>{
+      'java': 'io.legado.app.ui.login.SourceLoginJsExtensions',
+      'extensionConstructor': 'SourceLoginJsExtensions(null, source, 0, null)',
+      'uiCallbacksExecuted': false,
+      'result': 'loginData',
+      'bindings': ['java', 'result', 'book', 'chapter', 'isLongClick'],
+      'invocationTail':
+          "login.apply(this); throw('Function login not implements')",
+    };
+    final prefix = <String, dynamic>{
+      'phase': 'seed',
+      'fixtureId': selected['fixtureId'],
+      'corpusVersion': selected['corpusVersion'],
+      'baselineCommit': selected['baselineCommit'],
+      'entryPoint': selected['entryPoint'],
+      'identity': {
+        'fixtureId': selected['fixtureId'],
+        'corpusVersion': selected['corpusVersion'],
+        'targetPackage': target['package'],
+        'targetApkSha256': target['apkSha256'],
+        'targetBaselineCommit': selected['baselineCommit'],
+        'targetPinManifest': target['manifest'],
+        'corpusAssetSha256': lf,
+        'corpusSha256Lf': lf,
+        'harnessApkSha256': 'a' * 64,
+        'harnessPackage': 'synthetic.admission.prefix',
+      },
+      'hostInitialization': {
+        'verified': true,
+        'method': initialization['method'],
+        'invokedOn': 'unattached-instance',
+        'applicationAttached': false,
+        'registeredWrappers': {
+          for (final registration
+              in (initialization['registrations'] as List).cast<Map>())
+            '${registration['type']}': registration['factory'],
+        },
+      },
+      'startupContainment': {
+        'service': 'shortcut',
+        'provider': 'io.legado.app.api.ReaderProvider',
+        'intercepted': 1,
+        'handled': 1,
+        'beforeBinding': true,
+      },
+      'loginBindings': {
+        for (final step in loginSteps) '${step['id']}': receipt,
+      },
+    };
+    void check(String phase) => checkAuthSessionGolden(
+      corpus: selected,
+      corpusSha256Lf: lf,
+      golden: prefix,
+      phase: phase,
+    );
+    Matcher refusal(String message) => throwsA(
+      isA<FormatException>().having(
+        (error) => error.message,
+        'message',
+        contains(message),
+      ),
+    );
+    expect(() => check('seed'), refusal('login invocation'));
+    receipt['invocationTail'] =
+        "if (typeof login=='function'){ login.apply(this); } else {"
+        " throw('Function login not implements!!!') }";
+    // The prefix now clears the login gate, then fails the deliberately absent
+    // pid. This is not evidence of admission of a complete capture.
+    expect(() => check('seed'), refusal('pid is not an integer'));
+    (prefix['loginBindings'] as Map).remove('${loginSteps.first['id']}');
+    expect(() => check('seed'), refusal('exactly this phase'));
+    prefix['phase'] = 'restart';
+    prefix['loginBindings'] = <String, Object?>{};
+    expect(() => check('restart'), refusal('pid is not an integer'));
+    prefix['loginBindings'] = null;
+    expect(() => check('restart'), refusal('login bindings'));
+  });
+
+  test(
+    'selected AUTH complete synthetic seed and restart receipts are phase-bound',
+    () {
+      final file = File('tool/auth_session/fixtures-selected.json');
+      final selected = loadAuthSessionCorpus(file.path);
+      final lf = authSessionCorpusSha256Lf(file);
+      final fixture = Fixture(selected);
+      Map<String, dynamic> selectedEnvelope(String phase) {
+        final envelope = fixture.golden(phase);
+        final identity = envelope['identity'] as Map;
+        identity['corpusAssetSha256'] = lf;
+        identity['corpusSha256Lf'] = lf;
+        final provider =
+            (((envelope['webView'] as Map)['preflight'] as Map)['provider']
+                as Map);
+        provider['versionName'] =
+            (selected['webViewProvider'] as Map)['versionName'];
+        final initialization = selected['hostInitialization'] as Map;
+        envelope['hostInitialization'] = {
+          'verified': true,
+          'method': initialization['method'],
+          'invokedOn': 'unattached-instance',
+          'applicationAttached': false,
+          'registeredWrappers': {
+            for (final registration
+                in (initialization['registrations'] as List).cast<Map>())
+              '${registration['type']}': registration['factory'],
+          },
+        };
+        envelope['startupContainment'] = {
+          'service': 'shortcut',
+          'provider': 'io.legado.app.api.ReaderProvider',
+          'intercepted': 1,
+          'handled': 1,
+          'beforeBinding': true,
+        };
+        envelope['loginBindings'] = {
+          for (final step in authSessionSteps(selected, phase))
+            if (step['kind'] == 'login')
+              '${step['id']}': {
+                'java': 'io.legado.app.ui.login.SourceLoginJsExtensions',
+                'extensionConstructor':
+                    'SourceLoginJsExtensions(null, source, 0, null)',
+                'uiCallbacksExecuted': false,
+                'result': 'loginData',
+                'bindings': [
+                  'java',
+                  'result',
+                  'book',
+                  'chapter',
+                  'isLongClick',
+                ],
+                'invocationTail':
+                    "if (typeof login=='function'){ login.apply(this); } else { throw('Function login not implements!!!') }",
+              },
+        };
+        return envelope;
+      }
+
+      final seed = selectedEnvelope('seed');
+      final restart = selectedEnvelope('restart');
+      void pair(Map<String, dynamic> a, Map<String, dynamic> b) =>
+          checkAuthSessionGoldenPair(
+            corpus: selected,
+            corpusSha256Lf: lf,
+            seed: a,
+            restart: b,
+          );
+      expect(() => pair(seed, restart), returnsNormally);
+      final mutationsForCli =
+          <({Map<String, dynamic> seed, Map<String, dynamic> restart})>[];
+      for (final mutate
+          in <void Function(Map<String, dynamic>, Map<String, dynamic>)>[
+            (a, b) => (a['loginBindings'] as Map).remove('seed.login.A'),
+            (a, b) =>
+                ((a['loginBindings'] as Map)['seed.login.A']
+                        as Map)['invocationTail'] =
+                    'other',
+            (a, b) =>
+                ((a['loginBindings'] as Map)['seed.login.A'] as Map)['result'] =
+                    'other',
+            (a, b) =>
+                ((a['loginBindings'] as Map)['seed.login.A']
+                    as Map)['bindings'] = [
+                  'java',
+                ],
+            (a, b) =>
+                ((a['loginBindings'] as Map)['seed.login.A']
+                    as Map)['bindings'] = [
+                  'java',
+                  'result',
+                  'book',
+                  'chapter',
+                  'isLongClick',
+                  'extra',
+                ],
+            (a, b) =>
+                ((a['loginBindings'] as Map)['seed.login.A']
+                        as Map)['bindings'] =
+                    'not-a-list',
+            (a, b) =>
+                ((a['loginBindings'] as Map)['seed.login.A']
+                    as Map)['bindings'] = [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                ],
+            (a, b) => (a['hostInitialization'] as Map)['verified'] = false,
+            (a, b) =>
+                ((a['hostInitialization'] as Map)['registeredWrappers'] as Map)
+                    .clear(),
+            (a, b) => (b['startupContainment'] as Map)['intercepted'] = 0,
+            (a, b) => (b['startupContainment'] as Map)['intercepted'] = 1.0,
+            (a, b) => (b['startupContainment'] as Map)['handled'] = 1.0,
+            (a, b) => (b['loginBindings'] as Map)['seed.login.A'] = {},
+            (a, b) => b.remove('loginBindings'),
+          ]) {
+        final a = copy(seed);
+        final b = copy(restart);
+        mutate(a, b);
+        expect(() => pair(a, b), throwsFormatException);
+        mutationsForCli.add((seed: a, restart: b));
+      }
+      // Optional external admission fixtures for the actual controls-only CLI.
+      // These are synthetic envelopes, never native captures or new goldens.
+      final output = Platform.environment['LIBER_SYNTHETIC_AUTH_OUT'];
+      if (output != null && output.isNotEmpty) {
+        final directory = Directory(output)..createSync(recursive: true);
+        final capture = Directory('${directory.path}/capture')..createSync();
+        void write(String path, Map<String, dynamic> value) =>
+            File(path).writeAsStringSync(jsonEncode(value));
+        write('${capture.path}/seed-report.json', seed);
+        write('${capture.path}/restart-report.json', restart);
+        final mutationDir = Directory('${directory.path}/receipt-mutations')
+          ..createSync();
+        for (var index = 0; index < mutationsForCli.length; index++) {
+          write(
+            '${mutationDir.path}/$index-seed.json',
+            mutationsForCli[index].seed,
+          );
+          write(
+            '${mutationDir.path}/$index-restart.json',
+            mutationsForCli[index].restart,
+          );
+        }
+        for (final phase in ['seed', 'restart']) {
+          final product = fixture.product(phase);
+          final identity = product['identity'] as Map;
+          identity['corpusSha256Lf'] = lf;
+          identity['corpusRawSha256'] = sha256File(file);
+          identity['corpusPath'] = file.path;
+          write('${directory.path}/product-$phase.json', product);
+        }
+        final historical = Fixture(readCorpus());
+        final historicalRoot = Directory('${directory.path}/historical')
+          ..createSync();
+        final historicalCapture = Directory('${historicalRoot.path}/capture')
+          ..createSync();
+        for (final phase in ['seed', 'restart']) {
+          write(
+            '${historicalCapture.path}/$phase-report.json',
+            historical.golden(phase),
+          );
+          write(
+            '${historicalRoot.path}/product-$phase.json',
+            historical.product(phase),
+          );
+        }
+      }
+    },
+  );
+
+  test(
+    'the selected-reference AUTH corpus names the selected target and corpus',
+    () {
+      final selected = loadAuthSessionCorpus(
+        'tool/auth_session/fixtures-selected.json',
+      );
+      expect(selected['corpusVersion'], 2);
+      final target = selected['target'] as Map;
+      expect(target['package'], 'com.legado.app.debug');
+      expect(
+        target['apkSha256'],
+        '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5',
+      );
+      expect(
+        target['baselineCommit'],
+        'a7d37f1707a70a459ad708f4fe79341d1e42d716',
+      );
+      expect(selected['hostInitialization'], isA<Map>());
+      expect(
+        (selected['hostInitialization'] as Map)['method'],
+        'io.legado.app.App#initRhino()',
+      );
+      // The form graph, sources and request declarations are the historical ones.
+      final historical = loadAuthSessionCorpus();
+      expect(
+        ((selected['phases'] as Map)['seed'] as Map)['expectedRequests'],
+        ((historical['phases'] as Map)['seed'] as Map)['expectedRequests'],
+      );
+      expect(
+        ((selected['phases'] as Map)['restart'] as Map)['steps'],
+        ((historical['phases'] as Map)['restart'] as Map)['steps'],
+      );
+    },
+  );
 }

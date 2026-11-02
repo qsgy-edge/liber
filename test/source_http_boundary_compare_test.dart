@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../tool/http_boundary/compare.dart';
+import '../tool/http_boundary/compare.dart' as http_cli;
 import 'package:liber/source/js_source_runtime.dart' show SourceScriptError;
 import '../tool/http_boundary/runner.dart'
     show
@@ -20,6 +21,7 @@ import '../tool/http_boundary/runner.dart'
         settleOwnedTeardown,
         HttpBoundaryTeardownReceipt,
         probeHeaderMapEvaluationError,
+        probeRetainedCancellationDriver,
         sha256Text,
         httpBoundaryBookCarrierOf,
         httpBoundaryBookTypeOf,
@@ -513,6 +515,9 @@ Map<String, dynamic> _validProduct({
   final cancelBy = <String, Map<String, Object?>>{};
   for (final step in steps) {
     final id = '${step['id']}';
+    // The synthetic v3 schedule rolls on row 3, two seconds after the request
+    // that opened its window. Earlier tiny timestamps only encoded ordering.
+    if (id == 'rate.record.3') clock += 2000000000;
     final declared = httpBoundaryDeclaredRequests(step);
     final rows = <Map<String, Object?>>[];
     for (final responseId in [...declared.ordered, ...declared.members]) {
@@ -1358,6 +1363,80 @@ HttpBoundaryComparison _v3EnvelopeComparison({
 }
 
 void main() {
+  test('public CLI uses the generation-bound integration anchor', () async {
+    final native = Platform.environment['LIBER_HTTP_CAPTURE_ROOT'];
+    if (native == null) return; // Optional immutable controller captures.
+    final root = await Directory.systemTemp.createTemp('http-anchor-');
+    final handoff =
+        jsonDecode(
+              File('$native/http-selected-handoff.json').readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final handoffFile = File('${root.path}/handoff.json');
+    Future<Map<String, dynamic>> run(
+      String anchor,
+      String corpus,
+      String name,
+    ) async {
+      handoff['integrationHead'] = anchor;
+      handoffFile.writeAsStringSync(jsonEncode(handoff));
+      final evidence = Directory('${root.path}/$name');
+      await http_cli.main([
+        '--handoff=${handoffFile.path}',
+        '--product=$native/http-product-current-01.json',
+        '--evidence=${evidence.path}',
+        '--corpus=$corpus',
+      ]);
+      return jsonDecode(
+            File('${evidence.path}/comparison.json').readAsStringSync(),
+          )
+          as Map<String, dynamic>;
+    }
+
+    try {
+      final selected = await run(
+        'b064ea5ae8f0ac77461d8e9a23a15aa99975e366',
+        'tool/http_boundary/fixtures-selected.json',
+        'selected',
+      );
+      expect(selected['status'], 'differences');
+      for (final row in selected['runs'] as List) {
+        expect(row['passed'], false);
+        expect(row['mismatchCount'], 61);
+        expect(row['notComparedCount'], 61);
+        expect(row['unattributedCount'], 0);
+        expect(row['controlsPassed'], true);
+      }
+      final wrong = await run(
+        '276a625e4aef0104240beac1908e597c6023ef93',
+        'tool/http_boundary/fixtures-selected.json',
+        'wrong-selected',
+      );
+      expect('${wrong['analysisFailure']}', contains('integration head'));
+      final wrongHistorical = await run(
+        'b064ea5ae8f0ac77461d8e9a23a15aa99975e366',
+        'tool/http_boundary/fixtures.json',
+        'wrong-historical',
+      );
+      expect(
+        '${wrongHistorical['analysisFailure']}',
+        contains('integration head'),
+      );
+      final historical = await run(
+        '276a625e4aef0104240beac1908e597c6023ef93',
+        'tool/http_boundary/fixtures.json',
+        'historical',
+      );
+      expect(
+        '${historical['analysisFailure']}',
+        isNot(contains('integration head')),
+      );
+    } finally {
+      exitCode = 0;
+      await root.delete(recursive: true);
+    }
+  });
+
   test('identical records have no difference', () {
     final golden = _report();
     final product = _product();
@@ -2962,9 +3041,73 @@ void main() {
         ((observation(record, id)['value'] as Map)['results'] as List).first
             as Map;
 
+    test(
+      'driver fences queued cancellation while an R3 owner is unresolved',
+      () async {
+        final root = Directory('${work.path}/controlled-retained-r3');
+        final blocked = await probeRetainedCancellationDriver(
+          corpus: corpus,
+          root: root,
+          settleBeforeDrive: false,
+        );
+        expect(blocked['ownerRetained'], isTrue);
+        final blockedRow = blocked['observation'] as Map;
+        // The red receipt shows whether the real handler reached its controlled
+        // sentinel rather than failing at an unrelated setup boundary.
+        // ignore: avoid_print
+        print('controlled driver observation: $blockedRow');
+        expect(blockedRow['outcome'], 'not-run');
+        expect((blockedRow['evidence'] as Map)['blockedByOwnedWorker'], isTrue);
+        expect((blocked['teardown'] as Map)['residueRetained'], isTrue);
+        expect(blocked['touched'], isEmpty);
+
+        final settled = await probeRetainedCancellationDriver(
+          corpus: corpus,
+          root: root,
+          settleBeforeDrive: true,
+        );
+        expect(settled['ownerRetained'], isTrue);
+        final admitted = settled['observation'] as Map;
+        expect(admitted['outcome'], 'incomplete');
+        expect(
+          '${(admitted['evidence'] as Map)['error']}',
+          contains('ordinary cancellation handler entered'),
+        );
+        expect((settled['teardown'] as Map)['workerSettled'], isTrue);
+        expect(settled['touched'], [
+          'snapshot',
+          'close',
+          'dispose',
+          'deleteRoot',
+        ]);
+      },
+    );
+
     test('a legitimate record passes the exported gate', () {
       expect(() => gate(fresh()), returnsNormally);
     });
+
+    test(
+      'rate admission does not require a full window between replay receipts',
+      () {
+        // Synthetic admission fixture: transport latency after the first admitted
+        // request can be longer than after the rollover request.
+        final record = fresh();
+        final requests = (record['requests'] as List).cast<Map>();
+        final first = requests.firstWhere(
+          (row) => row['owner'] == 'rate.record.1',
+        );
+        final third = requests.firstWhere(
+          (row) => row['owner'] == 'rate.record.3',
+        );
+        final delayed = (first['receivedAtNanos'] as int) + 1900000000;
+        third['receivedAtNanos'] = delayed;
+        final rowRequests =
+            observation(record, 'rate.record.3')['requests'] as List;
+        (rowRequests.single as Map)['receivedAtNanos'] = delayed;
+        expect(() => gate(record), returnsNormally);
+      },
+    );
 
     test('missing or malformed v3 probe facts are refused', () {
       for (final mutate in <void Function(Map<String, dynamic>)>[
@@ -3100,6 +3243,84 @@ void main() {
         ),
         returnsNormally,
       );
+    });
+
+    test(
+      'historical frozen same-window operation starts inside its opening window',
+      () {
+        void validate(Map<String, dynamic> record) {
+          final file = File('${work.path}/historical-window.json')
+            ..writeAsStringSync(jsonEncode(record));
+          validateFrozenCapture(
+            record,
+            corpus: corpus,
+            corpusLf: corpusLf,
+            goldenId: 'synthetic-historical',
+            expectedReportSha256: sha256File(file),
+            reportPath: file.path,
+          );
+        }
+
+        expect(() => validate(goldenRecord()), returnsNormally);
+        final record = goldenRecord();
+        final evidence =
+            observation(record, 'rate.record.2')['evidence'] as Map;
+        final before =
+            (observation(record, 'rate.record.2')['value']
+                    as Map)['recordBefore']
+                as Map;
+        final opening = before['time'] as int;
+        evidence['callStartMillis'] = opening + 2000;
+        evidence['callFinishMillis'] = opening + 2010;
+        expect(() => validate(record), throwsA(isA<HttpBoundaryRefusal>()));
+        final completionAfterWindow = goldenRecord();
+        final lateEvidence =
+            observation(completionAfterWindow, 'rate.record.2')['evidence']
+                as Map;
+        lateEvidence['callFinishMillis'] = opening + 2100;
+        expect(() => validate(completionAfterWindow), returnsNormally);
+        for (final mutation in <void Function(Map)>[
+          (row) => row.remove('callStartMillis'),
+          (row) => row.remove('callFinishMillis'),
+          (row) => row['callStartMillis'] = (opening + 5).toDouble(),
+          (row) => row['callFinishMillis'] = opening,
+        ]) {
+          final mutant = goldenRecord();
+          mutation(observation(mutant, 'rate.record.2')['evidence'] as Map);
+          expect(() => validate(mutant), throwsA(isA<HttpBoundaryRefusal>()));
+        }
+      },
+    );
+
+    test('rate record predecessors preserve integer types at both gates', () {
+      void frozenGate(Map<String, dynamic> record) {
+        final file = File('${work.path}/historical-rate-type.json')
+          ..writeAsStringSync(jsonEncode(record));
+        validateFrozenCapture(
+          record,
+          corpus: corpus,
+          corpusLf: corpusLf,
+          goldenId: 'synthetic-historical-rate-type',
+          expectedReportSha256: sha256File(file),
+          reportPath: file.path,
+        );
+      }
+
+      for (final frozen in [false, true]) {
+        for (final field in ['frequency', 'time']) {
+          final record = frozen ? goldenRecord() : fresh();
+          final before =
+              (observation(record, 'rate.record.2')['value']
+                      as Map)['recordBefore']
+                  as Map;
+          before[field] = (before[field] as int).toDouble();
+          expect(
+            () => frozen ? frozenGate(record) : gate(record),
+            throwsA(isA<HttpBoundaryRefusal>()),
+            reason: '${frozen ? 'frozen' : 'product'} accepted double $field',
+          );
+        }
+      }
     });
 
     test('frozen hit identity must be a present integer per row', () {
@@ -4503,5 +4724,66 @@ void main() {
       if (step['id'] == 'o1.details-fresh') step['carrier'] = 'stored';
     }
     expect(refusal(unknownCarrier), isNotNull);
+  });
+
+  test(
+    'selected rate-wait cancellation binds a saturated source and two requests',
+    () {
+      Map<String, dynamic> selected() =>
+          jsonDecode(
+                File(
+                  'tool/http_boundary/fixtures-selected.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      expect(() => validateHttpBoundaryCorpus(selected()), returnsNormally);
+      for (final mutate in <void Function(Map<String, dynamic>)>[
+        (corpus) =>
+            ((corpus['steps'] as List).first as Map)['marker'] = 'other',
+        (corpus) =>
+            ((corpus['steps'] as List).first as Map)['windowMillis'] = 0,
+        (corpus) => ((corpus['steps'] as List).first as Map)['source'] = 'S',
+        (corpus) =>
+            (((corpus['steps'] as List).first as Map)['requests']
+                as Map)['ordered'] = [
+              'rw-prime',
+            ],
+        (corpus) => corpus['corpusVersion'] = 3,
+      ]) {
+        final corpus = selected();
+        mutate(corpus);
+        expect(() => validateHttpBoundaryCorpus(corpus), throwsFormatException);
+      }
+    },
+  );
+
+  test('the selected-reference corpus gate accepts only its declared shape', () {
+    final selected = loadHttpBoundaryCorpus(
+      'tool/http_boundary/fixtures-selected.json',
+    );
+    // The selected identity is inside the file, not in the selector.
+    expect(selected['corpusVersion'], 4);
+    expect((selected['target'] as Map)['package'], 'com.legado.app.debug');
+    expect(
+      (selected['target'] as Map)['apkSha256'],
+      '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5',
+    );
+    // The reference carries no isConcurrent, so the corpus declares only the
+    // fields it really has and its own window schedule.
+    final rate = selected['rate'] as Map;
+    expect(rate['recordFields'], ['time', 'frequency']);
+    final schedule = (rate['schedule'] as List).cast<Map>();
+    expect(
+      [for (final row in schedule) row['window']],
+      ['opens', 'rolls', 'rolls'],
+    );
+    // The selected default is a declaration; the capture records the actual read.
+    expect((selected['runtime'] as Map)['threadCountDefault'], 32);
+    expect(selected['hostInitialization'], isA<Map>());
+    // The historical corpus keeps its own version, fields and schedule meaning.
+    final historical = loadHttpBoundaryCorpus();
+    expect(historical['corpusVersion'], 3);
+    expect((historical['rate'] as Map)['recordFields'], isNull);
+    expect((historical['rate'] as Map)['schedule'], isNull);
   });
 }

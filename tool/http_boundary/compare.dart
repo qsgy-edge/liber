@@ -7,6 +7,7 @@ import 'runner.dart'
         httpBoundaryBatchWidth,
         httpBoundaryCorpusPath,
         httpBoundaryCorpusSha256Lf,
+        httpBoundaryCorpusVersions,
         httpBoundaryDeclaredRequests,
         httpBoundaryObservationIds,
         httpBoundaryResponseOwners,
@@ -176,6 +177,533 @@ Map<String, dynamic> loadHttpBoundaryReport(String path) {
   return decoded.cast<String, dynamic>();
 }
 
+/// Proves the selected plain interval from the observed rate-record rollover,
+/// operation and request facts, and the held-first overlap. Replay arrival gaps
+/// are not admission timestamps and have no asserted lower bound.
+void _checkPlainHoldRelation(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> report,
+  String label,
+) {
+  final rate = corpus['rate'];
+  if (rate is! Map) return;
+  final plain = rate['plain'];
+  if (plain is! Map) return;
+  final window = plain['windowMillis'];
+  final cohortId = '${plain['cohort']}';
+  final stepId = '${plain['holdStep']}';
+  final members = (plain['members'] as List).map((raw) => '$raw').toList();
+  if (window is! int || members.length != 2) {
+    throw HttpBoundaryRefusal('$label: the plain rate block is malformed');
+  }
+  // The step must be declared; its members are what the cohort holds.
+  httpBoundarySteps(corpus).firstWhere(
+    (candidate) => '${candidate['id']}' == stepId,
+    orElse: () => throw HttpBoundaryRefusal(
+      '$label: the plain rate step $stepId is not declared',
+    ),
+  );
+  final selectors = {
+    for (final member in members)
+      member: httpBoundarySelectorOf(
+        httpBoundaryResponses(corpus).firstWhere(
+          (response) => '${response['id']}' == member,
+          orElse: () => throw HttpBoundaryRefusal(
+            '$label: the plain rate member $member is not declared',
+          ),
+        ),
+      ),
+  };
+  final arrivals = <String, int>{};
+  final sends = <String, int>{};
+  final matched = <String, Map>{};
+  final selectedRequests = ((report['requests'] as List?) ?? const [])
+      .cast<Map>();
+  if (selectedRequests.where((request) => request['owner'] == stepId).length !=
+      2) {
+    throw HttpBoundaryRefusal('$label: $stepId has wrong membership');
+  }
+  for (final raw in ((report['requests'] as List?) ?? const [])) {
+    final request = (raw as Map).cast<String, dynamic>();
+    final selector = '${request['selector']}';
+    for (final entry in selectors.entries) {
+      if (entry.value != selector) continue;
+      final received = request['receivedAtNanos'];
+      if (received is! int) {
+        throw HttpBoundaryRefusal(
+          '$label: member ${entry.key} has no measured arrival',
+        );
+      }
+      final sent = request['sentAtNanos'];
+      if (sent is! int) {
+        throw HttpBoundaryRefusal(
+          '$label: member ${entry.key} records no send time',
+        );
+      }
+      if (matched.containsKey(entry.key) ||
+          request['owner'] != stepId ||
+          request['declaredResponse'] != entry.key ||
+          request['cohort'] != cohortId) {
+        throw HttpBoundaryRefusal(
+          '$label: member ${entry.key} has wrong or duplicate ownership',
+        );
+      }
+      matched[entry.key] = request;
+      arrivals[entry.key] = received;
+      sends[entry.key] = sent;
+    }
+  }
+  for (final member in members) {
+    if (!arrivals.containsKey(member)) {
+      throw HttpBoundaryRefusal('$label: member $member never arrived');
+    }
+  }
+  final ordered = arrivals.entries.toList()
+    ..sort((left, right) => left.value.compareTo(right.value));
+  final first = ordered.first.key;
+  final second = ordered.last.key;
+  // The overlap itself: the cohort withheld the first response until the second
+  // request had arrived, so the first member was demonstrably still unfinished
+  // when the second start was admitted.
+  if (sends[first]! <= arrivals[second]!) {
+    throw HttpBoundaryRefusal(
+      '$label: the first plain member was already sent before the second arrived, '
+      'so no request was held across the interval',
+    );
+  }
+  final plainRows = ((report['observations'] as List?) ?? const [])
+      .cast<Map>()
+      .where((row) => row['id'] == stepId)
+      .toList();
+  if (plainRows.length != 1) {
+    throw HttpBoundaryRefusal('$label: $stepId does not appear exactly once');
+  }
+  for (final raw in plainRows) {
+    final row = raw.cast<String, dynamic>();
+    final evidence = _object(row['evidence'], '$label $stepId evidence');
+    final measured = _object(evidence['plainRate'], '$label $stepId plainRate');
+    final before = measured['recordBefore'];
+    final firstRecord = _object(
+      measured['firstRecord'],
+      '$label $stepId firstRecord',
+    );
+    final finalRecord = _object(
+      measured['finalRecord'],
+      '$label $stepId finalRecord',
+    );
+    final start = measured['callStartMillis'];
+    final finish = measured['callFinishMillis'];
+    final startNanos = measured['callStartNanos'];
+    final finishNanos = measured['callFinishNanos'];
+    final sample = measured['firstSampleMillis'];
+    final firstTime = firstRecord['time'];
+    final finalTime = finalRecord['time'];
+    if (!measured.containsKey('recordBefore') ||
+        !measured.containsKey('firstRecord') ||
+        !measured.containsKey('finalRecord') ||
+        before != null ||
+        row['outcome'] != 'ok' ||
+        start is! int ||
+        finish is! int ||
+        startNanos is! int ||
+        finishNanos is! int ||
+        sample is! int ||
+        firstTime is! int ||
+        finalTime is! int ||
+        firstRecord['frequency'] is! int ||
+        firstRecord['frequency'] != 1 ||
+        finalRecord['frequency'] is! int ||
+        finalRecord['frequency'] != 1 ||
+        measured['sourceKey'] !=
+            corpusSourceUrl(corpus, '${plain['source']}') ||
+        measured['observerIntervalMillis'] is! int ||
+        measured['observerIntervalMillis'] != 5 ||
+        measured['observerSettled'] != true ||
+        start > firstTime ||
+        firstTime > sample ||
+        sample > finalTime ||
+        sample > finish ||
+        finalTime - firstTime < window ||
+        finalTime > finish ||
+        startNanos > finishNanos) {
+      throw HttpBoundaryRefusal(
+        '$label: $stepId has contradictory plain rate measurement',
+      );
+    }
+    final owned = ((report['requests'] as List?) ?? const [])
+        .cast<Map>()
+        .where((request) => request['owner'] == stepId)
+        .toList();
+    if (owned.length != 2) {
+      throw HttpBoundaryRefusal('$label: $stepId has wrong membership');
+    }
+    for (final request in matched.values) {
+      final receipt = request['receivedAtMillis'];
+      final receiptNanos = request['receivedAtNanos'];
+      if (receipt is! int ||
+          receiptNanos is! int ||
+          receipt < start ||
+          receipt < firstTime ||
+          receipt > finish ||
+          receiptNanos < startNanos ||
+          receiptNanos > finishNanos) {
+        throw HttpBoundaryRefusal(
+          '$label: $stepId has a request outside its operation',
+        );
+      }
+    }
+    final latestReceipt = matched.values
+        .map((row) => row['receivedAtMillis'] as int)
+        .reduce((a, b) => a > b ? a : b);
+    if (finalTime > latestReceipt) {
+      throw HttpBoundaryRefusal(
+        '$label: $stepId final admission is after both receipts',
+      );
+    }
+    final value = row['value'];
+    final batch = value is Map ? value['batch'] : null;
+    if (batch is! Map) {
+      throw HttpBoundaryRefusal('$label: $stepId records no cohort facts');
+    }
+    if ('${batch['cohort']}' != cohortId) {
+      throw HttpBoundaryRefusal('$label: $stepId records another cohort');
+    }
+    final cohort = ((corpus['cohorts'] as List).cast<Map>()).singleWhere(
+      (candidate) => candidate['id'] == cohortId,
+    );
+    if (batch['cohortSize'] is! int ||
+        batch['cohortSize'] != 2 ||
+        batch['cohortTimeoutMs'] is! int ||
+        cohort['timeoutMs'] is! int ||
+        batch['cohortTimeoutMs'] != cohort['timeoutMs'] ||
+        batch['entered'] != true ||
+        batch['inFlightPeak'] is! int ||
+        batch['inFlightPeak'] != 2 ||
+        batch['threadCount'] is! int ||
+        (batch['threadCount'] as int) <= 0 ||
+        batch['membership'] is! List ||
+        (batch['membership'] as List).length != 2 ||
+        !(batch['membership'] as List).toSet().containsAll(selectors.values)) {
+      throw HttpBoundaryRefusal(
+        '$label: $stepId has contradictory cohort facts',
+      );
+    }
+    if (batch['cohortComplete'] != true) {
+      throw HttpBoundaryRefusal('$label: $stepId did not complete its cohort');
+    }
+    if ('${batch['releaseReason']}' != 'complete') {
+      throw HttpBoundaryRefusal(
+        '$label: $stepId released its cohort by ${batch['releaseReason']}',
+      );
+    }
+    return;
+  }
+  throw HttpBoundaryRefusal('$label: no observation for the plain rate step');
+}
+
+/// The declared count-window relations, re-derived from a report's own rows on
+/// either producer layout. Only within-host relations are used: which row opened
+/// the window, whether a row stayed in it or rolled it, mandatory frequencies, the
+/// predecessor chain, the rollover's own operation interval, and the measured
+/// arrival of the rate request each row actually issued. Cross-host epoch equality
+/// is never required, and a summary flag is never trusted on its own.
+void _checkRateRelations(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> report,
+  String label,
+) {
+  final rate = corpus['rate'];
+  if (rate is! Map) return;
+  final byId = <String, Map<String, dynamic>>{};
+  for (final raw in ((report['observations'] as List?) ?? const [])) {
+    final row = (raw as Map).cast<String, dynamic>();
+    final id = '${row['id']}';
+    if (byId.containsKey(id)) {
+      throw HttpBoundaryRefusal('$label repeats observation $id');
+    }
+    byId[id] = row;
+  }
+  final window = rate['windowMillis'];
+  if (window is! int) {
+    throw HttpBoundaryRefusal('the corpus declares no rate window');
+  }
+  final steps = httpBoundarySteps(corpus);
+  final stepsById = {for (final step in steps) '${step['id']}': step};
+  final requests = ((report['requests'] as List?) ?? const []).cast<Map>();
+  final rateSteps = ((rate['steps'] as List?) ?? const []).cast<Object?>();
+  Map<String, dynamic>? previousRecord;
+  for (var index = 0; index < rateSteps.length; index++) {
+    final id = '${rateSteps[index]}';
+    final row = byId[id];
+    if (row == null) {
+      throw HttpBoundaryRefusal('$label omits rate row $id');
+    }
+    final value = row['value'];
+    if (value is! Map) {
+      throw HttpBoundaryRefusal('$label has no value for $id');
+    }
+    if (corpus['corpusVersion'] == 4 &&
+        (!value.containsKey('recordBefore') ||
+            !value.containsKey('recordAfter') ||
+            row['outcome'] != 'ok' ||
+            value['index'] is! int ||
+            value['index'] != index + 1)) {
+      throw HttpBoundaryRefusal('$label has incomplete $id rate fields');
+    }
+    final declared = _declaredRateSchedule(rate, index, value['index']);
+    final before = value['recordBefore'];
+    final after = value['recordAfter'];
+    if (after is! Map) {
+      throw HttpBoundaryRefusal('$label records no $id record');
+    }
+    final afterTime = after['time'];
+    if (afterTime is! int) {
+      throw HttpBoundaryRefusal('$label has no $id record time');
+    }
+    // Declared record fields must retain their JSON types on both layouts.
+    if (_declaredRateField(rate, 'isConcurrent') &&
+        after['isConcurrent'] is! bool) {
+      throw HttpBoundaryRefusal('$label records an untyped $id mode');
+    }
+    if (_declaredRateField(rate, 'frequency')) {
+      final frequency = after['frequency'];
+      if (frequency is! int || frequency != declared.frequency) {
+        throw HttpBoundaryRefusal('$label records the wrong $id frequency');
+      }
+    }
+    final evidence = row['evidence'];
+    final started = evidence is Map ? evidence['callStartMillis'] : null;
+    final finished = evidence is Map ? evidence['callFinishMillis'] : null;
+    final selected = corpus['corpusVersion'] == 4;
+    final step = stepsById[id];
+    if (step == null) {
+      throw HttpBoundaryRefusal('$label has no declaration for $id');
+    }
+    final startNanos = evidence is Map ? evidence['callStartNanos'] : null;
+    final finishNanos = evidence is Map ? evidence['callFinishNanos'] : null;
+    if (selected &&
+        (started is! int ||
+            finished is! int ||
+            started > finished ||
+            startNanos is! int ||
+            finishNanos is! int ||
+            startNanos > finishNanos ||
+            evidence is! Map ||
+            evidence['durationNanos'] is! int ||
+            evidence['durationNanos'] != finishNanos - startNanos ||
+            evidence['windowMillis'] is! int ||
+            evidence['windowMillis'] != window ||
+            evidence['sourceKey'] !=
+                corpusSourceUrl(corpus, '${step['source']}'))) {
+      throw HttpBoundaryRefusal('$label has invalid $id operation endpoints');
+    }
+    // The rate request this row issued, by its own declared selector.
+    final declaredRequests = httpBoundaryDeclaredRequests(step);
+    final ordered = declaredRequests.ordered;
+    if (selected &&
+        requests.where((request) => request['owner'] == id).length !=
+            ordered.length) {
+      throw HttpBoundaryRefusal('$label records wrong $id request membership');
+    }
+    for (final responseId in ordered) {
+      final selector = _selectorOfResponse(corpus, responseId);
+      final matching = requests.where(
+        (request) => request['selector'] == selector,
+      );
+      if (matching.length != 1 ||
+          matching.single['owner'] != id ||
+          matching.single['receivedAtNanos'] is! int ||
+          (selected &&
+              (matching.single['declaredResponse'] != responseId ||
+                  matching.single['cohort'] != null ||
+                  matching.single['receivedAtMillis'] is! int ||
+                  (matching.single['receivedAtMillis'] as int) <
+                      (started as int) ||
+                  (matching.single['receivedAtMillis'] as int) >
+                      (finished as int) ||
+                  (matching.single['receivedAtNanos'] as int) <
+                      (startNanos as int) ||
+                  (matching.single['receivedAtNanos'] as int) >
+                      (finishNanos as int) ||
+                  afterTime > (matching.single['receivedAtMillis'] as int)))) {
+        throw HttpBoundaryRefusal(
+          '$label records no valid owned $id request receipt',
+        );
+      }
+    }
+    if (declared.window == 'opens') {
+      if (before != null) {
+        throw HttpBoundaryRefusal('$label opened $id twice');
+      }
+      if (selected &&
+          (afterTime < (started as int) || afterTime > (finished as int))) {
+        throw HttpBoundaryRefusal('$label records $id outside its operation');
+      }
+      if (!selected &&
+          started is int &&
+          (afterTime < started || afterTime >= started + window)) {
+        throw HttpBoundaryRefusal('$label records $id outside its own window');
+      }
+    } else {
+      if (before is! Map ||
+          before['time'] is! int ||
+          (_declaredRateField(rate, 'frequency') &&
+              before['frequency'] is! int) ||
+          (_declaredRateField(rate, 'isConcurrent') &&
+              before['isConcurrent'] is! bool)) {
+        throw HttpBoundaryRefusal('$label loses $id predecessor');
+      }
+      if (previousRecord == null || !_deepEqualsRate(before, previousRecord)) {
+        throw HttpBoundaryRefusal(
+          '$label records a broken $id predecessor chain',
+        );
+      }
+      final beforeTime = before['time'] as int;
+      final sameWindow = value['sameWindowAsPrevious'];
+      if (sameWindow != (beforeTime == afterTime)) {
+        throw HttpBoundaryRefusal('$label disagrees on $id window identity');
+      }
+      if (declared.window == 'same') {
+        if (started is! int ||
+            finished is! int ||
+            started > finished ||
+            started < beforeTime ||
+            started >= beforeTime + window) {
+          throw HttpBoundaryRefusal(
+            '$label records $id outside its opening window',
+          );
+        }
+        if (beforeTime != afterTime) {
+          throw HttpBoundaryRefusal('$label moved $id out of its window');
+        }
+      } else {
+        final advance = evidence is Map
+            ? evidence['windowAdvanceMillis']
+            : null;
+        if (advance is! int || advance != afterTime - beforeTime) {
+          throw HttpBoundaryRefusal(
+            '$label records a wrong $id window advance',
+          );
+        }
+        if (afterTime - beforeTime < window) {
+          throw HttpBoundaryRefusal('$label did not roll the $id window');
+        }
+        // The rollover happened inside this row's own operation.
+        if (started is int && finished is int) {
+          if (afterTime < started || afterTime > finished) {
+            throw HttpBoundaryRefusal(
+              '$label records the $id rollover outside its operation',
+            );
+          }
+        }
+      }
+    }
+    if (value['scheduleComplete'] != true) {
+      throw HttpBoundaryRefusal('$label marks $id as an incomplete schedule');
+    }
+    previousRecord = after.cast<String, dynamic>();
+  }
+}
+
+String _selectorOfResponse(Map<String, dynamic> corpus, String id) {
+  for (final response in httpBoundaryResponses(corpus)) {
+    if ('${response['id']}' == id) return httpBoundarySelectorOf(response);
+  }
+  throw HttpBoundaryRefusal('the corpus declares no response $id');
+}
+
+bool _deepEqualsRate(Map<dynamic, dynamic> left, Map<dynamic, dynamic> right) {
+  if (left.length != right.length) return false;
+  for (final key in left.keys) {
+    if (!right.containsKey(key) ||
+        right[key].runtimeType != left[key].runtimeType ||
+        right[key] != left[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _declaredRateField(Map<dynamic, dynamic> rate, String field) {
+  final declared = rate['recordFields'];
+  if (declared == null) return true;
+  return (declared as List).map((raw) => '$raw').contains(field);
+}
+
+({String window, int frequency}) _declaredRateSchedule(
+  Map<dynamic, dynamic> rate,
+  int position,
+  Object? index,
+) {
+  final schedule = rate['schedule'];
+  if (schedule == null) {
+    return switch (position) {
+      0 => (window: 'opens', frequency: 1),
+      1 => (window: 'same', frequency: 2),
+      _ => (window: 'rolls', frequency: 1),
+    };
+  }
+  for (final raw in (schedule as List).cast<Map>()) {
+    if (raw['index'] != index) continue;
+    return (window: '${raw['window']}', frequency: raw['frequency'] as int);
+  }
+  throw HttpBoundaryRefusal('rate.schedule declares no row $index');
+}
+
+/// A corpus that declares the selected-reference host initialization is only
+/// accepted with a capture whose own receipts prove it: an unattached App instance
+/// invoked the declared method, the measured wrapper registry is exactly the
+/// declared one, and startup containment happened before the scratch binding. The
+/// receipts live under the capture's `identity`, which is where this producer
+/// writes them; a hash-consistent report missing or altering any of them is
+/// refused, never compared. (The A1 STATE comparator is the reference
+/// implementation.)
+void _checkSelectedRuntimeReceipts(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> identity,
+  String goldenId,
+) {
+  final hostInitialization = corpus['hostInitialization'];
+  if (hostInitialization is! Map) return;
+  final measured = identity['hostInitialization'];
+  if (measured is! Map ||
+      measured['verified'] != true ||
+      measured['method'] != hostInitialization['method'] ||
+      measured['invokedOn'] != 'unattached-instance' ||
+      measured['applicationAttached'] != false) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId records no verified host initialization',
+    );
+  }
+  final declared = <String, Object?>{
+    for (final row in (hostInitialization['registrations'] as List).cast<Map>())
+      '${row['type']}': row['factory'],
+  };
+  final registered = measured['registeredWrappers'];
+  if (registered is! Map ||
+      registered.length != declared.length ||
+      !declared.entries.every(
+        (entry) => registered[entry.key] == entry.value,
+      )) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId records an incorrect host initialization registry',
+    );
+  }
+  final containment = identity['startupContainment'];
+  if (containment is! Map ||
+      containment['service'] != 'shortcut' ||
+      containment['provider'] != 'io.legado.app.api.ReaderProvider' ||
+      containment['intercepted'] is! int ||
+      containment['intercepted'] != 1 ||
+      containment['handled'] is! int ||
+      containment['handled'] != 1 ||
+      containment['beforeBinding'] != true) {
+    throw HttpBoundaryRefusal(
+      'the capture $goldenId records no startup containment receipt',
+    );
+  }
+}
+
 Map<String, dynamic> _object(Object? value, String what) {
   if (value is Map) return value.cast<String, dynamic>();
   throw HttpBoundaryRefusal('$what is not a JSON object');
@@ -188,6 +716,202 @@ List<dynamic> _array(Object? value, String what) {
 
 bool _isNegativeMode(Map<String, dynamic> report) =>
     report['negativeMode'] == true;
+
+void _checkRateWaitCancellation(
+  Map<String, dynamic> corpus,
+  Map<String, dynamic> report,
+  String label, {
+  required bool native,
+}) {
+  final steps = httpBoundarySteps(
+    corpus,
+  ).where((step) => step['kind'] == 'rateWaitCancel');
+  for (final step in steps) {
+    final id = '${step['id']}';
+    final rows = _array(
+      report['observations'],
+      '$label observations',
+    ).cast<Map>().where((row) => row['id'] == id).toList();
+    if (rows.length != 1) throw HttpBoundaryRefusal('$label omits $id');
+    final row = rows.single;
+    final value = _object(row['value'], '$label $id value');
+    final evidence = _object(row['evidence'], '$label $id evidence');
+    if (row['outcome'] != 'ok' ||
+        value['kind'] != 'rateWaitCancel' ||
+        value['source'] != step['source']) {
+      throw HttpBoundaryRefusal('$label records an incomplete $id');
+    }
+    for (final field in const [
+      'markerObserved',
+      'saturatedAtMarker',
+      'workerCancelled',
+      'workerTerminated',
+      'recordUnchanged',
+      'noLateRequest',
+      'markerUnchanged',
+      'noLateEffect',
+      'freshFollowUp',
+    ]) {
+      if (value[field] != true) {
+        throw HttpBoundaryRefusal('$label $id fails $field');
+      }
+    }
+    final before = _object(evidence['recordBefore'], '$label $id recordBefore');
+    final atMarker = _object(
+      evidence['recordAtMarker'],
+      '$label $id recordAtMarker',
+    );
+    final after = _object(evidence['recordAfter'], '$label $id recordAfter');
+    final afterQuiet = _object(
+      evidence['recordAfterQuiet'],
+      '$label $id recordAfterQuiet',
+    );
+    final time = before['time'];
+    final frequency = before['frequency'];
+    final deadline = evidence['deadlineMillis'];
+    final markerTime = evidence['markerMillis'];
+    final cancelTime = evidence['cancelMillis'];
+    final settledTime = evidence['settledMillis'];
+    final quietTime = evidence['quietMillis'];
+    final primeStart = evidence['primeStartMillis'];
+    final primeFinish = evidence['primeFinishMillis'];
+    final primeStartNanos = evidence['primeStartNanos'];
+    final primeFinishNanos = evidence['primeFinishNanos'];
+    final followStart = evidence['followStartMillis'];
+    final followFinish = evidence['followFinishMillis'];
+    final followStartNanos = evidence['followStartNanos'];
+    final followFinishNanos = evidence['followFinishNanos'];
+    if (time is! int ||
+        frequency is! int ||
+        frequency != 1 ||
+        deadline is! int ||
+        markerTime is! int ||
+        cancelTime is! int ||
+        settledTime is! int ||
+        quietTime is! int ||
+        primeStart is! int ||
+        primeFinish is! int ||
+        primeStartNanos is! int ||
+        primeFinishNanos is! int ||
+        followStart is! int ||
+        followFinish is! int ||
+        followStartNanos is! int ||
+        followFinishNanos is! int ||
+        primeStart > time ||
+        time > primeFinish ||
+        primeFinish > markerTime ||
+        primeStartNanos > primeFinishNanos ||
+        followStart < quietTime ||
+        followStart > followFinish ||
+        followStartNanos < primeFinishNanos ||
+        followStartNanos > followFinishNanos ||
+        step['windowMillis'] is! int ||
+        deadline != time + (step['windowMillis'] as int) ||
+        markerTime < time ||
+        markerTime > cancelTime ||
+        cancelTime >= deadline ||
+        settledTime < cancelTime ||
+        settledTime - cancelTime > 3000 ||
+        quietTime < deadline ||
+        quietTime < settledTime ||
+        !_deepEqualsRate(before, atMarker) ||
+        !_deepEqualsRate(before, after) ||
+        !_deepEqualsRate(before, afterQuiet) ||
+        evidence['workerIdentity'] is! int ||
+        evidence['followUpIdentity'] is! int ||
+        evidence['workerIdentity'] == evidence['followUpIdentity'] ||
+        evidence['sourceObjectIdentity'] is! int ||
+        evidence['followUpSourceObjectIdentity'] is! int ||
+        evidence['sourceObjectIdentity'] !=
+            evidence['followUpSourceObjectIdentity'] ||
+        evidence['sourceKey'] != corpusSourceUrl(corpus, '${step['source']}') ||
+        evidence['workerFailureCategory'] != 'cancelled' ||
+        evidence['markerValue'] != 'entered' ||
+        evidence['markerValueAfterQuiet'] != 'entered' ||
+        evidence['lateEffectAfterQuiet'] != '' ||
+        evidence['requestsBeforeCancel'] is! int ||
+        evidence['requestsBeforeCancel'] != 1 ||
+        evidence['requestsAfterQuiet'] is! int ||
+        evidence['requestsAfterQuiet'] != 1 ||
+        evidence['requestsAfterFollowUp'] is! int ||
+        evidence['requestsAfterFollowUp'] != 2) {
+      throw HttpBoundaryRefusal(
+        '$label $id has contradictory rate-wait evidence',
+      );
+    }
+    if (native) {
+      if (evidence['parkedInRunBlocking'] != true ||
+          !const [
+            'WAITING',
+            'TIMED_WAITING',
+          ].contains(evidence['workerThreadState'])) {
+        throw HttpBoundaryRefusal('$label $id has no parked native worker');
+      }
+    } else {
+      final timer = evidence['waitTimerMillis'];
+      if (timer is! int ||
+          timer <= 0 ||
+          timer > (step['windowMillis'] as int)) {
+        throw HttpBoundaryRefusal('$label $id has no measured rate-wait timer');
+      }
+    }
+    final declared = httpBoundaryDeclaredRequests(step).ordered;
+    final owned = _array(
+      report['requests'],
+      '$label requests',
+    ).cast<Map>().where((request) => request['owner'] == id).toList();
+    if (declared.length != 2 ||
+        owned.length != 2 ||
+        !_semanticEquals(row['requests'], owned)) {
+      throw HttpBoundaryRefusal('$label $id has wrong request membership');
+    }
+    for (var index = 0; index < 2; index++) {
+      final request = owned[index];
+      final response = httpBoundaryResponses(
+        corpus,
+      ).singleWhere((candidate) => candidate['id'] == declared[index]);
+      final selector = _selectorOfResponse(corpus, declared[index]);
+      final matching = _array(report['requests'], '$label requests')
+          .cast<Map>()
+          .where((candidate) => candidate['selector'] == selector)
+          .toList();
+      final received = request['receivedAtMillis'];
+      final receivedNanos = request['receivedAtNanos'];
+      final sent = request['sentAtNanos'];
+      final responded = request['respondedAtNanos'];
+      final start = index == 0 ? primeStart : followStart;
+      final finish = index == 0 ? primeFinish : followFinish;
+      final startNanos = index == 0 ? primeStartNanos : followStartNanos;
+      final finishNanos = index == 0 ? primeFinishNanos : followFinishNanos;
+      if (matching.length != 1 ||
+          request['selector'] != selector ||
+          request['declaredResponse'] != declared[index] ||
+          request['cohort'] != null ||
+          request['terminal'] != 'responded' ||
+          request['outcome'] != 'responded' ||
+          request['status'] is! int ||
+          request['status'] != response['status'] ||
+          request['attempt'] is! int ||
+          request['attempt'] != 1 ||
+          received is! int ||
+          receivedNanos is! int ||
+          sent is! int ||
+          responded is! int ||
+          received < start ||
+          received > finish ||
+          receivedNanos < startNanos ||
+          receivedNanos > sent ||
+          sent > responded ||
+          receivedNanos > finishNanos ||
+          (index == 0 && received < time) ||
+          (index == 1 && received < quietTime)) {
+        throw HttpBoundaryRefusal(
+          '$label $id has contradictory request ${declared[index]}',
+        );
+      }
+    }
+  }
+}
 
 /// The frozen capture's own gates. A capture that fails one of these is not an
 /// input, so the comparison refuses before any value is compared.
@@ -240,6 +964,15 @@ void validateFrozenCapture(
       'the capture $goldenId ran another frozen target',
     );
   }
+  _checkSelectedRuntimeReceipts(corpus, identity, goldenId);
+  _checkRateRelations(corpus, golden, 'the capture $goldenId');
+  _checkPlainHoldRelation(corpus, golden, 'the capture $goldenId');
+  _checkRateWaitCancellation(
+    corpus,
+    golden,
+    'the capture $goldenId',
+    native: true,
+  );
   // The capture's bundled asset is checked against the asset its own capture
   // manifest pinned, never against whatever line endings this checkout happens
   // to have. The canonical LF hash above is the semantic corpus identity, so an
@@ -976,6 +1709,16 @@ void validateProductReport(
 }) {
   final gate = _ProductGate(corpus);
   final cwd = workingDirectory ?? Directory.current;
+  // The plain-interval held-first relation is a portable within-run fact, so the
+  // product gate proves it exactly as the frozen-capture gate does.
+  _checkPlainHoldRelation(corpus, product, 'the product report');
+  _checkRateRelations(corpus, product, 'the product report');
+  _checkRateWaitCancellation(
+    corpus,
+    product,
+    'the product report',
+    native: false,
+  );
 
   // 1. The top level.
   if (product['status'] != 'completed') {
@@ -1852,10 +2595,75 @@ void validateProductReport(
 
   // 9. The rate rows' own typed records and within-run interval/window
   //    relations. Every comparison below is a difference, so one coherent
-  //    cross-host epoch translation stays valid.
+  //    cross-host epoch translation stays valid. The corpus declares which
+  //    record fields it really carries and which window relation each row means:
+  //    the historical corpus keeps its three original row meanings, the selected
+  //    one declares its own because the selected reference rolls the window on
+  //    every start instead of admitting an extra same-window start.
+  /// The rate record fields this corpus compares, with the historical three as
+  /// the default. A corpus may only declare a field the record really carries.
+  List<String> rateRecordFields(Map<String, dynamic> rate) {
+    final declared = rate['recordFields'];
+    if (declared == null) {
+      return const ['isConcurrent', 'time', 'frequency'];
+    }
+    final fields = [
+      for (final raw in _array(declared, 'rate.recordFields')) '$raw',
+    ];
+    if (fields.isEmpty) {
+      throw const FormatException('rate.recordFields declares no field');
+    }
+    const known = {'isConcurrent', 'time', 'frequency'};
+    for (final field in fields) {
+      if (!known.contains(field)) {
+        throw FormatException(
+          'rate.recordFields declares the unknown field $field',
+        );
+      }
+    }
+    return fields;
+  }
+
+  /// The window relation and window count a rate row declares, with the
+  /// historical three row meanings as the default.
+  ({String window, int frequency}) rateScheduleRow(
+    Map<String, dynamic> corpus,
+    Map<String, dynamic> step,
+    int index,
+  ) {
+    final declared = _object(corpus['rate'], 'rate')['schedule'];
+    if (declared == null) {
+      return switch (index) {
+        0 => (window: 'opens', frequency: 1),
+        1 => (window: 'same', frequency: 2),
+        _ => (window: 'rolls', frequency: 1),
+      };
+    }
+    final rowIndex = step['index'];
+    for (final raw in _array(declared, 'rate.schedule')) {
+      final row = _object(raw, 'rate.schedule row');
+      if (row['index'] != rowIndex) continue;
+      final window = '${row['window']}';
+      if (window != 'opens' && window != 'same' && window != 'rolls') {
+        throw FormatException(
+          'rate.schedule declares the unknown window $window',
+        );
+      }
+      final frequency = row['frequency'];
+      if (frequency is! int) {
+        throw const FormatException(
+          'rate.schedule frequency is not an integer',
+        );
+      }
+      return (window: window, frequency: frequency);
+    }
+    throw FormatException('rate.schedule declares no row for index $rowIndex');
+  }
+
   final rateSteps = [
     for (final raw in _array(rate['steps'], 'rate.steps')) '$raw',
   ];
+  final rateFields = rateRecordFields(rate);
   final records = <String, Map<String, Object?>>{};
   for (var index = 0; index < rateSteps.length; index++) {
     final id = rateSteps[index];
@@ -1874,14 +2682,20 @@ void validateProductReport(
     Map<String, Object?>? record(Object? raw, String path) {
       if (raw == null) return null;
       final map = gate.object(raw, path);
-      gate.field(map, 'isConcurrent', path, _Field.boolean);
-      gate.field(map, 'time', path, _Field.integer);
-      gate.field(map, 'frequency', path, _Field.integer);
+      for (final field in rateFields) {
+        gate.field(
+          map,
+          field,
+          path,
+          field == 'isConcurrent' ? _Field.boolean : _Field.integer,
+        );
+      }
       return map;
     }
 
     final before = record(value['recordBefore'], '$where.recordBefore');
     final after = record(value['recordAfter'], '$where.recordAfter');
+    final schedule = rateScheduleRow(corpus, stepById[id]!, index);
     final evidence = gate.object(row['evidence'], 'observations.$id.evidence');
     for (final key in const [
       'callStartMillis',
@@ -1921,7 +2735,8 @@ void validateProductReport(
     );
     // A record this operation created or reset carries that operation's own
     // admission instant; a same-window record carries the shared window start.
-    final createdHere = index == 0 || value['sameWindowAsPrevious'] == false;
+    final createdHere =
+        schedule.window == 'opens' || value['sameWindowAsPrevious'] == false;
     if (createdHere && callStart is int && callFinish is int && after != null) {
       final recordTime = after['time'];
       if (recordTime is int &&
@@ -1932,18 +2747,24 @@ void validateProductReport(
         );
       }
     }
-    if (index == 0) {
+    if (schedule.window == 'opens') {
       if (before != null) gate.fail('$where.recordBefore is not null');
       if (after == null) {
         gate.fail('$where.recordAfter is absent');
         continue;
       }
+      if (rateFields.contains('isConcurrent')) {
+        gate.equal(
+          after['isConcurrent'],
+          true,
+          '$where.recordAfter.isConcurrent',
+        );
+      }
       gate.equal(
-        after['isConcurrent'],
-        true,
-        '$where.recordAfter.isConcurrent',
+        after['frequency'],
+        schedule.frequency,
+        '$where.recordAfter.frequency',
       );
-      gate.equal(after['frequency'], 1, '$where.recordAfter.frequency');
       gate.field(
         evidence,
         'windowStartMillis',
@@ -1977,7 +2798,13 @@ void validateProductReport(
       gate.fail('$where.recordAfter is absent');
       continue;
     }
-    gate.equal(after['isConcurrent'], true, '$where.recordAfter.isConcurrent');
+    if (rateFields.contains('isConcurrent')) {
+      gate.equal(
+        after['isConcurrent'],
+        true,
+        '$where.recordAfter.isConcurrent',
+      );
+    }
     final beforeTime = before['time'] as int? ?? 0;
     final afterTime = after['time'] as int? ?? 0;
     final sameWindow = value['sameWindowAsPrevious'] == true;
@@ -1986,7 +2813,8 @@ void validateProductReport(
       beforeTime == afterTime,
       '$where.sameWindowAsPrevious',
     );
-    if (sameWindow) {
+    if (schedule.window == 'same') {
+      if (!sameWindow) gate.fail('$where did not stay in its window');
       gate.field(
         evidence,
         'windowStartMillis',
@@ -1998,11 +2826,13 @@ void validateProductReport(
         afterTime,
         'observations.$id.evidence.windowStartMillis',
       );
-      if (index == 1) {
-        gate.equal(after['frequency'], 2, '$where.recordAfter.frequency');
-        if (callStart - afterTime >= rateWindow || callStart - afterTime < 0) {
-          gate.fail('$where was admitted outside its declared window');
-        }
+      gate.equal(
+        after['frequency'],
+        schedule.frequency,
+        '$where.recordAfter.frequency',
+      );
+      if (callStart - afterTime >= rateWindow || callStart - afterTime < 0) {
+        gate.fail('$where was admitted outside its declared window');
       }
     } else {
       final advance = afterTime - beforeTime;
@@ -2017,7 +2847,11 @@ void validateProductReport(
         advance,
         'observations.$id.evidence.windowAdvanceMillis',
       );
-      gate.equal(after['frequency'], 1, '$where.recordAfter.frequency');
+      gate.equal(
+        after['frequency'],
+        schedule.frequency,
+        '$where.recordAfter.frequency',
+      );
       final complete = advance >= rateWindow;
       gate.equal(
         value['scheduleComplete'],
@@ -3905,24 +4739,41 @@ HttpBoundaryComparison compareHttpBoundaryRecords({
 
 /// The configured `ajaxAll` width and the declared page-list scheduling are
 /// approved architecture facts: the strict mismatch stays visible, and this
-/// disposition records why it is not a frozen parity claim.
-const httpBoundaryConfiguredWidthReason =
-    'Approved experience-first default: SourceHostDispatcher.ajaxAll batches '
-    'four requests, while the frozen capture records AppConfig.threadCount 16. '
-    'Returned order, request values, the per-source rate limiter and '
-    'cancellation remain strictly compared.';
+/// disposition records why it is not a frozen parity claim. The frozen width is
+/// named from the corpus' own declaration and the capture's own recorded runtime
+/// value, never from a historical constant, so a selected capture explains itself.
+String httpBoundaryConfiguredWidthReason(Map<String, dynamic> corpus) {
+  final width = _frozenThreadCount(corpus);
+  return 'Approved experience-first default: SourceHostDispatcher.ajaxAll '
+      'batches four requests, while the frozen capture records the actual '
+      'AppConfig.threadCount read ($width for this corpus) and the capture '
+      'reports the value it measured. Returned order, request values, the '
+      'per-source rate limiter and cancellation remain strictly compared.';
+}
 
-const httpBoundaryWidthCohortReason =
-    '$httpBoundaryConfiguredWidthReason The declared 5-member cohort '
-    'consequently records the measured peak 4 and a cohort-window release; '
-    'those are the measured consequences of that configured width.';
+String httpBoundaryWidthCohortReason(Map<String, dynamic> corpus) {
+  final width = _frozenThreadCount(corpus);
+  return '${httpBoundaryConfiguredWidthReason(corpus)} The declared 5-member '
+      'cohort consequently records the measured peak 4 and a cohort-window '
+      'release; those are the measured consequences of that configured width '
+      '($width).';
+}
 
-const httpBoundaryPageListSchedulingReason =
-    'Approved current behavior: a declared TOC/content page list is fetched '
-    'serially at width 1, while the frozen baseline batches it at '
-    'AppConfig.threadCount 16. Declared output order and the per-source rate '
-    'limiter are preserved; the measured cohort and request facts are the '
-    'consequence of that scheduling.';
+String httpBoundaryPageListSchedulingReason(Map<String, dynamic> corpus) {
+  final width = _frozenThreadCount(corpus);
+  return 'Approved current behavior: a declared TOC/content page list is '
+      'fetched serially at width 1, while the frozen baseline batches it at '
+      'AppConfig.threadCount ($width for this corpus, as read at capture time). '
+      'Declared output order and the per-source rate limiter are preserved; the '
+      'measured cohort and request facts are the consequence of that scheduling.';
+}
+
+/// The frozen batch width this corpus declares, or `unknown` when it declares none.
+String _frozenThreadCount(Map<String, dynamic> corpus) {
+  final runtime = corpus['runtime'];
+  final declared = runtime is Map ? runtime['threadCountDefault'] : null;
+  return declared is int ? '$declared' : 'unknown';
+}
 
 const httpBoundaryZeroArityReason =
     'Approved supported product extension: the frozen Rhino binding refuses '
@@ -4163,7 +5014,9 @@ final _javaReturnEnvelopeCases =
   Map<String, dynamic> step,
   HttpBoundaryMismatch mismatch,
 ) {
-  if (corpus['corpusVersion'] != 3) return null;
+  if (!httpBoundaryCorpusVersions.contains(corpus['corpusVersion'])) {
+    return null;
+  }
   if (!_javaReturnScalarLeaf(step, mismatch) &&
       !_javaReturnEnvelopeLeaf(step, mismatch)) {
     return null;
@@ -4292,7 +5145,7 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
       mismatch.observed == httpBoundaryBatchWidth) {
     return (
       group: 'ajaxall-configured-width',
-      reason: httpBoundaryConfiguredWidthReason,
+      reason: httpBoundaryConfiguredWidthReason(corpus),
     );
   }
 
@@ -4314,14 +5167,14 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
         if (isHelperBatch && mismatch.observed == httpBoundaryBatchWidth) {
           return (
             group: 'ajaxall-configured-width',
-            reason: httpBoundaryConfiguredWidthReason,
+            reason: httpBoundaryConfiguredWidthReason(corpus),
           );
         }
         if (isPageListBatch &&
             mismatch.observed == httpBoundarySerialWalkWidth) {
           return (
             group: 'page-list-scheduling',
-            reason: httpBoundaryPageListSchedulingReason,
+            reason: httpBoundaryPageListSchedulingReason(corpus),
           );
         }
       }
@@ -4333,7 +5186,7 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
           _isCohortConsequence(mismatch, cohortSize!, httpBoundaryBatchWidth)) {
         return (
           group: 'ajaxall-configured-width',
-          reason: httpBoundaryWidthCohortReason,
+          reason: httpBoundaryWidthCohortReason(corpus),
         );
       }
       if (isPageListBatch &&
@@ -4345,7 +5198,7 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
           )) {
         return (
           group: 'page-list-scheduling',
-          reason: httpBoundaryPageListSchedulingReason,
+          reason: httpBoundaryPageListSchedulingReason(corpus),
         );
       }
       if ('${step['action']}' == 'headerMap') {
@@ -4415,13 +5268,13 @@ HttpBoundaryNotCompared? attributeHttpBoundaryMismatch({
     if (isHelperBatch && cohortSize == 5) {
       return (
         group: 'ajaxall-configured-width',
-        reason: httpBoundaryWidthCohortReason,
+        reason: httpBoundaryWidthCohortReason(corpus),
       );
     }
     if (isPageListBatch) {
       return (
         group: 'page-list-scheduling',
-        reason: httpBoundaryPageListSchedulingReason,
+        reason: httpBoundaryPageListSchedulingReason(corpus),
       );
     }
     return null;
@@ -5248,6 +6101,7 @@ Future<void> main(List<String> args) async {
   String? handoffPath;
   String? productPath;
   String? evidencePath;
+  var corpusPath = httpBoundaryCorpusPath;
   for (final arg in args) {
     if (arg.startsWith('--handoff=')) {
       handoffPath = arg.substring('--handoff='.length);
@@ -5255,6 +6109,14 @@ Future<void> main(List<String> args) async {
       productPath = arg.substring('--product='.length);
     } else if (arg.startsWith('--evidence=')) {
       evidencePath = arg.substring('--evidence='.length);
+    } else if (arg.startsWith('--corpus=')) {
+      final value = arg.substring('--corpus='.length).trim();
+      if (value.isEmpty) {
+        stderr.writeln('--corpus is empty');
+        exitCode = 64;
+        return;
+      }
+      corpusPath = value;
     } else {
       stderr.writeln('unknown comparer argument: $arg');
       exitCode = 64;
@@ -5264,7 +6126,7 @@ Future<void> main(List<String> args) async {
   if (handoffPath == null || productPath == null || evidencePath == null) {
     stderr.writeln(
       'Usage: dart run tool/http_boundary/compare.dart --handoff=<json> '
-      '--product=<report.json> --evidence=<dir>',
+      '--product=<report.json> --evidence=<dir> [--corpus=<path>]',
     );
     exitCode = 64;
     return;
@@ -5282,8 +6144,8 @@ Future<void> main(List<String> args) async {
   };
   var exit = 1;
   try {
-    final corpusFile = File(httpBoundaryCorpusPath);
-    final corpus = loadHttpBoundaryCorpus(httpBoundaryCorpusPath);
+    final corpusFile = File(corpusPath);
+    final corpus = loadHttpBoundaryCorpus(corpusPath);
     final corpusLf = httpBoundaryCorpusSha256Lf(corpusFile);
     final rawSha = sha256File(corpusFile);
     corpus['_rawSha256'] = rawSha;
@@ -5291,8 +6153,10 @@ Future<void> main(List<String> args) async {
     if (handoff['status'] != 'captured') {
       throw HttpBoundaryRefusal('the handoff is not a captured session');
     }
-    if (handoff['integrationHead'] !=
-        '276a625e4aef0104240beac1908e597c6023ef93') {
+    final integrationHead = corpus['corpusVersion'] == 4
+        ? 'b064ea5ae8f0ac77461d8e9a23a15aa99975e366'
+        : '276a625e4aef0104240beac1908e597c6023ef93';
+    if (handoff['integrationHead'] != integrationHead) {
       throw HttpBoundaryRefusal(
         'the handoff names another integration head: '
         '${handoff['integrationHead']}',

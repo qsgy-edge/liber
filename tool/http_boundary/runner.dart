@@ -9,7 +9,7 @@ import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/html_source_pipeline.dart' as html_boundary;
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart'
-    show InProcessSourceScriptRuntime, SourceScriptError;
+    show InProcessSourceScriptRuntime, SourceScriptError, sourceRuleVariableKey;
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_host_state.dart';
@@ -35,8 +35,11 @@ import 'package:pointycastle/digests/sha256.dart';
 /// every byte it creates; the report keeps the ownership manifest and the
 /// cleanup receipts, and the root is removed again when the run is clean.
 const httpBoundaryCorpusPath = 'tool/http_boundary/fixtures.json';
+
+/// The corpus versions this consumer accepts: the historical `14dd2494` v3 and the
+/// selected-reference v4. The identity a comparison uses lives inside the file.
+const httpBoundaryCorpusVersions = {3, 4};
 const httpBoundaryFixtureId = 'HTTP-BOUNDARY-01';
-const httpBoundaryCorpusVersion = 3;
 
 /// The user agent every corpus source declares (`fixtures.json` `sources`).
 /// The corpus tests header arity and replacement with it, so a source without
@@ -572,9 +575,9 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       'the corpus fixtureId is not $httpBoundaryFixtureId',
     );
   }
-  if (corpus['corpusVersion'] != httpBoundaryCorpusVersion) {
-    throw const FormatException(
-      'the corpus corpusVersion is not $httpBoundaryCorpusVersion',
+  if (!httpBoundaryCorpusVersions.contains(corpus['corpusVersion'])) {
+    throw FormatException(
+      'the corpus corpusVersion is not one of $httpBoundaryCorpusVersions',
     );
   }
   _text(corpus['baselineCommit'], 'baselineCommit');
@@ -593,8 +596,12 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
     );
   }
   final sources = _array(corpus['sources'], 'sources');
-  if (sources.length != 16) {
-    throw const FormatException('the corpus declares sixteen sources');
+  // The historical corpus declares sixteen; the selected one adds the plain-rate
+  // source its two-member cohort needs. Every original id is still required below.
+  if (sources.length < 16) {
+    throw const FormatException(
+      'the corpus declares fewer than sixteen sources',
+    );
   }
   final sourceIds = <String>{};
   for (final raw in sources) {
@@ -673,12 +680,28 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
       'stage',
       'failure',
       'cancel',
+      'rateWaitCancel',
     }.contains(kind)) {
       throw FormatException('step $id has unknown kind $kind');
     }
     httpBoundarySourceOf(corpus, _text(step['source'], 'step $id source'));
     if (kind == 'helper') {
       _validateHelperAction(step, id);
+    }
+    if (kind == 'rateWaitCancel') {
+      final marker = _text(step['marker'], 'rate-wait marker');
+      final window = _integer(step['windowMillis'], 'rate-wait window');
+      final source = httpBoundarySourceOf(corpus, '${step['source']}');
+      final declared = httpBoundaryDeclaredRequests(step);
+      if (corpus['corpusVersion'] != 4 ||
+          step['family'] != 'stage' ||
+          marker != 'rateWaitMarker' ||
+          window <= 0 ||
+          source['concurrentRate'] != '1/$window' ||
+          declared.ordered.length != 2 ||
+          declared.members.isNotEmpty) {
+        throw FormatException('step $id has an invalid rate-wait declaration');
+      }
     }
     final carrier = step['carrier'];
     if (carrier != null) {
@@ -755,6 +778,59 @@ void validateHttpBoundaryCorpus(Map<String, dynamic> corpus) {
   }
   if (rate['initialSnapshotRequirement'] != 'empty') {
     throw const FormatException('rate.initialSnapshotRequirement is not empty');
+  }
+  // The plain-interval form is exercised by the existing two-member cohort: one
+  // member's response is held until the other arrives, which can only happen after
+  // the interval. The declaration must name a real plain-rate source, its interval,
+  // and the step/cohort/members that carry the relation.
+  final plain = rate['plain'];
+  if (plain != null) {
+    final declaredPlain = _object(plain, 'rate.plain');
+    final plainSource = '${declaredPlain['source']}';
+    final plainRate = _text(declaredPlain['concurrentRate'], 'rate.plain rate');
+    if (plainRate.contains('/')) {
+      throw const FormatException('rate.plain declares the count form');
+    }
+    final sourceValue =
+        '${httpBoundarySourceOf(corpus, plainSource)['concurrentRate'] ?? ''}';
+    if (sourceValue != plainRate) {
+      throw FormatException(
+        'source $plainSource declares concurrentRate $sourceValue, rate.plain '
+        'declares $plainRate',
+      );
+    }
+    if (int.tryParse(plainRate) !=
+        _integer(declaredPlain['windowMillis'], 'rate.plain windowMillis')) {
+      throw const FormatException(
+        'rate.plain windowMillis is not its interval',
+      );
+    }
+    final holdStepId = '${declaredPlain['holdStep']}';
+    final holdStep = steps.firstWhere(
+      (candidate) => '${candidate['id']}' == holdStepId,
+      orElse: () => throw FormatException(
+        'rate.plain names no declared step $holdStepId',
+      ),
+    );
+    final batch = _object(
+      _object(holdStep['requests'], 'rate.plain step requests')['batch'],
+      'rate.plain step batch',
+    );
+    if ('${batch['cohort']}' != '${declaredPlain['cohort']}') {
+      throw const FormatException('rate.plain names another cohort');
+    }
+    final members = _array(batch['members'], 'rate.plain members');
+    if (members.length != 2) {
+      throw const FormatException('rate.plain needs the two-member cohort');
+    }
+    final cohort = _array(corpus['cohorts'], 'cohorts').cast<Map>().firstWhere(
+      (candidate) => '${candidate['id']}' == '${declaredPlain['cohort']}',
+      orElse: () =>
+          throw const FormatException('rate.plain names no declared cohort'),
+    );
+    if (_integer(cohort['size'], 'rate.plain cohort size') != 2) {
+      throw const FormatException('rate.plain cohort is not two members');
+    }
   }
   // The task-owned failure endpoint.
   final failure = _object(corpus['failureEndpoint'], 'failureEndpoint');
@@ -891,7 +967,7 @@ Future<void> main(List<String> args) async {
   if (args.length < 3) {
     stderr.writeln(
       'Usage: dart run tool/http_boundary/runner.dart <fjs.dll> <root> '
-      '<report.json> [--expected-corpus-sha256=<sha256>]',
+      '<report.json> [--expected-corpus-sha256=<sha256>] [--corpus=<path>]',
     );
     exitCode = 64;
     return;
@@ -900,8 +976,10 @@ Future<void> main(List<String> args) async {
   final root = Directory(args[1]);
   final reportPath = args[2];
   String? expectedCorpusSha256;
+  var corpusPath = httpBoundaryCorpusPath;
   for (final arg in args.sublist(3)) {
     const prefix = '--expected-corpus-sha256=';
+    const corpusPrefix = '--corpus=';
     if (arg.startsWith(prefix)) {
       final value = arg.substring(prefix.length);
       if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(value)) {
@@ -910,6 +988,16 @@ Future<void> main(List<String> args) async {
         return;
       }
       expectedCorpusSha256 = value;
+      continue;
+    }
+    if (arg.startsWith(corpusPrefix)) {
+      final value = arg.substring(corpusPrefix.length).trim();
+      if (value.isEmpty) {
+        stderr.writeln('--corpus is empty');
+        exitCode = 64;
+        return;
+      }
+      corpusPath = value;
       continue;
     }
     stderr.writeln('unknown runner argument: $arg');
@@ -940,8 +1028,8 @@ Future<void> main(List<String> args) async {
   };
   var result = 1;
   try {
-    final corpusFile = File(httpBoundaryCorpusPath);
-    final corpus = loadHttpBoundaryCorpus(httpBoundaryCorpusPath);
+    final corpusFile = File(corpusPath);
+    final corpus = loadHttpBoundaryCorpus(corpusPath);
     final corpusLf = httpBoundaryCorpusSha256Lf(corpusFile);
     if (expectedCorpusSha256 != null && expectedCorpusSha256 != corpusLf) {
       throw const HttpBoundaryRefusal(
@@ -968,7 +1056,7 @@ Future<void> main(List<String> args) async {
         'corpusVersion': corpus['corpusVersion'],
         'baselineCommit': corpus['baselineCommit'],
         'entryPoint': corpus['entryPoint'],
-        'corpusPath': httpBoundaryCorpusPath,
+        'corpusPath': corpusPath,
         'corpusRawSha256': sha256File(corpusFile),
         'corpusSha256Lf': corpusLf,
         'corpusRawLineEndings': corpusFile.readAsStringSync().contains('\r\n')
@@ -1088,6 +1176,29 @@ class _HttpBoundaryRun {
   /// kept so the teardown can join it before the database and the native runtime
   /// are touched; a merely local future was the review finding.
   Future<void>? _ownedCancelWorker;
+  bool _ownedCancelWorkerSettled = true;
+
+  void _trackOwnedCancelWorker(Future<void> worker) {
+    if (_ownedCancelWorker != null && !_ownedCancelWorkerSettled) {
+      throw const HttpBoundaryIncomplete(
+        'an owned cancellation worker is still unresolved',
+      );
+    }
+    _ownedCancelWorker = worker;
+    _ownedCancelWorkerSettled = false;
+    worker.then<void>(
+      (_) {
+        if (identical(_ownedCancelWorker, worker)) {
+          _ownedCancelWorkerSettled = true;
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        if (identical(_ownedCancelWorker, worker)) {
+          _ownedCancelWorkerSettled = true;
+        }
+      },
+    );
+  }
 
   final _outcomes = <String, ({String outcome, String? category})>{};
   final _hits = <String, HtmlBook>{};
@@ -1197,6 +1308,7 @@ class _HttpBoundaryRun {
         cohortTimeouts: cohortTimeouts,
         cohortThreadCounts: cohortThreadCounts,
         cohortThreadSources: cohortThreadSources,
+        selectedTiming: corpus['corpusVersion'] == 4,
         onServerError: (error) => serverErrors.add({'replay': '$error'}),
       );
       await NativeLibrary.initialize(libraryPath: libraryPath);
@@ -1239,8 +1351,7 @@ class _HttpBoundaryRun {
             'the corpus initial snapshot can be empty',
         'concurrentRate': _object(corpus['rate'], 'rate')['concurrentRate'],
         'windowMillis': _object(corpus['rate'], 'rate')['windowMillis'],
-        'initialSnapshot':
-            _rateRecord(rateLimiter.recordOf(sourceUrl('R'))) == null
+        'initialSnapshot': rateLimiter.recordOf(sourceUrl('R')) == null
             ? 'empty'
             : 'not-empty',
       };
@@ -1454,13 +1565,12 @@ class _HttpBoundaryRun {
     }
   }
 
-  /// Runs every declared step in corpus order. A step that cannot be finished
-  /// keeps its row as `incomplete` and the run continues, so one unresolved row
-  /// never hides the rest of the trace.
+  /// An unresolved owned worker fences all later steps; an ordinary incomplete
+  /// row with no outstanding worker does not stop the remaining observations.
   Future<void> _measure() async {
+    var fenced = false;
     for (final step in httpBoundarySteps(corpus)) {
       final id = '${step['id']}';
-      replay?.stage = id;
       final observation = <String, Object?>{
         'id': id,
         'outcome': 'incomplete',
@@ -1470,6 +1580,15 @@ class _HttpBoundaryRun {
         'requests': <Map<String, Object?>>[],
       };
       observations.add(observation);
+      fenced =
+          fenced || (_ownedCancelWorker != null && !_ownedCancelWorkerSettled);
+      if (fenced) {
+        observation['outcome'] = 'not-run';
+        (observation['evidence'] as Map)['blockedByOwnedWorker'] = true;
+        _outcomes[id] = (outcome: 'not-run', category: null);
+        continue;
+      }
+      replay?.stage = id;
       try {
         switch ('${step['kind']}') {
           case 'helper':
@@ -1487,6 +1606,8 @@ class _HttpBoundaryRun {
             await _runFailure(step, observation);
           case 'cancel':
             await _runCancel(step, observation);
+          case 'rateWaitCancel':
+            await _runRateWaitCancel(step, observation);
           default:
             throw HttpBoundaryIncomplete('unknown step kind ${step['kind']}');
         }
@@ -1579,7 +1700,74 @@ class _HttpBoundaryRun {
       case 'ajaxAll':
       case 'connectHeader':
       case 'connectSource':
-        final result = await _evaluate(sourceId, '${step['script']}');
+        final plain = (_object(corpus['rate'], 'rate')['plain'] as Map?);
+        final measurePlain = plain != null && plain['holdStep'] == id;
+        final sourceKey = sourceUrl(sourceId);
+        final before = measurePlain
+            ? _rateRecord(rateLimiter.recordOf(sourceKey), [
+                'time',
+                'frequency',
+              ])
+            : null;
+        if (measurePlain && before != null) {
+          throw const HttpBoundaryIncomplete(
+            'plain rate source was not initially empty',
+          );
+        }
+        Map<String, Object?>? firstSample;
+        int? firstSampleMillis;
+        Timer? sampler;
+        if (measurePlain) {
+          sampler = Timer.periodic(const Duration(milliseconds: 5), (_) {
+            final record = rateLimiter.recordOf(sourceKey);
+            if (record != null && firstSample == null) {
+              firstSample = {
+                'time': record.time,
+                'frequency': record.frequency,
+              };
+              firstSampleMillis = _nowMillis();
+            }
+          });
+        }
+        final started = _nowMillis();
+        final startNanos = _nowNanos();
+        Object? result;
+        int finished;
+        int finishNanos;
+        try {
+          result = await _evaluate(sourceId, '${step['script']}');
+        } finally {
+          finished = _nowMillis();
+          finishNanos = _nowNanos();
+          sampler?.cancel();
+        }
+        if (measurePlain) {
+          (observation['evidence'] as Map)['plainRate'] = {
+            'sourceKey': sourceKey,
+            'callStartMillis': started,
+            'callFinishMillis': finished,
+            'callStartNanos': startNanos,
+            'callFinishNanos': finishNanos,
+            'recordBefore': before,
+            'firstRecord': firstSample,
+            'firstSampleMillis': firstSampleMillis,
+            'finalRecord': _rateRecord(rateLimiter.recordOf(sourceKey), [
+              'time',
+              'frequency',
+            ]),
+            'observerIntervalMillis': 5,
+            'observerSettled': !sampler!.isActive,
+          };
+          final finalRecord = rateLimiter.recordOf(sourceKey);
+          if (firstSample == null ||
+              finalRecord == null ||
+              finalRecord.time - (firstSample!['time'] as int) <
+                  (plain['windowMillis'] as int)) {
+            throw const HttpBoundaryIncomplete(
+              'plain rate observer missed the first window',
+            );
+          }
+        }
         value['result'] = result is String ? result : '$result';
         final declared = httpBoundaryDeclaredRequests(step);
         if (declared.cohort != null) {
@@ -1717,27 +1905,108 @@ class _HttpBoundaryRun {
 
   /// One source-keyed real record before and after a call, with the corpus' own
   /// window relations rather than a cross-host epoch comparison.
+  /// The rate record fields this corpus compares. The historical corpus declares
+  /// none, so its three original fields keep their meaning; the selected
+  /// reference carries no `isConcurrent` at all, so the selected corpus declares
+  /// only what it really has and the product's internal mode stays provenance.
+  List<String> _rateRecordFields(Map<String, dynamic> rate) {
+    final declared = rate['recordFields'];
+    if (declared == null) {
+      return const ['isConcurrent', 'time', 'frequency'];
+    }
+    final fields = [
+      for (final raw in _array(declared, 'rate.recordFields')) '$raw',
+    ];
+    if (fields.isEmpty) {
+      throw const FormatException('rate.recordFields declares no field');
+    }
+    const known = {'isConcurrent', 'time', 'frequency'};
+    for (final field in fields) {
+      if (!known.contains(field)) {
+        throw FormatException(
+          'rate.recordFields declares the unknown field $field',
+        );
+      }
+    }
+    return fields;
+  }
+
+  Map<String, Object?>? _rateRecord(
+    SourceRateRecord? record,
+    List<String> fields,
+  ) => record == null
+      ? null
+      : {
+          for (final field in fields)
+            field: switch (field) {
+              'isConcurrent' => record.isConcurrent,
+              'time' => record.time,
+              'frequency' => record.frequency,
+              _ => throw FormatException('unknown rate record field $field'),
+            },
+        };
+
+  /// The window relation a rate row declares. The historical corpus declares no
+  /// schedule, so its three original row meanings are preserved; the selected
+  /// corpus declares each row because the selected reference rolls the window on
+  /// every start instead of admitting an extra same-window start.
+  ({String window, int frequency}) _rateScheduleRow(
+    Map<String, dynamic> rate,
+    int index,
+  ) {
+    final declared = rate['schedule'];
+    if (declared == null) {
+      return switch (index) {
+        1 => (window: 'opens', frequency: 1),
+        2 => (window: 'same', frequency: 2),
+        3 => (window: 'rolls', frequency: 1),
+        _ => throw const HttpBoundaryIncomplete(
+          'the corpus declares three rate rows',
+        ),
+      };
+    }
+    for (final raw in _array(declared, 'rate.schedule')) {
+      final row = _object(raw, 'rate.schedule row');
+      if (_integer(row['index'], 'rate.schedule index') != index) continue;
+      final window = '${row['window']}';
+      if (window != 'opens' && window != 'same' && window != 'rolls') {
+        throw FormatException(
+          'rate.schedule declares the unknown window $window',
+        );
+      }
+      return (
+        window: window,
+        frequency: _integer(row['frequency'], 'frequency'),
+      );
+    }
+    throw FormatException('rate.schedule declares no row for index $index');
+  }
+
   Future<void> _runRate(
     Map<String, dynamic> step,
     Map<String, Object?> observation,
   ) async {
     final rate = _object(corpus['rate'], 'rate');
+    final fields = _rateRecordFields(rate);
     final sourceId = '${step['source']}';
     final sourceKey = sourceUrl(sourceId);
     final window = _integer(rate['windowMillis'], 'rate.windowMillis');
     final index = _integer(step['index'], 'rate index');
-    final before = _rateRecord(rateLimiter.recordOf(sourceKey));
-    if (index == 1 && before != null) {
+    final schedule = _rateScheduleRow(rate, index);
+    final before = _rateRecord(rateLimiter.recordOf(sourceKey), fields);
+    if (schedule.window == 'opens' && before != null) {
       throw const HttpBoundaryIncomplete(
         'the rate record existed before the first rate row',
       );
     }
     final callStart = _nowMillis();
+    final startNanos = _nowNanos();
     final watch = Stopwatch()..start();
     final result = await _evaluate(sourceId, '${step['script']}');
     watch.stop();
+    final finishNanos = _nowNanos();
     final callFinish = _nowMillis();
-    final after = _rateRecord(rateLimiter.recordOf(sourceKey));
+    final after = _rateRecord(rateLimiter.recordOf(sourceKey), fields);
     final afterTime = after?['time'] as int?;
     final value = <String, Object?>{
       'kind': 'rate',
@@ -1752,43 +2021,61 @@ class _HttpBoundaryRun {
     final evidence = <String, Object?>{
       'callStartMillis': callStart,
       'callFinishMillis': callFinish,
-      'durationNanos': watch.elapsedMicroseconds * 1000,
+      if (corpus['corpusVersion'] == 4) 'callStartNanos': startNanos,
+      if (corpus['corpusVersion'] == 4) 'callFinishNanos': finishNanos,
+      'durationNanos': corpus['corpusVersion'] == 4
+          ? finishNanos - startNanos
+          : watch.elapsedMicroseconds * 1000,
       'sourceKey': sourceKey,
       'windowMillis': window,
       'recordAfterIsProvenance': true,
+      // The product's own reading of the declared form stays provenance.
+      'productMode': rateLimiter.recordOf(sourceKey)?.isConcurrent,
     };
-    switch (index) {
-      case 1:
+    switch (schedule.window) {
+      case 'opens':
         _rateWindowStart = afterTime;
         evidence['windowStartMillis'] = _rateWindowStart;
-      case 2:
+        value['scheduleComplete'] = after?['frequency'] == schedule.frequency;
+        value['scheduleReason'] = value['scheduleComplete'] == true
+            ? null
+            : 'incomplete-schedule';
+      case 'same':
         final start = _rateWindowStart;
         final sameWindow = start != null && afterTime == start;
         value['sameWindowAsPrevious'] = sameWindow;
-        final complete = sameWindow && callFinish - start < window;
+        final complete =
+            sameWindow &&
+            callFinish - start < window &&
+            after?['frequency'] == schedule.frequency;
         value['scheduleComplete'] = complete;
         value['scheduleReason'] = complete ? null : 'incomplete-schedule';
         evidence['windowStartMillis'] = start;
-      case 3:
-        final start = _rateWindowStart;
+      case 'rolls':
+        // A rollover is measured against the record this row actually saw, so
+        // successive rollovers each report their own advance.
+        final start = before?['time'] as int? ?? _rateWindowStart;
         final advanced = start == null || afterTime == null
             ? null
             : afterTime - start;
         value['sameWindowAsPrevious'] = advanced == 0;
-        final complete = advanced != null && advanced >= window;
+        final complete =
+            advanced != null &&
+            advanced >= window &&
+            after?['frequency'] == schedule.frequency;
         value['scheduleComplete'] = complete;
         value['scheduleReason'] = complete ? null : 'incomplete-schedule';
         evidence['windowAdvanceMillis'] = advanced;
+        _rateWindowStart = afterTime;
       default:
-        throw const HttpBoundaryIncomplete(
-          'the corpus declares three rate rows',
-        );
+        throw FormatException('unknown rate window ${schedule.window}');
     }
     observation['value'] = value;
     observation['evidence'] = evidence;
     // Every record this call creates or resets belongs to its own operation
     // interval; a same-window admission keeps the shared window start.
-    final createdHere = index == 1 || value['sameWindowAsPrevious'] == false;
+    final createdHere =
+        schedule.window == 'opens' || value['sameWindowAsPrevious'] == false;
     final recordTime = after?['time'];
     if (createdHere &&
         recordTime is int &&
@@ -1808,14 +2095,6 @@ class _HttpBoundaryRun {
     observation['outcome'] = 'ok';
     observation['category'] = null;
   }
-
-  Map<String, Object?>? _rateRecord(SourceRateRecord? record) => record == null
-      ? null
-      : {
-          'isConcurrent': record.isConcurrent,
-          'time': record.time,
-          'frequency': record.frequency,
-        };
 
   // --- stage rows ------------------------------------------------------------
 
@@ -2204,6 +2483,219 @@ class _HttpBoundaryRun {
     observation['category'] = 'network-failure';
   }
 
+  /// Runs the selected rate-wait scenario through real search pipelines. The
+  /// source's address script marks request analysis before rate acquisition.
+  Future<void> _runRateWaitCancel(
+    Map<String, dynamic> step,
+    Map<String, Object?> observation,
+  ) async {
+    final sourceId = _text(step['source'], 'rate-wait source');
+    final source = sourceObject(sourceId);
+    final sourceKey = sourceUrl(sourceId);
+    final marker = sourceRuleVariableKey(
+      sourceKey,
+      _text(step['marker'], 'rate-wait marker'),
+    );
+    final window = _integer(step['windowMillis'], 'rate-wait window');
+    final state = hostState;
+    if (state == null) {
+      throw const HttpBoundaryIncomplete('host state is absent');
+    }
+    html_boundary.HtmlSourcePipeline pipeline() =>
+        html_boundary.HtmlSourcePipeline(
+          source,
+          HttpSourceTransport(),
+          hostState: hostState,
+          androidId: androidId,
+        );
+    final prime = pipeline();
+    if (SourceRateLimiter.shared.recordOf(sourceKey) != null) {
+      throw const HttpBoundaryIncomplete(
+        'rate-wait source was not initially empty',
+      );
+    }
+    final primeStartMillis = _nowMillis();
+    final primeStartNanos = _nowNanos();
+    final primeResults = await prime.search('prime');
+    final primeFinishNanos = _nowNanos();
+    final primeFinishMillis = _nowMillis();
+    final record = SourceRateLimiter.shared.recordOf(sourceKey);
+    if (record == null || record.frequency != 1 || primeResults.isEmpty) {
+      throw const HttpBoundaryIncomplete(
+        'rate-wait prime did not saturate its source',
+      );
+    }
+    final recordTime = record.time;
+    final recordFrequency = record.frequency;
+    final waiting = pipeline();
+    Object? workerError;
+    var workerSettled = false;
+    final waitTimer = Completer<int>();
+    final search = runZoned(
+      () => waiting.search('wait'),
+      zoneSpecification: ZoneSpecification(
+        createTimer: (self, parent, zone, duration, callback) {
+          if (!waitTimer.isCompleted &&
+              duration.inMilliseconds > 1000 &&
+              duration.inMilliseconds <= window &&
+              state.entryIfLoaded(sourceKey, marker) == 'entered') {
+            waitTimer.complete(duration.inMilliseconds);
+          }
+          return parent.createTimer(zone, duration, callback);
+        },
+      ),
+    );
+    final worker = search.then<void>(
+      (_) => workerSettled = true,
+      onError: (Object error) {
+        workerError = error;
+        workerSettled = true;
+      },
+    );
+    _trackOwnedCancelWorker(worker);
+    _cancelledPipeline = waiting;
+    final deadline = recordTime + window;
+    var markerValue = await state.entry(sourceKey, marker);
+    while (markerValue != 'entered' &&
+        !workerSettled &&
+        _nowMillis() < deadline) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      markerValue = await state.entry(sourceKey, marker);
+    }
+    if (markerValue != 'entered' || workerSettled || _nowMillis() >= deadline) {
+      waiting.cancel();
+      await worker;
+      throw HttpBoundaryIncomplete(
+        'rate-wait marker was not observed during the saturated window: '
+        'marker=$markerValue settled=$workerSettled error=$workerError '
+        'now=${_nowMillis()} deadline=$deadline',
+      );
+    }
+    // The owned limiter's default wait schedules a timer after the marker and
+    // before the request can be sent. Observe that scheduling in this execution's
+    // zone rather than treating a sleeping worker as proof of rate admission wait.
+    final timerMillis = await waitTimer.future.timeout(
+      Duration(milliseconds: (deadline - _nowMillis()).clamp(1, window)),
+      onTimeout: () => 0,
+    );
+    final beforeCancelRequests = replay!.requests.length;
+    final recordAtMarker = SourceRateLimiter.shared.recordOf(sourceKey);
+    final saturatedAtMarker =
+        recordAtMarker?.time == recordTime &&
+        recordAtMarker?.frequency == recordFrequency &&
+        !workerSettled &&
+        timerMillis > 0 &&
+        _nowMillis() < deadline &&
+        beforeCancelRequests == 1;
+    final markerMillis = _nowMillis();
+    final atMarkerSnapshot = recordAtMarker == null
+        ? null
+        : {'time': recordAtMarker.time, 'frequency': recordAtMarker.frequency};
+    final cancelMillis = _nowMillis();
+    waiting.cancel();
+    await worker.timeout(const Duration(seconds: 3));
+    final settledMillis = _nowMillis();
+    final after = SourceRateLimiter.shared.recordOf(sourceKey);
+    final unchanged =
+        after?.time == recordTime && after?.frequency == recordFrequency;
+    final afterSnapshot = after == null
+        ? null
+        : {'time': after.time, 'frequency': after.frequency};
+    final remaining = deadline + 100 - _nowMillis();
+    if (remaining > 0) {
+      await Future<void>.delayed(Duration(milliseconds: remaining));
+    }
+    final quietMillis = _nowMillis();
+    final afterQuietRequests = replay!.requests.length;
+    final noLateRequest = afterQuietRequests == beforeCancelRequests;
+    final quietRecord = SourceRateLimiter.shared.recordOf(sourceKey);
+    final quietSnapshot = quietRecord == null
+        ? null
+        : {'time': quietRecord.time, 'frequency': quietRecord.frequency};
+    final unchangedAfterQuiet =
+        quietRecord?.time == recordTime &&
+        quietRecord?.frequency == recordFrequency;
+    final markerAfter = await state.entry(sourceKey, marker);
+    final lateEffect = await state.entry(
+      sourceKey,
+      sourceRuleVariableKey(sourceKey, 'rateWaitLate'),
+    );
+    final follow = pipeline();
+    final followStartMillis = _nowMillis();
+    final followStartNanos = _nowNanos();
+    final followResults = await follow.search('follow');
+    final followFinishNanos = _nowNanos();
+    final followFinishMillis = _nowMillis();
+    final ok =
+        saturatedAtMarker &&
+        unchanged &&
+        unchangedAfterQuiet &&
+        noLateRequest &&
+        markerAfter == 'entered' &&
+        lateEffect == null &&
+        workerSettled &&
+        workerError is SourceRequestCancelled &&
+        followResults.isNotEmpty &&
+        replay!.requests.length == beforeCancelRequests + 1;
+    observation['value'] = {
+      'kind': 'rateWaitCancel',
+      'source': sourceId,
+      'markerObserved': markerValue == 'entered',
+      'saturatedAtMarker': saturatedAtMarker,
+      'workerCancelled': workerError is SourceRequestCancelled,
+      'workerTerminated': workerSettled,
+      'recordUnchanged': unchanged && unchangedAfterQuiet,
+      'noLateRequest': noLateRequest,
+      'markerUnchanged': markerAfter == 'entered',
+      'noLateEffect': lateEffect == null,
+      'freshFollowUp':
+          !identical(waiting, follow) &&
+          identical(waiting.source, follow.source) &&
+          followResults.isNotEmpty,
+    };
+    observation['evidence'] = {
+      'sourceKey': sourceKey,
+      'primeStartMillis': primeStartMillis,
+      'primeFinishMillis': primeFinishMillis,
+      'primeStartNanos': primeStartNanos,
+      'primeFinishNanos': primeFinishNanos,
+      'followStartMillis': followStartMillis,
+      'followFinishMillis': followFinishMillis,
+      'followStartNanos': followStartNanos,
+      'followFinishNanos': followFinishNanos,
+      'recordBefore': {'time': recordTime, 'frequency': recordFrequency},
+      'recordAfter': afterSnapshot,
+      'recordAfterQuiet': quietSnapshot,
+      'deadlineMillis': deadline,
+      'markerMillis': markerMillis,
+      'cancelMillis': cancelMillis,
+      'settledMillis': settledMillis,
+      'quietMillis': quietMillis,
+      'waitTimerMillis': timerMillis,
+      'markerValue': markerValue,
+      'markerValueAfterQuiet': markerAfter,
+      'lateEffectAfterQuiet': lateEffect ?? '',
+      'recordAtMarker': atMarkerSnapshot,
+      'requestsBeforeCancel': beforeCancelRequests,
+      'requestsAfterQuiet': afterQuietRequests,
+      'requestsAfterFollowUp': replay!.requests.length,
+      'workerFailureCategory': workerError is SourceRequestCancelled
+          ? 'cancelled'
+          : 'other',
+      'workerIdentity': identityHashCode(waiting),
+      'followUpIdentity': identityHashCode(follow),
+      'sourceObjectIdentity': identityHashCode(waiting.source),
+      'followUpSourceObjectIdentity': identityHashCode(follow.source),
+      'workerError': '$workerError',
+    };
+    if (!ok) {
+      throw const HttpBoundaryIncomplete(
+        'rate-wait cancellation facts were not established',
+      );
+    }
+    observation['outcome'] = 'ok';
+  }
+
   // --- cancellation and its bound follow-up ----------------------------------
 
   /// The measured cancellation: the pipeline is cancelled only after the replay
@@ -2250,7 +2742,7 @@ class _HttpBoundaryRun {
     );
     // The owned worker is tracked beyond this row: a timeout here must not let
     // the teardown close the database or dispose the runtime under it.
-    _ownedCancelWorker = settled;
+    _trackOwnedCancelWorker(settled);
     final holdWindow = _integer(cancellation['holdTimeoutMs'], 'holdTimeoutMs');
     final entered = await hold.entered.timeout(
       Duration(milliseconds: holdWindow),
@@ -2977,6 +3469,7 @@ class _ReplayServer {
     this._cohortTimeouts,
     this._cohortThreadCounts,
     this._cohortThreadSources,
+    this._selectedTiming,
     this._onServerError,
   );
 
@@ -2988,6 +3481,7 @@ class _ReplayServer {
     required Map<String, int> cohortTimeouts,
     Map<String, int> cohortThreadCounts = const {},
     Map<String, String> cohortThreadSources = const {},
+    bool selectedTiming = false,
     required void Function(Object error) onServerError,
   }) async {
     final ServerSocket server;
@@ -3009,6 +3503,7 @@ class _ReplayServer {
       cohortTimeouts,
       cohortThreadCounts,
       cohortThreadSources,
+      selectedTiming,
       onServerError,
     );
     instance._accept();
@@ -3023,6 +3518,7 @@ class _ReplayServer {
   final Map<String, int> _cohortTimeouts;
   final Map<String, int> _cohortThreadCounts;
   final Map<String, String> _cohortThreadSources;
+  final bool _selectedTiming;
   final void Function(Object error) _onServerError;
 
   final requests = <Map<String, Object?>>[];
@@ -3124,6 +3620,11 @@ class _ReplayServer {
       'bodyLength': bodyBytes.length,
       'bodySha256': sha256Bytes(bodyBytes),
       'receivedAtNanos': receivedAt,
+      if (_selectedTiming &&
+          (owner?.family == 'rate' ||
+              owner?.step == 'helper.plain-hold' ||
+              owner?.step == 'rate-wait.cancel'))
+        'receivedAtMillis': _nowMillis(),
       // Unsent facts: nothing has been written yet, so a peer abort before the
       // first response byte can never report a send or a completion.
       'respondedAtNanos': 0,
@@ -4033,6 +4534,59 @@ Future<Map<String, Object?>> probeHeaderMapEvaluationError({
     'thrownType': thrown == null ? null : '${thrown.runtimeType}',
     'observation': observation,
   };
+}
+
+/// Controlled retained-R3-state probe of the actual driver and owned teardown.
+/// It does not execute an R3 search or a native capture.
+Future<Map<String, Object?>> probeRetainedCancellationDriver({
+  required Map<String, dynamic> corpus,
+  required Directory root,
+  required bool settleBeforeDrive,
+}) async {
+  final cancel = httpBoundarySteps(
+    corpus,
+  ).firstWhere((step) => step['kind'] == 'cancel');
+  final probeCorpus = Map<String, dynamic>.from(corpus)..['steps'] = [cancel];
+  final run = _HttpBoundaryRun(
+    corpus: probeCorpus,
+    corpusLf: '',
+    root: root,
+    libraryPath: '',
+    librarySha256: '',
+    report: <String, Object?>{},
+  );
+  final original = Completer<void>();
+  run._trackOwnedCancelWorker(original.future);
+  run._runtimes['${cancel['source']}'] = _ProbeFailingRuntime(
+    StateError('ordinary cancellation handler entered'),
+  );
+  if (settleBeforeDrive) {
+    original.complete();
+    await original.future;
+    await Future<void>.delayed(Duration.zero);
+  }
+  final touched = <String>[];
+  try {
+    await run._measure();
+    final retained = identical(run._ownedCancelWorker, original.future);
+    final teardown = await settleOwnedTeardown(
+      workers: [if (run._ownedCancelWorker != null) run._ownedCancelWorker!],
+      deadline: const Duration(milliseconds: 30),
+      snapshotDatabase: () async => touched.add('snapshot'),
+      closeDatabase: () async => touched.add('close'),
+      disposeNative: () async => touched.add('dispose'),
+    );
+    if (!teardown.residueRetained) touched.add('deleteRoot');
+    return {
+      'ownerRetained': retained,
+      'observation': run.observations.single,
+      'teardown': teardown.toJson(),
+      'touched': touched,
+    };
+  } finally {
+    if (!original.isCompleted) original.complete();
+    await original.future;
+  }
 }
 
 /// The order every owned resource follows after admission stops: owned workers

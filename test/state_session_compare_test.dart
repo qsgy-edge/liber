@@ -13,6 +13,94 @@ import '../tool/state_session/runner.dart';
 /// are never labelled a frozen capture and the real comparison uses the
 /// controller's raw reports from `state-capture-03`.
 void main() {
+  final actualRoot = Platform.environment['LIBER_STATE_PAIR_ROOT'];
+  final dart = Platform.environment['LIBER_STATE_DART'];
+  final library = Platform.environment['LIBER_FJS_LIBRARY'];
+  test(
+    'actual raw-asset handoff survives full CLI control recursion',
+    () async {
+      final evidence = await Directory('C:/Temp').createTemp('s8-');
+      try {
+        final handoffFile = File('$actualRoot/state-native-pair-handoff.json');
+        final originalHandoff = handoffFile.readAsStringSync();
+        final seedHash = sha256File(
+          File('$actualRoot/capture/seed-report.json'),
+        );
+        final restartHash = sha256File(
+          File('$actualRoot/capture/restart-report.json'),
+        );
+        final result = await Process.run(dart!, [
+          'run',
+          'tool/state_session/compare.dart',
+          '--corpus=tool/state_session/fixtures-selected.json',
+          '--capture=$actualRoot/capture',
+          '--handoff=$actualRoot/state-native-pair-handoff.json',
+          '--library=$library',
+          '--evidence=${evidence.path}',
+        ]);
+        expect(
+          result.exitCode,
+          0,
+          reason: '${result.stdout}\n${result.stderr}',
+        );
+        final comparison =
+            jsonDecode(
+                  File('${evidence.path}/comparison.json').readAsStringSync(),
+                )
+                as Map;
+        final controls =
+            jsonDecode(
+                  File(
+                    '${evidence.path}/negative-controls.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        expect(comparison['status'], 'pass');
+        expect((comparison['mismatches'] as List), isEmpty);
+        expect(controls['status'], 'pass');
+        expect(controls['immutableCapturesUnchanged'], true);
+        final rows = controls['controls'] as List;
+        expect(rows.length, 9);
+        expect(rows.every((row) => row['passed'] == true), true);
+        for (final row in rows) {
+          expect('${row['stdout']}', isNot(contains('raw asset binding')));
+          final name = row['name'] as String;
+          if (name.startsWith('golden-')) {
+            final derived =
+                jsonDecode(File(row['handoff'] as String).readAsStringSync())
+                    as Map;
+            final original = jsonDecode(originalHandoff) as Map;
+            final label = derived.remove('negativeControl') as Map;
+            expect(label['synthetic'], true);
+            expect(label['case'], name);
+            expect(label['originalHandoffSha256'], sha256File(handoffFile));
+            final seed = derived['seed'] as Map;
+            expect(seed.remove('sha256'), isNot(seedHash));
+            (original['seed'] as Map).remove('sha256');
+            expect(derived, original);
+          } else {
+            expect(row['handoff'], handoffFile.path);
+          }
+        }
+        expect(handoffFile.readAsStringSync(), originalHandoff);
+        expect(
+          sha256File(File('$actualRoot/capture/seed-report.json')),
+          seedHash,
+        );
+        expect(
+          sha256File(File('$actualRoot/capture/restart-report.json')),
+          restartHash,
+        );
+      } finally {
+        await evidence.delete(recursive: true);
+      }
+    },
+    skip: actualRoot == null || dart == null || library == null
+        ? 'requires explicit actual pair, Dart and FJS paths'
+        : false,
+    timeout: const Timeout(Duration(minutes: 15)),
+  );
+
   late Map<String, dynamic> corpus;
   late String corpusLf;
   late Map<String, dynamic> seedGolden;
@@ -559,6 +647,53 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test(
+    'raw asset differs from LF only with an authoritative capture binding',
+    () {
+      final golden = copy(seedGolden);
+      (golden['identity'] as Map)['corpusAssetSha256'] = 'c' * 64;
+      final handoff = _handoff(
+        corpus: corpus,
+        corpusLf: corpusLf,
+        seed: golden,
+        restart: restartGolden,
+      );
+      (handoff['corpus'] as Map)['assetSha256'] = 'c' * 64;
+      void check(Map<String, dynamic>? h, String? hash) =>
+          checkStateSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: golden,
+            phase: 'seed',
+            handoff: h,
+            goldenSha256: hash,
+          );
+      expect(() => check(handoff, 'a' * 64), returnsNormally);
+      expect(() => check(null, 'a' * 64), throwsFormatException);
+      expect(() => check(handoff, null), throwsFormatException);
+      for (final key in ['raw', 'lf', 'harness', 'file', 'missing']) {
+        final changed = copy(handoff);
+        switch (key) {
+          case 'raw':
+            (changed['corpus'] as Map)['assetSha256'] = 'd' * 64;
+          case 'lf':
+            (changed['corpus'] as Map)['sha256Lf'] = 'd' * 64;
+          case 'harness':
+            (changed['harness'] as Map)['sha256'] = 'd' * 64;
+          case 'file':
+            (changed['seed'] as Map)['sha256'] = 'd' * 64;
+          case 'missing':
+            (changed['corpus'] as Map).remove('assetSha256');
+        }
+        expect(
+          () => check(changed, 'a' * 64),
+          throwsFormatException,
+          reason: key,
+        );
+      }
+    },
+  );
 
   test('the controller handoff must name exactly these capture files', () {
     final handoff = _handoff(
