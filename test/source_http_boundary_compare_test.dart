@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../tool/http_boundary/compare.dart';
+import '../tool/http_boundary/compare.dart' as http_cli;
 import 'package:liber/source/js_source_runtime.dart' show SourceScriptError;
 import '../tool/http_boundary/runner.dart'
     show
@@ -1362,6 +1363,80 @@ HttpBoundaryComparison _v3EnvelopeComparison({
 }
 
 void main() {
+  test('public CLI uses the generation-bound integration anchor', () async {
+    final native = Platform.environment['LIBER_HTTP_CAPTURE_ROOT'];
+    if (native == null) return; // Optional immutable controller captures.
+    final root = await Directory.systemTemp.createTemp('http-anchor-');
+    final handoff =
+        jsonDecode(
+              File('$native/http-selected-handoff.json').readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final handoffFile = File('${root.path}/handoff.json');
+    Future<Map<String, dynamic>> run(
+      String anchor,
+      String corpus,
+      String name,
+    ) async {
+      handoff['integrationHead'] = anchor;
+      handoffFile.writeAsStringSync(jsonEncode(handoff));
+      final evidence = Directory('${root.path}/$name');
+      await http_cli.main([
+        '--handoff=${handoffFile.path}',
+        '--product=$native/http-product-current-01.json',
+        '--evidence=${evidence.path}',
+        '--corpus=$corpus',
+      ]);
+      return jsonDecode(
+            File('${evidence.path}/comparison.json').readAsStringSync(),
+          )
+          as Map<String, dynamic>;
+    }
+
+    try {
+      final selected = await run(
+        'b064ea5ae8f0ac77461d8e9a23a15aa99975e366',
+        'tool/http_boundary/fixtures-selected.json',
+        'selected',
+      );
+      expect(selected['status'], 'differences');
+      for (final row in selected['runs'] as List) {
+        expect(row['passed'], false);
+        expect(row['mismatchCount'], 61);
+        expect(row['notComparedCount'], 61);
+        expect(row['unattributedCount'], 0);
+        expect(row['controlsPassed'], true);
+      }
+      final wrong = await run(
+        '276a625e4aef0104240beac1908e597c6023ef93',
+        'tool/http_boundary/fixtures-selected.json',
+        'wrong-selected',
+      );
+      expect('${wrong['analysisFailure']}', contains('integration head'));
+      final wrongHistorical = await run(
+        'b064ea5ae8f0ac77461d8e9a23a15aa99975e366',
+        'tool/http_boundary/fixtures.json',
+        'wrong-historical',
+      );
+      expect(
+        '${wrongHistorical['analysisFailure']}',
+        contains('integration head'),
+      );
+      final historical = await run(
+        '276a625e4aef0104240beac1908e597c6023ef93',
+        'tool/http_boundary/fixtures.json',
+        'historical',
+      );
+      expect(
+        '${historical['analysisFailure']}',
+        isNot(contains('integration head')),
+      );
+    } finally {
+      exitCode = 0;
+      await root.delete(recursive: true);
+    }
+  });
+
   test('identical records have no difference', () {
     final golden = _report();
     final product = _product();

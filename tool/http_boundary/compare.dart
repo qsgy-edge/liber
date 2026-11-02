@@ -6153,8 +6153,10 @@ Future<void> main(List<String> args) async {
     if (handoff['status'] != 'captured') {
       throw HttpBoundaryRefusal('the handoff is not a captured session');
     }
-    if (handoff['integrationHead'] !=
-        '276a625e4aef0104240beac1908e597c6023ef93') {
+    final integrationHead = corpus['corpusVersion'] == 4
+        ? 'b064ea5ae8f0ac77461d8e9a23a15aa99975e366'
+        : '276a625e4aef0104240beac1908e597c6023ef93';
+    if (handoff['integrationHead'] != integrationHead) {
       throw HttpBoundaryRefusal(
         'the handoff names another integration head: '
         '${handoff['integrationHead']}',

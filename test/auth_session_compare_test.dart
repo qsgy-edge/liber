@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../tool/auth_session/compare.dart';
+import '../tool/auth_session/compare.dart' as auth_cli;
 import '../tool/auth_session/runner.dart';
 
 /// The corpus the comparator is written against. It is read from the checkout,
@@ -823,6 +824,46 @@ List<String> surfacesOf(Map<String, Object?> report) => [
 ];
 
 void main() {
+  test(
+    'controls-only CLI persists incomplete controls for a failed baseline',
+    () async {
+      final native = Platform.environment['LIBER_AUTH_CAPTURE_ROOT'];
+      if (native == null) return; // Optional immutable controller reports.
+      final evidence = await Directory.systemTemp.createTemp(
+        'auth-incomplete-',
+      );
+      try {
+        await auth_cli.main([
+          '--controls-only',
+          '--corpus=tool/auth_session/fixtures-selected.json',
+          '--capture=$native/auth-capture01',
+          '--evidence=${evidence.path}',
+          '--seed-product=$native/auth-product-current-01/seed-report.json',
+          '--restart-product=$native/auth-product-current-01/restart-report.json',
+        ]);
+        expect(exitCode, 1);
+        final comparison =
+            jsonDecode(
+                  File('${evidence.path}/comparison.json').readAsStringSync(),
+                )
+                as Map;
+        final controls =
+            jsonDecode(
+                  File(
+                    '${evidence.path}/negative-controls.json',
+                  ).readAsStringSync(),
+                )
+                as Map;
+        expect(comparison['status'], 'fail');
+        expect(controls['status'], 'incomplete');
+        expect(controls['controls'], isEmpty);
+        expect(controls['immutableCapturesUnchanged'], true);
+      } finally {
+        exitCode = 0;
+        await evidence.delete(recursive: true);
+      }
+    },
+  );
   final corpus = readCorpus();
 
   group('corpus pin', () {

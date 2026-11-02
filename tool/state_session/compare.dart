@@ -202,10 +202,20 @@ void checkStateSessionGolden({
       identity['targetBaselineCommit'] != corpus['baselineCommit']) {
     throw FormatException('$goldenPath captured another frozen target');
   }
-  if (!_isSha256(identity['corpusAssetSha256']) ||
-      identity['corpusAssetSha256'] != corpusSha256Lf ||
-      identity['corpusSha256Lf'] != corpusSha256Lf) {
+  final rawAsset = identity['corpusAssetSha256'];
+  if (!_isSha256(rawAsset) || identity['corpusSha256Lf'] != corpusSha256Lf) {
     throw FormatException('$goldenPath was captured against corpus bytes');
+  }
+  if (rawAsset != corpusSha256Lf) {
+    final pinned = handoff == null ? null : handoff['corpus'];
+    if (pinned is! Map ||
+        !_isSha256(pinned['assetSha256']) ||
+        pinned['assetSha256'] != rawAsset ||
+        !_isSha256(goldenSha256)) {
+      throw FormatException(
+        '$goldenPath has no authoritative raw asset binding',
+      );
+    }
   }
   if (!_isSha256(identity['harnessApkSha256'])) {
     throw FormatException('$goldenPath names no measured harness APK');
@@ -432,6 +442,11 @@ void _checkHandoff({
   }
   final harness = _object(handoff['harness'], 'handoff harness');
   final identity = _object(golden['identity'], 'golden identity');
+  if (pinned.containsKey('assetSha256') &&
+      (!_isSha256(pinned['assetSha256']) ||
+          pinned['assetSha256'] != identity['corpusAssetSha256'])) {
+    throw const FormatException('the handoff pins another corpus asset');
+  }
   if (harness['sha256'] != identity['harnessApkSha256']) {
     throw const FormatException('the handoff pins another harness APK');
   }

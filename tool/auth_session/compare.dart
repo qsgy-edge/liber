@@ -2350,8 +2350,32 @@ Future<Map<String, Object?>> _runNegativeControls({
     '${evidence.path}${Platform.pathSeparator}negative-controls',
   )..createSync(recursive: true);
   final seedGolden = _readJson(seedGoldenPath);
-  final seedProduct = _readJson(seedProductPath);
-  final restartProduct = _readJson(restartProductPath);
+  final seedProduct = _readJsonOrNull(seedProductPath);
+  final restartProduct = _readJsonOrNull(restartProductPath);
+  final observations = seedProduct?['observations'];
+  final requests = seedProduct?['requests'];
+  if (seedProduct == null ||
+      restartProduct == null ||
+      observations is! List ||
+      !observations.any(
+        (row) =>
+            row is Map &&
+            row['id'] == 'seed.headers.A' &&
+            row['value'] is Map &&
+            (row['value'] as Map).isNotEmpty,
+      ) ||
+      requests is! List ||
+      requests.isEmpty ||
+      restartProduct['identity'] is! Map) {
+    return {
+      'status': 'incomplete',
+      'reason': 'product baseline lacks required mutation targets',
+      'controls': <Map<String, Object?>>[],
+      'immutableCapturesUnchanged':
+          sha256File(File(seedGoldenPath)) == seedGoldenSha &&
+          sha256File(File(restartGoldenPath)) == restartGoldenSha,
+    };
+  }
   final controls = <Map<String, Object?>>[];
 
   Map<String, dynamic> copy(Map<String, dynamic> source) =>

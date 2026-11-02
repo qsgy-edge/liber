@@ -560,6 +560,53 @@ void main() {
     );
   });
 
+  test(
+    'raw asset differs from LF only with an authoritative capture binding',
+    () {
+      final golden = copy(seedGolden);
+      (golden['identity'] as Map)['corpusAssetSha256'] = 'c' * 64;
+      final handoff = _handoff(
+        corpus: corpus,
+        corpusLf: corpusLf,
+        seed: golden,
+        restart: restartGolden,
+      );
+      (handoff['corpus'] as Map)['assetSha256'] = 'c' * 64;
+      void check(Map<String, dynamic>? h, String? hash) =>
+          checkStateSessionGolden(
+            corpus: corpus,
+            corpusSha256Lf: corpusLf,
+            golden: golden,
+            phase: 'seed',
+            handoff: h,
+            goldenSha256: hash,
+          );
+      expect(() => check(handoff, 'a' * 64), returnsNormally);
+      expect(() => check(null, 'a' * 64), throwsFormatException);
+      expect(() => check(handoff, null), throwsFormatException);
+      for (final key in ['raw', 'lf', 'harness', 'file', 'missing']) {
+        final changed = copy(handoff);
+        switch (key) {
+          case 'raw':
+            (changed['corpus'] as Map)['assetSha256'] = 'd' * 64;
+          case 'lf':
+            (changed['corpus'] as Map)['sha256Lf'] = 'd' * 64;
+          case 'harness':
+            (changed['harness'] as Map)['sha256'] = 'd' * 64;
+          case 'file':
+            (changed['seed'] as Map)['sha256'] = 'd' * 64;
+          case 'missing':
+            (changed['corpus'] as Map).remove('assetSha256');
+        }
+        expect(
+          () => check(changed, 'a' * 64),
+          throwsFormatException,
+          reason: key,
+        );
+      }
+    },
+  );
+
   test('the controller handoff must name exactly these capture files', () {
     final handoff = _handoff(
       corpus: corpus,
