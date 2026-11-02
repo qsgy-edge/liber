@@ -1366,6 +1366,7 @@ Future<int> _runAndCompare(List<String> args) async {
   final restartGoldenSha = sha256File(File(restartGoldenPath));
   final seedGolden = _readJson(seedGoldenPath);
   final restartGolden = _readJson(restartGoldenPath);
+  final handoffSha = handoffPath == null ? null : sha256File(File(handoffPath));
   final handoff = handoffPath == null ? null : _readJson(handoffPath);
   checkStateSessionGoldenPair(
     corpus: corpus,
@@ -1468,6 +1469,9 @@ Future<int> _runAndCompare(List<String> args) async {
     restartProductPath: restartReport,
     seedGoldenSha: seedGoldenSha,
     restartGoldenSha: restartGoldenSha,
+    handoffPath: handoffPath,
+    handoff: handoff,
+    handoffSha: handoffSha,
   );
   _writeJson(
     '${evidence.path}${Platform.pathSeparator}negative-controls.json',
@@ -1475,7 +1479,8 @@ Future<int> _runAndCompare(List<String> args) async {
   );
   final originalsUnchanged =
       sha256File(File(seedGoldenPath)) == seedGoldenSha &&
-      sha256File(File(restartGoldenPath)) == restartGoldenSha;
+      sha256File(File(restartGoldenPath)) == restartGoldenSha &&
+      (handoffPath == null || sha256File(File(handoffPath)) == handoffSha);
   final pass =
       report['status'] == 'pass' &&
       controls['status'] == 'pass' &&
@@ -1501,7 +1506,13 @@ Future<Map<String, Object?>> _runNegativeControls({
   required String restartProductPath,
   required String seedGoldenSha,
   required String restartGoldenSha,
+  required String? handoffPath,
+  required Map<String, dynamic>? handoff,
+  required String? handoffSha,
 }) async {
+  if (handoffPath != null && sha256File(File(handoffPath)) != handoffSha) {
+    throw const FormatException('the original handoff changed during the run');
+  }
   final directory = Directory(
     '${evidence.path}${Platform.pathSeparator}negative-controls',
   )..createSync(recursive: true);
@@ -1581,7 +1592,21 @@ Future<Map<String, Object?>> _runNegativeControls({
     required String productRestart,
     required String mutation,
     String? requiredSurface,
+    String? requiredRefusal,
   }) async {
+    String? controlHandoff = handoffPath;
+    if (handoff != null && goldenSeed != seedGoldenPath) {
+      final derived = copy(handoff);
+      (derived['seed'] as Map)['sha256'] = sha256File(File(goldenSeed));
+      derived['negativeControl'] = {
+        'synthetic': true,
+        'case': name,
+        'originalHandoff': handoffPath,
+        'originalHandoffSha256': handoffSha,
+        'originalSeedSha256': seedGoldenSha,
+      };
+      controlHandoff = writeCopy('$name-synthetic-handoff', derived);
+    }
     final out = '${directory.path}${Platform.pathSeparator}$name-report.json';
     final log = '${directory.path}${Platform.pathSeparator}$name.log';
     final args = [
@@ -1593,6 +1618,7 @@ Future<Map<String, Object?>> _runNegativeControls({
       '--corpus=$corpusPath',
       '--golden-seed=$goldenSeed',
       '--golden-restart=$goldenRestart',
+      if (controlHandoff != null) '--handoff=$controlHandoff',
       '--library=$libraryPath',
       '--out=$out',
     ];
@@ -1614,15 +1640,21 @@ Future<Map<String, Object?>> _runNegativeControls({
         requiredSurface == null ||
         failedChecks.contains(requiredSurface) ||
         mismatchSurfaces.contains(requiredSurface);
+    final refusalHit =
+        requiredRefusal == null ||
+        (output?['analysisFailure'] is String &&
+            (output!['analysisFailure'] as String).contains(requiredRefusal));
     controls.add({
       'name': name,
       'mutation': mutation,
+      'handoff': controlHandoff,
+      'requiredRefusal': requiredRefusal,
       'expectedExit': expectedExit,
       'actualExit': run.exitCode,
       'requiredSurface': requiredSurface,
       'failedChecks': failedChecks,
       'mismatchSurfaces': mismatchSurfaces,
-      'passed': run.exitCode == expectedExit && surfaceHit,
+      'passed': run.exitCode == expectedExit && surfaceHit && refusalHit,
       'report': out,
       'log': log,
       'stdout': run.stdout.trim(),
@@ -1638,6 +1670,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture changed one observed value',
+    requiredSurface: 'observation',
   );
   await control(
     'golden-request-mutation',
@@ -1647,6 +1680,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture swapped two request rows',
+    requiredRefusal: 'request trace is not this corpus phase declaration',
   );
   await control(
     'golden-identity-mutation',
@@ -1656,6 +1690,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: seedProductPath,
     productRestart: restartProductPath,
     mutation: 'a copied seed capture named another target APK',
+    requiredRefusal: 'captured another frozen target',
   );
   await control(
     'product-value-mutation',
@@ -1665,6 +1700,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: writeCopy('product-seed-value', productSeedValue),
     productRestart: restartProductPath,
     mutation: 'a copied product seed report changed one observed value',
+    requiredSurface: 'observation',
   );
   await control(
     'product-request-mutation',
@@ -1674,6 +1710,7 @@ Future<Map<String, Object?>> _runNegativeControls({
     productSeed: writeCopy('product-seed-requests', productSeedRequests),
     productRestart: restartProductPath,
     mutation: 'a copied product seed report added an undeclared request',
+    requiredSurface: 'product-requests-seed',
   );
   await control(
     'product-identity-mutation',
@@ -1686,6 +1723,7 @@ Future<Map<String, Object?>> _runNegativeControls({
       productRestartIdentity,
     ),
     mutation: 'a copied product restart report named another corpus hash',
+    requiredSurface: 'product-corpus-identity-restart',
   );
 
   await control(
@@ -1728,7 +1766,8 @@ Future<Map<String, Object?>> _runNegativeControls({
 
   final originalsUnchanged =
       sha256File(File(seedGoldenPath)) == seedGoldenSha &&
-      sha256File(File(restartGoldenPath)) == restartGoldenSha;
+      sha256File(File(restartGoldenPath)) == restartGoldenSha &&
+      (handoffPath == null || sha256File(File(handoffPath)) == handoffSha);
   final failed = controls
       .where((control) => control['passed'] != true)
       .toList();
