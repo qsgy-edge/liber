@@ -20,7 +20,7 @@
 /// refuses a repeated URL by name where the frozen stops silently.
 ///
 /// The product fetches the pages one at a time. The frozen's declared walk is
-/// `mapAsync(AppConfig.threadCount)`, whose default is 16, an app preference
+/// `mapAsync(AppConfig.threadCount)`, whose default is 32, an app preference
 /// this product has no setting for; one page in flight is that walk at
 /// concurrency 1, with the declared order kept and every request still going
 /// through the source's own rate limit. Real concurrency would need a pipeline
