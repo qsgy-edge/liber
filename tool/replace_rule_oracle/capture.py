@@ -36,6 +36,53 @@ def check_selected_assets(apk, corpus_bytes, provenance_bytes):
                 raise ValueError('selected APK asset differs: ' + name)
 
 
+def check_selected_manifest(text):
+    """Read only the root and instrumentation identities from aapt's xmltree."""
+    stack = []
+    roots = []
+    instrumentations = []
+    for line in text.splitlines():
+        element = re.fullmatch(r'( *)E: ([\w.-]+) \(line=\d+\)', line)
+        if element:
+            indent, name = len(element.group(1)), element.group(2)
+            while stack and stack[-1]['indent'] >= indent:
+                stack.pop()
+            node = {'indent': indent, 'name': name, 'parent': stack[-1] if stack else None,
+                    'attributes': {}}
+            if node['parent'] is None:
+                roots.append(node)
+            if name == 'instrumentation':
+                instrumentations.append(node)
+            stack.append(node)
+            continue
+        if re.match(r'^ *E:', line):
+            raise ValueError('malformed selected APK manifest element')
+        attr = re.match(r'^( *)A: ([^\s=(]+)', line)
+        if not attr:
+            continue
+        if not stack or len(attr.group(1)) <= stack[-1]['indent']:
+            raise ValueError('malformed selected APK manifest attribute location')
+        node, key = stack[-1], attr.group(2)
+        if not ((node['parent'] is None and node['name'] == 'manifest' and key == 'package') or
+                (node['name'] == 'instrumentation' and key in ('android:name', 'android:targetPackage'))):
+            continue
+        match = re.fullmatch(r' *A: [^\s=(]+(?:\((0x[0-9a-fA-F]+)\))?="([^"]*)"(?: \(Raw: "([^"]*)"\))?', line)
+        expected_id = {'package': None, 'android:name': '0x01010003',
+                       'android:targetPackage': '0x01010021'}[key]
+        if (match is None or match.group(1) != expected_id or
+                (match.group(3) is not None and match.group(2) != match.group(3))):
+            raise ValueError('malformed selected APK manifest identity attribute: ' + key)
+        node['attributes'].setdefault(key, []).append(match.group(2))
+    if len(roots) != 1 or roots[0]['name'] != 'manifest' or len(instrumentations) != 1:
+        raise ValueError('selected APK must contain one manifest root and instrumentation entry')
+    root, entry = roots[0], instrumentations[0]
+    if (entry['parent'] is not root or
+            root['attributes'].get('package') != ['io.liber.oracle.replace.selected'] or
+            entry['attributes'].get('android:name') != ['io.liber.oracle.nested.SelectedReaderOracle'] or
+            entry['attributes'].get('android:targetPackage') != ['com.legado.app.debug']):
+        raise ValueError('selected APK manifest package, instrumentation name or target differs')
+
+
 def check_selected_report(fixture, report, binding):
     """Fail closed on selected capture identity, observations and terminal cleanup."""
     def require(condition, message):
@@ -255,13 +302,7 @@ def main():
             aapt = str(tools / 'aapt.exe')
             xml = run([aapt, 'dump', 'xmltree', str(args.apk), 'AndroidManifest.xml'], 'apk-manifest')
             text = xml.stdout.decode(errors='replace')
-            if len(re.findall(r'E: instrumentation \(line=', text)) != 1:
-                raise ValueError('selected APK must contain exactly one instrumentation entry')
-            for expected in ('package="io.liber.oracle.replace.selected"',
-                             '"io.liber.oracle.nested.SelectedReaderOracle"',
-                             '"com.legado.app.debug"'):
-                if expected not in text:
-                    raise ValueError('selected APK manifest missing ' + expected)
+            check_selected_manifest(text)
             sig = run([str(args.java_home / 'bin/java.exe'), '-jar', str(tools / 'lib/apksigner.jar'),
                        'verify', '--print-certs', str(args.apk)], 'apk-signature')
             signer_digests = re.findall(r'Signer #(\d+) certificate SHA-256 digest: ([0-9a-f]{64})',

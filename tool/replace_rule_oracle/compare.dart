@@ -306,6 +306,11 @@ Map<String, Object?> compareRows(
             (row['textList'] as List).join('\n') != row['content'] ||
             row['sameTitleRemoved'] is! bool ||
             !row.containsKey('effectiveRules') ||
+            (row['effectiveRules'] != null &&
+                (row['effectiveRules'] is! List ||
+                    !(row['effectiveRules'] as List).every(
+                      (value) => value is String,
+                    ))) ||
             row['disabledRules'] is! List ||
             (row['id'] == 'timeout' &&
                 (row['timeoutObserved'] is! bool ||

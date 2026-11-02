@@ -176,12 +176,12 @@ public final class SelectedReaderOracle extends ReaderOracle {
             JSONArray rows = new JSONArray(); report.put("rows", rows);
             JSONArray cases = corpus.getJSONArray("cases");
             for (int i = 0; i < cases.length(); i++) {
+                terminalProved = false;
                 JSONObject input = cases.getJSONObject(i);
                 JSONObject row = new JSONObject().put("id", input.getString("id")); rows.put(row);
                 long started = System.nanoTime();
                 try {
                     if (!children().isEmpty()) throw new IllegalStateException("DEFAULT job was not empty before row");
-                    terminalProved = false;
                     readerCalls = new JSONArray();
                     row.put("readerCalls", readerCalls);
                     runRow(input, row, dao, config);

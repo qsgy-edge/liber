@@ -193,6 +193,28 @@ void main() {
       }
     }
     expect((compare(synthetic)['counts'] as Map)['fail'], 0);
+    final firstFrozenRow = (synthetic['rows'] as List).first as Map;
+    for (final valid in [
+      null,
+      <String>[],
+      <String>['rule'],
+    ]) {
+      firstFrozenRow['effectiveRules'] = valid;
+      expect((compare(synthetic)['counts'] as Map)['fail'], 0);
+    }
+    for (final invalid in [
+      42,
+      {'name': 'rule'},
+      ['rule', 42],
+    ]) {
+      firstFrozenRow['effectiveRules'] = invalid;
+      expect(
+        () => compare(synthetic),
+        throwsFormatException,
+        reason: '$invalid',
+      );
+    }
+    firstFrozenRow['effectiveRules'] = <String>[];
     product.first['disabledRules'] = ['wrong'];
     expect((compare(synthetic)['counts'] as Map)['fail'], 1);
     product.first['disabledRules'] = <String>[];

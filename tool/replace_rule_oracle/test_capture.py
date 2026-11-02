@@ -60,6 +60,44 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
                 **({'timeoutObserved': False, 'restartObservation': 'notCompared: synthetic'} if case['id'] == 'timeout' else {}),
                 'readerCalls': [dict(terminal, method='getDisplayTitle'), dict(terminal, method='getContent')]})
 
+    def test_manifest_attributes_belong_to_their_actual_nodes(self):
+        # Synthetic aapt xmltree metadata only; no APK or device is involved.
+        text = '''N: android=http://schemas.android.com/apk/res/android
+  E: manifest (line=1)
+    A: package="io.liber.oracle.replace.selected" (Raw: "io.liber.oracle.replace.selected")
+    E: application (line=3)
+      A: android:label(0x01010001)="normal" (Raw: "normal")
+    E: instrumentation (line=4)
+      A: android:name(0x01010003)="io.liber.oracle.nested.SelectedReaderOracle" (Raw: "io.liber.oracle.nested.SelectedReaderOracle")
+      A: android:targetPackage(0x01010021)="com.legado.app.debug" (Raw: "com.legado.app.debug")
+'''
+        capture.check_selected_manifest(text)
+        entry = 'io.liber.oracle.nested.SelectedReaderOracle'
+        target = 'com.legado.app.debug'
+        package = 'io.liber.oracle.replace.selected'
+        cases = [
+            text.replace('android:targetPackage(0x01010021)="' + target + '" (Raw: "' + target + '")',
+                         'android:targetPackage(0x01010021)="wrong" (Raw: "wrong")').replace('"normal"', '"' + target + '"'),
+            text.replace('android:name(0x01010003)="' + entry + '" (Raw: "' + entry + '")',
+                         'android:name(0x01010003)="wrong" (Raw: "wrong")').replace('"normal"', '"' + entry + '"'),
+            text.replace('package="' + package + '"', 'package="wrong"').replace('"normal"', '"' + package + '"'),
+            text.replace('      A: android:targetPackage', '      A: android:otherTarget'),
+            text + '      A: android:name(0x01010003)="' + entry + '" (Raw: "' + entry + '")\n',
+            text + '      A: android:targetPackage(0x01010021)="' + target + '" (Raw: "' + target + '")\n',
+            text.replace('    E: application', '    A: package="' + package + '" (Raw: "' + package + '")\n    E: application'),
+            text + '    E: instrumentation (line=5)\n',
+            text.replace('android:name(0x01010003)', 'android:name(0x01010001)'),
+            text.replace('android:targetPackage(0x01010021)', 'android:targetPackage'),
+            text.replace('(Raw: "' + target + '")', '(Raw: "wrong")'),
+            text.replace('    E: instrumentation', '      E: instrumentation'),
+            text.replace('android:targetPackage(0x01010021)="' + target + '"',
+                         'android:targetPackage(0x01010021)=(type 0x10)0x0'),
+        ]
+        for index, invalid in enumerate(cases):
+            with self.subTest(index=index):
+                with self.assertRaises(ValueError):
+                    capture.check_selected_manifest(invalid)
+
     def test_selector_refuses_arbitrary_corpus_before_device(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / 'receipt'
