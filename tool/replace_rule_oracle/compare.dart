@@ -33,13 +33,11 @@ String sha256Bytes(Uint8List bytes) => SHA256Digest()
 
 String sha256File(File file) => sha256Bytes(file.readAsBytesSync());
 
-/// This tool directory is not in `.gitattributes`'s `text eol=lf` list, so the
-/// committed evidence pins hash a CRLF working tree. Hash the corpus with those
-/// line endings, so one pin means the same corpus content on an LF checkout and
-/// on the Windows checkout that produced the evidence.
+/// Canonical selected-corpus and source identity, independent of checkout line endings.
 String sha256LfFile(File file) =>
     sha256Bytes(utf8.encode(file.readAsStringSync().replaceAll('\r\n', '\n')));
 
+/// The historical committed evidence pins the corpus's CRLF working-tree form.
 String sha256CrlfFile(File file) => sha256Bytes(
   utf8.encode(
     file.readAsStringSync().replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'),
