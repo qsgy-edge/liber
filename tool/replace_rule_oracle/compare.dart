@@ -10,6 +10,22 @@ import 'package:liber/source/native_library.dart';
 import 'package:liber/store/database.dart' show ReplaceRule;
 import 'package:pointycastle/digests/sha256.dart';
 
+const selectedReaderFingerprint =
+    'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys';
+
+const selectedReaderSourcePaths = [
+  'tool/replace_rule_oracle/ReaderOracle.java',
+  'tool/replace_rule_oracle/SelectedReaderOracle.java',
+  'tool/replace_rule_oracle/GuardedReaderApplication.java',
+  'tool/replace_rule_oracle/AndroidManifest-selected.xml',
+  'tool/replace_rule_oracle/build.ps1',
+  'tool/replace_rule_oracle/capture.py',
+  'tool/replace_rule_oracle/compare.dart',
+  'tool/nested_oracle/StateSessionOracle.java',
+  'tool/nested_oracle/HostRuntimeInit.java',
+  'tool/nested_oracle/ShortcutStartupGuard.java',
+];
+
 String sha256Bytes(Uint8List bytes) => SHA256Digest()
     .process(bytes)
     .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
@@ -21,6 +37,9 @@ String sha256File(File file) => sha256Bytes(file.readAsBytesSync());
 /// committed evidence pins hash a CRLF working tree. Hash the corpus with those
 /// line endings, so one pin means the same corpus content on an LF checkout and
 /// on the Windows checkout that produced the evidence.
+String sha256LfFile(File file) =>
+    sha256Bytes(utf8.encode(file.readAsStringSync().replaceAll('\r\n', '\n')));
+
 String sha256CrlfFile(File file) => sha256Bytes(
   utf8.encode(
     file.readAsStringSync().replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'),
@@ -107,14 +126,197 @@ Map<String, Object?> compareRows(
     if (golden['failure'] != null || golden['cleanupFailure'] != null) {
       throw const FormatException('Frozen run failed');
     }
+    if (fixture['corpusVersion'] == 2) {
+      final identity = golden['identity'];
+      final initialization = golden['hostInitialization'];
+      final provenance = golden['provenance'];
+      final isolation = golden['isolation'];
+      final startup = golden['startupContainment'];
+      final entryPoints = golden['entryPoints'];
+      final owner = golden['terminalOwner'];
+      final hostCapture = golden['hostCapture'];
+      final preflight = hostCapture is Map ? hostCapture['preflight'] : null;
+      bool hashValue(Object? value) =>
+          value is String && RegExp(r'^[0-9a-f]{64}$').hasMatch(value);
+      bool hashMap(Object? value, Iterable<Object?> expected) =>
+          value is Map &&
+          value.length == expected.length &&
+          expected.every((key) => hashValue(value[key]));
+      final requiredWrappers = {
+        for (final row
+            in (fixture['hostInitialization'] as Map)['registrations'] as List)
+          row['type']: row['factory'],
+      };
+      final probe = isolation is Map ? isolation['preferenceProbe'] : null;
+      if (fixture['fixtureId'] != 'REPLACE-17' ||
+          fixture['baselineCommit'] !=
+              'a7d37f1707a70a459ad708f4fe79341d1e42d716' ||
+          golden['fingerprint'] != selectedReaderFingerprint ||
+          golden['paragraphIndent'] != '　　' ||
+          identity is! Map ||
+          hostCapture is! Map ||
+          hostCapture['existingDataHashesUnchanged'] != true ||
+          hostCapture['harnessRemoved'] != true ||
+          hostCapture['installedHarnessSha256'] !=
+              identity['harnessApkSha256'] ||
+          preflight is! Map ||
+          ![
+            'corpusAssetSha256',
+            'corpusSha256Lf',
+            'harnessApkSha256',
+            'provenanceAssetSha256',
+          ].every((key) => preflight[key] == identity[key]) ||
+          !hashValue(identity['harnessApkSha256']) ||
+          !hashValue(identity['corpusAssetSha256']) ||
+          !hashValue(identity['provenanceAssetSha256']) ||
+          provenance is! Map ||
+          provenance['baselineCommit'] != fixture['baselineCommit'] ||
+          provenance['corpusSha256Lf'] != fixtureSha256 ||
+          provenance['corpusAssetSha256'] != identity['corpusAssetSha256'] ||
+          ![
+            'corpusAssetSha256',
+            'corpusSha256Lf',
+            'dexSha256',
+            'sourceHashes',
+            'sourceHashesLf',
+            'referenceHashes',
+          ].every((key) => _equal(preflight[key], provenance[key])) ||
+          !hashValue(provenance['dexSha256']) ||
+          !hashMap(provenance['sourceHashes'], selectedReaderSourcePaths) ||
+          !hashMap(provenance['sourceHashesLf'], selectedReaderSourcePaths) ||
+          !selectedReaderSourcePaths
+              .where(
+                (path) =>
+                    !path.endsWith('/compare.dart') &&
+                    !path.endsWith('/capture.py') &&
+                    !path.endsWith('/build.ps1'),
+              )
+              .every(
+                (path) =>
+                    File(path).existsSync() &&
+                    (provenance['sourceHashesLf'] as Map)[path] ==
+                        sha256LfFile(File(path)),
+              ) ||
+          !hashMap(
+            provenance['referenceHashes'],
+            (fixture['frozenSources'] as List).map((row) => row['path']),
+          ) ||
+          !(fixture['frozenSources'] as List).every(
+            (row) =>
+                (provenance['referenceHashes'] as Map)[row['path']] ==
+                row['sha256'],
+          ) ||
+          identity['targetPackage'] != 'com.legado.app.debug' ||
+          identity['targetApkSha256'] !=
+              (fixture['target'] as Map)['apkSha256'] ||
+          identity['harnessPackage'] != 'io.liber.oracle.replace.selected' ||
+          identity['corpusSha256Lf'] != fixtureSha256 ||
+          initialization is! Map ||
+          initialization['verified'] != true ||
+          initialization['applicationAttached'] != false ||
+          initialization['method'] !=
+              (fixture['hostInitialization'] as Map)['method'] ||
+          !_equal(initialization['registeredWrappers'], requiredWrappers) ||
+          isolation is! Map ||
+          isolation['verified'] != true ||
+          isolation['application'] !=
+              'io.liber.oracle.nested.GuardedReaderApplication' ||
+          probe is! Map ||
+          probe['registered'] != true ||
+          probe['committed'] != true ||
+          probe['scopedFile'] != true ||
+          probe['installationFile'] != false ||
+          startup is! Map ||
+          startup['intercepted'] != 1 ||
+          startup['handled'] != 1 ||
+          startup['beforeBinding'] != true ||
+          owner is! Map ||
+          owner['scope'] != 'Coroutine.DEFAULT' ||
+          owner['rootActive'] != true ||
+          owner['rootCompleted'] != false ||
+          owner['baselineChildren'] != 0 ||
+          !(owner['childrenMethod'] is String &&
+              (owner['childrenMethod'] as String).contains(
+                'kotlinx.coroutines.Job.getChildren()',
+              )) ||
+          !(owner['completionMethod'] is String &&
+              (owner['completionMethod'] as String).contains(
+                'kotlinx.coroutines.Job.isCompleted()',
+              )) ||
+          entryPoints is! Map ||
+          entryPoints['getContentArity'] != 10 ||
+          entryPoints['getDisplayTitleArity'] != 4 ||
+          !(entryPoints['getDisplayTitle'] is String &&
+              (entryPoints['getDisplayTitle'] as String).contains(
+                'getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)',
+              )) ||
+          !(entryPoints['getContent'] is String &&
+              (entryPoints['getContent'] as String).contains(
+                'getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)',
+              )) ||
+          golden['settingsBefore'] is! Map ||
+          !(golden['settingsBefore'] as Map).containsKey('backupPath') ||
+          (golden['settingsBefore'] as Map)['backupPath'] != null ||
+          (golden['settingsBefore'] as Map)['paragraphIndent'] is! String ||
+          (golden['settingsBefore'] as Map)['adaptSpecialStyle'] is! bool ||
+          (golden['settingsBefore'] as Map)['chineseConverterType'] is! int ||
+          (golden['settingsBefore'] as Map)['replaceEnableDefault'] is! bool) {
+        throw const FormatException(
+          'Selected frozen capture identity or initialization is unverified',
+        );
+      }
+    }
     final cleanup = golden['cleanup'] as Map?;
     if (cleanup?['databaseClosed'] != true ||
-        cleanup?['scratchRemoved'] != true) {
+        cleanup?['scratchRemoved'] != true ||
+        (fixture['corpusVersion'] == 2 &&
+            (cleanup?['terminalProved'] != true ||
+                cleanup?['activityLaunchAttempts'] != 0 ||
+                cleanup?['scratchRetained'] != false ||
+                cleanup?['preferencesRemoved'] is! List ||
+                (cleanup!['preferencesRemoved'] as List).isEmpty ||
+                !(cleanup['preferencesRemoved'] as List).every(
+                  (row) =>
+                      row is Map &&
+                      row['ok'] == true &&
+                      row['name'] is String &&
+                      (row['name'] as String).startsWith(
+                        'liber_replace_selected_',
+                      ),
+                )))) {
       throw const FormatException('Frozen cleanup is unverified');
     }
     frozen = (golden['rows'] as List).cast<Map>();
     checkIds(frozen, 'frozen');
     for (final row in frozen) {
+      if (fixture['corpusVersion'] == 2) {
+        bool terminal(Object? value) =>
+            value is Map &&
+            value['allCompleted'] == true &&
+            value['rootEmpty'] == true &&
+            value['launchAttempts'] == 0;
+        final calls = row['readerCalls'];
+        if (!terminal(row['terminal']) ||
+            calls is! List ||
+            calls.length != 2 ||
+            !terminal(calls[0]) ||
+            (calls[0] as Map)['method'] != 'getDisplayTitle' ||
+            !terminal(calls[1]) ||
+            (calls[1] as Map)['method'] != 'getContent' ||
+            row['textList'] is! List ||
+            !(row['textList'] as List).every((value) => value is String) ||
+            (row['textList'] as List).join('\n') != row['content'] ||
+            row['sameTitleRemoved'] is! bool ||
+            !row.containsKey('effectiveRules') ||
+            row['disabledRules'] is! List ||
+            (row['id'] == 'timeout' &&
+                (row['timeoutObserved'] is! bool ||
+                    row['restartObservation'] is! String))) {
+          throw FormatException(
+            'Selected row ${row['id']} has incomplete terminal/observations',
+          );
+        }
+      }
       if (row['status'] != 'observed') {
         throw FormatException(
           'Not a frozen golden: row ${row['id']} status is `${row['status']}`. '
@@ -143,7 +345,12 @@ Map<String, Object?> compareRows(
     };
     // All calls record title/content/selection, even on single-scope rows, so
     // accidental cross-scope replacement cannot hide in an unobserved field.
-    for (final field in ['title', 'content', 'selection']) {
+    for (final field in [
+      'title',
+      'content',
+      'selection',
+      if (fixture['corpusVersion'] == 2) 'disabledRules',
+    ]) {
       if (expected == null || expected['status'] != 'observed') {
         observations[field] = 'not-run';
         continue;
@@ -181,6 +388,15 @@ Map<String, Object?> compareRows(
       'observations': observations,
       'differences': differences,
       'policy': ?policy,
+      if (fixture['corpusVersion'] == 2 && expected != null) ...{
+        'frozenReturnFields': {
+          'textList': expected['textList'],
+          'sameTitleRemoved': expected['sameTitleRemoved'],
+          'effectiveRules': expected['effectiveRules'],
+        },
+        'frozenReturnFieldsComparison':
+            'notCompared: product exposes final text only',
+      },
       if (input['id'] == 'timeout') ...{
         'comparison': 'notCompared',
         'timeoutObserved': expected?['timeoutObserved'],
@@ -296,21 +512,45 @@ Future<List<Map<String, Object?>>> observeProduct(
 }
 
 Future<void> main(List<String> args) async {
-  if (args.length != 3) {
+  final selected =
+      args.length == 5 &&
+      args[0] == '--corpus' &&
+      File(args[1]).absolute.path ==
+          File('tool/replace_rule_oracle/fixtures-selected.json').absolute.path;
+  if ((!selected && args.length != 3) ||
+      (args.length == 3 && args[0] == '--corpus')) {
     stderr.writeln(
       'Usage: dart run tool/replace_rule_oracle/compare.dart '
+      '[--corpus tool/replace_rule_oracle/fixtures-selected.json] '
       '<library> <golden.json|-> <output.json>',
     );
     exitCode = 64;
     return;
   }
-  final file = File('tool/replace_rule_oracle/fixtures.json');
+  final positional = selected ? args.sublist(2) : args;
+  final file = File(
+    selected
+        ? 'tool/replace_rule_oracle/fixtures-selected.json'
+        : 'tool/replace_rule_oracle/fixtures.json',
+  );
   final fixture = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-  final goldenFile = args[1] == '-' ? null : File(args[1]);
+  if (selected &&
+      (fixture['fixtureId'] != 'REPLACE-17' ||
+          fixture['corpusVersion'] != 2 ||
+          fixture['baselineCommit'] !=
+              'a7d37f1707a70a459ad708f4fe79341d1e42d716' ||
+          (fixture['target'] as Map)['package'] != 'com.legado.app.debug' ||
+          (fixture['target'] as Map)['apkSha256'] !=
+              '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5' ||
+          sha256LfFile(file) !=
+              '6d73f51c2a03a93b728075a2d2acb4b8a4c8e31f454961b6a4eb7c3e318a1548')) {
+    throw const FormatException('Selected corpus identity differs');
+  }
+  final goldenFile = positional[1] == '-' ? null : File(positional[1]);
   final golden = goldenFile == null
       ? null
       : jsonDecode(goldenFile.readAsStringSync()) as Map<String, dynamic>;
-  await NativeLibrary.initialize(libraryPath: args[0]);
+  await NativeLibrary.initialize(libraryPath: positional[0]);
   try {
     final product = await observeProduct(fixture);
     final report = compareRows(
@@ -320,11 +560,11 @@ Future<void> main(List<String> args) async {
       // The corpus pin must mean the same corpus on every host, and must agree
       // with the committed report's own `fixtureSha256`; `sha256File` would
       // record this checkout's line endings instead.
-      fixtureSha256: sha256CrlfFile(file),
+      fixtureSha256: selected ? sha256LfFile(file) : sha256CrlfFile(file),
     );
     report.addAll({
       'product': product,
-      'librarySha256': sha256File(File(args[0])),
+      'librarySha256': sha256File(File(positional[0])),
       'goldenSha256': goldenFile == null ? null : sha256File(goldenFile),
       'productCommit': (await Process.run('git', [
         'rev-parse',
@@ -342,7 +582,7 @@ Future<void> main(List<String> args) async {
           path: sha256File(File(path)),
       },
     });
-    File(args[2])
+    File(positional[2])
       ..parent.createSync(recursive: true)
       ..writeAsStringSync(
         '${const JsonEncoder.withIndent('  ').convert(report)}\n',

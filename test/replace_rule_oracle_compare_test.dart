@@ -32,6 +32,7 @@ void main() {
           'title': 'title',
           'content': '　　body',
           'selection': {'title': <String>[], 'content': <String>[]},
+          'disabledRules': <String>[],
         },
     ];
     synthetic = {
@@ -49,6 +50,187 @@ void main() {
     golden,
     fixtureSha256: 'synthetic-test-hash',
   );
+
+  test('selected corpus cannot admit a legacy-only golden envelope', () {
+    fixture =
+        jsonDecode(
+              File(
+                'tool/replace_rule_oracle/fixtures-selected.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    synthetic.addAll({
+      'corpusVersion': fixture['corpusVersion'],
+      'baselineCommit': fixture['baselineCommit'],
+    });
+    expect(() => compare(synthetic), throwsFormatException);
+    expect((compare(null)['counts'] as Map)['not-run'], 15);
+    synthetic['identity'] = {
+      'targetPackage': 'com.legado.app.debug',
+      'targetApkSha256': (fixture['target'] as Map)['apkSha256'],
+      'harnessPackage': 'io.liber.oracle.replace.selected',
+      'corpusSha256Lf': 'synthetic-test-hash',
+      'harnessApkSha256': 'a' * 64,
+      'corpusAssetSha256': 'b' * 64,
+      'provenanceAssetSha256': 'd' * 64,
+    };
+    synthetic['provenance'] = {
+      'baselineCommit': fixture['baselineCommit'],
+      'corpusAssetSha256': 'b' * 64,
+      'corpusSha256Lf': 'synthetic-test-hash',
+      'dexSha256': 'e' * 64,
+      'sourceHashes': {
+        for (final name in selectedReaderSourcePaths) name: 'f' * 64,
+      },
+      'sourceHashesLf': {
+        for (final name in selectedReaderSourcePaths)
+          name: sha256LfFile(File(name)),
+      },
+      'referenceHashes': {
+        for (final r in fixture['frozenSources'] as List)
+          r['path']: r['sha256'],
+      },
+    };
+    synthetic['hostCapture'] = {
+      'existingDataHashesUnchanged': true,
+      'harnessRemoved': true,
+      'installedHarnessSha256': 'a' * 64,
+      'preflight': {
+        'harnessApkSha256': 'a' * 64,
+        'provenanceAssetSha256': 'd' * 64,
+        for (final entry in (synthetic['provenance'] as Map).entries)
+          if (entry.key != 'baselineCommit') entry.key: entry.value,
+      },
+    };
+    synthetic['hostInitialization'] = {
+      'verified': true,
+      'applicationAttached': false,
+      'method': (fixture['hostInitialization'] as Map)['method'],
+      'registeredWrappers': {
+        for (final r
+            in (fixture['hostInitialization'] as Map)['registrations'] as List)
+          r['type']: r['factory'],
+      },
+    };
+    synthetic['isolation'] = {
+      'verified': true,
+      'application': 'io.liber.oracle.nested.GuardedReaderApplication',
+      'preferenceProbe': {
+        'registered': true,
+        'committed': true,
+        'scopedFile': true,
+        'installationFile': false,
+      },
+    };
+    synthetic['startupContainment'] = {
+      'intercepted': 1,
+      'handled': 1,
+      'beforeBinding': true,
+    };
+    synthetic['entryPoints'] = {
+      'getContentArity': 10,
+      'getDisplayTitleArity': 4,
+      'getDisplayTitle':
+          'synthetic getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)',
+      'getContent':
+          'synthetic getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)',
+    };
+    synthetic['terminalOwner'] = {
+      'scope': 'Coroutine.DEFAULT',
+      'rootActive': true,
+      'rootCompleted': false,
+      'baselineChildren': 0,
+      'childrenMethod':
+          'kotlin.sequences.Sequence kotlinx.coroutines.Job.getChildren()',
+      'completionMethod': 'boolean kotlinx.coroutines.Job.isCompleted()',
+    };
+    synthetic['settingsBefore'] = {
+      'backupPath': null,
+      'paragraphIndent': '　　',
+      'adaptSpecialStyle': true,
+      'chineseConverterType': 0,
+      'replaceEnableDefault': true,
+    };
+    synthetic['paragraphIndent'] = '　　';
+    synthetic['fingerprint'] = selectedReaderFingerprint;
+    synthetic['cleanup'] = {
+      'databaseClosed': true,
+      'scratchRemoved': true,
+      'terminalProved': true,
+      'activityLaunchAttempts': 0,
+      'scratchRetained': false,
+      'preferencesRemoved': [
+        {'name': 'liber_replace_selected_probe', 'ok': true},
+      ],
+    };
+    for (final row in synthetic['rows'] as List) {
+      row['terminal'] = {
+        'allCompleted': true,
+        'rootEmpty': true,
+        'launchAttempts': 0,
+      };
+      row['readerCalls'] = [
+        {
+          'method': 'getDisplayTitle',
+          'allCompleted': true,
+          'rootEmpty': true,
+          'launchAttempts': 0,
+        },
+        {
+          'method': 'getContent',
+          'allCompleted': true,
+          'rootEmpty': true,
+          'launchAttempts': 0,
+        },
+      ];
+      row['textList'] = <String>['　　body'];
+      row['sameTitleRemoved'] = false;
+      row['effectiveRules'] = <String>[];
+      row['disabledRules'] = <String>[];
+      if (row['id'] == 'timeout') {
+        row['timeoutObserved'] = false;
+        row['restartObservation'] = 'notCompared: synthetic';
+      }
+    }
+    expect((compare(synthetic)['counts'] as Map)['fail'], 0);
+    product.first['disabledRules'] = ['wrong'];
+    expect((compare(synthetic)['counts'] as Map)['fail'], 1);
+    product.first['disabledRules'] = <String>[];
+    final corruptions = <void Function(Map<String, dynamic>)>[
+      (x) => (x['hostCapture'] as Map)['existingDataHashesUnchanged'] = false,
+      (x) => (x['hostCapture'] as Map)['installedHarnessSha256'] = 'bad',
+      (x) => (x['identity'] as Map)['targetApkSha256'] = 'wrong',
+      (x) => (x['identity'] as Map)['corpusSha256Lf'] = 'wrong',
+      (x) => (x['identity'] as Map)['harnessApkSha256'] = 'bad',
+      (x) => (x['provenance'] as Map)['dexSha256'] = 'bad',
+      (x) =>
+          (x['provenance']
+                  as Map)['sourceHashesLf'][selectedReaderSourcePaths.first] =
+              'a' * 64,
+      (x) => (x['hostInitialization'] as Map)['registeredWrappers'] = {},
+      (x) =>
+          (x['isolation'] as Map)['preferenceProbe']['installationFile'] = true,
+      (x) => (x['hostInitialization'] as Map)['verified'] = false,
+      (x) => (x['isolation'] as Map)['application'] = 'android.app.Application',
+      (x) => (x['startupContainment'] as Map)['handled'] = 0,
+      (x) => (x['entryPoints'] as Map)['getContentArity'] = 7,
+      (x) => (x['settingsBefore'] as Map)['backupPath'] = 'occupied',
+      (x) => x['fingerprint'] = 'wrong',
+      (x) => x['paragraphIndent'] = ' ',
+      (x) => (x['terminalOwner'] as Map)['baselineChildren'] = 1,
+      (x) => (x['cleanup'] as Map)['activityLaunchAttempts'] = 1,
+      (x) => ((x['rows'] as List)[0] as Map)['terminal']['rootEmpty'] = false,
+      (x) => ((x['rows'] as List)[0] as Map).remove('textList'),
+      (x) => ((x['rows'] as List)[0] as Map)['textList'] = [
+        'not the returned content',
+      ],
+    ];
+    for (final corrupt in corruptions) {
+      final copy = jsonDecode(jsonEncode(synthetic)) as Map<String, dynamic>;
+      corrupt(copy);
+      expect(() => compare(copy), throwsFormatException);
+    }
+  });
 
   test('missing frozen evidence leaves every row not-run', () {
     final result = compare(null);

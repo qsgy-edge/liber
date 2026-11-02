@@ -1,5 +1,61 @@
 # Frozen reader-processing oracle (#17)
 
+## Selected reference preparation (#138)
+
+`fixtures-selected.json` is REPLACE-17 version 2 bound to selected source
+`a7d37f1` and `com.legado.app.debug`, with the same 15 ordered historical case
+inputs. It is preparation only: its device row remains **not-run** until the
+controller captures the selected APK on the approved handset. It contains no
+expected reader outputs. The legacy version 1 corpus and its evidence below
+retain their original identities.
+
+The selected instrumentation has its own fixed manifest and entry, using the
+unchanged shared scratch, shortcut and host-initialization helpers by path.
+It invokes the real selected 4-argument title and 10-argument content methods.
+Its selected-only Application refuses activity launches, and each reader call
+must establish quiescence of the actual `Coroutine.DEFAULT` Job before the next
+call. A launch attempt, unproved terminal state, failed cleanup or any failed
+row makes the run incomplete; failed owned scratch is retained for controller
+recovery. No timeout input is amplified or treated as an observed timeout by
+this preparation.
+
+Build against the actual fixed reference checkout and the existing local SDK/JDK;
+no dependency download or device operation is part of a build:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tool/replace_rule_oracle/build.ps1 `
+  -OutputDirectory C:/Temp/reader-selected-build `
+  -JavaHome <existing-jdk-17> -FrozenSource <fixed-selected-source> `
+  -CorpusPath tool/replace_rule_oracle/fixtures-selected.json
+python tool/replace_rule_oracle/capture.py --preflight-only --serial not-used `
+  --apk C:/Temp/reader-selected-build/reader-oracle.apk --frozen-source <fixed-selected-source> `
+  --corpus tool/replace_rule_oracle/fixtures-selected.json --java-home <existing-jdk-17> `
+  --output C:/Temp/reader-selected-preflight
+```
+
+Preflight inspects selected manifest, signer, APK assets, packaged dex and
+source/provenance binding without invoking adb. The build records both raw
+packaged asset and LF-normalized corpus identities. A controller-only actual
+capture uses the same command without `--preflight-only`, with the approved
+serial and a fresh output directory; there is one installation attempt. An
+existing unowned harness is refused. A failed selected lifetime is left for
+controller-directed force-stop/recovery, not silently cleaned or retried.
+
+```powershell
+dart run tool/replace_rule_oracle/compare.dart `
+  --corpus tool/replace_rule_oracle/fixtures-selected.json <fjs.dll> - `
+  C:/Temp/reader-selected-product.json
+```
+
+Without a selected golden the product-only command exits 2 and reports all 15
+frozen rows not-run. Replace `-` only with a real selected capture's golden;
+the historical comparison report remains refused as a golden. The selected
+gate also requires `textList` to join to the exact returned content, compares
+the disabled-rule list, and keeps `sameTitleRemoved` and effective rules as
+frozen-only observations because the product interface exposes final text rather
+than those return fields. Existing named refusal and timeout treatment is not
+generalized into selected parity.
+
 `ReaderOracle.java` is a disposable instrumentation entry into the installed,
 hash-pinned frozen APK. It calls the actual `ContentProcessor.getContent` with
 `includeTitle=false`, `BookChapter.getDisplayTitle`, and the processor's real Room

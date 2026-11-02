@@ -1,0 +1,505 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "REPLACE-17",
+  "corpusVersion": 2,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "entryPoint": "ContentProcessor.getContent + BookChapter.getDisplayTitle",
+  "comparisonBoundary": "Final ContentProcessor.getContent result with includeTitle=false, including its paragraph shaping loop (ContentProcessor.kt:177-198); title observations use BookChapter.getDisplayTitle",
+  "deviceOracle": {
+    "status": "not-run",
+    "owner": "#138",
+    "reason": "Selected reader capture has not been executed."
+  },
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/help/book/ContentProcessor.kt",
+      "sha1": "3c8115d90ca9293b665edd24a520c6a58fd691b7",
+      "rows": "duplicate title, reSegment, conversion, content rules, timeout, and stage boundary",
+      "sha256": "c4ad0d71d38d622006df3e4238cfcfc419a3e6670a04c4c49117b15ca93e9e34"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "4b4a5d5e0957b8b4de5a518b9ed326d063cd0edc",
+      "rows": "display title conversion and title rules",
+      "sha256": "3530eb168b00d08659a43f21fb3870bcda81e146e1670c4aa314c8df89167765"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/dao/ReplaceRuleDao.kt",
+      "sha1": "67fa6f4291b454cc7685835c31a2a2b2136c2b69",
+      "rows": "scope, excludeScope, enabled flags, and sortOrder",
+      "sha256": "67bf13397bf3ec39cdcb06c25c803d1a0a77e772a952e61a8e7bd94051e4754f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/RegexExtensions.kt",
+      "sha1": "aea9944c93dc2d94cea8b3476154799545566cc8",
+      "rows": "regex replacement, @js replacement, timeout and restart behavior",
+      "sha256": "501264d4bece27549b072ca4ace83626abd544d8e8728ea7c6427aebe13e1028"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/coroutine/Coroutine.kt",
+      "sha1": "9ccb55380feceeab650fa4a6801c0df75bd54ba3",
+      "rows": "timeout owner and terminal attribution",
+      "sha256": "19b7e92030a9893d296e3c0084ee8aafdc9841e702c60f6034f055f7a9801036"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/ContextExtensions.kt",
+      "sha1": "d11d1d37e6859134898ec911e5fea883e6e34192",
+      "rows": "restart activity boundary",
+      "sha256": "0f47546b47f7cc5657d698cefa60d76285989b62dd0c6dc88d02f3cdf7a17c2b"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/CrashHandler.kt",
+      "sha1": "81e1123c5fc13ee94160f898a8b861304acd849e",
+      "rows": "timeout crash-write boundary",
+      "sha256": "83481d22d7727929aaa0b6b70024ab1df98fb0b012359d4c7b311e29d2555fb0"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/config/AppConfig.kt",
+      "sha1": "511a11073af0ed7eb9d81a45e197b83d358b7b42",
+      "rows": "reader configuration and scratch backup path",
+      "sha256": "cb1a2160009d5ff147fbc0be03a002d288d3ba6c30d9ab2d451df8a3bdf6ed8a"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/config/ReadBookConfig.kt",
+      "sha1": "c781081255051cbbcd7c1cd80e22474cfd413c11",
+      "rows": "paragraph indent configuration",
+      "sha256": "bf8c5d7914337d4e2f604cbc6af3a7889f7758912ffade39931f232c417d0208"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/App.kt",
+      "sha1": "e5724f47a731321c13b8d92568d2b150cf002fee",
+      "rows": "selected host wrapper initialization",
+      "sha256": "750a67a0c9f5d89bfeaf853ebc879ac489814f9b45e498cd33ab55b5cb367ae0"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/book/BookContent.kt",
+      "sha1": "9ec417bb41bafb62ac1fe0bf0d3eacc26eb3dca9",
+      "rows": "reader return boundary",
+      "sha256": "bcf5b447120ea6d8c7842d78fbf022a54970b8dea6d7dba96c7de2cf68127f86"
+    }
+  ],
+  "cases": [
+    {
+      "id": "no-rules",
+      "status": "not-run",
+      "observations": [
+        "title",
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章 龍鳳",
+      "rawContent": "第一章 龍鳳\n正文。",
+      "rules": []
+    },
+    {
+      "id": "content-only",
+      "status": "not-run",
+      "observations": [
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "正文有广告。",
+      "rules": [
+        {
+          "name": "content",
+          "pattern": "广告",
+          "replacement": "",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "title-only",
+      "status": "not-run",
+      "observations": [
+        "title"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第1章",
+      "rawContent": "正文。",
+      "rules": [
+        {
+          "name": "title",
+          "pattern": "第",
+          "replacement": "章",
+          "scopeContent": false,
+          "scopeTitle": true,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "both",
+      "status": "not-run",
+      "observations": [
+        "title",
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第1章",
+      "rawContent": "第1章\n正文有广告。",
+      "rules": [
+        {
+          "name": "title",
+          "pattern": "第",
+          "replacement": "章",
+          "scopeContent": false,
+          "scopeTitle": true,
+          "isRegex": false
+        },
+        {
+          "name": "content",
+          "pattern": "广告",
+          "replacement": "",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "regex",
+      "status": "not-run",
+      "observations": [
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "正文20字。",
+      "rules": [
+        {
+          "name": "regex",
+          "pattern": "(\\d+)字",
+          "replacement": "$1 字",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": true
+        }
+      ]
+    },
+    {
+      "id": "literal",
+      "status": "not-run",
+      "observations": [
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "正文广告广告。",
+      "rules": [
+        {
+          "name": "literal",
+          "pattern": "广告",
+          "replacement": "",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "scope-name-origin",
+      "status": "not-run",
+      "observations": [
+        "selection",
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "正文有名字和来源标记。",
+      "rules": [
+        {
+          "name": "name-scope",
+          "pattern": "名字",
+          "replacement": "书名",
+          "scope": "前缀不科学御兽后缀",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        },
+        {
+          "name": "origin-scope",
+          "pattern": "来源",
+          "replacement": "地址",
+          "scope": "前缀http://www.beqege.cc后缀",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "exclude-scope-name-origin",
+      "status": "not-run",
+      "observations": [
+        "selection",
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "正文名字来源。",
+      "rules": [
+        {
+          "name": "exclude-name",
+          "pattern": "名字",
+          "replacement": "书名",
+          "excludeScope": "前缀不科学御兽后缀",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        },
+        {
+          "name": "exclude-origin",
+          "pattern": "来源",
+          "replacement": "地址",
+          "excludeScope": "前缀http://www.beqege.cc后缀",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "ordering",
+      "status": "not-run",
+      "observations": [
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "1",
+      "rules": [
+        {
+          "name": "later",
+          "pattern": "x",
+          "replacement": "2",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false,
+          "sortOrder": 5
+        },
+        {
+          "name": "earlier",
+          "pattern": "1",
+          "replacement": "x",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false,
+          "sortOrder": 1
+        },
+        {
+          "name": "stable-tie",
+          "pattern": "x",
+          "replacement": "3",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false,
+          "sortOrder": 5
+        }
+      ]
+    },
+    {
+      "id": "duplicated-title",
+      "status": "not-run",
+      "observations": [
+        "content"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章 开始",
+      "rawContent": "第一章 开始\n正文。",
+      "rules": []
+    },
+    {
+      "id": "re-segment-interaction",
+      "status": "not-run",
+      "observations": [
+        "content",
+        "reSegment-before-rules"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第二章",
+      "rawContent": "第一段没有句号\n第二段也没有标点。",
+      "reSegment": true,
+      "rules": [
+        {
+          "name": "after-re-segment",
+          "pattern": "句号第二段",
+          "replacement": "X",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "conversion-t2s",
+      "status": "not-run",
+      "observations": [
+        "title",
+        "content",
+        "conversion-before-rules"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "龍鳳",
+      "rawContent": "龍與鳳。",
+      "script": "t2s",
+      "rules": [
+        {
+          "name": "converted",
+          "pattern": "龙",
+          "replacement": "龙（已转换）",
+          "scopeContent": true,
+          "scopeTitle": true,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "conversion-s2t",
+      "status": "not-run",
+      "observations": [
+        "title",
+        "content",
+        "conversion-before-rules"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "龙凤",
+      "rawContent": "龙与凤。",
+      "script": "s2t",
+      "rules": [
+        {
+          "name": "converted",
+          "pattern": "龍",
+          "replacement": "龍（已转换）",
+          "scopeContent": true,
+          "scopeTitle": true,
+          "isRegex": false
+        }
+      ]
+    },
+    {
+      "id": "timeout",
+      "status": "not-run",
+      "comparison": "notCompared",
+      "observations": [
+        "content",
+        "rule-disabled",
+        "timeout-attribution",
+        "frozen-restart-side-effect"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+      "rules": [
+        {
+          "name": "slow",
+          "pattern": "(a+)+$",
+          "replacement": "",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": true,
+          "timeoutMillisecond": 200
+        }
+      ],
+      "notComparedReason": "The frozen timeout path injects the rule name and stack trace into content and schedules an application restart; the product's approved behavior disables the rule and keeps the text. No frozen timeout is observed yet; the prepared short input may complete on Android and must not be amplified to manufacture a timeout."
+    },
+    {
+      "id": "refusal",
+      "status": "not-run",
+      "observations": [
+        "content",
+        "unsupported-regex-refusal",
+        "js-replacement-execution"
+      ],
+      "bookName": "不科学御兽",
+      "bookOrigin": "http://www.beqege.cc",
+      "chapterTitle": "第一章",
+      "rawContent": "aa广告",
+      "rules": [
+        {
+          "name": "unsupported-regex",
+          "pattern": "a*+",
+          "replacement": "x",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": true
+        },
+        {
+          "name": "js-replacement",
+          "pattern": "广告",
+          "replacement": "@js:result",
+          "scopeContent": true,
+          "scopeTitle": false,
+          "isRegex": true
+        }
+      ]
+    }
+  ],
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+    "manifest": "docs/compatibility/legado-compatibility-baseline.md"
+  },
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}
