@@ -239,6 +239,258 @@ void checkSelectedHarnessArtifact(
   }
 }
 
+/// Bind a selected golden to the raw outputs of its successful capture lifetime.
+void checkSelectedCaptureBundle(File goldenFile, Map<String, dynamic> golden) {
+  final directory = goldenFile.parent;
+  File artifact(String name) {
+    final file = File('${directory.path}/$name');
+    if (!FileSystemEntity.isFileSync(file.path)) {
+      throw FormatException('Selected capture bundle missing: $name');
+    }
+    return file;
+  }
+
+  Map<String, dynamic> jsonArtifact(String name) {
+    final value = jsonDecode(artifact(name).readAsStringSync());
+    if (value is! Map<String, dynamic>) {
+      throw FormatException(
+        'Selected capture bundle invalid JSON object: $name',
+      );
+    }
+    return value;
+  }
+
+  final manifest = jsonArtifact('manifest.json');
+  final observation = jsonArtifact('observation.json');
+  final identity = golden['identity'];
+  final host = golden['hostCapture'];
+  final preflight = manifest['selectedPreflight'];
+  if (identity is! Map ||
+      host is! Map ||
+      preflight is! Map ||
+      !_equal(jsonDecode(goldenFile.readAsStringSync()), golden) ||
+      manifest['status'] != 'observed' ||
+      manifest['serial'] != '5615f742' ||
+      manifest['fingerprint'] != selectedReaderFingerprint ||
+      manifest['error'] != null ||
+      manifest['nativeFailure'] != null ||
+      manifest['preservationFailure'] != null ||
+      manifest['goldenSha256'] != sha256File(goldenFile) ||
+      ![
+        sha256LfFile(File('tool/replace_rule_oracle/fixtures-selected.json')),
+        sha256CrlfFile(File('tool/replace_rule_oracle/fixtures-selected.json')),
+      ].contains(manifest['fixtureSha256']) ||
+      preflight['corpusSha256Lf'] != golden['fixtureSha256'] ||
+      manifest['harnessApkSha256'] != identity['harnessApkSha256'] ||
+      manifest['installedHarnessSha256'] != identity['harnessApkSha256'] ||
+      manifest['baselineApkSha256'] != identity['targetApkSha256'] ||
+      sha256File(artifact('installed-harness.apk')) !=
+          identity['harnessApkSha256'] ||
+      sha256File(artifact('frozen.apk')) != identity['targetApkSha256'] ||
+      !_equal(manifest['frozenSources'], preflight['referenceHashes']) ||
+      manifest['existingDataHashesUnchanged'] != true ||
+      manifest['harnessRemoved'] != true ||
+      !_equal(host, {
+        'existingDataHashesUnchanged': true,
+        'harnessRemoved': true,
+        'installedHarnessSha256': manifest['installedHarnessSha256'],
+        'preflight': preflight,
+      }) ||
+      !_equal(
+        observation,
+        Map<String, dynamic>.from(golden)..remove('hostCapture'),
+      )) {
+    throw const FormatException(
+      'Selected capture bundle identity or observation differs',
+    );
+  }
+
+  final instrumentation = artifact('instrumentation.log').readAsStringSync();
+  final payloads = RegExp(
+    r'READER_ORACLE_BASE64=([A-Za-z0-9+/=]+)',
+  ).allMatches(instrumentation).toList();
+  final codes = RegExp(
+    r'^INSTRUMENTATION_CODE: (-?\d+)\r?$',
+    multiLine: true,
+  ).allMatches(instrumentation).toList();
+  if (payloads.length != 1 ||
+      codes.length != 1 ||
+      codes.single.group(1) != '-1' ||
+      instrumentation.contains('INSTRUMENTATION_FAILED') ||
+      instrumentation.contains('INSTRUMENTATION_ABORTED') ||
+      !_equal(
+        jsonDecode(utf8.decode(base64Decode(payloads.single.group(1)!))),
+        observation,
+      )) {
+    throw const FormatException(
+      'Selected instrumentation payload or result differs',
+    );
+  }
+
+  List<String> snapshot(String name) {
+    final lines = const LineSplitter().convert(
+      artifact(name).readAsStringSync(),
+    );
+    final pattern = RegExp(r'^[0-9a-f]{64}  [^\r\n]+$');
+    if (!lines.every(pattern.hasMatch) ||
+        lines.toSet().length != lines.length) {
+      throw FormatException('Selected private snapshot is ambiguous: $name');
+    }
+    return lines..sort();
+  }
+
+  if (!_equal(snapshot('private-before.log'), snapshot('private-after.log'))) {
+    throw const FormatException('Selected private snapshots differ');
+  }
+
+  const package = 'io.liber.oracle.replace.selected';
+  const target = 'com.legado.app.debug';
+  const prefix = ['adb', '-s', '5615f742'];
+  const snapshotCommand =
+      "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'";
+  final commands = manifest['commands'];
+  if (commands is! List) {
+    throw const FormatException('Selected command receipts missing');
+  }
+  int actionCount(List<String> action) => commands.where((row) {
+    if (row is! Map || row['command'] is! List) return false;
+    final command = row['command'] as List;
+    return command.length >= prefix.length + action.length &&
+        _equal(command.sublist(0, prefix.length), prefix) &&
+        _equal(
+          command.sublist(prefix.length, prefix.length + action.length),
+          action,
+        );
+  }).length;
+  if (actionCount(['install']) != 1 ||
+      actionCount(['shell', 'am', 'instrument']) != 1 ||
+      actionCount(['uninstall']) != 1) {
+    throw const FormatException(
+      'Selected install, instrumentation or removal count differs',
+    );
+  }
+  var previous = -1;
+  void receipt(String name, bool Function(List<dynamic>) matches) {
+    final found = <int>[
+      for (var i = 0; i < commands.length; i++)
+        if (commands[i] is Map && (commands[i] as Map)['log'] == '$name.log') i,
+    ];
+    if (found.length != 1 || found.single <= previous) {
+      throw FormatException(
+        'Selected command receipt missing, duplicated or reordered: $name',
+      );
+    }
+    previous = found.single;
+    artifact('$name.log');
+    final row = commands[previous] as Map;
+    final command = row['command'];
+    if (row['exitCode'] != 0 ||
+        command is! List ||
+        command.length < 3 ||
+        !_equal(command.sublist(0, 3), prefix) ||
+        !matches(command.sublist(3))) {
+      throw FormatException(
+        'Selected command receipt failed or differs: $name',
+      );
+    }
+  }
+
+  bool equals(List<dynamic> command, List<String> expected) =>
+      _equal(command, expected);
+  String packagePath(String log) {
+    final text = artifact('$log.log').readAsStringSync().trim();
+    if (!text.startsWith('package:') ||
+        text.contains('\n') ||
+        text.length <= 8) {
+      throw FormatException('Selected package path differs: $log');
+    }
+    return text.substring(8);
+  }
+
+  final baselinePath = packagePath('baseline-path');
+  final harnessPath = packagePath('harness-installed-path');
+  bool pull(List<dynamic> args, String source, String filename) =>
+      args.length == 3 &&
+      args[0] == 'pull' &&
+      args[1] == source &&
+      args[2] is String &&
+      (args[2] as String).replaceAll('\\', '/').endsWith('/$filename');
+  receipt(
+    'baseline-path',
+    (args) => equals(args, ['shell', 'pm', 'path', target]),
+  );
+  receipt('pull-baseline', (args) => pull(args, baselinePath, 'frozen.apk'));
+  receipt(
+    'harness-existing',
+    (args) => equals(args, ['shell', 'pm', 'list', 'packages', package]),
+  );
+  receipt(
+    'private-before',
+    (args) =>
+        equals(args, ['shell', 'run-as', target, 'sh', '-c', snapshotCommand]),
+  );
+  receipt(
+    'install',
+    (args) =>
+        args.length == 3 &&
+        args[0] == 'install' &&
+        args[1] == '-r' &&
+        args[2] is String,
+  );
+  receipt(
+    'harness-installed-path',
+    (args) => equals(args, ['shell', 'pm', 'path', package]),
+  );
+  receipt(
+    'pull-harness',
+    (args) => pull(args, harnessPath, 'installed-harness.apk'),
+  );
+  receipt(
+    'instrumentation',
+    (args) => equals(args, [
+      'shell',
+      'am',
+      'instrument',
+      '-w',
+      '-r',
+      '$package/io.liber.oracle.nested.SelectedReaderOracle',
+    ]),
+  );
+  receipt(
+    'private-after',
+    (args) =>
+        equals(args, ['shell', 'run-as', target, 'sh', '-c', snapshotCommand]),
+  );
+  receipt(
+    'stop-owned-run',
+    (args) => equals(args, ['shell', 'am', 'force-stop', target]),
+  );
+  receipt('remove-harness', (args) => equals(args, ['uninstall', package]));
+  receipt(
+    'harness-removed-check',
+    (args) => equals(args, ['shell', 'pm', 'list', 'packages', package]),
+  );
+
+  bool packageAbsent(String name) => const LineSplitter()
+      .convert(artifact('$name.log').readAsStringSync())
+      .every(
+        (line) =>
+            line.startsWith('package:') && line.trim() != 'package:$package',
+      );
+  bool success(String name) => RegExp(
+    r'^Success\r?$',
+    multiLine: true,
+  ).hasMatch(artifact('$name.log').readAsStringSync());
+  if (!packageAbsent('harness-existing') ||
+      !success('install') ||
+      !success('remove-harness') ||
+      !packageAbsent('harness-removed-check')) {
+    throw const FormatException(
+      'Selected harness install or removal receipt differs',
+    );
+  }
+}
+
 /// The historical committed evidence pins the corpus's CRLF working-tree form.
 String sha256CrlfFile(File file) => sha256Bytes(
   utf8.encode(
@@ -817,6 +1069,7 @@ Future<void> main(List<String> args) async {
       : jsonDecode(goldenFile.readAsStringSync()) as Map<String, dynamic>;
   if (selected && goldenFile != null && golden != null) {
     checkSelectedHarnessArtifact(goldenFile, golden);
+    checkSelectedCaptureBundle(goldenFile, golden);
   }
   await NativeLibrary.initialize(libraryPath: positional[0]);
   try {

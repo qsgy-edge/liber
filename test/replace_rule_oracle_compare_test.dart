@@ -368,6 +368,247 @@ void main() {
     );
   });
 
+  test('selected successful bundle binds raw lifetime receipts', () {
+    // Synthetic file mechanics only: this is not an executed native lifetime.
+    final dir = Directory.systemTemp.createTempSync('reader-bundle-test-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File file(String name) => File('${dir.path}/$name');
+    const serial = '5615f742';
+    const package = 'io.liber.oracle.replace.selected';
+    const target = 'com.legado.app.debug';
+    const entry = '$package/io.liber.oracle.nested.SelectedReaderOracle';
+    const snapshot =
+        "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'";
+    final prefix = ['adb', '-s', serial];
+    Map<String, Object?> command(String log, List<String> args) => {
+      'log': '$log.log',
+      'exitCode': 0,
+      'command': [...prefix, ...args],
+    };
+    final commands = [
+      command('baseline-path', ['shell', 'pm', 'path', target]),
+      command('pull-baseline', [
+        'pull',
+        '/device/target.apk',
+        '${dir.path}/frozen.apk',
+      ]),
+      command('harness-existing', ['shell', 'pm', 'list', 'packages', package]),
+      command('private-before', [
+        'shell',
+        'run-as',
+        target,
+        'sh',
+        '-c',
+        snapshot,
+      ]),
+      command('install', ['install', '-r', '/build/harness.apk']),
+      command('harness-installed-path', ['shell', 'pm', 'path', package]),
+      command('pull-harness', [
+        'pull',
+        '/device/harness.apk',
+        '${dir.path}/installed-harness.apk',
+      ]),
+      command('instrumentation', [
+        'shell',
+        'am',
+        'instrument',
+        '-w',
+        '-r',
+        entry,
+      ]),
+      command('private-after', [
+        'shell',
+        'run-as',
+        target,
+        'sh',
+        '-c',
+        snapshot,
+      ]),
+      command('stop-owned-run', ['shell', 'am', 'force-stop', target]),
+      command('remove-harness', ['uninstall', package]),
+      command('harness-removed-check', [
+        'shell',
+        'pm',
+        'list',
+        'packages',
+        package,
+      ]),
+    ];
+    final reference = file('frozen.apk')..writeAsStringSync('synthetic target');
+    final apk = file('installed-harness.apk')
+      ..writeAsStringSync('synthetic harness');
+    final corpusLf = sha256LfFile(
+      File('tool/replace_rule_oracle/fixtures-selected.json'),
+    );
+    final observation = <String, dynamic>{
+      'fixtureSha256': corpusLf,
+      'identity': {
+        'targetApkSha256': sha256File(reference),
+        'harnessApkSha256': sha256File(apk),
+      },
+      'rows': [
+        {'id': 'synthetic'},
+      ],
+    };
+    final preflight = {
+      'harnessApkSha256': sha256File(apk),
+      'corpusAssetSha256': 'c' * 64,
+      'corpusSha256Lf': corpusLf,
+      'referenceHashes': {'synthetic': 'r'},
+    };
+    final host = {
+      'existingDataHashesUnchanged': true,
+      'harnessRemoved': true,
+      'installedHarnessSha256': sha256File(apk),
+      'preflight': preflight,
+    };
+    final golden = <String, dynamic>{...observation, 'hostCapture': host};
+    final goldenFile = file('golden.json')
+      ..writeAsStringSync(jsonEncode(golden));
+    final manifest = <String, dynamic>{
+      'status': 'observed',
+      'serial': serial,
+      'fingerprint': selectedReaderFingerprint,
+      'fixtureSha256': sha256CrlfFile(
+        File('tool/replace_rule_oracle/fixtures-selected.json'),
+      ),
+      'harnessApkSha256': sha256File(apk),
+      'installedHarnessSha256': sha256File(apk),
+      'baselineApkSha256': sha256File(reference),
+      'selectedPreflight': preflight,
+      'frozenSources': {'synthetic': 'r'},
+      'existingDataHashesUnchanged': true,
+      'harnessRemoved': true,
+      'goldenSha256': sha256File(goldenFile),
+      'commands': commands,
+    };
+    final payload = base64Encode(utf8.encode(jsonEncode(observation)));
+    final logs = <String, String>{
+      'observation.json': jsonEncode(observation),
+      'instrumentation.log':
+          'INSTRUMENTATION_STATUS: stream=READER_ORACLE_BASE64=$payload\nINSTRUMENTATION_CODE: -1\n',
+      'private-before.log': '${'a' * 64}  files/original\n',
+      'private-after.log': '${'a' * 64}  files/original\n',
+      'baseline-path.log': 'package:/device/target.apk\n',
+      'harness-installed-path.log': 'package:/device/harness.apk\n',
+      'harness-existing.log': '',
+      'pull-baseline.log': '',
+      'pull-harness.log': '',
+      'stop-owned-run.log': '',
+      'install.log': 'Success\n',
+      'remove-harness.log': 'Success\n',
+      'harness-removed-check.log': '',
+    };
+    void restore() {
+      for (final entry in logs.entries) {
+        file(entry.key).writeAsStringSync(entry.value);
+      }
+      file('manifest.json').writeAsStringSync(jsonEncode(manifest));
+    }
+
+    restore();
+    checkSelectedCaptureBundle(goldenFile, golden);
+    final mutations = <void Function()>[
+      () => file('manifest.json').deleteSync(),
+      () => file('observation.json').deleteSync(),
+      () => file('instrumentation.log').deleteSync(),
+      () => file('observation.json').writeAsStringSync('{}'),
+      () => file('instrumentation.log').writeAsStringSync(
+        'READER_ORACLE_BASE64=e30=\nINSTRUMENTATION_CODE: -1\n',
+      ),
+      () => file('instrumentation.log').writeAsStringSync(
+        '${logs['instrumentation.log']}READER_ORACLE_BASE64=$payload\n',
+      ),
+      () => file('instrumentation.log').writeAsStringSync(
+        'READER_ORACLE_BASE64=$payload\nINSTRUMENTATION_CODE: 1\n',
+      ),
+      () => file('private-before.log').deleteSync(),
+      () => file(
+        'private-after.log',
+      ).writeAsStringSync('${'b' * 64}  files/original\n'),
+      () => file('stop-owned-run.log').deleteSync(),
+      () => file('remove-harness.log').deleteSync(),
+      () => file('remove-harness.log').writeAsStringSync('Failure\n'),
+      () => file('harness-removed-check.log').deleteSync(),
+      () => file(
+        'harness-removed-check.log',
+      ).writeAsStringSync('package:$package\n'),
+      () => file(
+        'manifest.json',
+      ).writeAsStringSync(jsonEncode({...manifest, 'status': 'failed'})),
+      () => file(
+        'manifest.json',
+      ).writeAsStringSync(jsonEncode({...manifest, 'goldenSha256': 'wrong'})),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'selectedPreflight': {...preflight, 'harnessApkSha256': 'wrong'},
+        }),
+      ),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'commands': [
+            ...commands,
+            {...commands[4], 'log': 'duplicate-install.log'},
+          ],
+        }),
+      ),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'commands': [
+            for (final c in commands)
+              if (c['log'] == 'instrumentation.log')
+                {...c, 'exitCode': 1}
+              else
+                c,
+          ],
+        }),
+      ),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'commands': [
+            for (final c in commands)
+              if (c['log'] == 'remove-harness.log')
+                {...c, 'exitCode': 1}
+              else
+                c,
+          ],
+        }),
+      ),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'commands': [
+            for (final c in commands)
+              if (c['log'] == 'remove-harness.log')
+                {
+                  ...c,
+                  'command': [...prefix, 'uninstall', 'other'],
+                }
+              else
+                c,
+          ],
+        }),
+      ),
+    ];
+    for (final mutate in mutations) {
+      restore();
+      mutate();
+      expect(
+        () => checkSelectedCaptureBundle(goldenFile, golden),
+        throwsA(isA<Exception>()),
+      );
+    }
+    restore();
+    expect(
+      () => checkSelectedCaptureBundle(goldenFile, {...golden, 'extra': true}),
+      throwsFormatException,
+    );
+  });
+
   test('missing frozen evidence leaves every row not-run', () {
     final result = compare(null);
     expect(result['counts'], {

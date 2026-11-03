@@ -68,8 +68,14 @@ attempt directory. Validation reads that attempt's fixed raw artifacts and
 independently frozen producer sources; it never restamps the failed capture.
 Without a selected golden the product-only command exits 2 and reports all 15
 frozen rows not-run. Replace `-` only with a real selected partition golden;
-keep its actual `installed-harness.apk` beside the golden for asset admission.
-The historical comparison report remains refused as a golden. The selected
+keep the complete successful capture directory beside the golden: the actual
+`installed-harness.apk`, `frozen.apk`, `observation.json`, `instrumentation.log`,
+`manifest.json`, private snapshots and install/removal command receipts are
+required. Admission binds the native payload to the observation and golden,
+checks the recorded successful commands and independently verifies private-file
+preservation and harness removal. This is a consistency check over capture
+receipts, not independent device attestation. The historical comparison report
+remains refused as a golden. The selected
 gate also requires `textList` to join to the exact returned content, compares
 the disabled-rule list, and keeps `sameTitleRemoved` and effective rules as
 frozen-only observations because the product interface exposes final text rather
