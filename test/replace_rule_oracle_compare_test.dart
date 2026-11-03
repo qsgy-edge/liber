@@ -495,8 +495,8 @@ void main() {
       'pull-baseline.log': '',
       'pull-harness.log': '',
       'stop-owned-run.log': '',
-      'install.log': 'Success\n',
-      'remove-harness.log': 'Success\n',
+      'install.log': 'Performing Streamed Install\nSuccess\n',
+      'remove-harness.log': 'Removing package...\nSuccess\n',
       'harness-removed-check.log': '',
     };
     void restore() {
@@ -522,6 +522,9 @@ void main() {
       () => file('instrumentation.log').writeAsStringSync(
         'READER_ORACLE_BASE64=$payload\nINSTRUMENTATION_CODE: 1\n',
       ),
+      () => file(
+        'instrumentation.log',
+      ).writeAsStringSync('${logs['instrumentation.log']}TIMED OUT\n'),
       () => file('private-before.log').deleteSync(),
       () => file(
         'private-after.log',
@@ -529,6 +532,21 @@ void main() {
       () => file('stop-owned-run.log').deleteSync(),
       () => file('remove-harness.log').deleteSync(),
       () => file('remove-harness.log').writeAsStringSync('Failure\n'),
+      () => file(
+        'remove-harness.log',
+      ).writeAsStringSync('Failure [DELETE_FAILED_INTERNAL_ERROR]\nSuccess\n'),
+      () => file('install.log').writeAsStringSync(
+        'Performing Streamed Install\nFailure [INSTALL_FAILED_INTERNAL_ERROR]\nSuccess\n',
+      ),
+      () =>
+          file('remove-harness.log').writeAsStringSync('Success\nTIMED OUT\n'),
+      () => file('install.log').writeAsStringSync('Success\nTIMED OUT\n'),
+      () => file('remove-harness.log').writeAsStringSync(
+        'Failure [DELETE_FAILED_INTERNAL_ERROR]\r\nSuccess\r\n',
+      ),
+      () => file(
+        'instrumentation.log',
+      ).writeAsStringSync('${logs['instrumentation.log']}TIMED OUT\r\n'),
       () => file('harness-removed-check.log').deleteSync(),
       () => file(
         'harness-removed-check.log',

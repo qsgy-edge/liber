@@ -318,6 +318,7 @@ void checkSelectedCaptureBundle(File goldenFile, Map<String, dynamic> golden) {
       codes.single.group(1) != '-1' ||
       instrumentation.contains('INSTRUMENTATION_FAILED') ||
       instrumentation.contains('INSTRUMENTATION_ABORTED') ||
+      RegExp(r'^TIMED OUT\r?$', multiLine: true).hasMatch(instrumentation) ||
       !_equal(
         jsonDecode(utf8.decode(base64Decode(payloads.single.group(1)!))),
         observation,
@@ -477,10 +478,13 @@ void checkSelectedCaptureBundle(File goldenFile, Map<String, dynamic> golden) {
         (line) =>
             line.startsWith('package:') && line.trim() != 'package:$package',
       );
-  bool success(String name) => RegExp(
-    r'^Success\r?$',
-    multiLine: true,
-  ).hasMatch(artifact('$name.log').readAsStringSync());
+  bool success(String name) {
+    final output = artifact('$name.log').readAsStringSync();
+    return RegExp(r'^Success\r?$', multiLine: true).hasMatch(output) &&
+        !RegExp(r'Failure \[[^\]\r\n]*\]').hasMatch(output) &&
+        !RegExp(r'^TIMED OUT\r?$', multiLine: true).hasMatch(output);
+  }
+
   if (!packageAbsent('harness-existing') ||
       !success('install') ||
       !success('remove-harness') ||
