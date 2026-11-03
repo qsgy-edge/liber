@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import zipfile
@@ -18,6 +19,31 @@ BASELINE_APK = 'cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6
 FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
 SELECTED_FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
 PACKAGE = 'io.liber.oracle.replace'
+
+# Selected successful runs retain the original three-root file-only scope.
+SELECTED_INVENTORY_COMPLETE = b'__LIBER_READER_PRIVATE_INVENTORY_COMPLETE__'
+SELECTED_INVENTORY_SCRIPT = (
+    'set -e; find databases shared_prefs files -type f -exec sh -c '
+    "'for f do sha256sum \"$f\" || exit 20; done' sh {} +; "
+    "printf '%s\\n' '__LIBER_READER_PRIVATE_INVENTORY_COMPLETE__'"
+)
+SELECTED_INVENTORY_COMMAND = shlex.quote(SELECTED_INVENTORY_SCRIPT)
+
+
+def parse_selected_private_inventory(data):
+    """Validate complete selected file hashes, including a proven empty walk."""
+    if not data.endswith(b'\n'):
+        raise ValueError('selected private inventory completion missing or truncated')
+    lines = [line.removesuffix(b'\r') for line in data[:-1].split(b'\n')]
+    if lines[-1] != SELECTED_INVENTORY_COMPLETE or SELECTED_INVENTORY_COMPLETE in lines[:-1]:
+        raise ValueError('selected private inventory completion missing or misplaced')
+    records = lines[:-1]
+    if any(not re.fullmatch(rb'[0-9a-f]{64}  [^\r\n]+', line) for line in records):
+        raise ValueError('selected private inventory record malformed')
+    paths = [line[66:] for line in records]
+    if len(set(paths)) != len(paths):
+        raise ValueError('selected private inventory repeats a path')
+    return sorted(records)
 
 
 def sha(path):
@@ -37,11 +63,9 @@ def classify_selected_preservation(before, after, owner, identity):
     """Classify failed-run residue only after exact owner and original-file checks."""
     def snapshot(data):
         result = {}
-        for line in data.decode('utf-8', errors='strict').splitlines():
-            match = re.fullmatch(r'([0-9a-f]{64})  ([^\r\n]+)', line)
-            if not match or match.group(2) in result:
-                raise ValueError('ambiguous private-file snapshot')
-            result[match.group(2)] = match.group(1)
+        for record in parse_selected_private_inventory(data):
+            digest, path = record[:64].decode('ascii'), record[66:].decode('utf-8', errors='strict')
+            result[path] = digest
         return result
     original, current = snapshot(before), snapshot(after)
     if any(current.get(path) != digest for path, digest in original.items()):
@@ -376,8 +400,10 @@ def main():
             if b'package:' in existing.stdout:
                 raise ValueError('harness package already exists; do not replace unowned install')
         # Only hash lists leave the device; no user content is copied.
-        snapshot = "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
+        snapshot = SELECTED_INVENTORY_COMMAND if selected else "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
         before = adb('private-before', 'shell', 'run-as', target_package, 'sh', '-c', snapshot)
+        if selected:
+            original_inventory = parse_selected_private_inventory(before.stdout + before.stderr)
         # `-r` is adb's incremental install, the only form MIUI accepts on this
         # handset; the streamed `--no-incremental` install is rejected as
         # INSTALL_FAILED_USER_RESTRICTED even with USB installation enabled.
@@ -408,7 +434,8 @@ def main():
         report = json.loads(base64.b64decode(match[1]))
         (args.output / 'observation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         after = adb('private-after', 'shell', 'run-as', target_package, 'sh', '-c', snapshot)
-        preserved = sorted(before.stdout.splitlines()) == sorted(after.stdout.splitlines())
+        preserved = (original_inventory == parse_selected_private_inventory(after.stdout + after.stderr)
+                     if selected else sorted(before.stdout.splitlines()) == sorted(after.stdout.splitlines()))
         manifest['existingDataHashesUnchanged'] = preserved
         native_failure = report.get('failure') or report.get('cleanupFailure')
         if native_failure:
@@ -418,7 +445,7 @@ def main():
                 owner = adb('failed-owner', 'shell', 'run-as', target_package, 'cat',
                             'cache/liber-replace-selected/owner.json')
                 manifest['preservationClassification'] = classify_selected_preservation(
-                    before.stdout, after.stdout, json.loads(owner.stdout), report['identity'])
+                    before.stdout + before.stderr, after.stdout + after.stderr, json.loads(owner.stdout), report['identity'])
             except Exception as error:
                 manifest['preservationFailure'] = str(error)
         if not preserved:

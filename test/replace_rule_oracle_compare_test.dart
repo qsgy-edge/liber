@@ -368,6 +368,36 @@ void main() {
     );
   });
 
+  test('selected private inventory requires one final completion line', () {
+    final first = '${'a' * 64}  databases/original';
+    final second = '${'b' * 64}  files/original';
+    expect(
+      parseSelectedReaderPrivateInventory(
+        '$second\r\n$first\r\n$selectedReaderInventoryComplete\r\n',
+      ),
+      [first, second],
+    );
+    expect(
+      parseSelectedReaderPrivateInventory('$selectedReaderInventoryComplete\n'),
+      isEmpty,
+    );
+    for (final invalid in [
+      '',
+      '$first\n',
+      '$first\n$selectedReaderInventoryComplete',
+      '$selectedReaderInventoryComplete\n$first\n$selectedReaderInventoryComplete\n',
+      '$first\n$selectedReaderInventoryComplete\n$selectedReaderInventoryComplete\n',
+      'truncated\n$selectedReaderInventoryComplete\n',
+      '$first\n$first\n$selectedReaderInventoryComplete\n',
+      '$first\n${'b' * 64}  databases/original\n$selectedReaderInventoryComplete\n',
+    ]) {
+      expect(
+        () => parseSelectedReaderPrivateInventory(invalid),
+        throwsFormatException,
+      );
+    }
+  });
+
   test('selected successful bundle binds raw lifetime receipts', () {
     // Synthetic file mechanics only: this is not an executed native lifetime.
     final dir = Directory.systemTemp.createTempSync('reader-bundle-test-');
@@ -377,8 +407,7 @@ void main() {
     const package = 'io.liber.oracle.replace.selected';
     const target = 'com.legado.app.debug';
     const entry = '$package/io.liber.oracle.nested.SelectedReaderOracle';
-    const snapshot =
-        "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'";
+    final snapshot = selectedReaderInventoryCommand;
     final prefix = ['adb', '-s', serial];
     Map<String, Object?> command(String log, List<String> args) => {
       'log': '$log.log',
@@ -487,8 +516,10 @@ void main() {
       'observation.json': jsonEncode(observation),
       'instrumentation.log':
           'INSTRUMENTATION_STATUS: stream=READER_ORACLE_BASE64=$payload\nINSTRUMENTATION_CODE: -1\n',
-      'private-before.log': '${'a' * 64}  files/original\n',
-      'private-after.log': '${'a' * 64}  files/original\n',
+      'private-before.log':
+          '${'a' * 64}  files/original\n$selectedReaderInventoryComplete\n',
+      'private-after.log':
+          '${'a' * 64}  files/original\n$selectedReaderInventoryComplete\n',
       'baseline-path.log': 'package:/device/target.apk\n',
       'harness-installed-path.log': 'package:/device/harness.apk\n',
       'harness-existing.log': '',
@@ -508,6 +539,29 @@ void main() {
 
     restore();
     checkSelectedCaptureBundle(goldenFile, golden);
+    for (final incomplete in ['', '${'a' * 64}  files/original\n']) {
+      file('private-before.log').writeAsStringSync(incomplete);
+      file('private-after.log').writeAsStringSync(incomplete);
+      expect(
+        () => checkSelectedCaptureBundle(goldenFile, golden),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('private inventory completion'),
+          ),
+        ),
+      );
+    }
+    restore();
+    file(
+      'private-before.log',
+    ).writeAsStringSync('$selectedReaderInventoryComplete\n');
+    file(
+      'private-after.log',
+    ).writeAsStringSync('$selectedReaderInventoryComplete\n');
+    checkSelectedCaptureBundle(goldenFile, golden);
+    restore();
     final mutations = <void Function()>[
       () => file('manifest.json').deleteSync(),
       () => file('observation.json').deleteSync(),
@@ -526,9 +580,9 @@ void main() {
         'instrumentation.log',
       ).writeAsStringSync('${logs['instrumentation.log']}TIMED OUT\n'),
       () => file('private-before.log').deleteSync(),
-      () => file(
-        'private-after.log',
-      ).writeAsStringSync('${'b' * 64}  files/original\n'),
+      () => file('private-after.log').writeAsStringSync(
+        '${'b' * 64}  files/original\n$selectedReaderInventoryComplete\n',
+      ),
       () => file('stop-owned-run.log').deleteSync(),
       () => file('remove-harness.log').deleteSync(),
       () => file('remove-harness.log').writeAsStringSync('Failure\n'),
@@ -569,6 +623,18 @@ void main() {
           'commands': [
             ...commands,
             {...commands[4], 'log': 'duplicate-install.log'},
+          ],
+        }),
+      ),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'commands': [
+            for (final c in commands)
+              if (c['log'] == 'private-before.log')
+                {...c, 'exitCode': 1}
+              else
+                c,
           ],
         }),
       ),

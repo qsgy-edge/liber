@@ -16,7 +16,13 @@ previous selected reports retain their original identity and are not promoted.
 The selected entry executes the fixed ordered partition of 14 cases, excluding
 only `timeout` and including `refusal`; the APK still packages the unchanged
 15-case corpus. A successful partition requires the original guard, terminal,
-private-file equality and exact registered cleanup checks. The first timeout
+private-file equality and exact registered cleanup checks. The current selected
+collector requires checked hashes over `databases shared_prefs files` and a final
+`__LIBER_READER_PRIVATE_INVENTORY_COMPLETE__` line before preservation can pass;
+a completed empty walk is valid, while missing/truncated/failed walks are not.
+The old successful capture does not acquire this new protocol retroactively.
+The failed timeout witness keeps its original producer, files and protocol.
+The first timeout
 lifetime failed at the guarded launch attempt and is never a golden; its earlier
 rows are not reused. Its separate fixed timeout-policy witness binds the original
 producer, raw report, archived crash and later recovery. Recovery does not make

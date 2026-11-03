@@ -1,6 +1,8 @@
 """Selected reader capture admission mechanics; all reports here are synthetic."""
 import copy
+import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,6 +11,36 @@ import zipfile
 from pathlib import Path
 
 import capture
+
+# Executes the selected shell script on Git Bash only; never Android evidence.
+GIT_BASH = Path('C:/Program Files/Git/bin/bash.exe')
+
+
+def host_selected_inventory(directory, failure=None):
+    with tempfile.TemporaryDirectory(prefix='reader-hash-bin-', dir='C:/Temp') as temporary:
+        tools = Path(temporary)
+        marker = tools / 'hash-called'
+        if failure == 'hash':
+            wrapper = ('#!/bin/sh\nif [ -e "$READER_HASH_MARKER" ]; then '
+                       'echo "synthetic sha256sum failure" >&2; exit 42; fi\n'
+                       ': > "$READER_HASH_MARKER"\nexec /usr/bin/sha256sum -t "$@"\n')
+        else:
+            # Git-for-Windows adds a binary '*' marker; these synthetic text
+            # inputs use -t to preserve Android-style two-space records.
+            wrapper = '#!/bin/sh\nexec /usr/bin/sha256sum -t "$@"\n'
+        (tools / 'sha256sum').write_text(wrapper, encoding='utf-8', newline='\n')
+        if failure == 'find':
+            (tools / 'find').write_text('#!/bin/sh\necho "synthetic find failure" >&2\nexit 43\n',
+                                        encoding='utf-8', newline='\n')
+        def posix(path):
+            value = path.as_posix()
+            return '/' + value[0].lower() + value[2:]
+        env = os.environ.copy()
+        env['READER_HASH_MARKER'] = posix(marker)
+        return subprocess.run([str(GIT_BASH), '--noprofile', '--norc', '-c',
+                               'PATH="$1:$PATH"; export PATH; shift; exec sh -c "$1"',
+                               'sh', posix(tools), capture.SELECTED_INVENTORY_SCRIPT],
+                              cwd=directory, env=env, capture_output=True, timeout=30)
 
 
 class SelectedReaderAdmissionTest(unittest.TestCase):
@@ -65,6 +97,52 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
                 'sameTitleRemoved': False, 'effectiveRules': [], 'disabledRules': [], 'terminal': terminal,
                 **({'timeoutObserved': False, 'restartObservation': 'notCompared: synthetic'} if case['id'] == 'timeout' else {}),
                 'readerCalls': [dict(terminal, method='getDisplayTitle'), dict(terminal, method='getContent')]})
+
+    def test_selected_private_inventory_actual_host_walks(self):
+        # Host analogues only. The selected three-root scope is unchanged.
+        with tempfile.TemporaryDirectory(prefix='reader-inventory-', dir='C:/Temp') as temporary:
+            root = Path(temporary)
+            for name in ('databases', 'shared_prefs', 'files'):
+                (root / name).mkdir()
+            empty = host_selected_inventory(root)
+            self.assertEqual(empty.returncode, 0, empty.stderr)
+            self.assertEqual(empty.stderr, b'')
+            self.assertEqual(empty.stdout, capture.SELECTED_INVENTORY_COMPLETE + b'\n')
+            self.assertEqual(capture.parse_selected_private_inventory(empty.stdout), [])
+            (root / 'databases' / 'a').write_bytes(b'first')
+            (root / 'files' / 'b').write_bytes(b'second')
+            complete = host_selected_inventory(root)
+            self.assertEqual(complete.returncode, 0, complete.stderr)
+            self.assertEqual(complete.stderr, b'')
+            self.assertEqual(capture.parse_selected_private_inventory(complete.stdout), sorted([
+                (hashlib.sha256(b'first').hexdigest() + '  databases/a').encode(),
+                (hashlib.sha256(b'second').hexdigest() + '  files/b').encode(),
+            ]))
+            failed = host_selected_inventory(root, failure='hash')
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertTrue(failed.stdout, 'must retain a real partial hash')
+            self.assertIn(b'synthetic sha256sum failure', failed.stderr)
+            self.assertNotIn(capture.SELECTED_INVENTORY_COMPLETE, failed.stdout)
+            with self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                capture.parse_selected_private_inventory(failed.stdout + failed.stderr)
+            failed_find = host_selected_inventory(root, failure='find')
+            self.assertNotEqual(failed_find.returncode, 0)
+            self.assertIn(b'synthetic find failure', failed_find.stderr)
+            self.assertNotIn(capture.SELECTED_INVENTORY_COMPLETE, failed_find.stdout)
+            with self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                capture.parse_selected_private_inventory(failed_find.stdout + failed_find.stderr)
+            for invalid in (b'', complete.stdout[:-1], complete.stdout.splitlines()[0] + b'\n',
+                            capture.SELECTED_INVENTORY_COMPLETE + b'\n' + complete.stdout,
+                            complete.stdout + capture.SELECTED_INVENTORY_COMPLETE + b'\n',
+                            b'truncated\n' + capture.SELECTED_INVENTORY_COMPLETE + b'\n',
+                            (b'a' * 64 + b'  files/a\n') * 2 + capture.SELECTED_INVENTORY_COMPLETE + b'\n'):
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    capture.parse_selected_private_inventory(invalid)
+            quoted = subprocess.run([str(GIT_BASH), '--noprofile', '--norc', '-c',
+                                     'set -- ' + capture.SELECTED_INVENTORY_COMMAND + '; printf "%s" "$1"'],
+                                    cwd=root, capture_output=True, timeout=30)
+            self.assertEqual(quoted.returncode, 0, quoted.stderr)
+            self.assertEqual(quoted.stdout.decode('utf-8'), capture.SELECTED_INVENTORY_SCRIPT)
 
     def test_manifest_attributes_belong_to_their_actual_nodes(self):
         # Synthetic aapt xmltree metadata only; no APK or device is involved.
@@ -143,8 +221,9 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
 
     def test_failure_preservation_requires_exact_registered_owner(self):
         # Synthetic snapshots and owner exercise classification only, not a capture.
-        before = f"{'a' * 64}  files/original\n".encode()
-        after = before + f"{'b' * 64}  shared_prefs/liber_replace_selected_owned.xml\n".encode()
+        unframed = f"{'a' * 64}  files/original\n".encode()
+        before = unframed + capture.SELECTED_INVENTORY_COMPLETE + b'\n'
+        after = unframed + f"{'b' * 64}  shared_prefs/liber_replace_selected_owned.xml\n".encode() + capture.SELECTED_INVENTORY_COMPLETE + b'\n'
         owner = {'fixtureId': 'REPLACE-17', 'corpusVersion': 2,
                  'corpusSha256Lf': 'c' * 64, 'targetPackage': 'com.legado.app.debug',
                  'targetApkSha256': self.fixture['target']['apkSha256'],
@@ -154,10 +233,14 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
         self.assertTrue(result['originalsUnchanged'])
         self.assertEqual(result['registeredAdditions'], ['shared_prefs/liber_replace_selected_owned.xml'])
         self.assertFalse(result['equal'])
+        # Empty or partial unframed inventories must not prove preservation.
+        for incomplete in (b'', unframed):
+            with self.subTest(incomplete=incomplete), self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                capture.classify_selected_preservation(incomplete, incomplete, owner, self.report['identity'])
         for bad_before, bad_after, bad_owner in [
             (before, after.replace(b'files/original', b'files/renamed'), owner),
             (before, after.replace(b'a' * 64, b'c' * 64), owner),
-            (before, after + f"{'d' * 64}  shared_prefs/liber_replace_selected_unowned.xml\n".encode(), owner),
+            (before, unframed + f"{'b' * 64}  shared_prefs/liber_replace_selected_owned.xml\n{'d' * 64}  shared_prefs/liber_replace_selected_unowned.xml\n".encode() + capture.SELECTED_INVENTORY_COMPLETE + b'\n', owner),
             (before, after, dict(owner, harnessApkSha256='wrong')),
         ]:
             with self.assertRaises(ValueError):

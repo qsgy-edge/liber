@@ -14,6 +14,52 @@ import 'package:pointycastle/digests/sha256.dart';
 const selectedReaderFingerprint =
     'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys';
 
+const selectedReaderInventoryComplete =
+    '__LIBER_READER_PRIVATE_INVENTORY_COMPLETE__';
+const selectedReaderInventoryScript =
+    r"""set -e; find databases shared_prefs files -type f -exec sh -c 'for f do sha256sum "$f" || exit 20; done' sh {} +; printf '%s\n' '__LIBER_READER_PRIVATE_INVENTORY_COMPLETE__'""";
+
+/// Quote the fixed POSIX script as one argument to the device shell's `sh -c`.
+final selectedReaderInventoryCommand =
+    "'${selectedReaderInventoryScript.replaceAll("'", "'\"'\"'")}'";
+
+/// Parse completed selected-success inventories. The failed timeout witness
+/// retains its separately pinned historical producer and raw protocol.
+List<String> parseSelectedReaderPrivateInventory(String data) {
+  if (!data.endsWith('\n')) {
+    throw const FormatException(
+      'Selected private inventory completion missing or truncated',
+    );
+  }
+  final lines = data
+      .substring(0, data.length - 1)
+      .split('\n')
+      .map(
+        (line) =>
+            line.endsWith('\r') ? line.substring(0, line.length - 1) : line,
+      )
+      .toList();
+  if (lines.last != selectedReaderInventoryComplete ||
+      lines.take(lines.length - 1).contains(selectedReaderInventoryComplete)) {
+    throw const FormatException(
+      'Selected private inventory completion missing or misplaced',
+    );
+  }
+  final records = lines.sublist(0, lines.length - 1);
+  final paths = <String>{};
+  for (final line in records) {
+    if (!RegExp(r'^[0-9a-f]{64}  [^\r\n]+$').hasMatch(line)) {
+      throw const FormatException(
+        'Selected private inventory record malformed',
+      );
+    }
+    if (!paths.add(line.substring(66))) {
+      throw const FormatException('Selected private inventory repeats a path');
+    }
+  }
+  return records..sort();
+}
+
 const selectedTimeoutWitness = <String, String>{
   'role': 'timeout-policy-witness',
   'caseId': 'timeout',
@@ -328,27 +374,19 @@ void checkSelectedCaptureBundle(File goldenFile, Map<String, dynamic> golden) {
     );
   }
 
-  List<String> snapshot(String name) {
-    final lines = const LineSplitter().convert(
-      artifact(name).readAsStringSync(),
-    );
-    final pattern = RegExp(r'^[0-9a-f]{64}  [^\r\n]+$');
-    if (!lines.every(pattern.hasMatch) ||
-        lines.toSet().length != lines.length) {
-      throw FormatException('Selected private snapshot is ambiguous: $name');
-    }
-    return lines..sort();
-  }
-
-  if (!_equal(snapshot('private-before.log'), snapshot('private-after.log'))) {
+  final before = parseSelectedReaderPrivateInventory(
+    artifact('private-before.log').readAsStringSync(),
+  );
+  final after = parseSelectedReaderPrivateInventory(
+    artifact('private-after.log').readAsStringSync(),
+  );
+  if (!_equal(before, after)) {
     throw const FormatException('Selected private snapshots differ');
   }
 
   const package = 'io.liber.oracle.replace.selected';
   const target = 'com.legado.app.debug';
   const prefix = ['adb', '-s', '5615f742'];
-  const snapshotCommand =
-      "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'";
   final commands = manifest['commands'];
   if (commands is! List) {
     throw const FormatException('Selected command receipts missing');
@@ -427,8 +465,14 @@ void checkSelectedCaptureBundle(File goldenFile, Map<String, dynamic> golden) {
   );
   receipt(
     'private-before',
-    (args) =>
-        equals(args, ['shell', 'run-as', target, 'sh', '-c', snapshotCommand]),
+    (args) => equals(args, [
+      'shell',
+      'run-as',
+      target,
+      'sh',
+      '-c',
+      selectedReaderInventoryCommand,
+    ]),
   );
   receipt(
     'install',
@@ -459,8 +503,14 @@ void checkSelectedCaptureBundle(File goldenFile, Map<String, dynamic> golden) {
   );
   receipt(
     'private-after',
-    (args) =>
-        equals(args, ['shell', 'run-as', target, 'sh', '-c', snapshotCommand]),
+    (args) => equals(args, [
+      'shell',
+      'run-as',
+      target,
+      'sh',
+      '-c',
+      selectedReaderInventoryCommand,
+    ]),
   );
   receipt(
     'stop-owned-run',
