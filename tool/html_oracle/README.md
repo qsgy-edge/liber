@@ -230,6 +230,10 @@ instrumentation result, terminal/closure/cleanup, stopped process, removed scrat
 and removed harness. It retains raw receipts and failed evidence and never retries
 an install. Failure or timeout alongside a success line is still failure. The
 capture writes `observation.json` only as the raw payload, not a fabricated golden.
+Each private file inventory retains walk/hash diagnostics and ends with the exact
+`__LIBER_HTML_PRIVATE_INVENTORY_COMPLETE__` line only after the entire walk and all
+file hashes succeed. Missing, truncated or misplaced completion is not preservation
+evidence; a successful empty walk contains that completion line by itself.
 
 To compare a controller-produced **successful** bundle, pass that bundle's
 `observation.json` as the golden and the matching selected corpus as argument four.

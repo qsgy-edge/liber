@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,32 @@ EXTRA_REFERENCES = ['app/src/main/java/io/legado/app/model/analyzeRule/SourceHtm
                     'app/src/main/java/io/legado/app/model/SharedJsScope.kt',
                     'app/src/main/java/io/legado/app/help/coroutine/Coroutine.kt',
                     'app/src/main/java/io/legado/app/App.kt']
+
+
+# The completion line is emitted only after find and every batched hash succeeds.
+PRIVATE_INVENTORY_COMPLETE = b'__LIBER_HTML_PRIVATE_INVENTORY_COMPLETE__'
+PRIVATE_INVENTORY_SCRIPT = (
+    'set -e; find . -type f -exec sh -c '
+    "'for f do sha256sum \"$f\" || exit 20; done' sh {} +; "
+    "printf '%s\\n' '__LIBER_HTML_PRIVATE_INVENTORY_COMPLETE__'"
+)
+PRIVATE_INVENTORY_COMMAND = shlex.quote(PRIVATE_INVENTORY_SCRIPT)
+
+
+def parse_private_inventory(data):
+    """Accept only a complete file-hash inventory, including a proven empty walk."""
+    if not data.endswith(b'\n'):
+        raise ValueError('private inventory completion missing or truncated')
+    lines = [line.removesuffix(b'\r') for line in data[:-1].split(b'\n')]
+    if lines[-1] != PRIVATE_INVENTORY_COMPLETE or PRIVATE_INVENTORY_COMPLETE in lines[:-1]:
+        raise ValueError('private inventory completion missing or misplaced')
+    records = lines[:-1]
+    if any(not re.fullmatch(rb'[0-9a-f]{64}  [^\r\n]+', line) for line in records):
+        raise ValueError('private inventory record malformed')
+    paths = [line[66:] for line in records]
+    if len(set(paths)) != len(paths):
+        raise ValueError('private inventory repeats a path')
+    return sorted(records)
 
 
 def digest(data):
@@ -315,23 +342,22 @@ def verify_bundle(directory, fixture, binding, provisional_manifest=None):
     identity = observation.get('identity') or {}
     if identity.get('targetApkPath') != target_path or identity.get('harnessApkPath') != harness_path:
         raise ValueError('native installed APK paths differ from package receipts')
-    snap = "'find . -type f -exec sha256sum {} \\; 2>/dev/null'"
     expected = {
         'fingerprint': ['shell', 'getprop', 'ro.build.fingerprint'],
         'api': ['shell', 'getprop', 'ro.build.version.sdk'],
         'webview': ['shell', 'dumpsys', 'webviewupdate'],
         'target-path': ['shell', 'pm', 'path', TARGET],
         'harness-before': ['shell', 'pm', 'list', 'packages', PACKAGE],
-        'private-before': ['shell', 'run-as', TARGET, 'sh', '-c', snap],
+        'private-before': ['shell', 'run-as', TARGET, 'sh', '-c', PRIVATE_INVENTORY_COMMAND],
         'installed-path': ['shell', 'pm', 'path', PACKAGE],
         'instrumentation': ['shell', 'am', 'instrument', '-w', '-r', PACKAGE + '/' + ENTRY],
-        'private-after': ['shell', 'run-as', TARGET, 'sh', '-c', snap],
+        'private-after': ['shell', 'run-as', TARGET, 'sh', '-c', PRIVATE_INVENTORY_COMMAND],
         'stop-owned-run': ['shell', 'am', 'force-stop', TARGET],
         'target-stopped-check': ['shell', 'sh', '-c', "'if ! command -v pidof >/dev/null; then echo ERROR; elif pidof com.legado.app.debug >/dev/null; then echo PRESENT; else echo ABSENT; fi'"],
         'scratch-removed-check': ['shell', 'run-as', TARGET, 'sh', '-c', "'if test -e cache/liber-html-selected; then echo PRESENT; else echo ABSENT; fi'"],
         'remove-harness': ['uninstall', PACKAGE],
         'harness-removed-check': ['shell', 'pm', 'list', 'packages', PACKAGE],
-        'private-final': ['shell', 'run-as', TARGET, 'sh', '-c', snap],
+        'private-final': ['shell', 'run-as', TARGET, 'sh', '-c', PRIVATE_INVENTORY_COMMAND],
     }
     for row in commands:
         command = row.get('command')
@@ -353,15 +379,10 @@ def verify_bundle(directory, fixture, binding, provisional_manifest=None):
     require_success(outputs['install']); require_success(outputs['remove-harness'])
     if outputs['target-stopped-check'].strip() != b'ABSENT' or outputs['scratch-removed-check'].strip() != b'ABSENT':
         raise ValueError('selected process or scratch remains')
-    def snapshot(data):
-        lines = data.splitlines()
-        if any(not re.fullmatch(rb'[0-9a-f]{64}  [^\r\n]+', line) for line in lines):
-            raise ValueError('selected private snapshot malformed')
-        paths = [line[66:] for line in lines]
-        if len(set(paths)) != len(paths):
-            raise ValueError('selected private snapshot repeats a path')
-        return sorted(lines)
-    if snapshot(outputs['private-before']) != snapshot(outputs['private-after']) or snapshot(outputs['private-before']) != snapshot(outputs['private-final']):
+    before = parse_private_inventory(outputs['private-before'])
+    after = parse_private_inventory(outputs['private-after'])
+    final = parse_private_inventory(outputs['private-final'])
+    if before != after or before != final:
         raise ValueError('selected private snapshots differ')
     if instrumentation_payload(outputs['instrumentation']) != observation:
         raise ValueError('selected instrumentation payload differs from observation')
@@ -429,8 +450,8 @@ def main():
         inventory = adb('harness-before', 'shell', 'pm', 'list', 'packages', PACKAGE).decode().splitlines()
         if any(not x.startswith('package:') or x == 'package:' + PACKAGE for x in inventory):
             raise ValueError('harness already present or inventory malformed')
-        snapshot = "'find . -type f -exec sha256sum {} \\; 2>/dev/null'"
-        before = adb('private-before', 'shell', 'run-as', TARGET, 'sh', '-c', snapshot)
+        before = adb('private-before', 'shell', 'run-as', TARGET, 'sh', '-c', PRIVATE_INVENTORY_COMMAND)
+        original = parse_private_inventory(before)
         installed = True  # Even an ambiguous install can leave a partial harness.
         install = adb('install', 'install', '-r', str(args.apk)); require_success(install)
         installed_path = adb('installed-path', 'shell', 'pm', 'path', PACKAGE).decode().strip()
@@ -442,16 +463,8 @@ def main():
         report = instrumentation_payload(adb('instrumentation', 'shell', 'am', 'instrument', '-w', '-r', PACKAGE + '/' + ENTRY))
         (args.output / 'observation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         validate_observation(strict_json(args.corpus.read_bytes()), report, binding)
-        after = adb('private-after', 'shell', 'run-as', TARGET, 'sh', '-c', snapshot)
-        def snapshot_bytes(data):
-            lines = data.splitlines()
-            if any(not re.fullmatch(rb'[0-9a-f]{64}  [^\r\n]+', line) for line in lines):
-                raise ValueError('private snapshot malformed')
-            paths = [line[66:] for line in lines]
-            if len(set(paths)) != len(paths):
-                raise ValueError('private snapshot repeats a path')
-            return sorted(lines)
-        if snapshot_bytes(before) != snapshot_bytes(after):
+        after = adb('private-after', 'shell', 'run-as', TARGET, 'sh', '-c', PRIVATE_INVENTORY_COMMAND)
+        if original != parse_private_inventory(after):
             raise ValueError('private file preservation differs')
         adb('stop-owned-run', 'shell', 'am', 'force-stop', TARGET)
         process = adb('target-stopped-check', 'shell', 'sh', '-c', "'if ! command -v pidof >/dev/null; then echo ERROR; elif pidof com.legado.app.debug >/dev/null; then echo PRESENT; else echo ABSENT; fi'")
@@ -465,8 +478,8 @@ def main():
         if any(not x.startswith('package:') or x == 'package:' + PACKAGE for x in remaining):
             raise ValueError('harness removal inventory differs')
         installed = False
-        final = adb('private-final', 'shell', 'run-as', TARGET, 'sh', '-c', snapshot)
-        if snapshot_bytes(before) != snapshot_bytes(final):
+        final = adb('private-final', 'shell', 'run-as', TARGET, 'sh', '-c', PRIVATE_INVENTORY_COMMAND)
+        if original != parse_private_inventory(final):
             raise ValueError('final private file preservation differs')
         manifest['status'] = 'observed'
         verify_bundle(args.output, strict_json(args.corpus.read_bytes()), binding, manifest)

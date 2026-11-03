@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -13,8 +14,84 @@ spec = importlib.util.spec_from_file_location('html_capture', Path(__file__).wit
 capture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(capture)
 
+# Host analogue only: exercises the exact shell script, not Android or a device.
+GIT_BASH = Path('C:/Program Files/Git/bin/bash.exe')
+
+
+def host_inventory(directory, failure=None):
+    # Git-for-Windows sha256sum emits a binary '*' marker by default; -t keeps
+    # the Android-style two-space record for these synthetic text inputs.
+    with tempfile.TemporaryDirectory(prefix='html-hash-bin-', dir='C:/Temp') as temporary:
+        tools = Path(temporary)
+        marker = tools / 'hash-called'
+        if failure == 'hash':
+            wrapper = ('#!/bin/sh\nif [ -e "$HTML_HASH_MARKER" ]; then '
+                       'echo "synthetic sha256sum failure" >&2; exit 42; fi\n'
+                       ': > "$HTML_HASH_MARKER"\nexec /usr/bin/sha256sum -t "$@"\n')
+        else:
+            wrapper = '#!/bin/sh\nexec /usr/bin/sha256sum -t "$@"\n'
+        (tools / 'sha256sum').write_text(wrapper, encoding='utf-8', newline='\n')
+        if failure == 'find':
+            (tools / 'find').write_text('#!/bin/sh\necho "synthetic find failure" >&2\nexit 43\n',
+                                        encoding='utf-8', newline='\n')
+        def posix(path):
+            value = path.as_posix()
+            return '/' + value[0].lower() + value[2:]
+        env = os.environ.copy()
+        env['HTML_HASH_MARKER'] = posix(marker)
+        return subprocess.run([str(GIT_BASH), '--noprofile', '--norc', '-c',
+                               'PATH="$1:$PATH"; export PATH; shift; exec sh -c "$1"',
+                               'sh', posix(tools), capture.PRIVATE_INVENTORY_SCRIPT],
+                              cwd=directory, env=env, capture_output=True, timeout=30)
+
 
 class CaptureReceiptsTest(unittest.TestCase):
+    def test_private_inventory_actual_walk_completion_and_failures(self):
+        # Git Bash is a host analogue; it is not an Android or native run.
+        with tempfile.TemporaryDirectory(prefix='html-inventory-walk-', dir='C:/Temp') as temporary:
+            root = Path(temporary)
+            empty = root / 'empty'; empty.mkdir()
+            result = host_inventory(empty)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, b'')
+            self.assertEqual(result.stdout, capture.PRIVATE_INVENTORY_COMPLETE + b'\n')
+            self.assertEqual(capture.parse_private_inventory(result.stdout), [])
+            files = root / 'files'; files.mkdir()
+            (files / 'a').write_bytes(b'first')
+            (files / 'b').write_bytes(b'second')
+            result = host_inventory(files)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, b'')
+            self.assertEqual(capture.parse_private_inventory(result.stdout), sorted([
+                (capture.digest(b'first') + '  ./a').encode(),
+                (capture.digest(b'second') + '  ./b').encode(),
+            ]))
+            failed = host_inventory(files, failure='hash')
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn(b'synthetic sha256sum failure', failed.stderr)
+            self.assertTrue(failed.stdout, 'failure must follow an actual partial hash')
+            self.assertNotIn(capture.PRIVATE_INVENTORY_COMPLETE, failed.stdout)
+            with self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                capture.parse_private_inventory(failed.stdout)
+            failed_find = host_inventory(files, failure='find')
+            self.assertNotEqual(failed_find.returncode, 0)
+            self.assertIn(b'synthetic find failure', failed_find.stderr)
+            self.assertNotIn(capture.PRIVATE_INVENTORY_COMPLETE, failed_find.stdout)
+            with self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                capture.parse_private_inventory(failed_find.stdout)
+            for invalid in (b'', result.stdout[:-1], b'a' * 64 + b'  ./a\n',
+                            capture.PRIVATE_INVENTORY_COMPLETE + b'\n' + result.stdout,
+                            result.stdout + capture.PRIVATE_INVENTORY_COMPLETE + b'\n',
+                            b'truncated\n' + capture.PRIVATE_INVENTORY_COMPLETE + b'\n',
+                            (capture.digest(b'first') + '  ./a\n').encode() * 2 + capture.PRIVATE_INVENTORY_COMPLETE + b'\n'):
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    capture.parse_private_inventory(invalid)
+            quoted = subprocess.run([str(GIT_BASH), '--noprofile', '--norc', '-c',
+                                     'set -- ' + capture.PRIVATE_INVENTORY_COMMAND + '; printf "%s" "$1"'],
+                                    cwd=files, capture_output=True, timeout=30)
+            self.assertEqual(quoted.returncode, 0, quoted.stderr)
+            self.assertEqual(quoted.stdout.decode('utf-8'), capture.PRIVATE_INVENTORY_SCRIPT)
+
     def test_success_must_not_mask_android_failure_or_timeout(self):
         capture.require_success(b'Performing Streamed Install\nSuccess\n')
         for output in (b'Success\nFailure [INSTALL_FAILED]\n', b'Success\nnotice: Failure [bad]\n',
@@ -85,8 +162,22 @@ class CaptureReceiptsTest(unittest.TestCase):
                         'scratchRemoved': True, 'scratchRetained': False, 'registeredPreferences': registered,
                         'preferencesRemoved': [{'name': registered[0], 'ok': True}]},
         }
-        snapshot = "'find . -type f -exec sha256sum {} \\; 2>/dev/null'"
-        snapshot_bytes = (('f' * 64) + '  files/original\n').encode()
+        snapshot = capture.PRIVATE_INVENTORY_COMMAND
+        with tempfile.TemporaryDirectory(prefix='html-inventory-fixture-', dir='C:/Temp') as inventory_dir:
+            files = Path(inventory_dir) / 'files'
+            files.mkdir()
+            (files / 'original').write_bytes(b'synthetic original')
+            (files / 'second').write_bytes(b'second synthetic original')
+            measured = host_inventory(inventory_dir)
+            self.assertEqual(measured.returncode, 0, measured.stderr)
+            self.assertEqual(measured.stderr, b'')
+            snapshot_bytes = measured.stdout
+            self.assertEqual(len(capture.parse_private_inventory(snapshot_bytes)), 2)
+            failed = host_inventory(inventory_dir, failure='hash')
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertTrue(failed.stdout)
+            self.assertIn(b'synthetic sha256sum failure', failed.stderr)
+            failed_partial = failed.stdout + failed.stderr
         instrumentation = b'HTML_ORACLE_BASE64=' + base64.b64encode(json.dumps(report).encode()) + b'\nINSTRUMENTATION_CODE: -1\n'
         entries = [
             ('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint'], (capture.FINGERPRINT + '\n').encode()),
@@ -124,6 +215,25 @@ class CaptureReceiptsTest(unittest.TestCase):
                 (root / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
             save()
             self.assertEqual(capture.verify_bundle(root, fixture, binding), report)
+            for incomplete in (b'', b'f' * 64 + b'  files/original\n', failed_partial):
+                with self.subTest(incomplete_inventory=incomplete):
+                    for name in ('private-before', 'private-after', 'private-final'):
+                        (root / (name + '.log')).write_bytes(incomplete)
+                        next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(incomplete)
+                    save()
+                    with self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                        capture.verify_bundle(root, fixture, binding)
+            # Empty is valid only when the real script reports completed traversal.
+            empty_completed = capture.PRIVATE_INVENTORY_COMPLETE + b'\n'
+            for name in ('private-before', 'private-after', 'private-final'):
+                (root / (name + '.log')).write_bytes(empty_completed)
+                next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(empty_completed)
+            save()
+            self.assertEqual(capture.verify_bundle(root, fixture, binding), report)
+            for name in ('private-before', 'private-after', 'private-final'):
+                (root / (name + '.log')).write_bytes(snapshot_bytes)
+                next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(snapshot_bytes)
+            save()
             if real_apk:
                 # Full gate control is synthetic. Its temporary pass proves mechanics only.
                 dart = os.environ.get('LIBER_DART', 'C:/Users/17945/fvm/default/bin/cache/dart-sdk/bin/dart.exe')
@@ -134,6 +244,18 @@ class CaptureReceiptsTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
                 self.assertEqual(json.loads((root / 'gate-report.json').read_text(encoding='utf-8'))['status'], 'pass')
                 (root / 'gate-report.json').unlink()
+                for name in ('private-before', 'private-after', 'private-final'):
+                    (root / (name + '.log')).write_bytes(empty_completed)
+                    next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(empty_completed)
+                save()
+                result = subprocess.run(args, capture_output=True, timeout=180)
+                self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
+                self.assertEqual(json.loads((root / 'gate-report.json').read_text(encoding='utf-8'))['status'], 'pass')
+                (root / 'gate-report.json').unlink()
+                for name in ('private-before', 'private-after', 'private-final'):
+                    (root / (name + '.log')).write_bytes(snapshot_bytes)
+                    next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(snapshot_bytes)
+                save()
                 report['observations'][0]['value'] = ['/synthetic-mismatch']
                 (root / 'observation.json').write_text(json.dumps(report), encoding='utf-8')
                 altered = b'HTML_ORACLE_BASE64=' + base64.b64encode(json.dumps(report).encode()) + b'\nINSTRUMENTATION_CODE: -1\n'
@@ -147,6 +269,36 @@ class CaptureReceiptsTest(unittest.TestCase):
                 (root / 'observation.json').write_text(json.dumps(report), encoding='utf-8')
                 (root / 'instrumentation.log').write_bytes(instrumentation)
                 row['sha256'] = capture.digest(instrumentation); save()
+                (root / 'gate-report.json').unlink()
+                for index, incomplete in enumerate((b'', b'f' * 64 + b'  files/original\n',
+                                                     snapshot_bytes[:-3], failed_partial)):
+                    for name in ('private-before', 'private-after', 'private-final'):
+                        (root / (name + '.log')).write_bytes(incomplete)
+                        next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(incomplete)
+                    save()
+                    with self.assertRaisesRegex(ValueError, 'private inventory.*completion'):
+                        capture.verify_bundle(root, fixture, binding)
+                    # Real preflight on the current signed APK proves the refusal
+                    # is inventory-specific, not stale provenance.
+                    verification = root / ('inventory-verification-' + str(index))
+                    verify_args = [sys.executable, 'tool/html_oracle/capture.py', '--verify-bundle', str(root),
+                                   '--apk', str(root / 'installed-harness.apk'), '--corpus',
+                                   'tool/html_oracle/list-fixtures-selected.json', '--frozen-source',
+                                   'C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/source',
+                                   '--java-home', 'C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8',
+                                   '--output', str(verification)]
+                    rejected = subprocess.run(verify_args, capture_output=True, timeout=180)
+                    self.assertEqual(rejected.returncode, 1, rejected.stderr)
+                    failure = json.loads((verification / 'manifest.json').read_text(encoding='utf-8'))
+                    self.assertIn('private inventory completion', failure['error'])
+                    result = subprocess.run(args, capture_output=True, timeout=180)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(b'Selected raw-bundle verification failed', result.stderr)
+                    self.assertFalse((root / 'gate-report.json').exists())
+                for name in ('private-before', 'private-after', 'private-final'):
+                    (root / (name + '.log')).write_bytes(snapshot_bytes)
+                    next(r for r in commands if r['name'] == name)['sha256'] = capture.digest(snapshot_bytes)
+                save()
             for name, suffix in [('install', b'Failure [INSTALL_FAILED]\n'), ('remove-harness', b'TIMED OUT\n'),
                                  ('instrumentation', instrumentation), ('private-after', b'not-a-hash\n'),
                                  ('private-final', b'not-a-hash\n')]:
@@ -159,7 +311,8 @@ class CaptureReceiptsTest(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         capture.verify_bundle(root, fixture, binding)
                     file.write_bytes(original); row['sha256'] = old_hash; save()
-            for damage in ('failed-status', 'missing-command', 'failed-command', 'wrong-command', 'wrong-binding'):
+            for damage in ('failed-status', 'missing-command', 'failed-command', 'failed-inventory-command',
+                           'wrong-command', 'wrong-binding'):
                 with self.subTest(damage=damage):
                     original = json.loads(json.dumps(manifest))
                     if damage == 'failed-status':
@@ -168,6 +321,8 @@ class CaptureReceiptsTest(unittest.TestCase):
                         manifest['commands'].pop()
                     elif damage == 'failed-command':
                         manifest['commands'][0]['exitCode'] = 1
+                    elif damage == 'failed-inventory-command':
+                        next(r for r in manifest['commands'] if r['name'] == 'private-before')['exitCode'] = 1
                     elif damage == 'wrong-command':
                         manifest['commands'][0]['command'][-1] = 'different.property'
                     else:
