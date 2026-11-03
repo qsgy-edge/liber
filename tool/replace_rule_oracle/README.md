@@ -13,6 +13,16 @@ fingerprint. Legacy version 1 capture remains bound to
 `Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys`;
 previous selected reports retain their original identity and are not promoted.
 
+The selected entry executes the fixed ordered partition of 14 cases, excluding
+only `timeout` and including `refusal`; the APK still packages the unchanged
+15-case corpus. A successful partition requires the original guard, terminal,
+private-file equality and exact registered cleanup checks. The first timeout
+lifetime failed at the guarded launch attempt and is never a golden; its earlier
+rows are not reused. Its separate fixed timeout-policy witness binds the original
+producer, raw report, archived crash and later recovery. Recovery does not make
+that failed lifetime successful. A selected comparison requires both a fresh
+successful partition and the validated witness; a partition alone is refused.
+
 The selected instrumentation has its own fixed manifest and entry, using the
 unchanged shared scratch, shortcut and host-initialization helpers by path.
 It invokes the real selected 4-argument title and 10-argument content methods.
@@ -20,8 +30,8 @@ Its selected-only Application refuses activity launches, and each reader call
 must establish quiescence of the actual `Coroutine.DEFAULT` Job before the next
 call. A launch attempt, unproved terminal state, failed cleanup or any failed
 row makes the run incomplete; failed owned scratch is retained for controller
-recovery. No timeout input is amplified or treated as an observed timeout by
-this preparation.
+recovery. No timeout input is amplified; the original failed lifetime's archived
+crash is timeout-path evidence, not a final reader return or successful restart.
 
 Build against the actual fixed reference checkout and the existing local SDK/JDK;
 no dependency download or device operation is part of a build:
@@ -47,13 +57,19 @@ controller-directed force-stop/recovery, not silently cleaned or retried.
 
 ```powershell
 dart run tool/replace_rule_oracle/compare.dart `
-  --corpus tool/replace_rule_oracle/fixtures-selected.json <fjs.dll> - `
+  --corpus tool/replace_rule_oracle/fixtures-selected.json `
+  --timeout-witness <timeout-witness-descriptor.json> <fjs.dll> - `
   C:/Temp/reader-selected-product.json
 ```
 
+The witness descriptor is a JSON object with exactly `role` set to
+`timeout-policy-witness` and `attemptDirectory` set to the preserved first
+attempt directory. Validation reads that attempt's fixed raw artifacts and
+independently frozen producer sources; it never restamps the failed capture.
 Without a selected golden the product-only command exits 2 and reports all 15
-frozen rows not-run. Replace `-` only with a real selected capture's golden;
-the historical comparison report remains refused as a golden. The selected
+frozen rows not-run. Replace `-` only with a real selected partition golden;
+keep its actual `installed-harness.apk` beside the golden for asset admission.
+The historical comparison report remains refused as a golden. The selected
 gate also requires `textList` to join to the exact returned content, compares
 the disabled-rule list, and keeps `sameTitleRemoved` and effective rules as
 frozen-only observations because the product interface exposes final text rather

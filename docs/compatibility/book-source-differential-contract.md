@@ -421,6 +421,17 @@ named possessive-quantifier refusal. A host reimplementation cannot substitute
 for frozen execution. #49's JS implementation is integrated, while its separate
 frozen acceptance stays outside this corpus.
 
+For #138's selected reference, the unchanged fifteen-case reader corpus has a
+fixed execution partition: a fresh successful lifetime for all cases other than
+`timeout`, including `refusal`, and the separately graded failed timeout
+witness. The failed lifetime's prior rows are not a golden; its guarded launch
+attempt and missing return/terminal/cleanup observations remain incomplete after
+recovery. The archived native crash records the timeout path, not a successful
+restart. Selected comparison requires both independently bound producer roles,
+all fifteen product observations, exact successful partition cleanup, and the
+existing named timeout/refusal dispositions; no unexecuted native row is
+promoted. The successful fourteen-case lifetime remains not-run until captured.
+
 ## Verdict Aggregation
 
 | Level | Allowed verdicts and pass rule |

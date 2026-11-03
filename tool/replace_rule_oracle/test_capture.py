@@ -51,9 +51,14 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
                                          'completionMethod': 'boolean kotlinx.coroutines.Job.isCompleted()'},
                        'cleanup': {'databaseClosed': True, 'scratchRemoved': True, 'terminalProved': True,
                                    'activityLaunchAttempts': 0, 'scratchRetained': False,
+                                   'registeredPreferences': ['liber_replace_selected_probe'],
                                    'preferencesRemoved': [{'name': 'liber_replace_selected_probe', 'ok': True}]},
                        'rows': []}
+        self.report['partition'] = {'role': 'reader-non-timeout',
+                                    'caseIds': [case['id'] for case in self.fixture['cases'] if case['id'] != 'timeout']}
         for case in self.fixture['cases']:
+            if case['id'] == 'timeout':
+                continue
             terminal = {'allCompleted': True, 'rootEmpty': True, 'launchAttempts': 0}
             self.report['rows'].append({'id': case['id'], 'status': 'observed', 'title': 'synthetic',
                 'content': 'synthetic', 'selection': {'title': [], 'content': []}, 'textList': ['synthetic'],
@@ -136,6 +141,28 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         capture.check_device_fingerprint(selected, fingerprint)
 
+    def test_failure_preservation_requires_exact_registered_owner(self):
+        # Synthetic snapshots and owner exercise classification only, not a capture.
+        before = f"{'a' * 64}  files/original\n".encode()
+        after = before + f"{'b' * 64}  shared_prefs/liber_replace_selected_owned.xml\n".encode()
+        owner = {'fixtureId': 'REPLACE-17', 'corpusVersion': 2,
+                 'corpusSha256Lf': 'c' * 64, 'targetPackage': 'com.legado.app.debug',
+                 'targetApkSha256': self.fixture['target']['apkSha256'],
+                 'harnessPackage': 'io.liber.oracle.replace.selected', 'harnessApkSha256': 'a' * 64,
+                 'createdAt': 123, 'preferences': ['liber_replace_selected_owned']}
+        result = capture.classify_selected_preservation(before, after, owner, self.report['identity'])
+        self.assertTrue(result['originalsUnchanged'])
+        self.assertEqual(result['registeredAdditions'], ['shared_prefs/liber_replace_selected_owned.xml'])
+        self.assertFalse(result['equal'])
+        for bad_before, bad_after, bad_owner in [
+            (before, after.replace(b'files/original', b'files/renamed'), owner),
+            (before, after.replace(b'a' * 64, b'c' * 64), owner),
+            (before, after + f"{'d' * 64}  shared_prefs/liber_replace_selected_unowned.xml\n".encode(), owner),
+            (before, after, dict(owner, harnessApkSha256='wrong')),
+        ]:
+            with self.assertRaises(ValueError):
+                capture.classify_selected_preservation(bad_before, bad_after, bad_owner, self.report['identity'])
+
     def test_selected_report_refuses_damaged_admission(self):
         capture.check_selected_report(self.fixture, self.report, self.binding)
         corruptions = [
@@ -149,10 +176,16 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
             lambda r: r.__setitem__('paragraphIndent', ' '),
             lambda r: r['terminalOwner'].__setitem__('baselineChildren', 1),
             lambda r: r['cleanup'].__setitem__('activityLaunchAttempts', 1),
+            lambda r: r['cleanup'].__setitem__('registeredPreferences', ['liber_replace_selected_other']),
+            lambda r: r['cleanup'].__setitem__('terminalProved', False),
             lambda r: r['rows'][0]['terminal'].__setitem__('rootEmpty', False),
             lambda r: r['rows'][0].pop('textList'),
             lambda r: r['rows'][0].__setitem__('textList', ['different']),
             lambda r: r['rows'].reverse(),
+            lambda r: r['rows'].pop(),
+            lambda r: r['rows'].append(copy.deepcopy(r['rows'][0])),
+            lambda r: r['partition'].__setitem__('role', 'timeout'),
+            lambda r: r['partition']['caseIds'].remove('refusal'),
         ]
         for corrupt in corruptions:
             bad = copy.deepcopy(self.report)

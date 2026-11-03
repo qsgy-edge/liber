@@ -33,6 +33,36 @@ def check_device_fingerprint(selected, fingerprint):
         raise ValueError('device fingerprint differs; requires new capture approval')
 
 
+def classify_selected_preservation(before, after, owner, identity):
+    """Classify failed-run residue only after exact owner and original-file checks."""
+    def snapshot(data):
+        result = {}
+        for line in data.decode('utf-8', errors='strict').splitlines():
+            match = re.fullmatch(r'([0-9a-f]{64})  ([^\r\n]+)', line)
+            if not match or match.group(2) in result:
+                raise ValueError('ambiguous private-file snapshot')
+            result[match.group(2)] = match.group(1)
+        return result
+    original, current = snapshot(before), snapshot(after)
+    if any(current.get(path) != digest for path, digest in original.items()):
+        raise ValueError('original private file changed or disappeared')
+    keys = ('fixtureId', 'corpusVersion', 'corpusSha256Lf', 'targetPackage',
+            'targetApkSha256', 'harnessPackage', 'harnessApkSha256')
+    if any(owner.get(key) != identity.get(key) for key in keys) or type(owner.get('createdAt')) is not int:
+        raise ValueError('failed lifetime owner identity differs')
+    prefs = owner.get('preferences')
+    if (not isinstance(prefs, list) or
+            any(not isinstance(name, str) or not name.startswith('liber_replace_selected_') or
+                '/' in name or '\\' in name for name in prefs) or len(prefs) != len(set(prefs))):
+        raise ValueError('invalid registered preference names')
+    registered = {'shared_prefs/' + name + '.xml' for name in prefs}
+    additions = set(current) - set(original)
+    if not additions <= registered:
+        raise ValueError('unregistered private-file addition')
+    return {'equal': original == current, 'originalsUnchanged': True,
+            'registeredAdditions': sorted(additions)}
+
+
 def check_selected_assets(apk, corpus_bytes, provenance_bytes):
     with zipfile.ZipFile(apk) as archive:
         names = archive.namelist()
@@ -152,14 +182,21 @@ def check_selected_report(fixture, report, binding):
             'selected coroutine owner baseline unverified')
     cleanup = report.get('cleanup') or {}
     removed = cleanup.get('preferencesRemoved')
+    registered = cleanup.get('registeredPreferences')
     require(cleanup.get('databaseClosed') is True and cleanup.get('terminalProved') is True and
             cleanup.get('activityLaunchAttempts') == 0 and cleanup.get('scratchRemoved') is True and
             cleanup.get('scratchRetained') is False and isinstance(removed, list) and removed and
-            all(r.get('ok') is True and r.get('name', '').startswith('liber_replace_selected_') for r in removed),
+            isinstance(registered, list) and all(isinstance(x, str) for x in registered) and
+            len(set(registered)) == len(registered) and
+            all(isinstance(r, dict) and r.get('ok') is True and
+                isinstance(r.get('name'), str) and r['name'].startswith('liber_replace_selected_') for r in removed) and
+            sorted(r['name'] for r in removed) == sorted(registered),
             'selected cleanup unverified')
     rows = report.get('rows')
-    require(isinstance(rows, list) and [r.get('id') for r in rows] ==
-            [r['id'] for r in fixture['cases']], 'selected rows missing or reordered')
+    ids = [r['id'] for r in fixture['cases'] if r['id'] != 'timeout']
+    require(report.get('partition') == {'role': 'reader-non-timeout', 'caseIds': ids} and
+            isinstance(rows, list) and [r.get('id') for r in rows] == ids,
+            'selected partition or rows missing or reordered')
     def terminal(value):
         return isinstance(value, dict) and value.get('allCompleted') is True and \
             value.get('rootEmpty') is True and value.get('launchAttempts') == 0
@@ -373,9 +410,21 @@ def main():
         after = adb('private-after', 'shell', 'run-as', target_package, 'sh', '-c', snapshot)
         preserved = sorted(before.stdout.splitlines()) == sorted(after.stdout.splitlines())
         manifest['existingDataHashesUnchanged'] = preserved
+        native_failure = report.get('failure') or report.get('cleanupFailure')
+        if native_failure:
+            manifest['nativeFailure'] = native_failure
+        if selected and native_failure and not preserved:
+            try:
+                owner = adb('failed-owner', 'shell', 'run-as', target_package, 'cat',
+                            'cache/liber-replace-selected/owner.json')
+                manifest['preservationClassification'] = classify_selected_preservation(
+                    before.stdout, after.stdout, json.loads(owner.stdout), report['identity'])
+            except Exception as error:
+                manifest['preservationFailure'] = str(error)
         if not preserved:
+            manifest.setdefault('preservationFailure', 'private file hash list differs')
             raise ValueError('existing private file hash list changed; inspect before promotion')
-        if report.get('failure') or report.get('cleanupFailure'):
+        if native_failure:
             raise ValueError('instrumentation reported a failure')
         if selected:
             check_selected_report(fixture, report, binding)
@@ -383,7 +432,7 @@ def main():
             raise ValueError('installed harness contains different fixture bytes')
         if report.get('cleanup', {}).get('scratchRemoved') is not True:
             raise ValueError('scratch cleanup not confirmed')
-        if [row['id'] for row in report['rows']] != [row['id'] for row in fixture['cases']]:
+        if not selected and [row['id'] for row in report['rows']] != [row['id'] for row in fixture['cases']]:
             raise ValueError('missing/reordered frozen rows')
         if any(row['status'] != 'observed' for row in report['rows']):
             raise ValueError('frozen row failed')

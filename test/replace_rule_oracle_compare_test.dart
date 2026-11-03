@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../tool/replace_rule_oracle/compare.dart';
@@ -10,7 +12,9 @@ void main() {
   late Map<String, dynamic> committedReport;
   late List<Map<String, Object?>> product;
   late Map<String, dynamic> synthetic;
+  Map<String, dynamic>? timeoutWitness;
   setUp(() {
+    timeoutWitness = null;
     fixture =
         jsonDecode(
               File('tool/replace_rule_oracle/fixtures.json').readAsStringSync(),
@@ -49,6 +53,7 @@ void main() {
     product,
     golden,
     fixtureSha256: 'synthetic-test-hash',
+    timeoutWitness: timeoutWitness,
   );
 
   test('selected corpus cannot admit a legacy-only golden envelope', () {
@@ -151,6 +156,26 @@ void main() {
       'chineseConverterType': 0,
       'replaceEnableDefault': true,
     };
+    synthetic['partition'] = {
+      'role': 'reader-non-timeout',
+      'caseIds': [
+        for (final row in fixture['cases'] as List)
+          if (row['id'] != 'timeout') row['id'],
+      ],
+    };
+    (synthetic['rows'] as List).removeWhere((row) => row['id'] == 'timeout');
+    // Synthetic witness exercises the role join, never native evidence.
+    timeoutWitness = {
+      'role': 'timeout-policy-witness',
+      'caseId': 'timeout',
+      'producerHead': '577d52d9eff6db0cf4d56a283b50ae17523c4d77',
+      'harnessApkSha256':
+          '44787a1b5120dc2f1108c0be402064282a1e9beed612008920d3fb3f0250bd7a',
+      'observationSha256':
+          '984e62228e19010cdc050ad103ca8395ce6281e383ce0c430ecd0b9015e7ec67',
+      'archiveSha256':
+          '10146336bb37893c40a8db71582aa383b4f72787f9bb75f030c72b7e91cd2c31',
+    };
     synthetic['paragraphIndent'] = '　　';
     synthetic['fingerprint'] =
         'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys';
@@ -160,6 +185,7 @@ void main() {
       'terminalProved': true,
       'activityLaunchAttempts': 0,
       'scratchRetained': false,
+      'registeredPreferences': ['liber_replace_selected_probe'],
       'preferencesRemoved': [
         {'name': 'liber_replace_selected_probe', 'ok': true},
       ],
@@ -193,7 +219,35 @@ void main() {
         row['restartObservation'] = 'notCompared: synthetic';
       }
     }
-    expect((compare(synthetic)['counts'] as Map)['fail'], 0);
+    final witness = timeoutWitness;
+    timeoutWitness = null;
+    expect(() => compare(synthetic), throwsFormatException);
+    timeoutWitness = witness;
+    final joined = compare(synthetic);
+    expect((joined['counts'] as Map)['fail'], 0);
+    expect((joined['counts'] as Map)['notCompared'], 1);
+    expect(joined['complete'], false);
+    final timeoutRow = (joined['rows'] as List).cast<Map>().singleWhere(
+      (row) => row['id'] == 'timeout',
+    );
+    expect(timeoutRow['status'], 'notCompared');
+    expect(timeoutRow.containsKey('frozenReturnFields'), false);
+    for (final key in [
+      'role',
+      'caseId',
+      'producerHead',
+      'harnessApkSha256',
+      'observationSha256',
+      'archiveSha256',
+    ]) {
+      timeoutWitness = {...witness!, key: 'wrong'};
+      expect(() => compare(synthetic), throwsFormatException, reason: key);
+    }
+    timeoutWitness = witness;
+    final timeoutProduct = product.singleWhere((row) => row['id'] == 'timeout');
+    timeoutProduct['status'] = 'error';
+    expect((compare(synthetic)['counts'] as Map)['fail'], 1);
+    timeoutProduct['status'] = 'observed';
     final firstFrozenRow = (synthetic['rows'] as List).first as Map;
     for (final valid in [
       null,
@@ -244,6 +298,13 @@ void main() {
       (x) => x['paragraphIndent'] = ' ',
       (x) => (x['terminalOwner'] as Map)['baselineChildren'] = 1,
       (x) => (x['cleanup'] as Map)['activityLaunchAttempts'] = 1,
+      (x) => (x['cleanup'] as Map)['terminalProved'] = false,
+      (x) => (x['cleanup'] as Map)['registeredPreferences'] = [
+        'liber_replace_selected_other',
+      ],
+      (x) => (x['partition'] as Map)['role'] = 'timeout-policy-witness',
+      (x) => (x['rows'] as List).removeLast(),
+      (x) => (x['rows'] as List).add((x['rows'] as List).first),
       (x) => ((x['rows'] as List)[0] as Map)['terminal']['rootEmpty'] = false,
       (x) => ((x['rows'] as List)[0] as Map).remove('textList'),
       (x) => ((x['rows'] as List)[0] as Map)['textList'] = [
@@ -255,6 +316,56 @@ void main() {
       corrupt(copy);
       expect(() => compare(copy), throwsFormatException);
     }
+  });
+
+  test('selected installed APK asset binding rejects tampering', () {
+    // Synthetic ZIP mechanics; this is not a native capture or golden.
+    final dir = Directory.systemTemp.createTempSync('reader-apk-test-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final corpus = File(
+      'tool/replace_rule_oracle/fixtures-selected.json',
+    ).readAsBytesSync();
+    final dex = utf8.encode('synthetic dex');
+    final provenance = {'dexSha256': sha256Bytes(Uint8List.fromList(dex))};
+    final metadata = utf8.encode(jsonEncode(provenance));
+    final archive = Archive()
+      ..addFile(
+        ArchiveFile('assets/fixtures-selected.json', corpus.length, corpus),
+      )
+      ..addFile(
+        ArchiveFile('assets/provenance.json', metadata.length, metadata),
+      )
+      ..addFile(ArchiveFile('classes.dex', dex.length, dex));
+    final apk = File('${dir.path}/installed-harness.apk')
+      ..writeAsBytesSync(ZipEncoder().encode(archive));
+    final goldenFile = File('${dir.path}/golden.json');
+    final envelope = <String, dynamic>{
+      'identity': {
+        'harnessApkSha256': sha256File(apk),
+        'corpusAssetSha256': sha256Bytes(corpus),
+        'provenanceAssetSha256': sha256Bytes(Uint8List.fromList(metadata)),
+      },
+      'provenance': provenance,
+    };
+    checkSelectedHarnessArtifact(goldenFile, envelope);
+    for (final field in [
+      'harnessApkSha256',
+      'corpusAssetSha256',
+      'provenanceAssetSha256',
+    ]) {
+      final bad = jsonDecode(jsonEncode(envelope)) as Map<String, dynamic>;
+      (bad['identity'] as Map)[field] = 'wrong';
+      expect(
+        () => checkSelectedHarnessArtifact(goldenFile, bad),
+        throwsFormatException,
+      );
+    }
+    final bad = jsonDecode(jsonEncode(envelope)) as Map<String, dynamic>;
+    (bad['provenance'] as Map)['dexSha256'] = 'wrong';
+    expect(
+      () => checkSelectedHarnessArtifact(goldenFile, bad),
+      throwsFormatException,
+    );
   });
 
   test('missing frozen evidence leaves every row not-run', () {

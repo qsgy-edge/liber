@@ -175,9 +175,17 @@ public final class SelectedReaderOracle extends ReaderOracle {
                 .put("childrenMethod", getChildren.toString()).put("completionMethod", isCompleted.toString()));
             JSONArray rows = new JSONArray(); report.put("rows", rows);
             JSONArray cases = corpus.getJSONArray("cases");
+            JSONArray partitionIds = new JSONArray();
             for (int i = 0; i < cases.length(); i++) {
-                terminalProved = false;
+                String id = cases.getJSONObject(i).getString("id");
+                if (!"timeout".equals(id)) partitionIds.put(id);
+            }
+            report.put("partition", new JSONObject().put("role", "reader-non-timeout")
+                .put("caseIds", partitionIds));
+            for (int i = 0; i < cases.length(); i++) {
                 JSONObject input = cases.getJSONObject(i);
+                if ("timeout".equals(input.getString("id"))) continue;
+                terminalProved = false;
                 JSONObject row = new JSONObject().put("id", input.getString("id")); rows.put(row);
                 long started = System.nanoTime();
                 try {
@@ -207,7 +215,9 @@ public final class SelectedReaderOracle extends ReaderOracle {
                 // Failure keeps owned residue for controller inspection and recovery.
                 if (ok && closed && scratch.isBound()) {
                     JSONArray removed = new JSONArray(); boolean preferencesRemoved = true;
-                    for (String name : scratch.ownedPreferences()) {
+                    Set<String> registeredPreferences = scratch.ownedPreferences();
+                    cleanup.put("registeredPreferences", new JSONArray(registeredPreferences));
+                    for (String name : registeredPreferences) {
                         boolean deleted = scratch.deletePreference(name);
                         preferencesRemoved &= deleted;
                         removed.put(new JSONObject().put("name", name).put("ok", deleted));
