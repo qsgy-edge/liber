@@ -16,6 +16,7 @@ import zipfile
 
 BASELINE_APK = 'cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6'
 FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
+SELECTED_FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
 PACKAGE = 'io.liber.oracle.replace'
 
 
@@ -25,6 +26,11 @@ def sha(path):
 
 def sha_lf(path):
     return hashlib.sha256(path.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+
+
+def check_device_fingerprint(selected, fingerprint):
+    if fingerprint != (SELECTED_FINGERPRINT if selected else FINGERPRINT):
+        raise ValueError('device fingerprint differs; requires new capture approval')
 
 
 def check_selected_assets(apk, corpus_bytes, provenance_bytes):
@@ -94,7 +100,7 @@ def check_selected_report(fixture, report, binding):
         require(report.get(key) == fixture[key], 'selected report identity differs: ' + key)
     require(report.get('fixtureSha256') == binding['corpusSha256Lf'] and
             report.get('boundary') == fixture['comparisonBoundary'] and
-            report.get('fingerprint') == FINGERPRINT and report.get('paragraphIndent') == '　　',
+            report.get('fingerprint') == SELECTED_FINGERPRINT and report.get('paragraphIndent') == '　　',
             'selected corpus/boundary/runtime differs')
     identity = report.get('identity') or {}
     for key in ('corpusAssetSha256', 'corpusSha256Lf', 'harnessApkSha256', 'provenanceAssetSha256'):
@@ -315,8 +321,7 @@ def main():
                 manifest['status'] = 'preflight-only'
                 return 0
         manifest['fingerprint'] = adb('fingerprint', 'shell', 'getprop', 'ro.build.fingerprint').stdout.decode().strip()
-        if manifest['fingerprint'] != FINGERPRINT:
-            raise ValueError('device fingerprint differs; requires new capture approval')
+        check_device_fingerprint(selected, manifest['fingerprint'])
         baseline = adb('baseline-path', 'shell', 'pm', 'path', target_package).stdout.decode().strip()
         adb('pull-baseline', 'pull', baseline.removeprefix('package:'), str(args.output / 'frozen.apk'))
         manifest['baselineApkSha256'] = sha(args.output / 'frozen.apk')

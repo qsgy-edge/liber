@@ -152,7 +152,8 @@ void main() {
       'replaceEnableDefault': true,
     };
     synthetic['paragraphIndent'] = '　　';
-    synthetic['fingerprint'] = selectedReaderFingerprint;
+    synthetic['fingerprint'] =
+        'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys';
     synthetic['cleanup'] = {
       'databaseClosed': true,
       'scratchRemoved': true,
@@ -238,6 +239,8 @@ void main() {
       (x) => (x['entryPoints'] as Map)['getContentArity'] = 7,
       (x) => (x['settingsBefore'] as Map)['backupPath'] = 'occupied',
       (x) => x['fingerprint'] = 'wrong',
+      (x) => x['fingerprint'] =
+          'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys',
       (x) => x['paragraphIndent'] = ' ',
       (x) => (x['terminalOwner'] as Map)['baselineChildren'] = 1,
       (x) => (x['cleanup'] as Map)['activityLaunchAttempts'] = 1,

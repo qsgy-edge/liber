@@ -7,7 +7,11 @@
 inputs. It is preparation only: its device row remains **not-run** until the
 controller captures the selected APK on the approved handset. It contains no
 expected reader outputs. The legacy version 1 corpus and its evidence below
-retain their original identities.
+retain their original identities. Selected version 2 capture and report admission
+require the approved `Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys`
+fingerprint. Legacy version 1 capture remains bound to
+`Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys`;
+previous selected reports retain their original identity and are not promoted.
 
 The selected instrumentation has its own fixed manifest and entry, using the
 unchanged shared scratch, shortcut and host-initialization helpers by path.

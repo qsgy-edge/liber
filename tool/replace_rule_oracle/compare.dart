@@ -11,7 +11,7 @@ import 'package:liber/store/database.dart' show ReplaceRule;
 import 'package:pointycastle/digests/sha256.dart';
 
 const selectedReaderFingerprint =
-    'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys';
+    'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys';
 
 const selectedReaderSourcePaths = [
   'tool/replace_rule_oracle/ReaderOracle.java',

@@ -21,7 +21,8 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
         self.report = {'fixtureId': 'REPLACE-17', 'corpusVersion': 2,
                        'baselineCommit': self.fixture['baselineCommit'],
                        'boundary': self.fixture['comparisonBoundary'],
-                       'fixtureSha256': self.binding['corpusSha256Lf'], 'fingerprint': capture.FINGERPRINT,
+                       'fixtureSha256': self.binding['corpusSha256Lf'],
+                       'fingerprint': 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys',
                        'paragraphIndent': '　　',
                        'identity': {'fixtureId': 'REPLACE-17', 'corpusVersion': 2,
                                     'targetPackage': 'com.legado.app.debug',
@@ -125,6 +126,16 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 capture.check_selected_assets(apk, corpus, provenance + b'changed')
 
+    def test_device_fingerprint_selection_preserves_legacy_identity(self):
+        old = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
+        new = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
+        for selected, allowed, refused in [(False, old, new), (True, new, old)]:
+            with self.subTest(selected=selected):
+                capture.check_device_fingerprint(selected, allowed)
+                for fingerprint in (refused, 'wrong'):
+                    with self.assertRaises(ValueError):
+                        capture.check_device_fingerprint(selected, fingerprint)
+
     def test_selected_report_refuses_damaged_admission(self):
         capture.check_selected_report(self.fixture, self.report, self.binding)
         corruptions = [
@@ -134,6 +145,7 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
             lambda r: r['hostInitialization'].__setitem__('verified', False),
             lambda r: r['startupContainment'].__setitem__('handled', 0),
             lambda r: r.__setitem__('fingerprint', 'other'),
+            lambda r: r.__setitem__('fingerprint', 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'),
             lambda r: r.__setitem__('paragraphIndent', ' '),
             lambda r: r['terminalOwner'].__setitem__('baselineChildren', 1),
             lambda r: r['cleanup'].__setitem__('activityLaunchAttempts', 1),
