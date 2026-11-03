@@ -180,3 +180,62 @@ reader acceptance, and any platform claim remain outstanding for the controller
 and #138/#133. The `HTML-LIST-01` destination-only run leaves
 `frozenGolden: "not-run"`; it is not a compatibility result. The unchanged
 45-case legacy comparison remains the executed frozen row it always was.
+
+## Selected reference preparation (`a7d37f1`; native rows not run here)
+
+`fixtures-selected.json` and `list-fixtures-selected.json` preserve the respective
+45 and 11 original cases, documents and base URL. Their distinct selected ids and
+raw byte hashes bind the selected reference APK and source; their `expected`
+fields remain **historical annotations**, not measured selected values. The
+selected product-only gate runs every case and returns `status: not-run` and
+exit code 2. It retains historical expectation mismatches as diagnostics. The
+old corpus and list modes retain their original status and defaults.
+
+The single `SelectedHtmlOracle` is compiled with the existing scratch context,
+startup guard, host initialization and guarded Application **by path**; none of
+those shared sources is changed. It uses the selected DEX's explicit four-argument
+constructor and named three-argument methods. It measures the installed target and
+harness, packaged corpus and provenance, routes startup/storage through the owned
+scratch, invokes each row synchronously, proves the selected DEFAULT Job quiescent
+per row, closes the scratch database, removes only registered preferences and the
+owned scratch, and emits a single instrumentation payload. Failed lifetimes retain
+their owned residue; neither a prefix nor a failed lifetime is a golden.
+
+Build each mode to a **fresh short external directory** with the approved SDK, JDK,
+reference checkout and existing debug key:
+
+```powershell
+pwsh -NoProfile -File tool/html_oracle/build.ps1 -OutputDirectory <fresh-dir> `
+  -JavaHome <approved-jdk-17> -FrozenSource <selected-source> `
+  -CorpusPath tool/html_oracle/fixtures-selected.json
+# Repeat with list-fixtures-selected.json and a different fresh directory.
+python tool/html_oracle/capture.py --preflight-only --apk <fresh-dir>/html-oracle.apk `
+  --corpus tool/html_oracle/fixtures-selected.json --frozen-source <selected-source> `
+  --java-home <approved-jdk-17> --output <fresh-preflight-dir>
+```
+
+Preflight is off-device: it checks the clean pinned reference and source hashes,
+exact corpus bytes, packaged provenance and primary DEX, the actual entry
+class definition, actual binary manifest and the single approved signer. It
+records the inspection command/log receipts under its output directory. An APK
+is prepared instrumentation, not a native result. The accepted FJS DLL is used
+only by the product gate, not packaged in the instrumentation APK.
+
+The controller alone may run `capture.py` without `--preflight-only`, against the
+approved serial and a fresh output directory, following the existing device and
+post-state authorization. The collector checks the selected fingerprint, API and
+current WebView provider, exact installed reference APK, fresh harness inventory,
+pre/post/final original-file hash inventories, the installed harness bytes, one
+instrumentation result, terminal/closure/cleanup, stopped process, removed scratch
+and removed harness. It retains raw receipts and failed evidence and never retries
+an install. Failure or timeout alongside a success line is still failure. The
+capture writes `observation.json` only as the raw payload, not a fabricated golden.
+
+To compare a controller-produced **successful** bundle, pass that bundle's
+`observation.json` as the golden and the matching selected corpus as argument four.
+The existing gate invokes the collector's `--verify-bundle` path off-device to
+revalidate the actual signed installed APK and its assets/provenance and the full
+ordered raw bundle, then strictly compares each typed outcome. The verifier uses
+the fixed approved Windows source/JDK/SDK paths and the already installed Python;
+legacy invocations do not require it. No selected observation, even a synthetic
+test envelope, is a platform or compatibility claim by itself.

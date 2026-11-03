@@ -27,6 +27,13 @@ tool/first_slice/runner.dart text eol=lf
 # source bytes as well as its reports; keep those hashes stable on every host.
 tool/html_oracle/fixtures.json text eol=lf
 tool/html_oracle/list-fixtures.json text eol=lf
+tool/html_oracle/fixtures-selected.json text eol=lf
+tool/html_oracle/list-fixtures-selected.json text eol=lf
+# These selected producer inputs are recorded by raw SHA-256 in the APK.
+tool/html_oracle/SelectedHtmlOracle.java text eol=lf
+tool/html_oracle/AndroidManifest-selected.xml text eol=lf
+tool/html_oracle/build.ps1 text eol=lf
+tool/html_oracle/capture.py text eol=lf
 tool/html_oracle/evidence/** text eol=lf
 tool/nested_oracle/HtmlOracle.java text eol=lf
 tool/nested_oracle/build.ps1 text eol=lf

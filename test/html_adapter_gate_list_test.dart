@@ -27,6 +27,74 @@ void main() {
   });
 
   test(
+    'selected corpora expose product observations without claiming parity',
+    () async {
+      for (final (path, count) in [
+        ('tool/html_oracle/fixtures-selected.json', 45),
+        ('tool/html_oracle/list-fixtures-selected.json', 11),
+      ]) {
+        final report = await gate.runHtmlAdapterGate(
+          libraryPath: nativeLibraryPath(),
+          corpusPath: path,
+        );
+        expect(report['status'], 'not-run');
+        expect(report['frozenGolden'], 'not-run');
+        expect(report['observations'], hasLength(count));
+      }
+    },
+  );
+
+  test(
+    'selected identity rejects damaged corpus bytes before rules run',
+    () async {
+      final original =
+          jsonDecode(
+                File(
+                  'tool/html_oracle/list-fixtures-selected.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      for (final mutate in <void Function(Map<String, dynamic>)>[
+        (value) => value['cases'] = [],
+        (value) => (value['cases'] as List).add((value['cases'] as List).first),
+        (value) => value['baselineCommit'] = 'different',
+        (value) => value['fixtureId'] = 'unknown',
+        (value) => (value['documents'] as Map)['toc'] = 'changed',
+      ]) {
+        final damaged =
+            jsonDecode(jsonEncode(original)) as Map<String, dynamic>;
+        mutate(damaged);
+        await expectLater(
+          gate.runHtmlAdapterGate(
+            libraryPath: nativeLibraryPath(),
+            corpusPath: _writeJson('selected-damaged', damaged),
+          ),
+          throwsA(isA<FormatException>()),
+        );
+      }
+    },
+  );
+
+  test('selected golden without raw capture bundle is rejected', () async {
+    final observation = File('${_scratch.path}/selected-orphan.json')
+      ..writeAsStringSync('{}');
+    await expectLater(
+      gate.runHtmlAdapterGate(
+        libraryPath: nativeLibraryPath(),
+        corpusPath: 'tool/html_oracle/fixtures-selected.json',
+        goldenPath: observation.path,
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('Selected capture bundle missing'),
+        ),
+      ),
+    );
+  });
+
+  test(
     'the committed HTML-LIST-01 corpus measures typed list values',
     () async {
       final report = await gate.runHtmlAdapterGate(

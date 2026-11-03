@@ -55,6 +55,12 @@ const htmlOracleCorpusAsset = 'html-fixtures.json';
 /// The selected nonempty-list family this gate admits.
 const htmlListFixtureId = 'HTML-LIST-01';
 const htmlListCorpusVersion = 1;
+const selectedHtmlFixtureId = 'HTML-SELECTED-01';
+const selectedHtmlListFixtureId = 'HTML-LIST-SELECTED-01';
+const selectedHtmlCorpusSha256 =
+    '5b5bca0204fba6e1da4abdb8fd64fb7b0017dab5bf560098ef4b97f36117c266';
+const selectedHtmlListCorpusSha256 =
+    '837228894594decc6dcf195cd565365ef461c760f02cbb6b02e32f0fa7f6eb01';
 const htmlOracleSchemaVersion = 1;
 const htmlOracleBaselineCommit = '14dd24945b2914ce2708b8abaa4ee67ceef892af';
 const htmlOracleEntryPoint =
@@ -109,12 +115,18 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
     throw StateError('Refusing to overwrite evidence: ${output.path}');
   }
   final corpus = _readHtmlCorpus(corpusPath);
+  final selected =
+      corpus.family?.fixtureId == selectedHtmlFixtureId ||
+      corpus.family?.fixtureId == selectedHtmlListFixtureId;
   final caseMethods = corpus.caseMethods;
   final declaredIds = [for (final entry in corpus.cases) entry['id'] as String];
   final golden = goldenPath == null
       ? null
       : jsonDecode(File(goldenPath).readAsStringSync()) as Map<String, dynamic>;
   if (golden != null) {
+    if (selected) {
+      _validateSelectedCapture(File(goldenPath!), corpus);
+    }
     _validateGoldenIdentity(golden, corpus);
     final goldenObservations = golden['observations'];
     if (goldenObservations is! List) {
@@ -204,7 +216,7 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
     final outcome = _outcomeOf(observed, 'Observation $id');
     if (outcome.kind != 'value' ||
         jsonEncode(outcome.payload) != jsonEncode(expected)) {
-      failed = true;
+      if (!selected) failed = true;
       expectedFailures.add(
         '$id\n  expected: ${jsonEncode(expected)}\n  observed: '
         '${jsonEncode(outcome.payload)} (${outcome.kind})',
@@ -213,7 +225,8 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
   }
   if (expectedFailures.isNotEmpty) {
     stderr.writeln(
-      'Corpus expectations differ:\n${expectedFailures.join('\n')}',
+      '${selected ? 'Historical corpus annotations' : 'Corpus expectations'} '
+      'differ:\n${expectedFailures.join('\n')}',
     );
   }
 
@@ -256,7 +269,9 @@ Future<Map<String, Object?>> runHtmlAdapterGate({
     'corpusSha256': corpusSha256,
     'baselineCommit': corpus.json['baselineCommit'],
     'entryPoint': corpus.json['entryPoint'],
-    'status': failed ? 'fail' : 'pass',
+    'status': selected && golden == null
+        ? 'not-run'
+        : (failed ? 'fail' : 'pass'),
     'frozenGolden': goldenPath ?? 'not-run',
     'librarySha256': library.existsSync()
         ? _sha256(library.readAsBytesSync())
@@ -300,12 +315,14 @@ Future<void> main(List<String> args) async {
       stdout.writeln(const JsonEncoder.withIndent('  ').convert(report));
     }
     final failed = report['status'] == 'fail';
+    final notRun = report['status'] == 'not-run';
     stdout.writeln(
-      'adapter corpus: ${failed ? 'fail' : 'pass'} '
+      'adapter corpus: ${notRun ? 'not-run' : (failed ? 'fail' : 'pass')} '
       '(${report['cases']} cases, frozen golden '
       '${report['frozenGolden'] == 'not-run' ? 'not-run' : 'compared'})',
     );
     if (failed) exitCode = 1;
+    if (notRun) exitCode = 2;
   } finally {
     NativeLibrary.dispose();
   }
@@ -337,7 +354,10 @@ _HtmlCorpus _readHtmlCorpus(String path) {
         'declared types',
       );
     }
-    if (fixtureId != htmlListFixtureId ||
+    final selected =
+        fixtureId == selectedHtmlFixtureId ||
+        fixtureId == selectedHtmlListFixtureId;
+    if ((!selected && fixtureId != htmlListFixtureId) ||
         corpusVersion != htmlListCorpusVersion) {
       throw FormatException(
         'Unknown HTML oracle corpus family: $fixtureId v$corpusVersion',
@@ -347,14 +367,23 @@ _HtmlCorpus _readHtmlCorpus(String path) {
     if (schemaVersion is! int || schemaVersion != htmlOracleSchemaVersion) {
       throw const FormatException('Unsupported HTML-LIST-01 schemaVersion');
     }
-    if (json['baselineCommit'] != htmlOracleBaselineCommit ||
+    if (selected) {
+      final expectedHash = fixtureId == selectedHtmlFixtureId
+          ? selectedHtmlCorpusSha256
+          : selectedHtmlListCorpusSha256;
+      if (_sha256(bytes) != expectedHash ||
+          json['baselineCommit'] !=
+              'a7d37f1707a70a459ad708f4fe79341d1e42d716') {
+        throw const FormatException('Selected HTML corpus bytes differ');
+      }
+    } else if (json['baselineCommit'] != htmlOracleBaselineCommit ||
         json['entryPoint'] != htmlOracleEntryPoint) {
       throw const FormatException(
         'HTML-LIST-01 baseline/entryPoint metadata does not match the oracle',
       );
     }
     family = (fixtureId: fixtureId, corpusVersion: corpusVersion);
-    _validateHtmlListRows(json);
+    _validateHtmlListRows(json, allowRulePath: selected);
   } else if (_sha256(bytes) != legacyHtmlCorpusSha256) {
     throw const FormatException(
       'Unknown HTML oracle corpus: not the pinned legacy bytes',
@@ -377,7 +406,10 @@ _HtmlCorpus _readHtmlCorpus(String path) {
 /// documents/rules/methods, a supported HTML or JSON path, a present `expected`
 /// (an explicit null is legitimate) and the type that `expected` must have for
 /// its method.
-void _validateHtmlListRows(Map<String, dynamic> json) {
+void _validateHtmlListRows(
+  Map<String, dynamic> json, {
+  bool allowRulePath = false,
+}) {
   final documents = json['documents'];
   final cases = json['cases'];
   if (documents is! Map || cases is! List) {
@@ -415,7 +447,7 @@ void _validateHtmlListRows(Map<String, dynamic> json) {
       throw FormatException('HTML-LIST-01 case $id has unknown method');
     }
     final path = entry['path'];
-    if (path != null && path != 'json') {
+    if (path != null && path != 'json' && !(allowRulePath && path == 'rule')) {
       throw FormatException(
         'HTML-LIST-01 case $id uses an unsupported path: $path',
       );
@@ -437,6 +469,64 @@ void _validateHtmlListRows(Map<String, dynamic> json) {
         'HTML-LIST-01 scalar case $id expected value must be a string or null',
       );
     }
+  }
+}
+
+/// Admit selected native observations only through the collector's real raw-bundle
+/// verifier. The verifier rechecks the signed installed APK, packaged assets,
+/// current source/reference bindings and every ordered command receipt without
+/// accessing a handset. Historical corpus admission never invokes it.
+void _validateSelectedCapture(File goldenFile, _HtmlCorpus corpus) {
+  final directory = goldenFile.parent;
+  File artifact(String name) {
+    final file = File('${directory.path}/$name');
+    if (!file.existsSync()) {
+      throw FormatException('Selected capture bundle missing: $name');
+    }
+    return file;
+  }
+
+  final observation = artifact('observation.json');
+  artifact('manifest.json');
+  final apk = artifact('installed-harness.apk');
+  artifact('frozen.apk');
+  if (!FileSystemEntity.identicalSync(goldenFile.path, observation.path)) {
+    throw const FormatException('Selected golden must be raw observation.json');
+  }
+  final temporary = Directory.systemTemp.createTempSync('liber-html-verify-');
+  try {
+    final result = Process.runSync('python', [
+      'tool/html_oracle/capture.py',
+      '--verify-bundle',
+      directory.absolute.path,
+      '--apk',
+      apk.absolute.path,
+      '--corpus',
+      File(corpus.path).absolute.path,
+      '--frozen-source',
+      'C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+          'phone-resume-20261020-01a15796/controller/team-baseline-migration-01/'
+          'reference-stage/source',
+      '--java-home',
+      'C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8',
+      '--android-sdk',
+      'C:/Users/17945/AppData/Local/Android/Sdk',
+      '--output',
+      '${temporary.path}/verification',
+    ]);
+    if (result.exitCode != 0) {
+      throw FormatException(
+        'Selected raw-bundle verification failed: ${result.stdout} ${result.stderr}',
+      );
+    }
+    final receipt = jsonDecode(
+      File('${temporary.path}/verification/manifest.json').readAsStringSync(),
+    );
+    if (receipt is! Map || receipt['status'] != 'verified-bundle') {
+      throw const FormatException('Selected raw-bundle verification missing');
+    }
+  } finally {
+    temporary.deleteSync(recursive: true);
   }
 }
 
