@@ -12,6 +12,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+import uuid
 import zipfile
 
 BASELINE_APK = 'cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6'
@@ -29,6 +31,14 @@ TARGET_PACKAGE = 'io.legado.app.debug'
 REPORT_REMOTE = '/sdcard/Android/data/io.legado.app.debug/files/field-oracle.json'
 FIELDS_01 = 'FIELDS-01'
 FIELDS_02 = 'FIELDS-02'
+SELECTED_BASELINE = 'a7d37f1707a70a459ad708f4fe79341d1e42d716'
+SELECTED_CORPUS_SHA256 = '049b46bbd98b9367516f923fc052d9d454057d99bd6875a89b88ce6fae09d500'
+SELECTED_SIGNER = '954abf2c4e9528b2226457d598e2ff9d1b608f83ac00c52ad66e023d61b2f2ad'
+SELECTED_TARGET = {
+    'package': 'com.legado.app.debug',
+    'apkSha256': '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5',
+    'deviceFingerprint': 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys',
+}
 OWNED_PREFERENCE_PREFIX = 'liber_fields_02_'
 HISTORICAL_SOURCE_KEYS = (
     'FieldOracle.java',
@@ -39,6 +49,10 @@ HISTORICAL_SOURCE_KEYS = (
 )
 HARNESS_SOURCE_KEYS = HISTORICAL_SOURCE_KEYS + (
     'HostRuntimeInit.java', 'ShortcutStartupGuard.java',
+)
+SELECTED_SOURCE_KEYS = HARNESS_SOURCE_KEYS + (
+    'GuardedReaderApplication.java', 'SelectedFieldHostBridge.java',
+    'AndroidManifest-selected.xml',
 )
 # The frozen application's own persisted data. Starting its process writes
 # third-party state (Play Services measurement, Firebase, WebView Chromium
@@ -80,18 +94,24 @@ def _source_path(name):
     here = Path(__file__).resolve().parent
     if name in ('StateSessionOracle.java', 'HostRuntimeInit.java', 'ShortcutStartupGuard.java'):
         return here.parent / 'nested_oracle' / name
+    if name == 'GuardedReaderApplication.java':
+        return here.parent / 'replace_rule_oracle' / name
     return here / name
 
 
-def harness_source_hashes():
-    return {name: sha256(_source_path(name)) for name in HARNESS_SOURCE_KEYS}
+def harness_source_hashes(selected=False):
+    keys = SELECTED_SOURCE_KEYS if selected else HARNESS_SOURCE_KEYS
+    return {name: sha256(_source_path(name)) for name in keys}
 
 
-def _admit_source_hashes(sources, label, current_only=False):
+def _admit_source_hashes(sources, label, current_only=False, selected=False):
     if not isinstance(sources, dict):
         raise ValueError(label + ' source map must be an object')
     keys = set(sources)
-    if keys != set(HARNESS_SOURCE_KEYS) and (
+    if selected:
+        if keys != set(SELECTED_SOURCE_KEYS):
+            raise ValueError(label + ' source key set differs')
+    elif keys != set(HARNESS_SOURCE_KEYS) and (
             current_only or keys != set(HISTORICAL_SOURCE_KEYS)):
         raise ValueError(label + ' source key set differs')
     for name, value in sources.items():
@@ -106,6 +126,16 @@ def _admit_selected_shape(fixture, label):
         raise ValueError(label + ' is not FIELDS-02')
     if _require_int(fixture.get('corpusVersion'), label + '.corpusVersion') != 1:
         raise ValueError(label + '.corpusVersion must be integer 1')
+    if fixture.get('baselineCommit') == SELECTED_BASELINE and fixture.get('target') != SELECTED_TARGET:
+        raise ValueError(label + ' selected reference target differs')
+    target = fixture.get('target')
+    if (fixture.get('baselineCommit') != SELECTED_BASELINE and isinstance(target, dict)
+            and (target.get('package') == SELECTED_TARGET['package']
+                 or target.get('apkSha256') == SELECTED_TARGET['apkSha256'])):
+        raise ValueError(label + ' selected target requires its fixed baseline')
+    if fixture.get('baselineCommit') == '14dd24945b2914ce2708b8abaa4ee67ceef892af' and fixture.get('target') != {
+            'package': TARGET_PACKAGE, 'apkSha256': BASELINE_APK, 'deviceFingerprint': FINGERPRINT}:
+        raise ValueError(label + ' historical reference target differs')
     cases = fixture.get('cases')
     if not isinstance(cases, list) or not cases:
         raise ValueError(label + '.cases must be a nonempty list')
@@ -133,6 +163,9 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     apk_sha = sha256_bytes(apk_bytes)
     fixture_sha = sha256_bytes(fixture_bytes)
     fixture_sha_lf = sha256_bytes(lf_bytes(fixture_bytes))
+    if fixture.get('baselineCommit') == SELECTED_BASELINE and (
+            fixture_sha != SELECTED_CORPUS_SHA256 or fixture_sha_lf != fixture_sha):
+        raise ValueError('selected corpus raw bytes differ')
     if fixture.get('fixtureId') != FIELDS_02:
         raise ValueError('the selected fixture is not FIELDS-02')
     if not isinstance(fixture.get('cases'), list) or not fixture['cases']:
@@ -174,7 +207,8 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     if corpus.get('sha256') != fixture_sha or corpus.get('sha256Lf') != fixture_sha_lf:
         raise ValueError('embedded provenance corpus digests differ')
     sources = _required_map(provenance, 'sources', 'provenance')
-    _admit_source_hashes(sources, 'embedded provenance')
+    _admit_source_hashes(sources, 'embedded provenance',
+                         selected=fixture.get('baselineCommit') == SELECTED_BASELINE)
     if expected_sources is not None:
         if set(expected_sources) != set(sources):
             raise ValueError('embedded provenance source key set differs')
@@ -196,14 +230,172 @@ def inspect_selected_apk(apk_path, fixture_path, fixture, expected_sources):
         apk_path, Path(fixture_path).read_bytes(), fixture, expected_sources)
 
 
-def _write_finalize_failure(output, error):
+def _check_selected_manifest(text):
+    stack, roots, entries = [], [], []
+    for line in text.splitlines():
+        node = re.fullmatch(r'( *)E: ([\w.-]+) \(line=\d+\)', line)
+        if node:
+            depth, name = len(node.group(1)), node.group(2)
+            while stack and stack[-1]['depth'] >= depth:
+                stack.pop()
+            item = {'depth': depth, 'name': name, 'parent': stack[-1] if stack else None, 'attrs': {}}
+            if not stack:
+                roots.append(item)
+            if name == 'instrumentation':
+                entries.append(item)
+            stack.append(item)
+            continue
+        if re.match(r'^ *E:', line):
+            raise ValueError('selected manifest element is malformed')
+        attr = re.match(r'^( *)A: ([^\s=(]+)', line)
+        if not attr:
+            continue
+        if not stack or len(attr.group(1)) <= stack[-1]['depth']:
+            raise ValueError('selected manifest attribute is malformed')
+        key = attr.group(2)
+        if key not in ('package', 'android:name', 'android:targetPackage'):
+            continue
+        if not ((not stack[-1]['parent'] and key == 'package') or
+                (stack[-1]['name'] == 'instrumentation' and key != 'package')):
+            continue
+        match = re.fullmatch(r' *A: [^\s=(]+(?:\((0x[0-9a-fA-F]+)\))?="([^"]*)"(?: \(Raw: "([^"]*)"\))?', line)
+        expected_id = {'package': None, 'android:name': '0x01010003', 'android:targetPackage': '0x01010021'}[key]
+        if not match or match.group(1) != expected_id or (match.group(3) is not None and match.group(2) != match.group(3)):
+            raise ValueError('selected manifest identity is malformed')
+        stack[-1]['attrs'].setdefault(key, []).append(match.group(2))
+    if (len(roots) != 1 or roots[0]['name'] != 'manifest' or len(entries) != 1
+            or entries[0]['parent'] is not roots[0]
+            or roots[0]['attrs'].get('package') != [PACKAGE]
+            or entries[0]['attrs'].get('android:name') != [PACKAGE + '.FieldOracle']
+            or entries[0]['attrs'].get('android:targetPackage') != [SELECTED_TARGET['package']]):
+        raise ValueError('selected manifest package, entry or target differs')
+
+
+def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidence=None):
+    """Inspect the selected artifact without contacting any device."""
+    if not target_apk.is_file() or sha256(target_apk) != SELECTED_TARGET['apkSha256']:
+        raise ValueError('selected target APK is missing or differs')
+    data = fixture_path.read_bytes()
+    if sha256_bytes(data) != SELECTED_CORPUS_SHA256 or lf_bytes(data) != data:
+        raise ValueError('selected corpus raw bytes differ')
+    fixture = json.loads(data)
+    _admit_selected_shape(fixture, 'selected fixture')
+    if fixture.get('baselineCommit') != SELECTED_BASELINE:
+        raise ValueError('selected baseline differs')
+    receipts = []
+    def run(name, command, stderr=False):
+        command = [str(value) for value in command]
+        result = subprocess.run(command, capture_output=True, timeout=120)
+        receipts.append({'name': name, 'command': command, 'exitCode': result.returncode,
+                         'stdoutSha256': sha256_bytes(result.stdout),
+                         'stderrSha256': sha256_bytes(result.stderr)})
+        if evidence is not None:
+            (evidence / ('preflight-' + name + '.stdout.log')).write_bytes(result.stdout)
+            (evidence / ('preflight-' + name + '.stderr.log')).write_bytes(result.stderr)
+            (evidence / 'preflight-commands.json').write_text(
+                json.dumps(receipts, indent=2) + '\n', encoding='utf-8')
+        if result.returncode:
+            raise ValueError(name + ' command failed: ' + result.stderr.decode(errors='replace'))
+        return (result.stderr if stderr else result.stdout).decode(errors='strict')
+    if 'Temurin-17.0.20+8' not in run('java-version', [java / 'bin' / 'java.exe', '-version'], stderr=True):
+        raise ValueError('selected JDK version differs')
+    if run('javac-version', [java / 'bin' / 'javac.exe', '-version']).strip() != 'javac 17.0.20':
+        raise ValueError('selected javac version differs')
+    if not (sdk / 'platforms' / 'android-35' / 'android.jar').is_file():
+        raise ValueError('selected android-35 SDK platform is missing')
+    if run('source-head', ['git', '-C', source, 'rev-parse', 'HEAD']).strip() != SELECTED_BASELINE:
+        raise ValueError('selected source HEAD differs')
+    if run('source-tree', ['git', '-C', source, 'rev-parse', 'HEAD^{tree}']).strip() != '0f69dc7004012a969551ce271dc4e11051637d32':
+        raise ValueError('selected source tree differs')
+    if run('source-status', ['git', '-C', source, 'status', '--porcelain=v1']).strip():
+        raise ValueError('selected source worktree is dirty')
+    paths = [row['path'] for row in fixture['frozenSources']]
+    blobs = run('source-blobs', ['git', '-C', source, 'hash-object', *paths]).split()
+    if blobs != [row['sha1'] for row in fixture['frozenSources']]:
+        raise ValueError('selected source blob differs')
+    artifact = inspect_selected_apk(apk, fixture_path, fixture, harness_source_hashes(selected=True))
+    tools = sdk / 'build-tools' / '35.0.1'
+    manifest = run('manifest', [tools / 'aapt.exe', 'dump', 'xmltree', apk, 'AndroidManifest.xml'])
+    _check_selected_manifest(manifest)
+    for name, signed_apk in [('harness-signature', apk), ('target-signature', target_apk)]:
+        signature = run(name, [java / 'bin' / 'java.exe', '-jar', tools / 'lib' / 'apksigner.jar',
+                               'verify', '--print-certs', signed_apk])
+        signers = re.findall(r'Signer #(\d+) certificate SHA-256 digest: ([0-9a-f]{64})', signature, re.I)
+        if [(n, h.lower()) for n, h in signers] != [('1', SELECTED_SIGNER)]:
+            raise ValueError(name + ' signer differs')
+    with zipfile.ZipFile(target_apk) as archive:
+        if archive.namelist().count('classes19.dex') != 1:
+            raise ValueError('selected reference DEX inventory differs')
+        reference_dex = archive.read('classes19.dex')
+    with tempfile.TemporaryDirectory(prefix='fields-reference-dex-') as temporary:
+        dex_path = Path(temporary) / 'classes19.dex'
+        dex_path.write_bytes(reference_dex)
+        reference_dump = run('reference-dex', [tools / 'dexdump.exe', dex_path])
+    classes = re.split(r'(?=Class #\d+\s+-)', reference_dump)
+    webbooks = [part for part in classes if "Class descriptor  : 'Lio/legado/app/model/webBook/WebBook;'" in part]
+    if len(webbooks) != 1:
+        raise ValueError('selected WebBook DEX definition differs')
+    expected_methods = {
+        'searchBookAwait': '(Lio/legado/app/data/entities/BookSource;Ljava/lang/String;Ljava/lang/Integer;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+        'getBookInfoAwait': '(Lio/legado/app/data/entities/BookSource;Lio/legado/app/data/entities/Book;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+        'getChapterListAwait-yxL6bBk': '(Lio/legado/app/data/entities/BookSource;Lio/legado/app/data/entities/Book;ZZLkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+        'getContentAwait': '(Lio/legado/app/data/entities/BookSource;Lio/legado/app/data/entities/Book;Lio/legado/app/data/entities/BookChapter;Ljava/lang/String;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+    }
+    for method, signature in expected_methods.items():
+        pattern = r"name\s+: '" + re.escape(method) + r"'\s+type\s+: '" + re.escape(signature) + r"'\s+access\s+: 0x0011 \(PUBLIC FINAL\)"
+        if len(re.findall(pattern, webbooks[0])) != 1:
+            raise ValueError('selected native ABI differs: ' + method)
+    with zipfile.ZipFile(apk) as archive:
+        names = archive.namelist()
+        if names.count('classes.dex') != 1 or [n for n in names if re.fullmatch(r'classes\d*\.dex', n)] != ['classes.dex']:
+            raise ValueError('selected APK DEX inventory differs')
+        dex = archive.read('classes.dex')
+    with tempfile.TemporaryDirectory(prefix='fields-dex-') as temporary:
+        dex_path = Path(temporary) / 'classes.dex'
+        dex_path.write_bytes(dex)
+        dump = run('dex', [tools / 'dexdump.exe', dex_path])
+    for name in ('Lio/liber/oracle/fields/FieldOracle;',
+                 'Lio/liber/oracle/nested/SelectedFieldHostBridge;',
+                 'Lio/liber/oracle/nested/GuardedReaderApplication;'):
+        if dump.count("Class descriptor  : '" + name + "'") != 1:
+            raise ValueError('selected DEX entry differs: ' + name)
+    return {'artifact': artifact, 'targetApkSha256': sha256(target_apk),
+            'dexSha256': sha256_bytes(dex), 'referenceSources': {
+                path: {'blobSha1': blob, 'worktreeSha256': sha256(source / path)}
+                for path, blob in zip(paths, blobs)}, 'commands': receipts}
+
+
+def _strict_json(data):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate JSON key: ' + key)
+            result[key] = value
+        return result
+    return json.loads(data, object_pairs_hook=unique)
+
+
+def _write_finalize_failure(output, error, *, preserve_existing=False):
     receipt = {
         'status': 'failed',
         'kind': 'fields-02-finalize-failure',
         'error': error,
     }
-    (output / 'finalize-failure.json').write_text(
-        json.dumps(receipt, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    data = json.dumps(receipt, ensure_ascii=False, indent=2) + '\n'
+    path = output / 'finalize-failure.json'
+    if not preserve_existing:
+        path.write_text(data, encoding='utf-8')
+        return None
+    try:
+        stream = path.open('x', encoding='utf-8')
+    except FileExistsError:
+        path = output / ('finalize-failure-' + str(uuid.uuid4()) + '.json')
+        stream = path.open('x', encoding='utf-8')
+    with stream:
+        stream.write(data)
+    print('finalize failure receipt: ' + str(path), file=sys.stderr)
+    return path
 
 
 def _hash_lines(output):
@@ -603,7 +795,8 @@ def _admit_provenance(manifest, fixture_bytes, fixture, isolation):
     if corpus.get('sha256') != raw_sha or corpus.get('sha256Lf') != lf_sha:
         raise ValueError('artifact provenance corpus digest differs')
     sources = _required_map(provenance, 'sources', 'artifact.provenance')
-    _admit_source_hashes(sources, 'artifact provenance')
+    _admit_source_hashes(sources, 'artifact provenance',
+                         selected=fixture.get('baselineCommit') == SELECTED_BASELINE)
     manifest_sources = _required_map(manifest, 'harnessSources', 'manifest')
     if manifest_sources != sources:
         raise ValueError('artifact provenance sources differ from the manifest sources')
@@ -720,6 +913,263 @@ def _admit_native_operations(cases, requests, trace, fixture):
         raise ValueError('case operation spans do not cover the global sequences')
 
 
+def _admit_selected_runtime(report, fixture):
+    def require(condition, detail):
+        if not condition:
+            raise ValueError('selected runtime ' + detail)
+    startup = report.get('startupContainment') or {}
+    require(isinstance(startup, dict) and startup.get('service') == 'shortcut'
+            and startup.get('provider') == 'io.legado.app.api.ReaderProvider'
+            and type(startup.get('intercepted')) is int and startup['intercepted'] == 1
+            and type(startup.get('handled')) is int and startup['handled'] == 1
+            and startup.get('beforeBinding') is True, 'startup containment differs')
+    isolation = report.get('isolation') or {}
+    require(isinstance(isolation, dict) and isolation.get('appClass') ==
+            'io.liber.oracle.nested.GuardedReaderApplication', 'guarded application differs')
+    host = report.get('hostInitialization') or {}
+    wrappers = {item['type']: item['factory'] for item in fixture['hostInitialization']['registrations']}
+    require(isinstance(host, dict) and host.get('verified') is True
+            and host.get('applicationAttached') is False
+            and host.get('invokedOn') == 'unattached-instance'
+            and isinstance(host.get('notRun'), list)
+            and 'io.legado.app.App.onCreate' in host['notRun']
+            and host.get('registeredWrappers') == wrappers
+            and host.get('method') == fixture['hostInitialization']['method'], 'host initialization differs')
+    owner = report.get('terminalOwner') or {}
+    require(isinstance(owner, dict) and owner.get('scope') == 'Coroutine.DEFAULT'
+            and owner.get('rootActive') is True and owner.get('rootCompleted') is False
+            and type(owner.get('baselineChildren')) is int and owner['baselineChildren'] == 0
+            and 'kotlinx.coroutines.Job.getChildren()' in owner.get('childrenMethod', '')
+            and 'kotlinx.coroutines.Job.isCompleted()' in owner.get('completionMethod', ''),
+            'job owner differs')
+    entries = report.get('entryPoints') or {}
+    signatures = {
+        'searchBookAwait': 'searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
+        'getBookInfoAwait': 'getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
+        'getChapterListAwait': 'getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
+        'getContentAwait': 'getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
+    }
+    entry_prefix = 'public final java.lang.Object io.legado.app.model.webBook.WebBook.'
+    require(isinstance(entries, dict) and set(entries) == set(signatures)
+            and all(entries[k] == entry_prefix + v for k, v in signatures.items()),
+            'native entry points differ')
+    cases = report.get('cases')
+    require(isinstance(cases, list) and len(cases) == len(fixture['cases']), 'case count differs')
+    for case in cases:
+        terminal = case.get('terminalOwner') if isinstance(case, dict) else None
+        require(isinstance(terminal, dict) and terminal.get('owner') == 'Coroutine.DEFAULT Job'
+                and terminal.get('allCompleted') is True and terminal.get('rootEmpty') is True
+                and type(terminal.get('observedChildren')) is int and terminal['observedChildren'] >= 0
+                and type(terminal.get('launchAttempts')) is int and terminal['launchAttempts'] == 0,
+                'case terminal proof differs')
+    cleanup = report.get('cleanup') or {}
+    require(isinstance(cleanup, dict) and cleanup.get('serverClosed') is True
+            and type(cleanup.get('openConnectionsAfterClose')) is int
+            and cleanup['openConnectionsAfterClose'] == 0 and cleanup.get('databaseClosed') is True
+            and type(cleanup.get('activityLaunchAttempts')) is int and cleanup['activityLaunchAttempts'] == 0,
+            'cleanup differs')
+
+
+def _require_selected_webview(text):
+    pattern = r'(?m)^\s*Current WebView package \(name, version\): \(com\.google\.android\.webview, 158\.0\.8127\.2\)\s*$'
+    if len(re.findall(pattern, text)) != 1:
+        raise ValueError('selected WebView provider or version differs')
+
+
+def _require_selected_success(receipt, label):
+    if (re.search(rb'(?im)(?:Failure\s*\[|^\s*TIMED OUT\b)', receipt)
+            or len(re.findall(rb'(?m)^Success\s*\r?$', receipt)) != 1):
+        raise ValueError('selected command receipts ' + label + ' success is missing or contradicted')
+
+
+def _admit_selected_commands(output, manifest, report_bytes, before, after):
+    """Join selected native promotion to the actual retained command receipts."""
+    def fail(detail):
+        raise ValueError('selected command receipts ' + detail)
+    commands = manifest.get('commands')
+    if not isinstance(commands, list) or manifest.get('serial') != '5615f742':
+        fail('are missing or have the wrong serial')
+    indexed = {}
+    for item in commands:
+        if not isinstance(item, dict) or not isinstance(item.get('log'), str):
+            fail('are malformed')
+        log = item['log']
+        if log in indexed or Path(log).name != log:
+            fail('contain duplicate or unsafe log names')
+        indexed[log] = item
+    required = ['fingerprint', 'sdk', 'webview', 'baseline-path', 'pull-baseline',
+                'harness-existing', 'target-process', 'target-private-root',
+                'scratch-root-check', 'scratch-prefs-check', 'scratch-installation-probe-check',
+                'private-before', 'install', 'installed-harness-path', 'installed-harness-pull',
+                'instrumentation', 'pull-report', 'scratch-owner', 'owned-pid', 'poststop',
+                'poststop-check', 'scratch-remove-root', 'scratch-absent-root',
+                'remove-harness', 'harness-removed-check', 'private-after']
+    log_order = [item['log'] for item in commands]
+    positions = [log_order.index(name + '.log') if name + '.log' in log_order else -1
+                 for name in required]
+    if -1 in positions or positions != sorted(positions):
+        fail('are missing or out of order')
+    adb_prefix = ['adb', '-s', '5615f742']
+    target_root = manifest.get('targetPrivateRoot')
+    if (not isinstance(target_root, str) or not target_root.startswith('/data/')
+            or '..' in target_root.split('/') or '\n' in target_root or '\r' in target_root):
+        fail('target private root is malformed')
+    scratch_root = target_root + '/cache/liber-fields-02'
+    pref_dir = target_root + '/shared_prefs'
+    fixed = {
+        'fingerprint': ['shell', 'getprop', 'ro.build.fingerprint'],
+        'sdk': ['shell', 'getprop', 'ro.build.version.sdk'],
+        'webview': ['shell', 'dumpsys', 'webviewupdate'],
+        'baseline-path': ['shell', 'pm', 'path', SELECTED_TARGET['package']],
+        'harness-existing': ['shell', 'pm', 'list', 'packages', PACKAGE],
+        'target-process': ['shell', 'pidof', SELECTED_TARGET['package']],
+        'target-private-root': ['shell', 'run-as', SELECTED_TARGET['package'], 'pwd'],
+        'installed-harness-path': ['shell', 'pm', 'path', PACKAGE],
+        'instrumentation': ['shell', 'am', 'instrument', '-w', '-r', INSTRUMENTATION],
+        'owned-pid': ['shell', 'pidof', SELECTED_TARGET['package']],
+        'poststop': ['shell', 'am', 'force-stop', SELECTED_TARGET['package']],
+        'poststop-check': ['shell', 'pidof', SELECTED_TARGET['package']],
+        'remove-harness': ['uninstall', PACKAGE],
+        'harness-removed-check': ['shell', 'pm', 'list', 'packages', PACKAGE],
+        'pull-report': ['exec-out', 'run-as', SELECTED_TARGET['package'], 'cat', scratch_root + '/field-oracle.json'],
+        'scratch-owner': ['exec-out', 'run-as', SELECTED_TARGET['package'], 'cat', scratch_root + '/owner.json'],
+        'private-before': ['shell', *remote_script_arguments(SELECTED_TARGET['package'], _fields_snapshot_script(target_root))],
+        'private-after': ['shell', *remote_script_arguments(SELECTED_TARGET['package'], _fields_snapshot_script(target_root))],
+        'scratch-root-check': ['shell', *remote_script_arguments(SELECTED_TARGET['package'],
+            'if [ -e ' + shlex.quote(scratch_root) + ' ]; then echo PRESENT; else echo ABSENT; fi')],
+        'scratch-prefs-check': ['shell', *remote_script_arguments(SELECTED_TARGET['package'],
+            'if [ -d ' + shlex.quote(pref_dir) + ' ]; then find ' + shlex.quote(pref_dir)
+            + ' -maxdepth 1 -name ' + shlex.quote(OWNED_PREFERENCE_PREFIX + '*.xml') + ' -print; fi')],
+        'scratch-installation-probe-check': ['shell', *remote_script_arguments(SELECTED_TARGET['package'],
+            'if [ -e ' + shlex.quote(pref_dir + '/probe.xml') + ' ]; then echo PRESENT; fi')],
+        'scratch-remove-root': ['shell', *remote_script_arguments(SELECTED_TARGET['package'], 'rm -rf -- ' + shlex.quote(scratch_root))],
+        'scratch-absent-root': ['shell', *remote_script_arguments(SELECTED_TARGET['package'], 'test ! -e ' + shlex.quote(scratch_root))],
+    }
+    for name in required:
+        item = indexed.get(name + '.log')
+        if item is None or not (output / (name + '.log')).is_file():
+            fail('are incomplete: ' + name)
+        if type(item.get('exitCode')) is not int or (item['exitCode'] != 0 and name not in ('target-process', 'owned-pid', 'poststop-check')):
+            fail('record failure: ' + name)
+        command = item.get('command')
+        if not isinstance(command, list) or command[:3] != adb_prefix:
+            fail('have a wrong device command: ' + name)
+        if name in fixed and command != adb_prefix + fixed[name]:
+            fail(name + ' command differs')
+    instrumentation = (output / 'instrumentation.log').read_bytes()
+    if (re.search(rb'(?im)(?:Failure\s*\[|^\s*(?:TIMED OUT\b|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED)|shortMsg=)', instrumentation)
+            or re.search(rb'(?m)^INSTRUMENTATION_STATUS_CODE:\s*-[12]\s*\r?$', instrumentation)
+            or re.findall(rb'(?m)^INSTRUMENTATION_CODE:\s*(-?\d+)\s*\r?$', instrumentation) != [b'-1']):
+        fail('instrumentation did not finish successfully')
+    target_path = (output / 'baseline-path.log').read_text(encoding='utf-8').strip()
+    harness_path = (output / 'installed-harness-path.log').read_text(encoding='utf-8').strip()
+    if not re.fullmatch(r'package:[^\r\n]+', target_path) or not re.fullmatch(r'package:[^\r\n]+', harness_path):
+        fail('package APK path is ambiguous')
+    target_pull = indexed['pull-baseline.log']['command']
+    harness_pull = indexed['installed-harness-pull.log']['command']
+    if (len(target_pull) != 6 or target_pull[:5] != adb_prefix + ['pull', target_path[8:]]
+            or not isinstance(target_pull[5], str) or Path(target_pull[5]).name != 'frozen.apk'):
+        fail('target pull command differs')
+    if (len(harness_pull) != 6 or harness_pull[:5] != adb_prefix + ['pull', harness_path[8:]]
+            or not isinstance(harness_pull[5], str) or Path(harness_pull[5]).name != 'installed-harness.apk'
+            or Path(harness_pull[5]).parent != Path(target_pull[5]).parent):
+        fail('installed harness pull command differs')
+    install = indexed['install.log']['command']
+    if len(install) != 6 or install[:5] != adb_prefix + ['install', '-r'] or not install[-1]:
+        fail('install command differs')
+    if (output / 'target-private-root.log').read_text(encoding='utf-8').strip() != target_root:
+        fail('target private root differs')
+    if (output / 'pull-report.log').read_bytes() != report_bytes:
+        fail('raw report differs')
+    try:
+        if json.loads((output / 'scratch-owner.log').read_bytes()) != manifest.get('scratchOwner'):
+            fail('raw owner differs')
+    except (ValueError, UnicodeDecodeError):
+        fail('raw owner is malformed')
+    for name in ('target-process', 'poststop-check'):
+        if indexed[name + '.log']['exitCode'] != 1 or (output / (name + '.log')).read_bytes().strip():
+            fail(name + ' absence differs')
+    if (output / 'scratch-root-check.log').read_text(encoding='utf-8').strip() != 'ABSENT':
+        fail('scratch root preexistence differs')
+    if (output / 'scratch-prefs-check.log').read_bytes().strip() or (output / 'scratch-installation-probe-check.log').read_bytes().strip():
+        fail('scratch preference preexistence differs')
+    existing = subprocess.CompletedProcess(indexed['harness-existing.log']['command'], 0,
+        (output / 'harness-existing.log').read_bytes(), b'')
+    if _package_is_present(existing, PACKAGE, 'harness-existing'):
+        fail('harness preexistence differs')
+    owner = manifest.get('scratchOwner')
+    if not isinstance(owner, dict):
+        fail('owner is missing')
+    names = _safe_owner_names(owner.get('preferences'), 'owner.preferences')
+    allowed = {name + '.log' for name in required} | {
+        'source-head.log', 'frozen-source-hashes.log', 'frozen-source-status.log',
+        'android-release.log', 'model.log', 'logcat-field-oracle.log',
+    } | {'scratch-' + operation + '-' + str(index) + '.log'
+         for operation in ('remove', 'absent') for index in range(1, len(names) + 1)}
+    if set(indexed) - allowed:
+        fail('contain unrecognized commands')
+    pid = _require_int(owner.get('seedPid'), 'owner.seedPid')
+    pid_receipt = (output / 'owned-pid.log').read_bytes().strip()
+    if not ((indexed['owned-pid.log']['exitCode'] == 1 and not pid_receipt)
+            or (indexed['owned-pid.log']['exitCode'] == 0 and pid_receipt == str(pid).encode())):
+        fail('owned PID differs')
+    for index, name in enumerate(names, 1):
+        path = target_root + '/shared_prefs/' + name + '.xml'
+        for operation, script in [('remove', 'rm -f -- ' + shlex.quote(path)),
+                                  ('absent', 'test ! -e ' + shlex.quote(path))]:
+            log = 'scratch-' + operation + '-' + str(index) + '.log'
+            item = indexed.get(log)
+            expected = adb_prefix + ['shell', *remote_script_arguments(SELECTED_TARGET['package'], script)]
+            if (not item or item.get('command') != expected or item.get('exitCode') != 0
+                    or not (output / log).is_file() or (output / log).read_bytes().strip()):
+                fail('owned preference ' + operation + ' differs')
+    if sha256(output / 'frozen.apk') != SELECTED_TARGET['apkSha256']:
+        fail('installed target APK differs')
+    if (output / 'private-before.log').read_bytes() != before or (output / 'private-after.log').read_bytes() != after:
+        fail('snapshot bytes differ')
+    if (output / 'fingerprint.log').read_text(encoding='utf-8').strip() != SELECTED_TARGET['deviceFingerprint']:
+        fail('fingerprint differs')
+    if (output / 'sdk.log').read_text(encoding='utf-8').strip() != '37':
+        fail('API differs')
+    _require_selected_webview((output / 'webview.log').read_text(encoding='utf-8'))
+    _require_selected_success((output / 'install.log').read_bytes(), 'install')
+    _require_selected_success((output / 'remove-harness.log').read_bytes(), 'uninstall')
+    removed = subprocess.CompletedProcess(indexed['harness-removed-check.log']['command'], 0,
+        (output / 'harness-removed-check.log').read_bytes(), b'')
+    if _package_is_present(removed, PACKAGE, 'harness-removed-check'):
+        fail('harness still installed')
+    if sha256(output / 'installed-harness.apk') != manifest.get('harnessApkSha256'):
+        fail('installed harness APK differs')
+    preflight = manifest.get('preflight')
+    if (not isinstance(preflight, dict) or preflight.get('artifact') != manifest.get('artifact')
+            or preflight.get('targetApkSha256') != SELECTED_TARGET['apkSha256']
+            or preflight.get('referenceSources') != manifest.get('frozenSources')):
+        fail('preflight artifact or reference differs')
+    required_preflight = {'java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
+                          'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex'}
+    receipts = preflight.get('commands')
+    if not isinstance(receipts, list):
+        fail('preflight command output is missing')
+    seen = set()
+    for receipt in receipts:
+        if not isinstance(receipt, dict) or receipt.get('name') not in required_preflight:
+            fail('preflight command output name differs')
+        name = receipt['name']
+        if name in seen or type(receipt.get('exitCode')) is not int or receipt['exitCode'] != 0:
+            fail('preflight command output status differs')
+        seen.add(name)
+        for stream in ('stdout', 'stderr'):
+            path = output / ('preflight-' + name + '.' + stream + '.log')
+            if not path.is_file() or sha256(path) != receipt.get(stream + 'Sha256'):
+                fail('preflight command output differs: ' + name)
+    if seen != required_preflight:
+        fail('preflight command output inventory differs')
+    if ((output / 'preflight-source-head.stdout.log').read_text(encoding='utf-8').strip() != SELECTED_BASELINE
+            or (output / 'preflight-source-tree.stdout.log').read_text(encoding='utf-8').strip() != '0f69dc7004012a969551ce271dc4e11051637d32'
+            or (output / 'preflight-source-status.stdout.log').read_bytes().strip()):
+        fail('preflight source identity differs')
+
+
 def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=None,
                         scratch_cleanup=None, fixture_bytes=None, report_bytes=None,
                         original_apk=None):
@@ -739,6 +1189,8 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     if selected_fixture != fixture:
         raise ValueError('the supplied fixture object differs from the selected fixture bytes')
     fixture = selected_fixture
+    if fixture.get('baselineCommit') == SELECTED_BASELINE:
+        report = _strict_json(report_bytes.decode('utf-8'))
     fixture_sha = sha256_bytes(fixture_bytes)
     fixture_lf_sha = sha256_bytes(lf_bytes(fixture_bytes))
     if fixture.get('fixtureId') != FIELDS_02:
@@ -774,6 +1226,9 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
         raise ValueError('the frozen run issued an undeclared request')
     if _required_list(report, 'serverErrors', 'report'):
         raise ValueError('the frozen run recorded a server error')
+    if fixture.get('baselineCommit') == SELECTED_BASELINE:
+        _admit_selected_runtime(report, fixture)
+        _admit_selected_commands(output, manifest, report_bytes, before, after)
     for field in ['fixtureId', 'corpusVersion', 'baselineCommit', 'entryPoint']:
         if _required(report, field, 'report') != fixture[field]:
             raise ValueError('the frozen report disagrees on ' + field)
@@ -876,7 +1331,7 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
         raise ValueError('the scratch application used device-protected storage')
     if _required_bool(isolation, 'rootExistedAtStart', 'report.isolation') is not False:
         raise ValueError('the scratch root already existed')
-    if isolation.get('targetPackage') != TARGET_PACKAGE:
+    if isolation.get('targetPackage') != fixture['target']['package']:
         raise ValueError('the scratch target package differs')
     if isolation.get('targetApkSha256') != manifest['baselineApkSha256']:
         raise ValueError('the scratch target APK binding differs')
@@ -927,7 +1382,7 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
         raise ValueError('the scratch owner fixture id differs')
     if _require_int(owner.get('corpusVersion'), 'manifest.scratchOwner.corpusVersion') != _require_int(fixture['corpusVersion'], 'fixture.corpusVersion'):
         raise ValueError('the scratch owner corpus version differs')
-    if owner.get('targetPackage') != TARGET_PACKAGE:
+    if owner.get('targetPackage') != fixture['target']['package']:
         raise ValueError('the scratch owner target package differs')
     if owner.get('harnessPackage') != PACKAGE:
         raise ValueError('the scratch owner harness package differs')
@@ -994,6 +1449,9 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
                          + json.dumps(changed, ensure_ascii=False))
     manifest['existingDataHashesUnchanged'] = True
     manifest['privateFileChanges'] = {}
+    if fixture.get('baselineCommit') == SELECTED_BASELINE:
+        manifest['privateSnapshotSha256'] = {
+            'before': sha256_bytes(before), 'after': sha256_bytes(after)}
     manifest['frozenAppDataUnchanged'] = all(
         path in after_hashes and after_hashes[path][0] == 'F'
         for path in FROZEN_APP_STORE)
@@ -1024,7 +1482,12 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--serial', required=True)
+    parser.add_argument('--serial')
+    parser.add_argument('--preflight-only', action='store_true')
+    parser.add_argument('--target-apk', type=Path)
+    parser.add_argument('--java-home', type=Path)
+    parser.add_argument('--android-sdk', type=Path,
+                        default=Path(os.environ.get('LOCALAPPDATA', '')) / 'Android/Sdk')
     parser.add_argument('--apk', type=Path)
     parser.add_argument('--frozen-source', type=Path)
     parser.add_argument('--output', required=True, type=Path)
@@ -1043,23 +1506,72 @@ def main():
     if fixture_id not in (FIELDS_01, FIELDS_02):
         raise SystemExit('unsupported result-field fixture family')
     fields_02 = fixture_id == FIELDS_02
+    if args.preflight_only:
+        if not fields_02 or fixture.get('baselineCommit') != SELECTED_BASELINE:
+            raise SystemExit('preflight requires the selected FIELDS-02 reference')
+        if args.finalize or not all((args.apk, args.target_apk, args.frozen_source, args.java_home)):
+            raise SystemExit('preflight requires --apk, --target-apk, --frozen-source and --java-home')
+        if not args.target_apk.is_file() or sha256(args.target_apk) != SELECTED_TARGET['apkSha256']:
+            raise SystemExit('selected target APK is missing or differs')
+        args.output.mkdir(parents=True, exist_ok=False)
+        try:
+            binding = selected_preflight(args.apk, args.target_apk, fixture_path,
+                                         args.frozen_source, args.android_sdk, args.java_home,
+                                         evidence=args.output)
+        except Exception as error:
+            (args.output / 'preflight-failure.json').write_text(
+                json.dumps({'status': 'failed', 'error': str(error)}, indent=2) + '\n', encoding='utf-8')
+            raise SystemExit(str(error)) from error
+        (args.output / 'preflight.json').write_text(
+            json.dumps(binding, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps({'status': 'preflight-only', 'output': str(args.output)}))
+        return 0
+    if not args.serial:
+        parser.error('--serial is required except for --preflight-only')
+    selected_reference = fields_02 and fixture.get('baselineCommit') == SELECTED_BASELINE
+    target_package = SELECTED_TARGET['package'] if selected_reference else TARGET_PACKAGE
+    selected_binding = None
+    if selected_reference:
+        if args.serial != '5615f742' or not all((args.apk, args.target_apk, args.frozen_source, args.java_home)):
+            raise SystemExit('selected capture requires the approved serial, --apk, --target-apk, --frozen-source and --java-home')
+        if not args.finalize:
+            args.output.mkdir(parents=True, exist_ok=False)
+        try:
+            selected_binding = selected_preflight(args.apk, args.target_apk, fixture_path,
+                args.frozen_source, args.android_sdk, args.java_home,
+                evidence=None if args.finalize else args.output)
+        except Exception as error:
+            if args.finalize:
+                _write_finalize_failure(args.output, str(error), preserve_existing=True)
+            else:
+                (args.output / 'preflight-failure.json').write_text(
+                    json.dumps({'status': 'failed', 'error': str(error)}, indent=2) + '\n', encoding='utf-8')
+            raise SystemExit(str(error)) from error
     if fields_02 and args.apk is None:
         raise SystemExit('FIELDS-02 requires --apk, including --finalize')
     if args.finalize:
-        report = json.loads((args.output / 'field-oracle.json').read_text(encoding='utf-8'))
-        manifest = json.loads((args.output / 'manifest.json').read_text(encoding='utf-8'))
-        report_bytes = (args.output / 'field-oracle.json').read_bytes()
+        try:
+            report = json.loads((args.output / 'field-oracle.json').read_text(encoding='utf-8'))
+            manifest = json.loads((args.output / 'manifest.json').read_text(encoding='utf-8'))
+            report_bytes = (args.output / 'field-oracle.json').read_bytes()
+        except Exception as error:
+            if not selected_reference:
+                raise
+            _write_finalize_failure(args.output, str(error), preserve_existing=True)
+            return 1
         if fields_02:
             golden = args.output / 'golden.json'
             report_bytes = (args.output / 'field-oracle.json').read_bytes()
             if golden.exists():
                 if golden.read_bytes() != report_bytes:
                     _write_finalize_failure(args.output,
-                                            'existing golden bytes differ from report; refusing')
+                        'existing golden bytes differ from report; refusing',
+                        preserve_existing=selected_reference)
                     return 1
                 if manifest.get('status') != 'observed' or manifest.get('goldenSha256') != sha256(golden):
                     _write_finalize_failure(args.output,
-                                            'existing golden has no accepted manifest binding')
+                        'existing golden has no accepted manifest binding',
+                        preserve_existing=selected_reference)
                     return 1
             try:
                 result = finalize(args.output, fixture, manifest, report,
@@ -1071,7 +1583,7 @@ def main():
                                   report_bytes=report_bytes,
                                   original_apk=args.apk)
             except Exception as error:  # noqa: BLE001 - preserve accepted bytes
-                _write_finalize_failure(args.output, str(error))
+                _write_finalize_failure(args.output, str(error), preserve_existing=selected_reference)
                 return 1
             if result and result.get('goldenReused'):
                 print(json.dumps({'status': 'observed',
@@ -1117,8 +1629,9 @@ def main():
         if sha256_bytes(lf_bytes(asset_bytes)) != corpus_sha256_lf:
             raise SystemExit('the built asset LF hash differs from the selected corpus')
         artifact = inspect_selected_apk(args.apk, fixture_path, fixture,
-                                        harness_source_hashes())
-    args.output.mkdir(parents=True, exist_ok=False)
+                                        harness_source_hashes(selected=selected_reference))
+    if not selected_reference:
+        args.output.mkdir(parents=True, exist_ok=False)
     # The pulled baseline APK is a ~50 MB copy of the installed artifact; it is
     # hashed, never committed, and stays outside the evidence directory.
     scratch = Path(tempfile.mkdtemp(prefix='fields-01-baseline-'))
@@ -1144,8 +1657,10 @@ def main():
         'harnessApkSha256': sha256(args.apk),
         'serial': args.serial,
         'commands': [],
-        'harnessSources': harness_source_hashes(),
+        'harnessSources': harness_source_hashes(selected=selected_reference),
     }
+    if selected_reference:
+        manifest['preflight'] = selected_binding
     if fields_02:
         manifest['corpus'].update({
             'bytes': len(corpus_bytes),
@@ -1168,16 +1683,16 @@ def main():
         return run(['adb', '-s', args.serial, *command], name, **kwargs)
 
     def remote_script(name, script, **kwargs):
-        result = adb(name, 'shell', *remote_script_arguments(TARGET_PACKAGE, script),
+        result = adb(name, 'shell', *remote_script_arguments(target_package, script),
                      **kwargs)
         return result
 
     def preflight_fields_02():
         """Refuse any preexisting state; never delete or replace it."""
-        process = adb('target-process', 'shell', 'pidof', TARGET_PACKAGE, checked=False)
+        process = adb('target-process', 'shell', 'pidof', target_package, checked=False)
         if _measured_pids(process, 'preflight target pid'):
             raise ValueError('a target process already exists; refusing an unowned run')
-        root_result = adb('target-private-root', 'shell', 'run-as', TARGET_PACKAGE,
+        root_result = adb('target-private-root', 'shell', 'run-as', target_package,
                           'pwd', checked=False)
         if root_result.returncode != 0:
             raise ValueError('cannot measure the target-private root')
@@ -1223,15 +1738,15 @@ def main():
         if seed_pid <= 0:
             raise ValueError('the owner seed PID is not a live process id')
         pids = _measured_pids(
-            adb('owned-pid', 'shell', 'pidof', TARGET_PACKAGE, checked=False),
+            adb('owned-pid', 'shell', 'pidof', target_package, checked=False),
             'owned target pid')
         if pids and pids != [str(seed_pid)]:
             raise ValueError('the target process does not belong to the owner seed')
-        stopped = adb('poststop', 'shell', 'am', 'force-stop', TARGET_PACKAGE, checked=False)
+        stopped = adb('poststop', 'shell', 'am', 'force-stop', target_package, checked=False)
         if stopped.returncode != 0:
             raise ValueError('the owned target process could not be stopped')
         if _measured_pids(
-                adb('poststop-check', 'shell', 'pidof', TARGET_PACKAGE, checked=False),
+                adb('poststop-check', 'shell', 'pidof', target_package, checked=False),
                 'post-stop target pid'):
             raise ValueError('the target process is still present after the owned stop')
 
@@ -1267,7 +1782,7 @@ def main():
             raise ValueError('cleanup family differs before cleanup')
         if _require_int(cleanup.get('corpusVersion'), 'cleanup.corpusVersion') != 1:
             raise ValueError('cleanup corpus version differs before cleanup')
-        if isolation.get('targetPackage') != TARGET_PACKAGE:
+        if isolation.get('targetPackage') != target_package:
             raise ValueError('report target package differs before cleanup')
         if isolation.get('targetApkSha256') != manifest.get('baselineApkSha256'):
             raise ValueError('report target APK differs before cleanup')
@@ -1292,7 +1807,7 @@ def main():
             raise ValueError('owner family differs before cleanup')
         if _require_int(owner.get('corpusVersion'), 'owner.corpusVersion') != 1:
             raise ValueError('owner corpus version differs before cleanup')
-        if owner.get('targetPackage') != TARGET_PACKAGE or owner.get('harnessPackage') != PACKAGE:
+        if owner.get('targetPackage') != target_package or owner.get('harnessPackage') != PACKAGE:
             raise ValueError('owner package binding differs before cleanup')
         if owner.get('targetApkSha256') != isolation.get('targetApkSha256'):
             raise ValueError('owner target APK differs before cleanup')
@@ -1310,7 +1825,8 @@ def main():
         if provenance.get('fixtureId') != FIELDS_02:
             raise ValueError('artifact provenance family differs before cleanup')
         _admit_source_hashes(provenance.get('sources'),
-                             'artifact before cleanup', current_only=True)
+                             'artifact before cleanup', current_only=True,
+                             selected=selected_reference)
         pcorpus = _required_map(provenance, 'corpus', 'artifact.provenance')
         manifest_corpus = manifest.get('corpus') or {}
         if pcorpus.get('asset') != 'field-fixtures.json' or pcorpus.get('fixtureId') != FIELDS_02:
@@ -1421,11 +1937,18 @@ def main():
             'sdk', 'shell', 'getprop', 'ro.build.version.sdk').stdout.decode().strip()
         manifest['model'] = adb(
             'model', 'shell', 'getprop', 'ro.product.model').stdout.decode().strip()
+        if selected_reference:
+            if manifest['sdk'] != '37':
+                raise ValueError('selected device API differs')
+            webview = adb('webview', 'shell', 'dumpsys', 'webviewupdate').stdout.decode(errors='strict')
+            _require_selected_webview(webview)
         baseline = adb(
-            'baseline-path', 'shell', 'pm', 'path', 'io.legado.app.debug').stdout.decode().strip()
-        adb('pull-baseline', 'pull', baseline.removeprefix('package:'),
-            str(scratch / 'frozen.apk'))
-        manifest['baselineApkSha256'] = sha256(scratch / 'frozen.apk')
+            'baseline-path', 'shell', 'pm', 'path', target_package).stdout.decode().strip()
+        if selected_reference and not re.fullmatch(r'package:[^\r\n]+', baseline):
+            raise ValueError('installed target APK path is ambiguous')
+        frozen_apk = args.output / 'frozen.apk' if selected_reference else scratch / 'frozen.apk'
+        adb('pull-baseline', 'pull', baseline.removeprefix('package:'), str(frozen_apk))
+        manifest['baselineApkSha256'] = sha256(frozen_apk)
         if manifest['baselineApkSha256'] != expected_apk:
             raise ValueError('installed baseline APK differs')
         existing = adb('harness-existing', 'shell', 'pm', 'list', 'packages',
@@ -1469,7 +1992,17 @@ def main():
                                              'ambiguous; preserving it for inspection')
             return 2 if manifest['status'] == 'blocked' else 1
         installed = True
-        adb('logcat-clear', 'logcat', '-c', checked=False)
+        if selected_reference:
+            _require_selected_success(installed_result.stdout + installed_result.stderr, 'install')
+            installed_path = adb('installed-harness-path', 'shell', 'pm', 'path', PACKAGE).stdout.decode().strip()
+            if not re.fullmatch(r'package:[^\r\n]+', installed_path):
+                raise ValueError('installed harness path is malformed')
+            adb('installed-harness-pull', 'pull', installed_path.removeprefix('package:'),
+                str(args.output / 'installed-harness.apk'))
+            if sha256(args.output / 'installed-harness.apk') != manifest['harnessApkSha256']:
+                raise ValueError('installed harness APK differs')
+        if not selected_reference:
+            adb('logcat-clear', 'logcat', '-c', checked=False)
         result = adb('instrumentation', 'shell', 'am', 'instrument', '-w', '-r',
                      INSTRUMENTATION, timeout=240)
         manifest['run'] = {'result': result.stdout.decode(errors='replace').strip()}
@@ -1482,12 +2015,12 @@ def main():
             # its PID before it stops anything.
             report_path = target_private_root + '/cache/liber-fields-02/field-oracle.json'
             owner_path = target_private_root + '/cache/liber-fields-02/owner.json'
-            pulled = adb('pull-report', 'exec-out', 'run-as', TARGET_PACKAGE,
+            pulled = adb('pull-report', 'exec-out', 'run-as', target_package,
                          'cat', report_path, checked=False)
             if pulled.returncode:
                 raise ValueError('the device reported no oracle report')
             (args.output / 'field-oracle.json').write_bytes(pulled.stdout)
-            owner_result = adb('scratch-owner', 'exec-out', 'run-as', TARGET_PACKAGE,
+            owner_result = adb('scratch-owner', 'exec-out', 'run-as', target_package,
                                'cat', owner_path, checked=False)
             if owner_result.returncode:
                 raise ValueError('the outer driver could not read the scratch owner manifest')
@@ -1498,6 +2031,12 @@ def main():
             uninstalled = adb('remove-harness', 'uninstall', PACKAGE, checked=False)
             if uninstalled.returncode:
                 raise ValueError('the owned harness could not be uninstalled')
+            if selected_reference:
+                _require_selected_success(uninstalled.stdout + uninstalled.stderr, 'uninstall')
+                remaining = adb('harness-removed-check', 'shell', 'pm', 'list', 'packages',
+                                PACKAGE, checked=False)
+                if _package_is_present(remaining, PACKAGE, 'harness-removed-check'):
+                    raise ValueError('the owned harness remains installed')
             installed = False
             before = (args.output / 'private-before.log').read_bytes()
             after = remote_script('private-after', snapshot_script).stdout

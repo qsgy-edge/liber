@@ -109,6 +109,269 @@ def _snapshot_bytes(files, dirs):
 
 
 
+class SelectedCorpusTest(unittest.TestCase):
+    def test_selected_reference_preserves_scenarios_and_changes_only_reference_metadata(self):
+        directory = Path(__file__).resolve().parent
+        original = json.loads((directory / 'book-url-markers-fixtures.json').read_bytes())
+        selected = json.loads((directory / 'book-url-markers-fixtures-selected.json').read_bytes())
+        self.assertEqual(selected['baselineCommit'], 'a7d37f1707a70a459ad708f4fe79341d1e42d716')
+        self.assertEqual(selected['target']['package'], 'com.legado.app.debug')
+        self.assertEqual(selected['target']['apkSha256'],
+                         '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5')
+        self.assertEqual(len(selected['cases']), 4)
+        self.assertEqual(len(selected['expectedRequests']), 12)
+        ignored = {'baselineCommit', 'target', 'frozenSources', 'hostInitialization'}
+        self.assertEqual({k: v for k, v in original.items() if k not in ignored},
+                         {k: v for k, v in selected.items() if k not in ignored})
+
+
+    def test_selected_reference_cannot_dispatch_legacy_device_path(self):
+        directory = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as output:
+            result = subprocess.run([
+                sys.executable, str(directory / 'capture.py'), '--serial', 'unused',
+                '--fixture', str(directory / 'book-url-markers-fixtures-selected.json'),
+                '--output', str(Path(output) / 'capture'), '--apk', 'unused.apk',
+                '--frozen-source', 'unused-source', '--asset', 'unused-asset',
+            ], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('selected capture requires', result.stderr)
+            self.assertFalse((Path(output) / 'capture').exists())
+
+    def test_selected_preflight_rejects_missing_target_apk_without_device(self):
+        directory = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as output:
+            result = subprocess.run([
+                sys.executable, str(directory / 'capture.py'), '--preflight-only',
+                '--fixture', str(directory / 'book-url-markers-fixtures-selected.json'),
+                '--output', str(Path(output) / 'receipt'), '--apk', 'unused.apk',
+                '--frozen-source', 'unused-source', '--target-apk', 'missing-target.apk',
+                '--java-home', 'unused-java', '--android-sdk', 'unused-sdk',
+            ], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('target APK', result.stderr)
+            self.assertFalse((Path(output) / 'receipt').exists())
+
+    def test_selected_apk_requires_all_selected_build_sources(self):
+        directory = Path(__file__).resolve().parent
+        fixture_path = directory / 'book-url-markers-fixtures-selected.json'
+        data = fixture_path.read_bytes()
+        fixture = json.loads(data)
+        sources = capture.harness_source_hashes(selected=True)
+        provenance = {'schemaVersion': 1, 'fixtureId': 'FIELDS-02', 'corpus': {
+            'asset': 'field-fixtures.json', 'bytes': len(data),
+            'sha256': capture.sha256_bytes(data), 'sha256Lf': capture.sha256_bytes(capture.lf_bytes(data)),
+            'fixtureId': 'FIELDS-02', 'corpusVersion': 1}, 'sources': sources}
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / 'synthetic.apk'
+            def inspect(provenance):
+                with zipfile.ZipFile(apk, 'w') as archive:
+                    archive.writestr('assets/field-fixtures.json', data)
+                    archive.writestr('assets/field-provenance.json', json.dumps(provenance))
+                return capture.inspect_selected_apk(apk, fixture_path, fixture, sources)
+            self.assertEqual(inspect(provenance)['provenance']['sources'], sources)
+            bad = dict(provenance, sources={k: v for k, v in sources.items()
+                                            if k != 'GuardedReaderApplication.java'})
+            with self.assertRaisesRegex(ValueError, 'source key set'):
+                inspect(bad)
+
+    def test_historical_reference_rejects_the_selected_target(self):
+        directory = Path(__file__).resolve().parent
+        old = json.loads((directory / 'book-url-markers-fixtures.json').read_bytes())
+        old['target'] = dict(capture.SELECTED_TARGET)
+        with self.assertRaisesRegex(ValueError, 'target'):
+            capture._admit_selected_shape(old, 'fixture')
+
+    def test_selected_manifest_rejects_target_on_unrelated_node(self):
+        manifest = '''N: android=http://schemas.android.com/apk/res/android
+  E: manifest (line=1)
+    A: package="io.liber.oracle.fields" (Raw: "io.liber.oracle.fields")
+    E: instrumentation (line=3)
+      A: android:name(0x01010003)="io.liber.oracle.fields.FieldOracle" (Raw: "io.liber.oracle.fields.FieldOracle")
+      A: android:targetPackage(0x01010021)="com.legado.app.debug" (Raw: "com.legado.app.debug")
+'''
+        capture._check_selected_manifest(manifest)
+        with self.assertRaisesRegex(ValueError, 'manifest'):
+            capture._check_selected_manifest(manifest.replace(
+                '      A: android:targetPackage',
+                '    E: unrelated (line=4)\n      A: android:targetPackage'))
+
+    def test_selected_command_receipts_reject_wrong_fingerprint_command(self):
+        names = ['fingerprint', 'sdk', 'webview', 'baseline-path', 'pull-baseline',
+                 'harness-existing', 'target-process', 'target-private-root', 'scratch-root-check',
+                 'scratch-prefs-check', 'scratch-installation-probe-check', 'private-before',
+                 'install', 'installed-harness-path', 'installed-harness-pull', 'instrumentation',
+                 'pull-report', 'scratch-owner', 'owned-pid', 'poststop', 'poststop-check',
+                 'scratch-remove-root', 'scratch-absent-root', 'remove-harness',
+                 'harness-removed-check', 'private-after']
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            commands = []
+            for name in names:
+                (output / (name + '.log')).write_bytes(b'')
+                commands.append({'log': name + '.log', 'exitCode': 0,
+                                 'command': ['adb', '-s', '5615f742', 'shell', 'getprop', 'wrong']})
+            with self.assertRaisesRegex(ValueError, 'fingerprint command differs'):
+                capture._admit_selected_commands(output, {'serial': '5615f742', 'commands': commands,
+                                                          'targetPrivateRoot': '/data/user/0/com.legado.app.debug'},
+                                                 b'', b'', b'')
+
+    def test_selected_webview_must_be_the_current_provider_and_version(self):
+        good = 'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'
+        capture._require_selected_webview(good)
+        for bad in ('Available: com.google.android.webview 158.0.8127.2\n'
+                    'Current WebView package (name, version): (other, 1)\n',
+                    good + good):
+            with self.assertRaisesRegex(ValueError, 'WebView'):
+                capture._require_selected_webview(bad)
+
+    def test_selected_install_and_uninstall_success_must_not_conflict(self):
+        capture._require_selected_success(b'Success\n', 'install')
+        for receipt in (b'Success\nFailure [INSTALL_FAILED]\n',
+                        b'Success\nTIMED OUT\n', b'Success\nSuccess\n', b''):
+            with self.assertRaisesRegex(ValueError, 'selected command receipts'):
+                capture._require_selected_success(receipt, 'install')
+
+    def test_selected_apk_rejects_rewritten_scenario_bytes(self):
+        directory = Path(__file__).resolve().parent
+        fixture = json.loads((directory / 'book-url-markers-fixtures-selected.json').read_bytes())
+        fixture['cases'][0]['keyword'] = 'changed'
+        data = (json.dumps(fixture, ensure_ascii=False) + '\n').encode()
+        sources = capture.harness_source_hashes(selected=True)
+        provenance = {'schemaVersion': 1, 'fixtureId': 'FIELDS-02', 'corpus': {
+            'asset': 'field-fixtures.json', 'bytes': len(data),
+            'sha256': capture.sha256_bytes(data), 'sha256Lf': capture.sha256_bytes(data),
+            'fixtureId': 'FIELDS-02', 'corpusVersion': 1}, 'sources': sources}
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture_path = Path(temporary) / 'fixture.json'
+            fixture_path.write_bytes(data)
+            apk = Path(temporary) / 'synthetic.apk'
+            with zipfile.ZipFile(apk, 'w') as archive:
+                archive.writestr('assets/field-fixtures.json', data)
+                archive.writestr('assets/field-provenance.json', json.dumps(provenance))
+            with self.assertRaisesRegex(ValueError, 'corpus raw'):
+                capture.inspect_selected_apk(apk, fixture_path, fixture, sources)
+
+    def test_selected_reference_rejects_a_relabelled_target(self):
+        directory = Path(__file__).resolve().parent
+        selected = json.loads((directory / 'book-url-markers-fixtures-selected.json').read_bytes())
+        capture._admit_selected_shape(selected, 'fixture')
+        selected['target']['apkSha256'] = 'cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6'
+        with self.assertRaisesRegex(ValueError, 'target'):
+            capture._admit_selected_shape(selected, 'fixture')
+
+
+class SelectedReceiptTest(unittest.TestCase):
+    def test_complete_selected_receipts_and_raw_report_tamper(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            selected_apk = os.environ.get('FIELDS_SELECTED_HARNESS_APK')
+            selected_target = os.environ.get('FIELDS_SELECTED_TARGET_APK')
+            if bool(selected_apk) != bool(selected_target):
+                self.fail('supply both selected actual APK paths or neither')
+            target = Path(selected_target).read_bytes() if selected_target else b'synthetic target APK for mechanics only'
+            harness = Path(selected_apk).read_bytes() if selected_apk else b'synthetic harness APK for mechanics only'
+            (output / 'frozen.apk').write_bytes(target)
+            (output / 'installed-harness.apk').write_bytes(harness)
+            target_sha = capture.sha256_bytes(target)
+            artifact = {'synthetic': True}
+            if selected_apk:
+                fixture_path = Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json')
+                fixture = json.loads(fixture_path.read_bytes())
+                self.assertEqual(target_sha, capture.SELECTED_TARGET['apkSha256'])
+                artifact = capture.inspect_selected_apk(selected_apk, fixture_path, fixture,
+                                                        capture.harness_source_hashes(selected=True))
+            prefix = ['adb', '-s', '5615f742']
+            target_package = capture.SELECTED_TARGET['package']
+            root = '/data/user/0/' + target_package
+            scratch = root + '/cache/liber-fields-02'
+            prefs = root + '/shared_prefs'
+            owner = {'seedPid': 4242, 'preferences': ['liber_fields_02_probe']}
+            report = b'{"mechanics-only":true}'
+            before = b'synthetic-before'
+            after = b'synthetic-after'
+            manifest = {'serial': '5615f742', 'targetPrivateRoot': root,
+                        'scratchOwner': owner, 'harnessApkSha256': capture.sha256_bytes(harness),
+                        'artifact': artifact, 'frozenSources': {'synthetic': True},
+                        'preflight': {'targetApkSha256': target_sha, 'artifact': artifact,
+                                      'referenceSources': {'synthetic': True}}, 'commands': []}
+            def add(name, args, data=b'', code=0):
+                log = name + '.log'
+                (output / log).write_bytes(data)
+                manifest['commands'].append({'command': prefix + args, 'exitCode': code, 'log': log})
+            def shell(script):
+                return ['shell', *capture.remote_script_arguments(target_package, script)]
+            add('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint'],
+                (capture.SELECTED_TARGET['deviceFingerprint'] + '\n').encode())
+            add('sdk', ['shell', 'getprop', 'ro.build.version.sdk'], b'37\n')
+            add('webview', ['shell', 'dumpsys', 'webviewupdate'],
+                b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n')
+            add('baseline-path', ['shell', 'pm', 'path', target_package], b'package:/target.apk\n')
+            add('pull-baseline', ['pull', '/target.apk', str(output / 'frozen.apk')])
+            add('harness-existing', ['shell', 'pm', 'list', 'packages', capture.PACKAGE])
+            add('target-process', ['shell', 'pidof', target_package], code=1)
+            add('target-private-root', ['shell', 'run-as', target_package, 'pwd'], (root + '\n').encode())
+            add('scratch-root-check', shell('if [ -e ' + shlex.quote(scratch) + ' ]; then echo PRESENT; else echo ABSENT; fi'), b'ABSENT\n')
+            add('scratch-prefs-check', shell('if [ -d ' + shlex.quote(prefs) + ' ]; then find ' + shlex.quote(prefs) + ' -maxdepth 1 -name ' + shlex.quote(capture.OWNED_PREFERENCE_PREFIX + '*.xml') + ' -print; fi'))
+            add('scratch-installation-probe-check', shell('if [ -e ' + shlex.quote(prefs + '/probe.xml') + ' ]; then echo PRESENT; fi'))
+            add('private-before', shell(capture._fields_snapshot_script(root)), before)
+            add('install', ['install', '-r', '/synthetic/harness.apk'], b'Success\n')
+            add('installed-harness-path', ['shell', 'pm', 'path', capture.PACKAGE], b'package:/installed.apk\n')
+            add('installed-harness-pull', ['pull', '/installed.apk', str(output / 'installed-harness.apk')])
+            add('instrumentation', ['shell', 'am', 'instrument', '-w', '-r', capture.INSTRUMENTATION], b'INSTRUMENTATION_CODE: -1\n')
+            add('pull-report', ['exec-out', 'run-as', target_package, 'cat', scratch + '/field-oracle.json'], report)
+            add('scratch-owner', ['exec-out', 'run-as', target_package, 'cat', scratch + '/owner.json'], json.dumps(owner).encode())
+            add('owned-pid', ['shell', 'pidof', target_package], b'4242\n')
+            add('poststop', ['shell', 'am', 'force-stop', target_package])
+            add('poststop-check', ['shell', 'pidof', target_package], code=1)
+            preference = prefs + '/liber_fields_02_probe.xml'
+            add('scratch-remove-1', shell('rm -f -- ' + shlex.quote(preference)))
+            add('scratch-remove-root', shell('rm -rf -- ' + shlex.quote(scratch)))
+            add('scratch-absent-1', shell('test ! -e ' + shlex.quote(preference)))
+            add('scratch-absent-root', shell('test ! -e ' + shlex.quote(scratch)))
+            add('remove-harness', ['uninstall', capture.PACKAGE], b'Success\n')
+            add('harness-removed-check', ['shell', 'pm', 'list', 'packages', capture.PACKAGE])
+            add('private-after', shell(capture._fields_snapshot_script(root)), after)
+            preflight_names = ['java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
+                               'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex']
+            preflight_commands = []
+            for name in preflight_names:
+                data = {'source-head': capture.SELECTED_BASELINE + '\n',
+                        'source-tree': '0f69dc7004012a969551ce271dc4e11051637d32\n'}.get(name, '').encode()
+                (output / ('preflight-' + name + '.stdout.log')).write_bytes(data)
+                (output / ('preflight-' + name + '.stderr.log')).write_bytes(b'')
+                preflight_commands.append({'name': name, 'exitCode': 0, 'command': ['synthetic'],
+                    'stdoutSha256': capture.sha256_bytes(data), 'stderrSha256': capture.sha256_bytes(b'')})
+            manifest['preflight']['commands'] = preflight_commands
+            with patch.dict(capture.SELECTED_TARGET, {'apkSha256': target_sha}):
+                capture._admit_selected_commands(output, manifest, report, before, after)
+                import shutil
+                with tempfile.TemporaryDirectory() as copied_parent:
+                    copied = Path(copied_parent) / 'copied-evidence'
+                    shutil.copytree(output, copied)
+                    capture._admit_selected_commands(copied, manifest, report, before, after)
+                target_pull = next(item for item in manifest['commands'] if item['log'] == 'pull-baseline.log')
+                original_destination = target_pull['command'][-1]
+                target_pull['command'][-1] = str(Path(original_destination).with_name('wrong.apk'))
+                with self.assertRaisesRegex(ValueError, 'target pull command differs'):
+                    capture._admit_selected_commands(output, manifest, report, before, after)
+                target_pull['command'][-1] = original_destination
+                harness_pull = next(item for item in manifest['commands'] if item['log'] == 'installed-harness-pull.log')
+                original_destination = harness_pull['command'][-1]
+                harness_pull['command'][-1] = str(Path(original_destination).parent / 'other' / 'installed-harness.apk')
+                with self.assertRaisesRegex(ValueError, 'installed harness pull command differs'):
+                    capture._admit_selected_commands(output, manifest, report, before, after)
+                harness_pull['command'][-1] = original_destination
+                (output / 'pull-report.log').write_bytes(report + b' ')
+                with self.assertRaisesRegex(ValueError, 'raw report differs'):
+                    capture._admit_selected_commands(output, manifest, report, before, after)
+                (output / 'pull-report.log').write_bytes(report)
+                (output / 'preflight-dex.stdout.log').write_bytes(b'tampered')
+                with self.assertRaisesRegex(ValueError, 'preflight command output'):
+                    capture._admit_selected_commands(output, manifest, report, before, after)
+
+
 class CaptureBoundaryTest(unittest.TestCase):
     def test_remote_script_is_one_quoted_argument(self):
         args = capture.remote_script_arguments(
@@ -130,6 +393,83 @@ class CaptureBoundaryTest(unittest.TestCase):
                 capture._finalize_fields_02(output, {}, {}, {},
                                             b'', b'', scratch_cleanup=None)
             self.assertEqual((output / 'golden.json').read_bytes(), sentinel)
+
+    def test_selected_failure_receipts_preserve_each_failure_and_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            originals = {'field-oracle.json': b'{"report":"unchanged"}\n',
+                         'manifest.json': b'{"manifest":"unchanged"}\n',
+                         'golden.json': b'{"golden":"unchanged"}\n'}
+            for name, data in originals.items():
+                (output / name).write_bytes(data)
+            first = capture._write_finalize_failure(output, 'first', preserve_existing=True)
+            first_bytes = first.read_bytes()
+            second = capture._write_finalize_failure(output, 'second', preserve_existing=True)
+            self.assertEqual(first.name, 'finalize-failure.json')
+            self.assertNotEqual(first, second)
+            self.assertRegex(second.name, r'^finalize-failure-[0-9a-f-]+\.json$')
+            self.assertEqual(first.read_bytes(), first_bytes)
+            self.assertEqual(json.loads(first_bytes)['error'], 'first')
+            self.assertEqual(json.loads(second.read_bytes())['error'], 'second')
+            for name, data in originals.items():
+                self.assertEqual((output / name).read_bytes(), data)
+
+    def test_selected_cli_preflight_failures_preserve_existing_receipts(self):
+        directory = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            originals = {'field-oracle.json': b'{"report":"synthetic"}\n',
+                         'manifest.json': b'{"status":"synthetic"}\n',
+                         'golden.json': b'{"golden":"synthetic"}\n'}
+            for name, data in originals.items():
+                (output / name).write_bytes(data)
+            command = [sys.executable, str(directory / 'capture.py'), '--finalize',
+                       '--serial', '5615f742', '--fixture', str(directory / 'book-url-markers-fixtures-selected.json'),
+                       '--apk', 'unused.apk', '--target-apk', 'missing-target.apk',
+                       '--frozen-source', 'unused-source', '--java-home', 'unused-java',
+                       '--output', str(output)]
+            first = subprocess.run(command, capture_output=True, text=True)
+            first_path = output / 'finalize-failure.json'
+            first_bytes = first_path.read_bytes()
+            second = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(first.returncode, 0)
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn('selected target APK', first.stderr)
+            self.assertEqual(first_path.read_bytes(), first_bytes)
+            receipts = list(output.glob('finalize-failure*.json'))
+            self.assertEqual(len(receipts), 2)
+            self.assertTrue(all('selected target APK' in json.loads(path.read_bytes())['error'] for path in receipts))
+            for name, data in originals.items():
+                self.assertEqual((output / name).read_bytes(), data)
+
+    def test_selected_finalize_missing_report_records_immutable_failure(self):
+        import io
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        directory = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            manifest = b'{"status":"synthetic"}\n'
+            (output / 'manifest.json').write_bytes(manifest)
+            argv = ['capture.py', '--finalize', '--serial', '5615f742',
+                    '--fixture', str(directory / 'book-url-markers-fixtures-selected.json'),
+                    '--apk', 'synthetic.apk', '--target-apk', 'synthetic-target.apk',
+                    '--frozen-source', 'synthetic-source', '--java-home', 'synthetic-java',
+                    '--output', str(output)]
+            with patch.object(sys, 'argv', argv), patch.object(capture, 'selected_preflight', return_value={}), redirect_stderr(io.StringIO()):
+                self.assertEqual(capture.main(), 1)
+            receipt = json.loads((output / 'finalize-failure.json').read_bytes())
+            self.assertIn('field-oracle.json', receipt['error'])
+            self.assertEqual((output / 'manifest.json').read_bytes(), manifest)
+            self.assertFalse((output / 'golden.json').exists())
+
+    def test_historical_failure_receipt_keeps_default_replacement_behavior(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            capture._write_finalize_failure(output, 'first')
+            capture._write_finalize_failure(output, 'second')
+            self.assertEqual(json.loads((output / 'finalize-failure.json').read_bytes())['error'], 'second')
+            self.assertEqual(len(list(output.glob('finalize-failure*.json'))), 1)
 
     def test_failure_receipt_does_not_touch_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -310,16 +650,18 @@ class DriverBoundaryTest(unittest.TestCase):
              process_pid_post=None, pid_stderr=False, snapshot_fail_on=None,
              existing_harness=False, package_query_code=0,
              package_query_stderr=b'', package_query_stdout=None,
-             owner_preferences=None):
+             owner_preferences=None, selected=False, selected_install_receipt=None):
         import io
         from contextlib import redirect_stdout
         from unittest.mock import patch
 
-        fixture = Path(__file__).resolve().with_name('book-url-markers-fixtures.json')
+        fixture = Path(__file__).resolve().with_name(
+            'book-url-markers-fixtures-selected.json' if selected else 'book-url-markers-fixtures.json')
         fixture_data = json.loads(fixture.read_text(encoding='utf-8'))
+        target_package = fixture_data['target']['package']
         commands = []
         calls = {'finalize': 0, 'install_attempted': False}
-        target_root = '/data/user/0/io.legado.app.debug'
+        target_root = '/data/user/0/' + target_package
         scratch_root = target_root + '/cache/liber-fields-02'
         before_lines = b''
         report_bytes = b''
@@ -351,10 +693,14 @@ class DriverBoundaryTest(unittest.TestCase):
                     stdout = b'37\n'
                 elif 'ro.product.model' in args:
                     stdout = b'synthetic-test-only\n'
-                elif args[-3:] == ['pm', 'path', capture.TARGET_PACKAGE]:
+                elif selected and 'webviewupdate' in args:
+                    stdout = b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'
+                elif args[-3:] == ['pm', 'path', target_package]:
                     stdout = b'package:/synthetic/frozen.apk\n'
                 elif args[-3:] == ['pm', 'path', capture.PACKAGE]:
-                    if existing_harness and not calls['install_attempted']:
+                    if selected and calls['install_attempted']:
+                        stdout = b'package:/synthetic/installed-harness.apk\n'
+                    elif existing_harness and not calls['install_attempted']:
                         stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
                     elif partial and calls['install_attempted']:
                         stdout = b'package:' + capture.PACKAGE.encode() + bytes([10])
@@ -385,13 +731,22 @@ class DriverBoundaryTest(unittest.TestCase):
                         stdout = (str(chosen) + chr(10)).encode()
                 elif args[-1:] == ['pwd']:
                     stdout = (target_root + '\n').encode()
+                elif selected and 'pull' in args:
+                    destination = Path(args[-1])
+                    destination.write_bytes(apk.read_bytes() if destination.name == 'installed-harness.apk' else b'synthetic-target')
                 elif 'install' in args:
                     calls['install_attempted'] = True
                     code = install_code
+                    if selected and code == 0:
+                        stdout = selected_install_receipt if selected_install_receipt is not None else b'Success\n'
                 elif 'uninstall' in args:
                     code = uninstall_code
+                    if selected and code == 0:
+                        stdout = b'Success\n'
                 elif 'am' in args and 'instrument' in args:
                     code = instrument_code
+                    if selected and code == 0:
+                        stdout = b'INSTRUMENTATION_CODE: -1\n'
                     calls['instrument_failed'] = instrument_code != 0
                 elif 'am' in args and 'force-stop' in args:
                     code = stop_code
@@ -423,8 +778,30 @@ class DriverBoundaryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             # Build the actual original APK and compose the same evidence the
             # finalizer consumes; only adb/git transport is mocked.
-            evidence = FinalizeContractTest()._evidence()
+            evidence = FinalizeContractTest()._evidence(selected=selected)
             report = json.loads(json.dumps(evidence[3]))
+            if selected:
+                report['startupContainment'] = {'service': 'shortcut', 'provider': 'io.legado.app.api.ReaderProvider',
+                    'intercepted': 1, 'handled': 1, 'beforeBinding': True}
+                report['isolation']['appClass'] = 'io.liber.oracle.nested.GuardedReaderApplication'
+                report['hostInitialization'] = {'verified': True, 'applicationAttached': False,
+                    'invokedOn': 'unattached-instance', 'notRun': ['io.legado.app.App.onCreate'],
+                    'registeredWrappers': {r['type']: r['factory'] for r in fixture_data['hostInitialization']['registrations']},
+                    'method': fixture_data['hostInitialization']['method']}
+                report['terminalOwner'] = {'scope': 'Coroutine.DEFAULT', 'rootActive': True, 'rootCompleted': False,
+                    'baselineChildren': 0, 'childrenMethod': 'kotlinx.coroutines.Job.getChildren()',
+                    'completionMethod': 'kotlinx.coroutines.Job.isCompleted()'}
+                prefix = 'public final java.lang.Object io.legado.app.model.webBook.WebBook.'
+                report['entryPoints'] = {
+                    'searchBookAwait': prefix + 'searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
+                    'getBookInfoAwait': prefix + 'getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
+                    'getChapterListAwait': prefix + 'getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
+                    'getContentAwait': prefix + 'getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
+                }
+                for case in report['cases']:
+                    case['terminalOwner'] = {'owner': 'Coroutine.DEFAULT Job', 'observedChildren': 0,
+                        'allCompleted': True, 'rootEmpty': True, 'launchAttempts': 0}
+                report['cleanup'].update({'openConnectionsAfterClose': 0, 'databaseClosed': True, 'activityLaunchAttempts': 0})
             owner = json.loads(json.dumps(evidence[4]['scratchOwner']))
             provenance = evidence[4]['artifact']['provenance']
             apk = Path(directory) / 'field-oracle.apk'
@@ -432,9 +809,9 @@ class DriverBoundaryTest(unittest.TestCase):
                 archive.writestr('assets/field-fixtures.json', fixture.read_bytes())
                 archive.writestr('assets/field-provenance.json', json.dumps(provenance))
             artifact = capture.inspect_selected_apk(
-                apk, fixture, fixture_data, capture.harness_source_hashes())
+                apk, fixture, fixture_data, capture.harness_source_hashes(selected=selected))
             report['isolation'].update({
-                'targetPackage': capture.TARGET_PACKAGE,
+                'targetPackage': target_package,
                 'targetApkSha256': fixture_data['target']['apkSha256'],
                 'harnessPackage': capture.PACKAGE,
                 'harnessApkSha256': artifact['apkSha256'],
@@ -462,7 +839,7 @@ class DriverBoundaryTest(unittest.TestCase):
             })
             owner.update({
                 'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
-                'targetPackage': capture.TARGET_PACKAGE,
+                'targetPackage': target_package,
                 'harnessPackage': capture.PACKAGE,
                 'targetApkSha256': fixture_data['target']['apkSha256'],
                 'harnessApkSha256': artifact['apkSha256'],
@@ -496,7 +873,28 @@ class DriverBoundaryTest(unittest.TestCase):
                     '--frozen-source', str(frozen),
                     '--output', str(output), '--asset', str(fixture),
                     '--fixture', str(fixture)]
+            if selected:
+                argv += ['--target-apk', str(cache / 'target.apk'), '--java-home', str(cache)]
+            def synthetic_preflight(*args, **kwargs):
+                names = ['java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
+                         'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex']
+                receipts = []
+                for name in names:
+                    data = {'source-head': capture.SELECTED_BASELINE + '\n',
+                            'source-tree': '0f69dc7004012a969551ce271dc4e11051637d32\n'}.get(name, '').encode()
+                    evidence_dir = kwargs.get('evidence')
+                    if evidence_dir is not None:
+                        (evidence_dir / ('preflight-' + name + '.stdout.log')).write_bytes(data)
+                        (evidence_dir / ('preflight-' + name + '.stderr.log')).write_bytes(b'')
+                    receipts.append({'name': name, 'exitCode': 0, 'command': ['synthetic'],
+                        'stdoutSha256': capture.sha256_bytes(data), 'stderrSha256': capture.sha256_bytes(b'')})
+                return {'artifact': artifact, 'targetApkSha256': fixture_data['target']['apkSha256'],
+                        'commands': receipts,
+                        'referenceSources': {item['path']: {'blobSha1': item['sha1'],
+                            'worktreeSha256': actual_sha(frozen / item['path'])}
+                            for item in fixture_data['frozenSources']}}
             with patch.object(sys, 'argv', argv), \
+                    patch.object(capture, 'selected_preflight', synthetic_preflight), \
                     patch.object(capture, 'sha256', fake_sha), \
                     patch.object(capture.subprocess, 'run', fake_run), \
                     patch.object(capture.tempfile, 'mkdtemp', lambda **kwargs: str(cache)), \
@@ -511,6 +909,55 @@ class DriverBoundaryTest(unittest.TestCase):
                 calls['manifest_commands'] = manifest.get('commands', [])
                 calls['manifest_error'] = manifest.get('error')
         return exit_code, commands, calls
+
+    def test_selected_driver_preserves_mixed_install_without_instrumentation(self):
+        exit_code, commands, calls = self._run(
+            selected=True, selected_install_receipt=b'Success\nFailure [INSTALL_FAILED]\n')
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['golden'])
+        self.assertFalse(any('instrument' in cmd for cmd in commands))
+        self.assertFalse(any('uninstall' in cmd for cmd in commands))
+        self.assertIn('success is missing or contradicted', calls['manifest_error'])
+
+    def test_selected_driver_rejects_wrong_owner_before_cleanup(self):
+        exit_code, commands, calls = self._run(
+            selected=True, owner_mutator=lambda owner: owner.update(harnessApkSha256='0' * 64))
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['golden'])
+        self.assertIn('owner harness APK differs before cleanup', calls['manifest_error'])
+        self.assertFalse(any('force-stop' in cmd or 'uninstall' in cmd for cmd in commands))
+
+    def test_selected_driver_preserves_failed_stop_without_cleanup(self):
+        exit_code, commands, calls = self._run(selected=True, stop_code=1)
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['golden'])
+        self.assertIn('owned target process could not be stopped', calls['manifest_error'])
+        self.assertFalse(any('uninstall' in cmd for cmd in commands))
+        self.assertFalse(any('rm -f --' in ' '.join(cmd) for cmd in commands))
+
+    def test_selected_driver_rejects_failed_post_cleanup_snapshot(self):
+        exit_code, commands, calls = self._run(selected=True, snapshot_fail_on=2)
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['golden'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('private-after exited 1', calls['manifest_error'])
+
+    def test_selected_driver_preserves_instrumentation_failure(self):
+        exit_code, commands, calls = self._run(selected=True, instrument_code=1)
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(calls['golden'])
+        self.assertEqual(calls['finalize'], 0)
+        self.assertIn('instrumentation exited 1', calls['manifest_error'])
+        self.assertFalse(any('force-stop' in cmd or 'uninstall' in cmd for cmd in commands))
+
+    def test_selected_driver_uses_selected_target_and_preserves_raw_receipts(self):
+        exit_code, commands, calls = self._run(selected=True, process_pid_owned=4242)
+        self.assertEqual(exit_code, 0, calls)
+        self.assertEqual(calls['finalize'], 1)
+        self.assertTrue(calls['golden'])  # TemporaryDirectory synthetic mechanics only.
+        self.assertTrue(any('com.legado.app.debug' in cmd for cmd in commands))
+        self.assertFalse(any('io.legado.app.debug' in cmd for cmd in commands))
+        self.assertFalse(any(cmd[-2:] == ['logcat', '-c'] for cmd in commands))
 
     def test_successful_driver_uses_exact_quoted_cleanup_and_uninstall(self):
         exit_code, commands, calls = self._run()
@@ -1152,14 +1599,14 @@ class FormatterFailureTest(unittest.TestCase):
 
 
 class FinalizeContractTest(unittest.TestCase):
-    def _evidence(self):
+    def _evidence(self, selected=False):
         fixture_path = Path(__file__).resolve().with_name(
-            'book-url-markers-fixtures.json')
+            'book-url-markers-fixtures-selected.json' if selected else 'book-url-markers-fixtures.json')
         fixture_bytes = fixture_path.read_bytes()
         fixture = json.loads(fixture_bytes)
         raw = capture.sha256_bytes(fixture_bytes)
         lf = capture.sha256_bytes(capture.lf_bytes(fixture_bytes))
-        target_root = '/data/data/io.legado.app.debug'
+        target_root = '/data/data/' + fixture['target']['package']
         scratch_root = target_root + '/cache/liber-fields-02'
         provenance = {
             'schemaVersion': 1,
@@ -1172,7 +1619,7 @@ class FinalizeContractTest(unittest.TestCase):
                 'fixtureId': 'FIELDS-02',
                 'corpusVersion': 1,
             },
-            'sources': capture.harness_source_hashes(),
+            'sources': capture.harness_source_hashes(selected=selected),
         }
         artifact = {
             'apkSha256': 'a' * 64,
@@ -1304,7 +1751,7 @@ class FinalizeContractTest(unittest.TestCase):
             'isolation': {
                 'bound': True, 'filesRouted': True, 'databaseRouted': True,
                 'deviceProtected': False, 'rootExistedAtStart': False,
-                'targetPackage': capture.TARGET_PACKAGE,
+                'targetPackage': fixture['target']['package'],
                 'targetApkSha256': fixture['target']['apkSha256'],
                 'harnessPackage': capture.PACKAGE,
                 'harnessApkSha256': artifact['apkSha256'],
@@ -1346,10 +1793,10 @@ class FinalizeContractTest(unittest.TestCase):
                 entry['path']: {'blobSha1': entry['sha1']}
                 for entry in fixture['frozenSources']
             },
-            'harnessSources': capture.harness_source_hashes(),
+            'harnessSources': capture.harness_source_hashes(selected=selected),
             'scratchOwner': {
                 'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
-                'targetPackage': capture.TARGET_PACKAGE,
+                'targetPackage': fixture['target']['package'],
                 'harnessPackage': capture.PACKAGE,
                 'targetApkSha256': fixture['target']['apkSha256'],
                 'harnessApkSha256': artifact['apkSha256'],
@@ -1366,6 +1813,79 @@ class FinalizeContractTest(unittest.TestCase):
         }
         before = _snapshot_bytes(capture.FROZEN_APP_STORE, ['.', 'cache', 'databases', 'shared_prefs', 'files'])
         return fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before
+
+    def test_selected_finalize_refuses_duplicate_raw_report_keys(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence(selected=True)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            apk = self._selected_apk(directory, fixture_path, fixture, manifest, report)
+            payload = b'{"fixtureId":"FIELDS-02","fixtureId":"FIELDS-02"}'
+            (output / 'field-oracle.json').write_bytes(payload)
+            with self.assertRaisesRegex(ValueError, 'duplicate JSON key'):
+                capture.finalize(output, fixture, manifest, json.loads(payload), before, before,
+                                 asset=fixture_path, scratch_cleanup=cleanup,
+                                 fixture_bytes=fixture_bytes, original_apk=apk)
+            self.assertFalse((output / 'golden.json').exists())
+
+    def test_selected_finalize_refuses_missing_runtime_terminal_proof(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence(selected=True)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            apk = self._selected_apk(directory, fixture_path, fixture, manifest, report)
+            payload = json.dumps(report).encode()
+            (output / 'field-oracle.json').write_bytes(payload)
+            with self.assertRaisesRegex(ValueError, 'selected runtime'):
+                capture.finalize(output, fixture, manifest, report, before, before,
+                                 asset=fixture_path, scratch_cleanup=cleanup,
+                                 fixture_bytes=fixture_bytes, original_apk=apk)
+            self.assertFalse((output / 'golden.json').exists())
+
+    def test_selected_finalize_mechanics_requires_each_terminal(self):
+        fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence(selected=True)
+        report['startupContainment'] = {'service': 'shortcut', 'provider': 'io.legado.app.api.ReaderProvider',
+                                        'intercepted': 1, 'handled': 1, 'beforeBinding': True}
+        report['isolation']['appClass'] = 'io.liber.oracle.nested.GuardedReaderApplication'
+        report['hostInitialization'] = {'verified': True, 'applicationAttached': False,
+                                        'invokedOn': 'unattached-instance',
+                                        'notRun': ['io.legado.app.App.onCreate'],
+                                        'registeredWrappers': {r['type']: r['factory'] for r in fixture['hostInitialization']['registrations']},
+                                        'method': fixture['hostInitialization']['method']}
+        report['terminalOwner'] = {'scope': 'Coroutine.DEFAULT', 'rootActive': True, 'rootCompleted': False,
+                                   'baselineChildren': 0, 'childrenMethod': 'kotlinx.coroutines.Job.getChildren()',
+                                   'completionMethod': 'kotlinx.coroutines.Job.isCompleted()'}
+        report['entryPoints'] = {
+            'searchBookAwait': 'searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
+            'getBookInfoAwait': 'getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
+            'getChapterListAwait': 'getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
+            'getContentAwait': 'getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
+        }
+        report['entryPoints'] = {key: 'public final java.lang.Object io.legado.app.model.webBook.WebBook.' + value
+                                 for key, value in report['entryPoints'].items()}
+        for case in report['cases']:
+            case['terminalOwner'] = {'owner': 'Coroutine.DEFAULT Job', 'observedChildren': 0,
+                                     'allCompleted': True, 'rootEmpty': True, 'launchAttempts': 0}
+        report['cleanup'].update({'openConnectionsAfterClose': 0, 'databaseClosed': True,
+                                  'activityLaunchAttempts': 0})
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            apk = self._selected_apk(directory, fixture_path, fixture, manifest, report)
+            path = output / 'field-oracle.json'
+            bad = json.loads(json.dumps(report))
+            bad['cases'][2]['terminalOwner']['rootEmpty'] = False
+            path.write_text(json.dumps(bad), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'case terminal'):
+                capture.finalize(output, fixture, manifest, bad, before, before,
+                                 asset=fixture_path, scratch_cleanup=cleanup,
+                                 fixture_bytes=fixture_bytes, original_apk=apk)
+            self.assertFalse((output / 'golden.json').exists())
+            payload = json.dumps(report).encode()
+            path.write_bytes(payload)
+            capture._admit_selected_runtime(report, fixture)  # synthetic mechanics, not a native golden
+            with self.assertRaisesRegex(ValueError, 'selected command receipts'):
+                capture.finalize(output, fixture, manifest, report, before, before,
+                                 asset=fixture_path, scratch_cleanup=cleanup,
+                                 fixture_bytes=fixture_bytes, original_apk=apk)
+            self.assertFalse((output / 'golden.json').exists())
 
     def test_historical_five_source_finalize_joins_original_apk(self):
         fixture_path, fixture_bytes, fixture, report, manifest, cleanup, before = self._evidence()
@@ -1462,7 +1982,8 @@ class FinalizeContractTest(unittest.TestCase):
             archive.writestr('assets/field-provenance.json',
                              json.dumps(provenance))
         artifact = capture.inspect_selected_apk(
-            apk, fixture_path, fixture, capture.harness_source_hashes())
+            apk, fixture_path, fixture, capture.harness_source_hashes(
+                selected=fixture.get('baselineCommit') == capture.SELECTED_BASELINE))
         manifest['artifact'] = artifact
         manifest['harnessApkSha256'] = artifact['apkSha256']
         report['isolation']['harnessApkSha256'] = artifact['apkSha256']

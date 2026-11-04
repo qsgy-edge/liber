@@ -147,12 +147,45 @@ dart run tool/result_field_compare.dart --fixture tool/result_field_oracle/book-
   --product-source-root . <golden.json> <liber.json> <comparison.json>
 ```
 
-The unmodified product currently emits **14** requests against the **12**
-declared FIELDS-02 requests (A and C each fetch information twice). The replay
-CLI therefore exits 1 with the failing `declared-request-sequence` invariant;
-that is an honest current product result, not a native 12-request execution and
-not a rewritten declaration. **FIELDS-02 native/device capture remains NOT-RUN**
-while the original handset is unavailable; no native golden is claimed.
+The historical FIELDS-02 product preparation emitted **14** requests against the
+**12** declared requests (A and C each fetched information twice). That was a
+product result, not a native execution or rewritten declaration. It is not a
+claim about a later product revision.
+
+### Fixed selected reference for #138
+
+`book-url-markers-fixtures-selected.json` is a separate new-reference copy of
+the same four inputs and twelve requests. It pins Legado commit `a7d37f1`,
+package `com.legado.app.debug`, APK `593cc00c…`, and the approved OS4.0.6.0
+handset fingerprint. The historical FIELDS-02 corpus, five/seven-source maps,
+original APK bindings and FIELDS-01 defaults retain their old identities. The
+selected APK additionally measures the guarded Application, selected host
+bridge and selected manifest; its source map has exactly ten entries.
+
+Build and inspect off-device without contacting a handset (use fresh output
+paths; JDK 17.0.20+8 and Android SDK build-tools 35.0.1/android-35):
+
+```text
+pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build> \
+  -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/book-url-markers-fixtures-selected.json
+python tool/result_field_oracle/capture.py --preflight-only \
+  --fixture tool/result_field_oracle/book-url-markers-fixtures-selected.json \
+  --apk <build>/field-oracle.apk --target-apk <approved-reference-apk> \
+  --frozen-source <a7-checkout> --java-home <jdk17> --android-sdk <sdk> --output <fresh-preflight>
+```
+
+The preflight joins the raw corpus, source/tree, target and harness APKs,
+manifest, signer, DEX and current public four-stage ABI; it does not create a
+golden. Capture additionally requires the approved serial `5615f742`, the same
+preflight arguments and `--asset <build>/assets/field-fixtures.json`; it refuses
+preexisting state and binds the typed snapshots, exact owned cleanup and raw
+commands. Selected offline-finalize failure receipts are append-only: the first
+uses `finalize-failure.json`; later failures use distinct UUID-suffixed names and
+the chosen path is reported on stderr. A selected comparison requires the actual native bundle and its raw
+receipts: a prepared APK or synthetic mechanics result is not native evidence.
+**The selected four-case native capture and native comparison remain NOT-RUN.**
+The controller alone owns the handset capture and any evidence-backed product
+repairs.
 
 ## Destination side
 

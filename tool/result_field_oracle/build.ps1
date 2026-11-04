@@ -38,6 +38,11 @@ Write-Host "selected corpus: $selectedCorpus"
 Write-Host "corpus asset sha256: $assetHash"
 $selectedFixture = (Get-Content -Raw $selectedCorpus) | ConvertFrom-Json
 $isFields02 = $selectedFixture.fixtureId -eq 'FIELDS-02'
+$isSelectedReference = $isFields02 -and $selectedFixture.baselineCommit -eq 'a7d37f1707a70a459ad708f4fe79341d1e42d716'
+if ($isSelectedReference -and ($selectedFixture.target.package -ne 'com.legado.app.debug' -or
+    $selectedFixture.target.apkSha256 -ne '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5')) {
+  throw 'Selected reference target differs'
+}
 $sourceInputs = [ordered]@{
   'FieldOracle.java' = "$PSScriptRoot/FieldOracle.java"
   'StateSessionOracle.java' = "$PSScriptRoot/../nested_oracle/StateSessionOracle.java"
@@ -46,6 +51,11 @@ $sourceInputs = [ordered]@{
   'AndroidManifest.xml' = "$PSScriptRoot/AndroidManifest.xml"
   'build.ps1' = "$PSScriptRoot/build.ps1"
   'capture.py' = "$PSScriptRoot/capture.py"
+}
+if ($isSelectedReference) {
+  $sourceInputs['GuardedReaderApplication.java'] = "$PSScriptRoot/../replace_rule_oracle/GuardedReaderApplication.java"
+  $sourceInputs['SelectedFieldHostBridge.java'] = "$PSScriptRoot/SelectedFieldHostBridge.java"
+  $sourceInputs['AndroidManifest-selected.xml'] = "$PSScriptRoot/AndroidManifest-selected.xml"
 }
 function Get-ProvenanceSourceHashes {
   $hashes = [ordered]@{}
@@ -76,7 +86,9 @@ if ($isFields02) {
 # FIELDS-02's storage-only Application reuses the existing STATE scratch helper;
 # compiling its source here keeps the two harnesses on the same visibility-only
 # helper bytes. The original nested build and assets are unchanged.
-Invoke-Checked "$JavaHome/bin/javac.exe" @('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes","$PSScriptRoot/../nested_oracle/StateSessionOracle.java","$PSScriptRoot/../nested_oracle/HostRuntimeInit.java","$PSScriptRoot/../nested_oracle/ShortcutStartupGuard.java","$PSScriptRoot/FieldOracle.java")
+$javaSources = @("$PSScriptRoot/../nested_oracle/StateSessionOracle.java","$PSScriptRoot/../nested_oracle/HostRuntimeInit.java","$PSScriptRoot/../nested_oracle/ShortcutStartupGuard.java","$PSScriptRoot/FieldOracle.java")
+if ($isSelectedReference) { $javaSources += @("$PSScriptRoot/../replace_rule_oracle/GuardedReaderApplication.java", "$PSScriptRoot/SelectedFieldHostBridge.java") }
+Invoke-Checked "$JavaHome/bin/javac.exe" (@('-source','8','-target','8','-cp',$androidJar,'-d',"$OutputDirectory/classes") + $javaSources)
 $sourceHashesAfter = Get-ProvenanceSourceHashes
 if (($sourceHashesBefore | ConvertTo-Json -Compress) -ne ($sourceHashesAfter | ConvertTo-Json -Compress)) {
   throw 'FIELDS build source inputs changed during compilation'
@@ -103,7 +115,15 @@ if ($isFields02) {
 }
 Invoke-Checked "$JavaHome/bin/jar.exe" @('cf',"$OutputDirectory/classes.jar",'-C',"$OutputDirectory/classes",'.')
 Invoke-Checked "$JavaHome/bin/java.exe" @('-cp',"$tools/lib/d8.jar",'com.android.tools.r8.D8','--lib',$androidJar,'--min-api','26','--output',"$OutputDirectory/dex","$OutputDirectory/classes.jar")
-Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',"$PSScriptRoot/AndroidManifest.xml",'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")
+$manifestPath = "$PSScriptRoot/AndroidManifest.xml"
+if ($isSelectedReference) {
+  $manifestPath = "$OutputDirectory/AndroidManifest.xml"
+  [System.IO.File]::Copy("$PSScriptRoot/AndroidManifest-selected.xml", $manifestPath)
+  if ((Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sourceHashesBefore['AndroidManifest-selected.xml']) {
+    throw 'Selected manifest copy differs from the measured source'
+  }
+}
+Invoke-Checked "$tools/aapt.exe" @('package','-f','-M',$manifestPath,'-I',$androidJar,'-A',"$OutputDirectory/assets",'-F',"$OutputDirectory/unsigned.apk")
 Invoke-Checked "$JavaHome/bin/jar.exe" @('uf',"$OutputDirectory/unsigned.apk",'-C',"$OutputDirectory/dex",'classes.dex')
 Invoke-Checked "$tools/zipalign.exe" @('-p','4',"$OutputDirectory/unsigned.apk","$OutputDirectory/aligned.apk")
 # Standard local Android debug key; its certificate must match the frozen APK.

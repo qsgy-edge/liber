@@ -192,6 +192,100 @@ void main() {
     );
   });
 
+  test('selected native admission refuses missing guarded runtime proof', () {
+    final corpus = _syntheticCorpus()
+      ..['baselineCommit'] = 'a7d37f1707a70a459ad708f4fe79341d1e42d716';
+    final golden = _syntheticEnvelope(corpus);
+    expect(
+      () => _compare(golden, _syntheticProduct(corpus), corpus),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('selected native runtime'),
+        ),
+      ),
+    );
+  });
+
+  test('selected native admission refuses missing raw device evidence', () {
+    final corpus = _syntheticCorpus()
+      ..['baselineCommit'] = 'a7d37f1707a70a459ad708f4fe79341d1e42d716'
+      ..['hostInitialization'] = {
+        'method': 'test-init',
+        'registrations': <Object>[],
+      };
+    final golden = _syntheticEnvelope(corpus);
+    golden['startupContainment'] = {
+      'service': 'shortcut',
+      'provider': 'io.legado.app.api.ReaderProvider',
+      'intercepted': 1,
+      'handled': 1,
+      'beforeBinding': true,
+    };
+    (golden['isolation'] as Map)['appClass'] =
+        'io.liber.oracle.nested.GuardedReaderApplication';
+    golden['hostInitialization'] = {
+      'verified': true,
+      'applicationAttached': false,
+      'invokedOn': 'unattached-instance',
+      'notRun': ['io.legado.app.App.onCreate'],
+      'method': 'test-init',
+      'registeredWrappers': <String, String>{},
+    };
+    golden['terminalOwner'] = {
+      'scope': 'Coroutine.DEFAULT',
+      'rootActive': true,
+      'rootCompleted': false,
+      'baselineChildren': 0,
+      'childrenMethod': 'kotlinx.coroutines.Job.getChildren()',
+      'completionMethod': 'kotlinx.coroutines.Job.isCompleted()',
+    };
+    const prefix =
+        'public final java.lang.Object io.legado.app.model.webBook.WebBook.';
+    golden['entryPoints'] = {
+      'searchBookAwait':
+          '${prefix}searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
+      'getBookInfoAwait':
+          '${prefix}getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
+      'getChapterListAwait':
+          '${prefix}getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
+      'getContentAwait':
+          '${prefix}getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
+    };
+    for (final value in golden['cases'] as List) {
+      (value as Map)['terminalOwner'] = {
+        'owner': 'Coroutine.DEFAULT Job',
+        'observedChildren': 0,
+        'allCompleted': true,
+        'rootEmpty': true,
+        'launchAttempts': 0,
+      };
+    }
+    golden['cleanup'] = {
+      ...(golden['cleanup'] as Map<String, dynamic>),
+      'openConnectionsAfterClose': 0,
+      'databaseClosed': true,
+      'activityLaunchAttempts': 0,
+    };
+    final manifest = _syntheticManifest(corpus)..['serial'] = '5615f742';
+    expect(
+      () => _compare(
+        golden,
+        _syntheticProduct(corpus),
+        corpus,
+        externalManifest: manifest,
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('selected native evidence missing'),
+        ),
+      ),
+    );
+  });
+
   test('the FIELDS-02 comparator admits a valid complete baseline', () {
     final corpus = _syntheticCorpus();
     final golden = _syntheticEnvelope(corpus);

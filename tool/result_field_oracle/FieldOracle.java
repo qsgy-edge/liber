@@ -75,6 +75,9 @@ public final class FieldOracle extends Instrumentation {
     private static final String REPORT = "field-oracle.json";
     private static final String FIELDS_01 = "FIELDS-01";
     private static final String FIELDS_02 = "FIELDS-02";
+    private static final String SELECTED_BASELINE = "a7d37f1707a70a459ad708f4fe79341d1e42d716";
+    private static final String SELECTED_TARGET = "com.legado.app.debug";
+    private static final String SELECTED_APK = "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5";
     private static final String SCRATCH_ROOT_NAME = "liber-fields-02";
     private static final String PREFERENCE_PREFIX = "liber_fields_02_";
 
@@ -86,7 +89,13 @@ public final class FieldOracle extends Instrumentation {
     private final JSONArray caseRecords = new JSONArray();
     private final JSONObject isolation = new JSONObject();
     private boolean newFamily;
+    private boolean selectedReference;
+    private Object rootJob;
+    private Method jobChildren, jobCompleted, jobActive, sequenceIterator;
+    private Object selectedDatabase;
+    private boolean terminalProved;
     private StateSessionOracle.ScratchContext scratch;
+    private final JSONObject selectedEntryPoints = new JSONObject();
     private final JSONObject caseFailures = new JSONObject();
     private final JSONObject checkKeyword = new JSONObject();
     private final JSONObject cleanup = new JSONObject();
@@ -127,6 +136,25 @@ public final class FieldOracle extends Instrumentation {
             }
             validateFields02Selection(selection);
             newFamily = true;
+            selectedReference = SELECTED_BASELINE.equals(selection.optString("baselineCommit"));
+            if (selectedReference) {
+                JSONObject target = selection.optJSONObject("target");
+                if (target == null || !SELECTED_TARGET.equals(target.optString("package"))
+                        || !SELECTED_APK.equals(target.optString("apkSha256"))) {
+                    throw new IllegalStateException("selected FIELDS target differs");
+                }
+                try {
+                    Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+                    scratch = (StateSessionOracle.ScratchContext) bridge.getMethod("guardedScratch",
+                        Context.class, String.class, String.class).invoke(null, context,
+                            SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
+                    Class<? extends Application> application = Class.forName(
+                        "io.liber.oracle.nested.GuardedReaderApplication").asSubclass(Application.class);
+                    return Instrumentation.newApplication(application, scratch);
+                } catch (ReflectiveOperationException error) {
+                    throw new IllegalStateException("selected FIELDS host bridge failed", error);
+                }
+            }
             scratch = new StateSessionOracle.ScratchContext(
                 context, SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
             // HTTP_BOUNDARY-01's measured storage-only Application: frozen
@@ -139,6 +167,22 @@ public final class FieldOracle extends Instrumentation {
             return super.newApplication(cl, name, context);
         }
         throw new IllegalStateException("unsupported FIELDS fixtureId: " + fixtureId);
+    }
+
+    @Override
+    public boolean onException(Object object, Throwable error) {
+        if (selectedReference && scratch != null) {
+            try {
+                Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+                boolean handled = (Boolean) bridge.getMethod("handleShortcutException",
+                    StateSessionOracle.ScratchContext.class, Object.class, Throwable.class)
+                    .invoke(null, scratch, object, error);
+                if (handled) return true;
+            } catch (ReflectiveOperationException bridgeError) {
+                throw new IllegalStateException("selected shortcut guard failed", bridgeError);
+            }
+        }
+        return super.onException(object, error);
     }
 
     private static void validateFields02Selection(JSONObject selection) {
@@ -242,6 +286,25 @@ public final class FieldOracle extends Instrumentation {
                 .put("checkKeyword", checkKeyword)
                 .put("cleanup", cleanup)
                 .put("analysisFailure", JSONObject.NULL);
+            if (selectedReference) {
+                report.put("entryPoints", selectedEntryPoints);
+                Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+                report.put("startupContainment", bridge.getMethod("shortcutReceipt",
+                    StateSessionOracle.ScratchContext.class).invoke(null, scratch));
+                ClassLoader loader = getTargetContext().getClassLoader();
+                report.put("hostInitialization", bridge.getMethod("initialize",
+                    ClassLoader.class, JSONObject.class).invoke(null,
+                        loader, corpus.getJSONObject("hostInitialization")));
+                selectedDatabase = loader.loadClass("io.legado.app.data.AppDatabaseKt")
+                    .getMethod("getAppDb").invoke(null);
+                setupSelectedJob(loader);
+                if (!selectedChildren().isEmpty()) throw new IllegalStateException("DEFAULT Job already has children");
+                terminalProved = true;
+                report.put("terminalOwner", new JSONObject().put("scope", "Coroutine.DEFAULT")
+                    .put("rootActive", true).put("rootCompleted", false)
+                    .put("baselineChildren", 0).put("childrenMethod", jobChildren.toString())
+                    .put("completionMethod", jobCompleted.toString()));
+            }
             if (newFamily) {
                 JSONObject corpusIdentity = new JSONObject()
                     .put("asset", ASSET)
@@ -267,6 +330,10 @@ public final class FieldOracle extends Instrumentation {
                     fields02Observation = null;
                     fields02RequestStart = requests.length();
                 }
+                if (selectedReference) {
+                    if (!selectedChildren().isEmpty()) throw new IllegalStateException("DEFAULT Job active before case");
+                    terminalProved = false;
+                }
                 try {
                     if (newFamily) driveCaseFields02(entry, id);
                     else driveCase(entry, id);
@@ -283,6 +350,11 @@ public final class FieldOracle extends Instrumentation {
                         }
                     }
                     log("case " + id + " failed: " + describe(error));
+                }
+                if (selectedReference) {
+                    JSONObject terminal = awaitSelectedQuiescence();
+                    if (fields02Observation != null) fields02Observation.put("terminalOwner", terminal);
+                    terminalProved = true;
                 }
                 // A freeze keeps every case that already finished.
                 writeReport();
@@ -303,6 +375,16 @@ public final class FieldOracle extends Instrumentation {
                 cleanup.put("serverClosed", false);
                 log("cleanup failed: " + describe(error));
             }
+            if (selectedReference) {
+                cleanup.put("openConnectionsAfterClose", replay.openConnections());
+                if (!terminalProved || !cleanup.optBoolean("serverClosed") || replay.openConnections() != 0) {
+                    throw new IllegalStateException("selected terminal or replay cleanup was not proven");
+                }
+                selectedDatabase.getClass().getMethod("close").invoke(selectedDatabase);
+                cleanup.put("databaseClosed", true);
+                cleanup.put("activityLaunchAttempts", selectedLaunchAttempts());
+                if (selectedLaunchAttempts() != 0) throw new IllegalStateException("activity launch attempted");
+            }
             if (newFamily) finishScratchCleanup();
             int recorded = newFamily ? caseRecords.length() : cases.length();
             writeReport();
@@ -322,6 +404,59 @@ public final class FieldOracle extends Instrumentation {
         }
     }
 
+    private int selectedLaunchAttempts() throws Exception {
+        return (Integer) Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge")
+            .getMethod("launchAttempts").invoke(null);
+    }
+
+    private void setupSelectedJob(ClassLoader loader) throws Exception {
+        java.lang.reflect.Field field = loader.loadClass("io.legado.app.help.coroutine.Coroutine")
+            .getDeclaredField("DEFAULT");
+        field.setAccessible(true);
+        Object scope = field.get(null);
+        Object context = loader.loadClass("kotlinx.coroutines.CoroutineScope")
+            .getMethod("getCoroutineContext").invoke(scope);
+        Class<?> job = loader.loadClass("kotlinx.coroutines.Job");
+        rootJob = loader.loadClass("kotlin.coroutines.CoroutineContext")
+            .getMethod("get", loader.loadClass("kotlin.coroutines.CoroutineContext$Key"))
+            .invoke(context, job.getField("Key").get(null));
+        if (rootJob == null || !job.isInstance(rootJob)) throw new IllegalStateException("DEFAULT Job absent");
+        jobChildren = job.getMethod("getChildren");
+        jobCompleted = job.getMethod("isCompleted");
+        jobActive = job.getMethod("isActive");
+        sequenceIterator = loader.loadClass("kotlin.sequences.Sequence").getMethod("iterator");
+    }
+
+    private java.util.Set<Object> selectedChildren() throws Exception {
+        if (!(Boolean) jobActive.invoke(rootJob) || (Boolean) jobCompleted.invoke(rootJob)) {
+            throw new IllegalStateException("DEFAULT Job is not active");
+        }
+        Iterator<?> iterator = (Iterator<?>) sequenceIterator.invoke(jobChildren.invoke(rootJob));
+        java.util.Set<Object> children = java.util.Collections.newSetFromMap(
+            new java.util.IdentityHashMap<Object, Boolean>());
+        while (iterator.hasNext()) children.add(iterator.next());
+        return children;
+    }
+
+    private JSONObject awaitSelectedQuiescence() throws Exception {
+        java.util.Set<Object> seen = java.util.Collections.newSetFromMap(
+            new java.util.IdentityHashMap<Object, Boolean>());
+        long deadline = android.os.SystemClock.elapsedRealtime() + 10000;
+        while (true) {
+            seen.addAll(selectedChildren());
+            boolean completed = true;
+            for (Object job : seen) completed &= (Boolean) jobCompleted.invoke(job);
+            if (selectedLaunchAttempts() != 0) throw new IllegalStateException("activity launch attempted");
+            if (completed && selectedChildren().isEmpty()) return new JSONObject()
+                .put("owner", "Coroutine.DEFAULT Job").put("observedChildren", seen.size())
+                .put("allCompleted", true).put("rootEmpty", true).put("launchAttempts", 0);
+            if (android.os.SystemClock.elapsedRealtime() >= deadline) {
+                throw new IllegalStateException("DEFAULT Job did not reach quiescence");
+            }
+            Thread.sleep(20);
+        }
+    }
+
     /**
      * FIELDS-02's application/owner binding: actual target and harness APK hashes,
      * the selected asset bytes and the scratch namespace. The storage-only
@@ -336,6 +471,10 @@ public final class FieldOracle extends Instrumentation {
             .put("targetApkSha256", sha256(new File(getTargetContext().getPackageCodePath())))
             .put("harnessPackage", getContext().getPackageName())
             .put("harnessApkSha256", sha256(new File(getContext().getPackageCodePath())));
+        if (selectedReference && (!SELECTED_TARGET.equals(identity.getString("targetPackage"))
+                || !SELECTED_APK.equals(identity.getString("targetApkSha256")))) {
+            throw new IllegalStateException("selected installed target differs");
+        }
         scratch.bind("seed", identity);
         Class<?> appCtx = getTargetContext().getClassLoader()
             .loadClass("splitties.init.AppCtxKt");
@@ -345,7 +484,9 @@ public final class FieldOracle extends Instrumentation {
         boolean databaseRouted = ((android.content.Context) app).getDatabasePath("legado.db")
             .equals(scratch.getDatabasePath("legado.db"));
         boolean deviceProtected = ((android.content.Context) app).isDeviceProtectedStorage();
-        if (!filesRouted || !databaseRouted || deviceProtected) {
+        if (!filesRouted || !databaseRouted || deviceProtected
+                || (selectedReference && !"io.liber.oracle.nested.GuardedReaderApplication"
+                    .equals(app.getClass().getName()))) {
             throw new IllegalStateException("target app did not route through the scratch context");
         }
         File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
@@ -504,9 +645,11 @@ public final class FieldOracle extends Instrumentation {
         int tocTraceStart = stageTrace.length();
         List<?> chapters;
         try {
-            Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
-                "getChapterListAwait", 4,
-                new Object[]{source, book, Boolean.FALSE}, continuation));
+            Object tocResult = runSuspend(loader, continuation -> selectedReference
+                ? call(webBookClass, webBook, "getChapterListAwait", 5,
+                    new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}, continuation)
+                : call(webBookClass, webBook, "getChapterListAwait", 4,
+                    new Object[]{source, book, Boolean.FALSE}, continuation));
             chapters = unwrapResult(tocResult);
             if (chapters.isEmpty()) {
                 throw new IllegalStateException("table of contents returned no chapter");
@@ -543,6 +686,9 @@ public final class FieldOracle extends Instrumentation {
             text = runSuspend(loader, continuation -> call(webBookClass, webBook,
                 "getContentAwait", 6,
                 new Object[]{source, book, chapters.get(0), null, Boolean.FALSE}, continuation));
+            if (selectedReference && !(text instanceof String)) {
+                throw new IllegalStateException("selected content result is not a string");
+            }
         } catch (Exception error) {
             recordOperationError(observed, "content", contentRequestStart, contentTraceStart, error);
             throw error;
@@ -809,7 +955,7 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /** One suspend method on the frozen singleton, with the continuation last. */
-    private static Object call(Class<?> owner, Object instance, String name, int parameterCount,
+    private Object call(Class<?> owner, Object instance, String name, int parameterCount,
             Object[] arguments, Object continuation) throws Throwable {
         Method target = null;
         for (Method candidate : owner.getMethods()) {
@@ -826,9 +972,13 @@ public final class FieldOracle extends Instrumentation {
                     .equals("kotlin.coroutines.Continuation")) {
                 continue;
             }
+            if (selectedReference && target != null) {
+                throw new IllegalStateException("ambiguous frozen suspend entry: " + name);
+            }
             target = candidate;
         }
         if (target == null) throw new IllegalStateException("frozen suspend entry absent: " + name);
+        if (selectedReference) selectedEntryPoints.put(name, target.toString());
         Log.i("FieldOracle", "frozen entry " + target.getName() + " on "
             + target.getDeclaringClass().getName());
         Object[] full = new Object[parameterCount];
@@ -891,9 +1041,12 @@ public final class FieldOracle extends Instrumentation {
         throw new IllegalStateException("Kotlin Result.Failure has no exception payload");
     }
 
-    private static String str(Class<?> owner, Object instance, String getter) {
+    private String str(Class<?> owner, Object instance, String getter) {
         try {
             Object value = owner.getMethod(getter).invoke(instance);
+            if (selectedReference && !(value instanceof String)) {
+                throw new IllegalStateException("selected getter is not a string: " + getter);
+            }
             return value == null ? "" : value.toString();
         } catch (Exception error) {
             throw new IllegalStateException("frozen getter absent: " + getter, error);

@@ -86,3 +86,5 @@ packages/fjs/liber_html/tests/data/** text eol=lf
 tool/html_get_elements_oracle/**/*.json -text
 tool/html_get_elements_oracle/**/*.log -text
 tool/html_get_elements_oracle/**/*.kt -text
+
+tool/result_field_oracle/book-url-markers-fixtures-selected.json text eol=lf
