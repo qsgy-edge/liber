@@ -181,8 +181,15 @@ preflight arguments and `--asset <build>/assets/field-fixtures.json`; it refuses
 preexisting state and binds the typed snapshots, exact owned cleanup and raw
 commands. Selected offline-finalize failure receipts are append-only: the first
 uses `finalize-failure.json`; later failures use distinct UUID-suffixed names and
-the chosen path is reported on stderr. A selected comparison requires the actual native bundle and its raw
-receipts: a prepared APK or synthetic mechanics result is not native evidence.
+the chosen path is reported on stderr. A selected comparison delegates physical
+admission to this collector's read-only `--verify-bundle` mode, which reruns the
+off-device preflight and reconciles its inputs with the retained command ledger,
+owner-derived cleanup and typed snapshots. Verification writes only to a fresh
+separate output directory; it never writes a golden or contacts a handset.
+Timed-out preflight commands retain their attempted command and partial streams
+in that derived failure evidence without retry. A selected comparison requires
+the actual native bundle and its raw receipts: a prepared APK or synthetic
+mechanics result is not native evidence.
 **The selected four-case native capture and native comparison remain NOT-RUN.**
 The controller alone owns the handset capture and any evidence-backed product
 repairs.

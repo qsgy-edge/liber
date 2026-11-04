@@ -113,6 +113,8 @@ void main(List<String> args) {
           ),
           expectedProductSources: _measureProductSources(productSourceRoot),
           externalManifest: manifest,
+          selectedFixturePath: selectedCorpus,
+          selectedHarnessApkPath: selectedHarnessApk,
         )
       : compareResultFields(
           golden: golden,
@@ -622,6 +624,8 @@ Map<String, Object?> compareBookUrlMarkers({
   required Map<String, String> expectedProductSources,
   required Map<String, dynamic> externalManifest,
   String? manifestCorpusSha256,
+  String? selectedFixturePath,
+  String? selectedHarnessApkPath,
 }) {
   final corpusCases = _admitCorpus(
     corpus,
@@ -658,12 +662,17 @@ Map<String, Object?> compareBookUrlMarkers({
     expectedProductSources: expectedProductSources,
   );
   if (corpus['baselineCommit'] == 'a7d37f1707a70a459ad708f4fe79341d1e42d716') {
-    _admitSelectedRawEvidence(
-      externalManifest,
-      golden,
-      corpus,
-      goldenPath,
-      expectedHarnessApkSha256,
+    _verifySelectedBundle(
+      goldenPath: goldenPath,
+      golden: golden,
+      manifest: externalManifest,
+      corpus: corpus,
+      fixturePath: selectedFixturePath,
+      harnessApkPath: selectedHarnessApkPath,
+      corpusSha256: corpusSha256,
+      harnessApkSha256: expectedHarnessApkSha256,
+      provenanceSha256: expectedProvenanceSha256,
+      provenance: expectedProvenance,
     );
   }
   _admitExternalArtifact(
@@ -1094,6 +1103,7 @@ void _admitExternalArtifact(
       manifestCorpus['sha256Lf'] != corpusSha256Lf) {
     throw StateError('external manifest corpus measurement differs');
   }
+  if (selectedReference) return;
   final cleanup = _map(manifest['scratchCleanup'], 'manifest.scratchCleanup');
   final owner = _map(manifest['scratchOwner'], 'manifest.scratchOwner');
   final targetRoot = _requiredString(manifest, 'targetPrivateRoot', 'manifest');
@@ -1275,377 +1285,107 @@ List<Map<String, dynamic>> _admitExpectedResponses(
   return responses;
 }
 
-void _admitSelectedRawEvidence(
-  Map<String, dynamic> manifest,
-  Map<String, dynamic> golden,
-  Map<String, dynamic> corpus,
-  String goldenPath,
-  String expectedHarnessApkSha256,
-) {
-  Never refuse(String detail) =>
-      throw StateError('selected native evidence $detail');
-  final directory = File(goldenPath).parent;
-  List<int> read(String name) {
-    final file = File('${directory.path}/$name');
-    if (!file.existsSync()) refuse('missing $name');
-    return file.readAsBytesSync();
+/// Delegates selected physical admission to the collector's read-only verifier.
+void _verifySelectedBundle({
+  required String goldenPath,
+  required Map<String, dynamic> golden,
+  required Map<String, dynamic> manifest,
+  required Map<String, dynamic> corpus,
+  required String? fixturePath,
+  required String? harnessApkPath,
+  required String corpusSha256,
+  required String harnessApkSha256,
+  required String provenanceSha256,
+  required Map<String, dynamic> provenance,
+}) {
+  if (fixturePath == null || harnessApkPath == null) {
+    throw StateError(
+      'selected raw-bundle requires fixture and harness APK paths',
+    );
   }
-
-  if (manifest['status'] != 'observed' || manifest['serial'] != '5615f742') {
-    refuse('status or serial differs');
+  final goldenFile = File(goldenPath);
+  final bundle = goldenFile.parent;
+  final rawGolden = File('${bundle.path}/golden.json');
+  final rawManifest = File('${bundle.path}/manifest.json');
+  final targetApk = File('${bundle.path}/frozen.apk');
+  final fixture = File(fixturePath);
+  final apk = File(harnessApkPath);
+  if (![
+    goldenFile,
+    rawGolden,
+    rawManifest,
+    targetApk,
+    fixture,
+    apk,
+  ].every((f) => f.existsSync())) {
+    throw StateError('selected raw-bundle input is missing');
   }
-  final original = read(File(goldenPath).uri.pathSegments.last);
-  final pulled = read('pull-report.log');
-  if (manifest['goldenSha256'] != _sha256(original) ||
-      !_deepEquals(jsonDecode(utf8.decode(original)), golden) ||
-      !_deepEquals(original, pulled)) {
-    refuse('raw report differs');
+  final goldenBytes = goldenFile.readAsBytesSync();
+  final manifestBytes = rawManifest.readAsBytesSync();
+  final fixtureBytes = fixture.readAsBytesSync();
+  final inspected = inspectSelectedHarnessApk(apk.path);
+  if (!_deepEquals(goldenBytes, rawGolden.readAsBytesSync()) ||
+      !_deepEquals(jsonDecode(utf8.decode(goldenBytes)), golden) ||
+      !_deepEquals(jsonDecode(utf8.decode(manifestBytes)), manifest) ||
+      !_deepEquals(jsonDecode(utf8.decode(fixtureBytes)), corpus) ||
+      _sha256(fixtureBytes) != corpusSha256 ||
+      inspected['apkSha256'] != harnessApkSha256 ||
+      inspected['provenanceSha256'] != provenanceSha256 ||
+      !_deepEquals(inspected['provenance'], provenance)) {
+    throw StateError('selected raw-bundle passed inputs differ from files');
   }
-  const targetSha =
-      '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5';
-  if (_sha256(read('frozen.apk')) != targetSha ||
-      _sha256(read('installed-harness.apk')) != expectedHarnessApkSha256) {
-    refuse('installed APK differs');
+  final local = Platform.environment['LOCALAPPDATA'];
+  if (local == null || local.isEmpty) {
+    throw StateError('selected raw-bundle Android SDK location unavailable');
   }
-  final preflight = manifest['preflight'];
-  if (preflight is! Map ||
-      preflight['targetApkSha256'] != targetSha ||
-      !_deepEquals(preflight['artifact'], manifest['artifact']) ||
-      !_deepEquals(preflight['referenceSources'], manifest['frozenSources'])) {
-    refuse('preflight binding differs');
-  }
-  final references = preflight['referenceSources'];
-  final declaredReferences = corpus['frozenSources'];
-  if (references is! Map ||
-      declaredReferences is! List ||
-      references.length != declaredReferences.length) {
-    refuse('reference source inventory differs');
-  }
-  for (final declaration in declaredReferences) {
-    if (declaration is! Map ||
-        declaration['path'] is! String ||
-        declaration['sha1'] is! String) {
-      refuse('reference source declaration differs');
+  final temporary = Directory.systemTemp.createTempSync('liber-fields-verify-');
+  var verified = false;
+  try {
+    final output = '${temporary.path}/verification';
+    final result = Process.runSync('python', [
+      'tool/result_field_oracle/capture.py',
+      '--verify-bundle',
+      bundle.absolute.path,
+      '--fixture',
+      fixture.absolute.path,
+      '--apk',
+      apk.absolute.path,
+      '--target-apk',
+      targetApk.absolute.path,
+      '--frozen-source',
+      'C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+          'phone-resume-20261020-01a15796/controller/team-baseline-migration-01/'
+          'reference-stage/source',
+      '--java-home',
+      'C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8',
+      '--android-sdk',
+      '$local/Android/Sdk',
+      '--output',
+      output,
+    ]);
+    if (result.exitCode != 0) {
+      throw StateError(
+        'selected raw-bundle verification failed (evidence $output): ${result.stdout} ${result.stderr}',
+      );
     }
-    final record = references[declaration['path']];
-    if (record is! Map ||
-        record['blobSha1'] != declaration['sha1'] ||
-        record['worktreeSha256'] is! String ||
-        !RegExp(
-          r'^[0-9a-f]{64}$',
-        ).hasMatch(record['worktreeSha256'] as String)) {
-      refuse('reference source pin differs');
+    final receipt = jsonDecode(
+      File('$output/verification.json').readAsStringSync(),
+    );
+    if (receipt is! Map ||
+        receipt['status'] != 'verified-bundle' ||
+        receipt['goldenSha256'] != _sha256(goldenBytes) ||
+        receipt['manifestSha256'] != _sha256(manifestBytes) ||
+        receipt['fixtureSha256'] != corpusSha256 ||
+        receipt['harnessApkSha256'] != harnessApkSha256 ||
+        receipt['provenanceSha256'] != provenanceSha256 ||
+        receipt['targetApkSha256'] != _sha256(targetApk.readAsBytesSync())) {
+      throw StateError(
+        'selected raw-bundle verification binding differs (evidence $output)',
+      );
     }
-  }
-  const expectedPreflight = {
-    'java-version',
-    'javac-version',
-    'source-head',
-    'source-tree',
-    'source-status',
-    'source-blobs',
-    'manifest',
-    'harness-signature',
-    'target-signature',
-    'reference-dex',
-    'dex',
-  };
-  final preflightCommands = preflight['commands'];
-  if (preflightCommands is! List) refuse('preflight command receipts missing');
-  final preflightNames = <String>{};
-  for (final value in preflightCommands) {
-    if (value is! Map ||
-        value['name'] is! String ||
-        value['exitCode'] != 0 ||
-        !expectedPreflight.contains(value['name']) ||
-        !preflightNames.add(value['name'] as String) ||
-        value['stdoutSha256'] !=
-            _sha256(read('preflight-${value['name']}.stdout.log')) ||
-        value['stderrSha256'] !=
-            _sha256(read('preflight-${value['name']}.stderr.log'))) {
-      refuse('preflight command output differs');
-    }
-  }
-  if (preflightNames.length != expectedPreflight.length ||
-      !preflightNames.containsAll(expectedPreflight) ||
-      utf8.decode(read('preflight-source-head.stdout.log')).trim() !=
-          'a7d37f1707a70a459ad708f4fe79341d1e42d716' ||
-      utf8.decode(read('preflight-source-tree.stdout.log')).trim() !=
-          '0f69dc7004012a969551ce271dc4e11051637d32' ||
-      utf8
-          .decode(read('preflight-source-status.stdout.log'))
-          .trim()
-          .isNotEmpty) {
-    refuse('preflight source identity differs');
-  }
-  final snapshots = manifest['privateSnapshotSha256'];
-  if (snapshots is! Map ||
-      snapshots['before'] != _sha256(read('private-before.log')) ||
-      snapshots['after'] != _sha256(read('private-after.log'))) {
-    refuse('private snapshot bytes differ');
-  }
-  if (utf8.decode(read('fingerprint.log')).trim() !=
-          'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys' ||
-      utf8.decode(read('sdk.log')).trim() != '37') {
-    refuse('device binding differs');
-  }
-  final webview = utf8.decode(read('webview.log'));
-  if (RegExp(
-        r'^\s*Current WebView package \(name, version\): \(com\.google\.android\.webview, 158\.0\.8127\.2\)\s*$',
-        multiLine: true,
-      ).allMatches(webview).length !=
-      1) {
-    refuse('WebView binding differs');
-  }
-  final instrumentation = utf8.decode(read('instrumentation.log'));
-  if (RegExp(
-        r'(?:Failure\s*\[|^\s*(?:TIMED OUT\b|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED)|shortMsg=)',
-        multiLine: true,
-        caseSensitive: false,
-      ).hasMatch(instrumentation) ||
-      RegExp(
-        r'^INSTRUMENTATION_STATUS_CODE:\s*-[12]\s*$',
-        multiLine: true,
-      ).hasMatch(instrumentation) ||
-      RegExp(
-            r'^INSTRUMENTATION_CODE:\s*-1\s*$',
-            multiLine: true,
-          ).allMatches(instrumentation).length !=
-          1) {
-    refuse('instrumentation result differs');
-  }
-  final commands = manifest['commands'];
-  if (commands is! List) refuse('command receipts missing');
-  final byLog = <String, Map>{};
-  for (final value in commands) {
-    if (value is! Map ||
-        value['log'] is! String ||
-        byLog.containsKey(value['log'])) {
-      refuse('command receipts malformed');
-    }
-    byLog[value['log'] as String] = value;
-  }
-  const prefix = ['adb', '-s', '5615f742'];
-  const fixed = <String, List<String>>{
-    'fingerprint': ['shell', 'getprop', 'ro.build.fingerprint'],
-    'sdk': ['shell', 'getprop', 'ro.build.version.sdk'],
-    'webview': ['shell', 'dumpsys', 'webviewupdate'],
-    'baseline-path': ['shell', 'pm', 'path', 'com.legado.app.debug'],
-    'harness-existing': [
-      'shell',
-      'pm',
-      'list',
-      'packages',
-      'io.liber.oracle.fields',
-    ],
-    'target-process': ['shell', 'pidof', 'com.legado.app.debug'],
-    'target-private-root': ['shell', 'run-as', 'com.legado.app.debug', 'pwd'],
-    'installed-harness-path': ['shell', 'pm', 'path', 'io.liber.oracle.fields'],
-    'instrumentation': [
-      'shell',
-      'am',
-      'instrument',
-      '-w',
-      '-r',
-      'io.liber.oracle.fields/.FieldOracle',
-    ],
-    'owned-pid': ['shell', 'pidof', 'com.legado.app.debug'],
-    'poststop': ['shell', 'am', 'force-stop', 'com.legado.app.debug'],
-    'poststop-check': ['shell', 'pidof', 'com.legado.app.debug'],
-    'remove-harness': ['uninstall', 'io.liber.oracle.fields'],
-    'harness-removed-check': [
-      'shell',
-      'pm',
-      'list',
-      'packages',
-      'io.liber.oracle.fields',
-    ],
-  };
-  final required = [
-    'fingerprint',
-    'sdk',
-    'webview',
-    'baseline-path',
-    'pull-baseline',
-    'harness-existing',
-    'target-process',
-    'target-private-root',
-    'scratch-root-check',
-    'scratch-prefs-check',
-    'scratch-installation-probe-check',
-    'private-before',
-    'install',
-    'installed-harness-path',
-    'installed-harness-pull',
-    'instrumentation',
-    'pull-report',
-    'scratch-owner',
-    'owned-pid',
-    'poststop',
-    'poststop-check',
-    'scratch-remove-root',
-    'scratch-absent-root',
-    'remove-harness',
-    'harness-removed-check',
-    'private-after',
-  ];
-  for (final name in required) {
-    final receipt = byLog['$name.log'];
-    if (receipt == null ||
-        receipt['command'] is! List ||
-        receipt['exitCode'] is! int ||
-        (receipt['exitCode'] != 0 &&
-            ![
-              'target-process',
-              'owned-pid',
-              'poststop-check',
-            ].contains(name))) {
-      refuse('command receipt missing or failed: $name');
-    }
-    final command = receipt['command'] as List;
-    if (command.length < 4 ||
-        command[0] != 'adb' ||
-        command[1] != '-s' ||
-        command[2] != '5615f742') {
-      refuse('command identity differs: $name');
-    }
-    if (fixed.containsKey(name) &&
-        !_deepEquals(command, [...prefix, ...fixed[name]!])) {
-      refuse('command differs: $name');
-    }
-    read('$name.log');
-  }
-  for (final name in ['install', 'remove-harness']) {
-    final receipt = utf8.decode(read('$name.log'));
-    if (RegExp(
-          r'(?:Failure\s*\[|^\s*TIMED OUT\b)',
-          multiLine: true,
-          caseSensitive: false,
-        ).hasMatch(receipt) ||
-        RegExp(r'^Success\s*$', multiLine: true).allMatches(receipt).length !=
-            1) {
-      refuse('$name success is missing or contradicted');
-    }
-  }
-  if (!_deepEquals(
-    jsonDecode(utf8.decode(read('scratch-owner.log'))),
-    manifest['scratchOwner'],
-  )) {
-    refuse('owner bytes differ');
-  }
-}
-
-void _admitSelectedNativeRuntime(
-  Map<String, dynamic> golden,
-  Map<String, dynamic> corpus,
-) {
-  Never refuse(String detail) =>
-      throw StateError('selected native runtime $detail');
-  final startup = golden['startupContainment'];
-  if (startup is! Map ||
-      startup['service'] != 'shortcut' ||
-      startup['provider'] != 'io.legado.app.api.ReaderProvider' ||
-      startup['intercepted'] != 1 ||
-      startup['handled'] != 1 ||
-      startup['beforeBinding'] != true) {
-    refuse('startup containment differs');
-  }
-  final isolation = golden['isolation'];
-  if (isolation is! Map ||
-      isolation['appClass'] !=
-          'io.liber.oracle.nested.GuardedReaderApplication') {
-    refuse('guarded application differs');
-  }
-  final declaration = corpus['hostInitialization'];
-  final host = golden['hostInitialization'];
-  if (declaration is! Map ||
-      declaration['registrations'] is! List ||
-      host is! Map ||
-      host['verified'] != true ||
-      host['applicationAttached'] != false ||
-      host['invokedOn'] != 'unattached-instance' ||
-      host['notRun'] is! List ||
-      !(host['notRun'] as List).contains('io.legado.app.App.onCreate') ||
-      host['method'] != declaration['method']) {
-    refuse('host initialization differs');
-  }
-  final wrappers = <String, String>{};
-  for (final value in declaration['registrations'] as List) {
-    if (value is! Map ||
-        value['type'] is! String ||
-        value['factory'] is! String ||
-        wrappers.containsKey(value['type'])) {
-      refuse('host declaration differs');
-    }
-    wrappers[value['type'] as String] = value['factory'] as String;
-  }
-  if (!_deepEquals(host['registeredWrappers'], wrappers))
-    refuse('host wrappers differ');
-  final owner = golden['terminalOwner'];
-  if (owner is! Map ||
-      owner['scope'] != 'Coroutine.DEFAULT' ||
-      owner['rootActive'] != true ||
-      owner['rootCompleted'] != false ||
-      owner['baselineChildren'] is! int ||
-      owner['baselineChildren'] != 0 ||
-      owner['childrenMethod'] is! String ||
-      !(owner['childrenMethod'] as String).contains(
-        'kotlinx.coroutines.Job.getChildren()',
-      ) ||
-      owner['completionMethod'] is! String ||
-      !(owner['completionMethod'] as String).contains(
-        'kotlinx.coroutines.Job.isCompleted()',
-      )) {
-    refuse('job owner differs');
-  }
-  final entries = golden['entryPoints'];
-  const prefix =
-      'public final java.lang.Object io.legado.app.model.webBook.WebBook.';
-  const signatures = {
-    'searchBookAwait':
-        'searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
-    'getBookInfoAwait':
-        'getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
-    'getChapterListAwait':
-        'getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
-    'getContentAwait':
-        'getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
-  };
-  if (entries is! Map ||
-      entries.length != signatures.length ||
-      signatures.entries.any(
-        (entry) => entries[entry.key] != '$prefix${entry.value}',
-      )) {
-    refuse('native entry points differ');
-  }
-  final cases = golden['cases'];
-  if (cases is! List ||
-      corpus['cases'] is! List ||
-      cases.length != (corpus['cases'] as List).length) {
-    refuse('case count differs');
-  }
-  for (final value in cases) {
-    final terminal = value is Map ? value['terminalOwner'] : null;
-    if (terminal is! Map ||
-        terminal['owner'] != 'Coroutine.DEFAULT Job' ||
-        terminal['allCompleted'] != true ||
-        terminal['rootEmpty'] != true ||
-        terminal['observedChildren'] is! int ||
-        (terminal['observedChildren'] as int) < 0 ||
-        terminal['launchAttempts'] is! int ||
-        terminal['launchAttempts'] != 0) {
-      refuse('case terminal proof differs');
-    }
-  }
-  final cleanup = golden['cleanup'];
-  if (cleanup is! Map ||
-      cleanup['serverClosed'] != true ||
-      cleanup['openConnectionsAfterClose'] is! int ||
-      cleanup['openConnectionsAfterClose'] != 0 ||
-      cleanup['databaseClosed'] != true ||
-      cleanup['activityLaunchAttempts'] is! int ||
-      cleanup['activityLaunchAttempts'] != 0) {
-    refuse('cleanup differs');
+    verified = true;
+  } finally {
+    if (verified) temporary.deleteSync(recursive: true);
   }
 }
 
@@ -1659,9 +1399,6 @@ void _admitGoldenIdentity(
   required String expectedHarnessApkSha256,
 }) {
   _admitIdentityFields(golden, corpus, 'golden');
-  if (corpus['baselineCommit'] == 'a7d37f1707a70a459ad708f4fe79341d1e42d716') {
-    _admitSelectedNativeRuntime(golden, corpus);
-  }
   final fingerprint = _requiredString(golden, 'fingerprint', 'golden');
   if (fingerprint != target['deviceFingerprint']) {
     throw StateError('golden fingerprint does not match the approved target');
@@ -1701,6 +1438,10 @@ void _admitGoldenIdentity(
   _requiredString(isolation, 'harnessPackage', 'golden.isolation');
   _requiredString(isolation, 'preferencesPrefix', 'golden.isolation');
   _requiredString(isolation, 'scratchRoot', 'golden.isolation');
+  if (corpus['baselineCommit'] == 'a7d37f1707a70a459ad708f4fe79341d1e42d716') {
+    _admitErrorFacts(golden, 'golden');
+    return;
+  }
   final cleanup = _map(golden['cleanup'], 'golden.cleanup');
   for (final field in [
     'serverClosed',

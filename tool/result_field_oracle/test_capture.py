@@ -1,4 +1,5 @@
 """Small stdlib regressions for the FIELDS-02 capture boundary."""
+import io
 import json
 import os
 from pathlib import Path
@@ -110,6 +111,48 @@ def _snapshot_bytes(files, dirs):
 
 
 class SelectedCorpusTest(unittest.TestCase):
+    def test_selected_preflight_timeout_retains_attempt_and_partial_streams(self):
+        from unittest.mock import patch
+        target = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/artifacts/legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        fixture = Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            timeout = subprocess.TimeoutExpired(['injected'], 120, output=b'partial-out\n', stderr=b'partial-err\n')
+            with patch.object(capture.subprocess, 'run', side_effect=timeout) as run:
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    capture.selected_preflight(Path('unused.apk'), target, fixture, Path('source'),
+                                               Path('sdk'), Path('java'), evidence=output)
+            self.assertEqual(run.call_count, 1)
+            records = json.loads((output / 'preflight-commands.json').read_bytes())
+            self.assertEqual(records[0]['name'], 'java-version')
+            self.assertEqual(records[0]['status'], 'timeout')
+            self.assertTrue(records[0]['command'][0].endswith('java.exe'))
+            self.assertEqual((output / 'preflight-java-version.stdout.log').read_bytes(), b'partial-out\n')
+            self.assertEqual((output / 'preflight-java-version.stderr.log').read_bytes(), b'partial-err\n')
+
+    def test_selected_finalize_timeout_retains_partial_streams_without_retry(self):
+        import io
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        target = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/artifacts/legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        fixture = Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            argv = ['capture.py', '--finalize', '--serial', '5615f742', '--fixture', str(fixture),
+                    '--apk', 'unused.apk', '--target-apk', str(target), '--frozen-source', 'source',
+                    '--java-home', 'java', '--output', str(output)]
+            timeout = subprocess.TimeoutExpired(['injected'], 120, output=b'partial-out\n', stderr=b'partial-err\n')
+            with patch.object(sys, 'argv', argv), patch.object(capture.subprocess, 'run', side_effect=timeout) as run, redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    capture.main()
+            self.assertEqual(run.call_count, 1)
+            attempts = list(output.glob('preflight-timeout-*'))
+            self.assertEqual(len(attempts), 1)
+            self.assertEqual((attempts[0] / 'preflight-java-version.stdout.log').read_bytes(), b'partial-out\n')
+            self.assertEqual((attempts[0] / 'preflight-java-version.stderr.log').read_bytes(), b'partial-err\n')
+            self.assertEqual(json.loads((attempts[0] / 'preflight-commands.json').read_bytes())[0]['status'], 'timeout')
+            self.assertTrue((output / 'finalize-failure.json').is_file())
+
     def test_selected_reference_preserves_scenarios_and_changes_only_reference_metadata(self):
         directory = Path(__file__).resolve().parent
         original = json.loads((directory / 'book-url-markers-fixtures.json').read_bytes())
@@ -216,6 +259,15 @@ class SelectedCorpusTest(unittest.TestCase):
                                                           'targetPrivateRoot': '/data/user/0/com.legado.app.debug'},
                                                  b'', b'', b'')
 
+    def test_selected_private_root_rejects_noncanonical_package_paths(self):
+        for good in ['/data/user/0/com.legado.app.debug', '/data/data/com.legado.app.debug']:
+            self.assertEqual(capture._selected_private_root(good), good)
+        for bad in ['/data/other/com.legado.app.debug', '/data/user/0/../com.legado.app.debug',
+                    '/data/user//com.legado.app.debug', '/data/user/0/com.legado.app.debug\n',
+                    '/data/user/0/com.legado.app.debug/extra']:
+            with self.subTest(path=bad), self.assertRaisesRegex(ValueError, 'canonical'):
+                capture._selected_private_root(bad)
+
     def test_selected_webview_must_be_the_current_provider_and_version(self):
         good = 'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'
         capture._require_selected_webview(good)
@@ -261,6 +313,58 @@ class SelectedCorpusTest(unittest.TestCase):
             capture._admit_selected_shape(selected, 'fixture')
 
 
+def _synthetic_dex_archive(name, content):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+_SYNTHETIC_TARGET_APK = _synthetic_dex_archive('classes19.dex', b'synthetic-reference-dex')
+_SYNTHETIC_HARNESS_APK = _synthetic_dex_archive('classes.dex', b'synthetic-harness-dex')
+
+
+def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source, sdk, java, references,
+                                  reference_dex_sha=None, harness_dex_sha=None):
+    tools = sdk / 'build-tools' / '35.0.1'
+    javabin = java / 'bin' / 'java.exe'
+    commands = {
+        'java-version': [javabin, '-version'],
+        'javac-version': [java / 'bin' / 'javac.exe', '-version'],
+        'source-head': ['git', '-C', source, 'rev-parse', 'HEAD'],
+        'source-tree': ['git', '-C', source, 'rev-parse', 'HEAD^{tree}'],
+        'source-status': ['git', '-C', source, 'status', '--porcelain=v1'],
+        'source-blobs': ['git', '-C', source, 'hash-object', *[r['path'] for r in fixture['frozenSources']]],
+        'manifest': [tools / 'aapt.exe', 'dump', 'xmltree', apk, 'AndroidManifest.xml'],
+        'harness-signature': [javabin, '-jar', tools / 'lib' / 'apksigner.jar', 'verify', '--print-certs', apk],
+        'target-signature': [javabin, '-jar', tools / 'lib' / 'apksigner.jar', 'verify', '--print-certs', target],
+        'reference-dex': [tools / 'dexdump.exe', source / 'fields-reference-dex-mechanics' / 'classes19.dex'],
+        'dex': [tools / 'dexdump.exe', source / 'fields-dex-mechanics' / 'classes.dex'],
+    }
+    values = {'source-head': capture.SELECTED_BASELINE + '\n',
+              'source-tree': '0f69dc7004012a969551ce271dc4e11051637d32\n',
+              'source-blobs': '\n'.join(r['sha1'] for r in fixture['frozenSources']) + '\n'}
+    receipts = []
+    for name, command in commands.items():
+        data = values.get(name, '').encode()
+        if output is not None:
+            (output / ('preflight-' + name + '.stdout.log')).write_bytes(data)
+            (output / ('preflight-' + name + '.stderr.log')).write_bytes(b'')
+        receipts.append({'name': name, 'exitCode': 0, 'command': [str(x) for x in command],
+                         'stdoutSha256': capture.sha256_bytes(data), 'stderrSha256': capture.sha256_bytes(b'')})
+    reference_dex_sha = reference_dex_sha or capture.sha256_bytes(b'synthetic-reference-dex')
+    if harness_dex_sha is None:
+        with zipfile.ZipFile(apk) as archive:
+            harness_dex_sha = capture.sha256_bytes(archive.read('classes.dex'))
+    return {'artifact': artifact, 'targetApkSha256': fixture['target']['apkSha256'],
+            'dexSha256': harness_dex_sha, 'referenceDexSha256': reference_dex_sha,
+            'inputs': {'harnessApk': str(apk), 'targetApk': str(target), 'source': str(source),
+                       'androidSdk': str(sdk), 'javaHome': str(java),
+                       'referenceDex': str(commands['reference-dex'][1]),
+                       'harnessDex': str(commands['dex'][1])},
+            'referenceSources': references, 'commands': receipts}
+
+
 class SelectedReceiptTest(unittest.TestCase):
     def test_complete_selected_receipts_and_raw_report_tamper(self):
         from unittest.mock import patch
@@ -270,8 +374,8 @@ class SelectedReceiptTest(unittest.TestCase):
             selected_target = os.environ.get('FIELDS_SELECTED_TARGET_APK')
             if bool(selected_apk) != bool(selected_target):
                 self.fail('supply both selected actual APK paths or neither')
-            target = Path(selected_target).read_bytes() if selected_target else b'synthetic target APK for mechanics only'
-            harness = Path(selected_apk).read_bytes() if selected_apk else b'synthetic harness APK for mechanics only'
+            target = Path(selected_target).read_bytes() if selected_target else _SYNTHETIC_TARGET_APK
+            harness = Path(selected_apk).read_bytes() if selected_apk else _SYNTHETIC_HARNESS_APK
             (output / 'frozen.apk').write_bytes(target)
             (output / 'installed-harness.apk').write_bytes(harness)
             target_sha = capture.sha256_bytes(target)
@@ -333,19 +437,55 @@ class SelectedReceiptTest(unittest.TestCase):
             add('remove-harness', ['uninstall', capture.PACKAGE], b'Success\n')
             add('harness-removed-check', ['shell', 'pm', 'list', 'packages', capture.PACKAGE])
             add('private-after', shell(capture._fields_snapshot_script(root)), after)
-            preflight_names = ['java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
-                               'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex']
-            preflight_commands = []
-            for name in preflight_names:
-                data = {'source-head': capture.SELECTED_BASELINE + '\n',
-                        'source-tree': '0f69dc7004012a969551ce271dc4e11051637d32\n'}.get(name, '').encode()
-                (output / ('preflight-' + name + '.stdout.log')).write_bytes(data)
-                (output / ('preflight-' + name + '.stderr.log')).write_bytes(b'')
-                preflight_commands.append({'name': name, 'exitCode': 0, 'command': ['synthetic'],
-                    'stdoutSha256': capture.sha256_bytes(data), 'stderrSha256': capture.sha256_bytes(b'')})
-            manifest['preflight']['commands'] = preflight_commands
+            fixture = json.loads(Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json').read_bytes())
+            references = {r['path']: {'blobSha1': r['sha1'], 'worktreeSha256': 'a' * 64} for r in fixture['frozenSources']}
+            manifest['frozenSources'] = references
+            with zipfile.ZipFile(io.BytesIO(target)) as archive:
+                reference_dex_sha = capture.sha256_bytes(archive.read('classes19.dex'))
+            with zipfile.ZipFile(io.BytesIO(harness)) as archive:
+                harness_dex_sha = capture.sha256_bytes(archive.read('classes.dex'))
+            manifest['preflight'] = _synthetic_selected_preflight(
+                output, fixture, artifact, '/synthetic/harness.apk', '/synthetic/reference.apk',
+                output / 'source', output / 'sdk', output / 'java', references,
+                reference_dex_sha=reference_dex_sha, harness_dex_sha=harness_dex_sha)
+            manifest['preflight']['targetApkSha256'] = target_sha
             with patch.dict(capture.SELECTED_TARGET, {'apkSha256': target_sha}):
                 capture._admit_selected_commands(output, manifest, report, before, after)
+                dex = next(item for item in manifest['preflight']['commands'] if item['name'] == 'dex')
+                original_dex_command = dex['command']
+                dex['command'] = ['not-the-SDK', 'wrong.dex']
+                with self.assertRaisesRegex(ValueError, 'preflight command'):
+                    capture._admit_selected_commands(output, manifest, report, before, after)
+                dex['command'] = original_dex_command
+                signer = next(item for item in manifest['preflight']['commands'] if item['name'] == 'target-signature')
+                original_target_apk = signer['command'][-1]
+                signer['command'][-1] = '/synthetic/wrong-reference.apk'
+                with self.assertRaisesRegex(ValueError, 'preflight command signer binding'):
+                    capture._admit_selected_commands(output, manifest, report, before, after)
+                signer['command'][-1] = original_target_apk
+                for operation in ('java-version', 'javac-version', 'source-head', 'source-tree',
+                                  'source-status', 'source-blobs', 'manifest', 'harness-signature',
+                                  'target-signature', 'reference-dex', 'dex'):
+                    receipt = next(item for item in manifest['preflight']['commands'] if item['name'] == operation)
+                    original_command = receipt['command']
+                    receipt['command'] = [*original_command, 'unexpected-argument']
+                    with self.subTest(preflight=operation), self.assertRaisesRegex(ValueError, 'preflight command'):
+                        capture._admit_selected_commands(output, manifest, report, before, after)
+                    receipt['command'] = original_command
+                for name, bad in [('poststop', b'Error: force-stop failed\n'),
+                                  ('scratch-remove-root', b'rm: Permission denied\n')]:
+                    log = output / (name + '.log')
+                    log.write_bytes(bad)
+                    with self.assertRaisesRegex(ValueError, 'contradictory'):
+                        capture._admit_selected_commands(output, manifest, report, before, after)
+                    log.write_bytes(b'')
+                instrumentation = output / 'instrumentation.log'
+                for bad in (b'INSTRUMENTATION_CODE: -1\nINSTRUMENTATION_CODE: 1\n',
+                            b'INSTRUMENTATION_CODE: -1\nINSTRUMENTATION_CODE: malformed\n'):
+                    instrumentation.write_bytes(bad)
+                    with self.assertRaisesRegex(ValueError, 'instrumentation'):
+                        capture._admit_selected_commands(output, manifest, report, before, after)
+                instrumentation.write_bytes(b'INSTRUMENTATION_CODE: -1\n')
                 import shutil
                 with tempfile.TemporaryDirectory() as copied_parent:
                     copied = Path(copied_parent) / 'copied-evidence'
@@ -650,7 +790,8 @@ class DriverBoundaryTest(unittest.TestCase):
              process_pid_post=None, pid_stderr=False, snapshot_fail_on=None,
              existing_harness=False, package_query_code=0,
              package_query_stderr=b'', package_query_stdout=None,
-             owner_preferences=None, selected=False, selected_install_receipt=None):
+             owner_preferences=None, selected=False, selected_install_receipt=None,
+             selected_pref_stderr=b'', selected_stop_stderr=b'', inspect_bundle=None):
         import io
         from contextlib import redirect_stdout
         from unittest.mock import patch
@@ -733,7 +874,7 @@ class DriverBoundaryTest(unittest.TestCase):
                     stdout = (target_root + '\n').encode()
                 elif selected and 'pull' in args:
                     destination = Path(args[-1])
-                    destination.write_bytes(apk.read_bytes() if destination.name == 'installed-harness.apk' else b'synthetic-target')
+                    destination.write_bytes(apk.read_bytes() if destination.name == 'installed-harness.apk' else _SYNTHETIC_TARGET_APK)
                 elif 'install' in args:
                     calls['install_attempted'] = True
                     code = install_code
@@ -750,6 +891,8 @@ class DriverBoundaryTest(unittest.TestCase):
                     calls['instrument_failed'] = instrument_code != 0
                 elif 'am' in args and 'force-stop' in args:
                     code = stop_code
+                    if selected:
+                        stderr = selected_stop_stderr
                 elif 'exec-out' in args and scratch_root + '/field-oracle.json' in text:
                     if calls.get('instrument_failed'):
                         code = 1
@@ -773,6 +916,8 @@ class DriverBoundaryTest(unittest.TestCase):
                         stdout = (root_state + '\n').encode()
                     elif 'find ' in script:
                         stdout = b'' if ' -name ' in script else before_lines
+                        if selected and ' -name ' in script:
+                            stderr = selected_pref_stderr
             return subprocess.CompletedProcess(args, code, stdout, stderr)
 
         with tempfile.TemporaryDirectory() as directory:
@@ -808,6 +953,8 @@ class DriverBoundaryTest(unittest.TestCase):
             with zipfile.ZipFile(apk, 'w') as archive:
                 archive.writestr('assets/field-fixtures.json', fixture.read_bytes())
                 archive.writestr('assets/field-provenance.json', json.dumps(provenance))
+                if selected:
+                    archive.writestr('classes.dex', b'synthetic-harness-dex')
             artifact = capture.inspect_selected_apk(
                 apk, fixture, fixture_data, capture.harness_source_hashes(selected=selected))
             report['isolation'].update({
@@ -876,23 +1023,12 @@ class DriverBoundaryTest(unittest.TestCase):
             if selected:
                 argv += ['--target-apk', str(cache / 'target.apk'), '--java-home', str(cache)]
             def synthetic_preflight(*args, **kwargs):
-                names = ['java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
-                         'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex']
-                receipts = []
-                for name in names:
-                    data = {'source-head': capture.SELECTED_BASELINE + '\n',
-                            'source-tree': '0f69dc7004012a969551ce271dc4e11051637d32\n'}.get(name, '').encode()
-                    evidence_dir = kwargs.get('evidence')
-                    if evidence_dir is not None:
-                        (evidence_dir / ('preflight-' + name + '.stdout.log')).write_bytes(data)
-                        (evidence_dir / ('preflight-' + name + '.stderr.log')).write_bytes(b'')
-                    receipts.append({'name': name, 'exitCode': 0, 'command': ['synthetic'],
-                        'stdoutSha256': capture.sha256_bytes(data), 'stderrSha256': capture.sha256_bytes(b'')})
-                return {'artifact': artifact, 'targetApkSha256': fixture_data['target']['apkSha256'],
-                        'commands': receipts,
-                        'referenceSources': {item['path']: {'blobSha1': item['sha1'],
-                            'worktreeSha256': actual_sha(frozen / item['path'])}
-                            for item in fixture_data['frozenSources']}}
+                references = {item['path']: {'blobSha1': item['sha1'],
+                              'worktreeSha256': actual_sha(frozen / item['path'])}
+                              for item in fixture_data['frozenSources']}
+                return _synthetic_selected_preflight(kwargs.get('evidence'), fixture_data, artifact,
+                    apk, cache / 'target.apk', frozen, Path('C:/Users/17945/AppData/Local/Android/Sdk'),
+                    Path('C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8'), references)
             with patch.object(sys, 'argv', argv), \
                     patch.object(capture, 'selected_preflight', synthetic_preflight), \
                     patch.object(capture, 'sha256', fake_sha), \
@@ -902,6 +1038,8 @@ class DriverBoundaryTest(unittest.TestCase):
                     redirect_stdout(io.StringIO()):
                 exit_code = capture.main()
             calls['golden'] = (output / 'golden.json').exists()
+            if inspect_bundle is not None and calls['golden']:
+                inspect_bundle(output, fixture, apk)
             if (output / 'manifest.json').exists():
                 manifest = json.loads(
                     (output / 'manifest.json').read_text(encoding='utf-8'))
@@ -909,6 +1047,115 @@ class DriverBoundaryTest(unittest.TestCase):
                 calls['manifest_commands'] = manifest.get('commands', [])
                 calls['manifest_error'] = manifest.get('error')
         return exit_code, commands, calls
+
+    def test_selected_verified_bundle_is_read_only_and_reconciles_inputs(self):
+        def verify(bundle, fixture, apk):
+            from unittest.mock import patch
+            manifest = json.loads((bundle / 'manifest.json').read_bytes())
+            before = {p.name: p.read_bytes() for p in bundle.iterdir() if p.is_file()}
+            real_sha = capture.sha256
+            def synthetic_target(path):
+                return capture.SELECTED_TARGET['apkSha256'] if Path(path).name == 'frozen.apk' else real_sha(path)
+            with patch.object(capture, 'sha256', side_effect=synthetic_target):
+                result = capture.verify_selected_bundle(bundle, fixture, apk, manifest['preflight'])
+                self.assertEqual(result['status'], 'verified-bundle')
+                self.assertEqual(result['goldenSha256'], capture.sha256(bundle / 'golden.json'))
+                self.assertEqual(before, {p.name: p.read_bytes() for p in bundle.iterdir() if p.is_file()})
+                from contextlib import redirect_stdout
+                import io
+                destination = bundle.parent / 'verification'
+                argv = ['capture.py', '--verify-bundle', str(bundle), '--fixture', str(fixture),
+                        '--apk', str(apk), '--target-apk', str(bundle / 'frozen.apk'),
+                        '--frozen-source', 'synthetic-source', '--java-home', 'synthetic-java',
+                        '--output', str(destination)]
+                with patch.object(sys, 'argv', argv), patch.object(capture, 'selected_preflight', return_value=manifest['preflight']), redirect_stdout(io.StringIO()):
+                    self.assertEqual(capture.main(), 0)
+                self.assertEqual(json.loads((destination / 'verification.json').read_bytes())['status'], 'verified-bundle')
+                bad = json.loads(json.dumps(manifest['preflight']))
+                bad['targetApkSha256'] = '0' * 64
+                with self.assertRaisesRegex(ValueError, 'fresh preflight'):
+                    capture.verify_selected_bundle(bundle, fixture, apk, bad)
+            self.assertEqual(before, {p.name: p.read_bytes() for p in bundle.iterdir() if p.is_file()})
+        exit_code, _, calls = self._run(selected=True, process_pid_owned=4242, inspect_bundle=verify)
+        self.assertEqual(exit_code, 0, calls)
+
+    def test_selected_finalize_reconciles_fresh_preflight_before_reuse(self):
+        import io
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        def verify(bundle, fixture, apk):
+            manifest_bytes = (bundle / 'manifest.json').read_bytes()
+            golden_bytes = (bundle / 'golden.json').read_bytes()
+            binding = json.loads(manifest_bytes)['preflight']
+            binding['targetApkSha256'] = '0' * 64
+            argv = ['capture.py', '--finalize', '--serial', '5615f742', '--fixture', str(fixture),
+                    '--apk', str(apk), '--target-apk', str(bundle / 'frozen.apk'),
+                    '--frozen-source', 'source', '--java-home', 'java', '--output', str(bundle)]
+            real_sha = capture.sha256
+            def synthetic_target(path):
+                return capture.SELECTED_TARGET['apkSha256'] if Path(path).name == 'frozen.apk' else real_sha(path)
+            with patch.object(sys, 'argv', argv), patch.object(capture, 'selected_preflight', return_value=binding), patch.object(capture, 'sha256', side_effect=synthetic_target), redirect_stderr(io.StringIO()):
+                self.assertEqual(capture.main(), 1)
+            self.assertIn('fresh preflight', json.loads((bundle / 'finalize-failure.json').read_bytes())['error'])
+            self.assertEqual((bundle / 'manifest.json').read_bytes(), manifest_bytes)
+            self.assertEqual((bundle / 'golden.json').read_bytes(), golden_bytes)
+        exit_code, _, calls = self._run(selected=True, process_pid_owned=4242, inspect_bundle=verify)
+        self.assertEqual(exit_code, 0, calls)
+
+    def test_selected_bundle_refuses_each_physical_receipt_mutation(self):
+        from unittest.mock import patch
+        def verify(bundle, fixture, apk):
+            original_manifest = (bundle / 'manifest.json').read_bytes()
+            original_logs = {p.name: p.read_bytes() for p in bundle.glob('*.log')}
+            binding = json.loads(original_manifest)['preflight']
+            real_sha = capture.sha256
+            def synthetic_target(path):
+                return capture.SELECTED_TARGET['apkSha256'] if Path(path).name == 'frozen.apk' else real_sha(path)
+            with patch.object(capture, 'sha256', side_effect=synthetic_target):
+                self.assertEqual(capture.verify_selected_bundle(bundle, fixture, apk, binding)['status'], 'verified-bundle')
+                for name in ['missing_preferences', 'unknown_pid', 'mixed_terminal', 'wrong_dex', 'stop_error', 'root_error']:
+                    manifest = json.loads(original_manifest)
+                    for filename, data in original_logs.items():
+                        (bundle / filename).write_bytes(data)
+                    if name == 'missing_preferences':
+                        removed = [r['log'] for r in manifest['commands'] if r['log'].startswith(('scratch-remove-1.', 'scratch-absent-1.'))]
+                        manifest['commands'] = [r for r in manifest['commands'] if r['log'] not in removed]
+                        for filename in removed:
+                            (bundle / filename).unlink()
+                    elif name == 'unknown_pid':
+                        next(r for r in manifest['commands'] if r['log'] == 'poststop-check.log')['exitCode'] = 127
+                        (bundle / 'poststop-check.log').write_bytes(b'Permission denied\n')
+                    elif name == 'mixed_terminal':
+                        (bundle / 'instrumentation.log').write_bytes(b'INSTRUMENTATION_CODE: -1\nINSTRUMENTATION_CODE: 1\n')
+                    elif name == 'wrong_dex':
+                        next(r for r in manifest['preflight']['commands'] if r['name'] == 'dex')['command'] = ['not-the-SDK', 'wrong.dex']
+                    elif name == 'stop_error':
+                        (bundle / 'poststop.log').write_bytes(b'Error: force-stop failed\n')
+                    else:
+                        (bundle / 'scratch-remove-root.log').write_bytes(b'rm: Permission denied\n')
+                    (bundle / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+                    with self.subTest(name=name), self.assertRaises(ValueError):
+                        capture.verify_selected_bundle(bundle, fixture, apk, binding)
+                (bundle / 'manifest.json').write_bytes(original_manifest)
+                for filename, data in original_logs.items():
+                    (bundle / filename).write_bytes(data)
+        exit_code, _, calls = self._run(selected=True, process_pid_owned=4242, inspect_bundle=verify)
+        self.assertEqual(exit_code, 0, calls)
+
+    def test_selected_driver_refuses_preinstall_preference_access_error(self):
+        exit_code, commands, calls = self._run(selected=True, selected_pref_stderr=b'find: Permission denied\n')
+        self.assertEqual(exit_code, 1)
+        self.assertIn('preference', calls['manifest_error'])
+        self.assertFalse(calls['install_attempted'])
+        self.assertFalse(any('force-stop' in cmd or 'uninstall' in cmd for cmd in commands))
+
+    def test_selected_driver_refuses_contradictory_stop_receipt(self):
+        exit_code, commands, calls = self._run(selected=True, process_pid_owned=4242,
+                                                selected_stop_stderr=b'Error: force-stop failed\n')
+        self.assertEqual(exit_code, 1)
+        self.assertIn('stop', calls['manifest_error'])
+        self.assertFalse(calls['golden'])
+        self.assertFalse(any('rm -f --' in ' '.join(cmd) or 'uninstall' in cmd for cmd in commands))
 
     def test_selected_driver_preserves_mixed_install_without_instrumentation(self):
         exit_code, commands, calls = self._run(

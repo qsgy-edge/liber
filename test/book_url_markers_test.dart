@@ -202,7 +202,7 @@ void main() {
         isA<StateError>().having(
           (error) => error.message,
           'message',
-          contains('selected native runtime'),
+          contains('selected raw-bundle'),
         ),
       ),
     );
@@ -280,7 +280,7 @@ void main() {
         isA<StateError>().having(
           (error) => error.message,
           'message',
-          contains('selected native evidence missing'),
+          contains('selected raw-bundle'),
         ),
       ),
     );
