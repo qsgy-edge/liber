@@ -131,8 +131,9 @@ class CaptureReceiptsTest(unittest.TestCase):
                     'rootEmpty': True, 'launchAttempts': 0}
         registered = ['liber_html_selected_html_probe']
         target_path, harness_path = '/data/app/target/base.apk', '/data/app/harness/base.apk'
+        approved_fingerprint = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys'
         report = {
-            'baselineCommit': capture.BASELINE, 'entryPoint': fixture['entryPoint'], 'fingerprint': capture.FINGERPRINT,
+            'baselineCommit': capture.BASELINE, 'entryPoint': fixture['entryPoint'], 'fingerprint': approved_fingerprint,
             'corpus': {'asset': 'html-fixtures.json', 'bytes': binding['corpusBytes'], 'sha256': binding['corpusSha256'],
                        'fixtureId': fixture['fixtureId'], 'corpusVersion': 1, 'schemaVersion': 1},
             'identity': {'fixtureId': fixture['fixtureId'], 'corpusVersion': 1, 'targetPackage': capture.TARGET,
@@ -180,7 +181,7 @@ class CaptureReceiptsTest(unittest.TestCase):
             failed_partial = failed.stdout + failed.stderr
         instrumentation = b'HTML_ORACLE_BASE64=' + base64.b64encode(json.dumps(report).encode()) + b'\nINSTRUMENTATION_CODE: -1\n'
         entries = [
-            ('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint'], (capture.FINGERPRINT + '\n').encode()),
+            ('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint'], (approved_fingerprint + '\n').encode()),
             ('api', ['shell', 'getprop', 'ro.build.version.sdk'], b'37\n'),
             ('webview', ['shell', 'dumpsys', 'webviewupdate'], b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'),
             ('target-path', ['shell', 'pm', 'path', capture.TARGET], ('package:' + target_path + '\n').encode()),
@@ -215,6 +216,17 @@ class CaptureReceiptsTest(unittest.TestCase):
                 (root / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
             save()
             self.assertEqual(capture.verify_bundle(root, fixture, binding), report)
+            for rejected in ('Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys',
+                             'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys', 'wrong'):
+                with self.subTest(device_fingerprint=rejected):
+                    fingerprint_log = root / 'fingerprint.log'
+                    fingerprint_log.write_bytes((rejected + '\n').encode())
+                    receipt = next(r for r in commands if r['name'] == 'fingerprint')
+                    receipt['sha256'] = capture.digest(fingerprint_log.read_bytes()); save()
+                    with self.assertRaisesRegex(ValueError, 'device fingerprint or API differs'):
+                        capture.verify_bundle(root, fixture, binding)
+            fingerprint_log.write_bytes((approved_fingerprint + '\n').encode())
+            receipt['sha256'] = capture.digest(fingerprint_log.read_bytes()); save()
             for incomplete in (b'', b'f' * 64 + b'  files/original\n', failed_partial):
                 with self.subTest(incomplete_inventory=incomplete):
                     for name in ('private-before', 'private-after', 'private-final'):
@@ -336,8 +348,8 @@ class CaptureReceiptsTest(unittest.TestCase):
                     manifest['preflight'] = json.loads(json.dumps(binding))
                     save()
             for damage in ('missing-row', 'duplicate-id', 'ambiguous-outcome', 'wrong-value-type',
-                           'unfinished-child', 'database-open', 'wrong-environment', 'wrong-provenance',
-                           'boolean-version', 'boolean-launch-count'):
+                           'unfinished-child', 'database-open', 'wrong-environment', 'previous-fingerprint',
+                           'legacy-fingerprint', 'wrong-provenance', 'boolean-version', 'boolean-launch-count'):
                 with self.subTest(damage=damage):
                     broken = json.loads(json.dumps(report))
                     if damage == 'missing-row':
@@ -354,6 +366,10 @@ class CaptureReceiptsTest(unittest.TestCase):
                         broken['cleanup']['databaseClosed'] = False
                     elif damage == 'wrong-environment':
                         broken['fingerprint'] = 'another fingerprint'
+                    elif damage == 'previous-fingerprint':
+                        broken['fingerprint'] = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
+                    elif damage == 'legacy-fingerprint':
+                        broken['fingerprint'] = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
                     elif damage == 'boolean-version':
                         broken['corpus']['corpusVersion'] = True
                     elif damage == 'boolean-launch-count':

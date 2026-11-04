@@ -178,7 +178,7 @@ void main() {
     };
     synthetic['paragraphIndent'] = '　　';
     synthetic['fingerprint'] =
-        'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys';
+        'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys';
     synthetic['cleanup'] = {
       'databaseClosed': true,
       'scratchRemoved': true,
@@ -293,6 +293,8 @@ void main() {
       (x) => (x['entryPoints'] as Map)['getContentArity'] = 7,
       (x) => (x['settingsBefore'] as Map)['backupPath'] = 'occupied',
       (x) => x['fingerprint'] = 'wrong',
+      (x) => x['fingerprint'] =
+          'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys',
       (x) => x['fingerprint'] =
           'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys',
       (x) => x['paragraphIndent'] = ' ',
@@ -608,6 +610,13 @@ void main() {
       () => file(
         'manifest.json',
       ).writeAsStringSync(jsonEncode({...manifest, 'status': 'failed'})),
+      () => file('manifest.json').writeAsStringSync(
+        jsonEncode({
+          ...manifest,
+          'fingerprint':
+              'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys',
+        }),
+      ),
       () => file(
         'manifest.json',
       ).writeAsStringSync(jsonEncode({...manifest, 'goldenSha256': 'wrong'})),

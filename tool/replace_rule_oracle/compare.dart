@@ -12,7 +12,7 @@ import 'package:liber/store/database.dart' show ReplaceRule;
 import 'package:pointycastle/digests/sha256.dart';
 
 const selectedReaderFingerprint =
-    'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys';
+    'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys';
 
 const selectedReaderInventoryComplete =
     '__LIBER_READER_PRIVATE_INVENTORY_COMPLETE__';

@@ -223,8 +223,8 @@ only by the product gate, not packaged in the instrumentation APK.
 
 The controller alone may run `capture.py` without `--preflight-only`, against the
 approved serial and a fresh output directory, following the existing device and
-post-state authorization. The collector checks the selected fingerprint, API and
-current WebView provider, exact installed reference APK, fresh harness inventory,
+post-state authorization. The collector checks the approved OS4.0.6.0 fingerprint,
+API and current WebView provider, exact installed reference APK, fresh harness inventory,
 pre/post/final original-file hash inventories, the installed harness bytes, one
 instrumentation result, terminal/closure/cleanup, stopped process, removed scratch
 and removed harness. It retains raw receipts and failed evidence and never retries
@@ -234,6 +234,7 @@ Each private file inventory retains walk/hash diagnostics and ends with the exac
 `__LIBER_HTML_PRIVATE_INVENTORY_COMPLETE__` line only after the entire walk and all
 file hashes succeed. Missing, truncated or misplaced completion is not preservation
 evidence; a successful empty walk contains that completion line by itself.
+Prior OS4.0.5.0 evidence retains its original identity and is not rebound.
 
 To compare a controller-produced **successful** bundle, pass that bundle's
 `observation.json` as the golden and the matching selected corpus as argument four.

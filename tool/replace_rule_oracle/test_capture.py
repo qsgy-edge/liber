@@ -54,7 +54,7 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
                        'baselineCommit': self.fixture['baselineCommit'],
                        'boundary': self.fixture['comparisonBoundary'],
                        'fixtureSha256': self.binding['corpusSha256Lf'],
-                       'fingerprint': 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys',
+                       'fingerprint': 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys',
                        'paragraphIndent': '　　',
                        'identity': {'fixtureId': 'REPLACE-17', 'corpusVersion': 2,
                                     'targetPackage': 'com.legado.app.debug',
@@ -211,13 +211,25 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
 
     def test_device_fingerprint_selection_preserves_legacy_identity(self):
         old = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
-        new = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
+        new = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys'
+        previous = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
         for selected, allowed, refused in [(False, old, new), (True, new, old)]:
             with self.subTest(selected=selected):
                 capture.check_device_fingerprint(selected, allowed)
-                for fingerprint in (refused, 'wrong'):
+                for fingerprint in (refused, previous, 'wrong'):
                     with self.assertRaises(ValueError):
                         capture.check_device_fingerprint(selected, fingerprint)
+
+    def test_current_selected_report_accepts_approved_fingerprint_only(self):
+        report = copy.deepcopy(self.report)
+        report['fingerprint'] = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys'
+        capture.check_selected_report(self.fixture, report, self.binding)
+        for rejected in ('Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys',
+                         'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys', 'wrong'):
+            with self.subTest(fingerprint=rejected), self.assertRaises(ValueError):
+                bad = copy.deepcopy(report)
+                bad['fingerprint'] = rejected
+                capture.check_selected_report(self.fixture, bad, self.binding)
 
     def test_failure_preservation_requires_exact_registered_owner(self):
         # Synthetic snapshots and owner exercise classification only, not a capture.
@@ -255,6 +267,7 @@ class SelectedReaderAdmissionTest(unittest.TestCase):
             lambda r: r['hostInitialization'].__setitem__('verified', False),
             lambda r: r['startupContainment'].__setitem__('handled', 0),
             lambda r: r.__setitem__('fingerprint', 'other'),
+            lambda r: r.__setitem__('fingerprint', 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'),
             lambda r: r.__setitem__('fingerprint', 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'),
             lambda r: r.__setitem__('paragraphIndent', ' '),
             lambda r: r['terminalOwner'].__setitem__('baselineChildren', 1),

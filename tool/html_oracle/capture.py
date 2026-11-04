@@ -17,7 +17,7 @@ TARGET = 'com.legado.app.debug'
 TARGET_SHA = '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5'
 PACKAGE = 'io.liber.oracle.html.selected'
 ENTRY = 'io.liber.oracle.nested.SelectedHtmlOracle'
-FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
+FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys'
 SIGNER = '954abf2c4e9528b2226457d598e2ff9d1b608f83ac00c52ad66e023d61b2f2ad'
 CORPORA = {'fixtures-selected.json': '5b5bca0204fba6e1da4abdb8fd64fb7b0017dab5bf560098ef4b97f36117c266',
            'list-fixtures-selected.json': '837228894594decc6dcf195cd565365ef461c760f02cbb6b02e32f0fa7f6eb01'}

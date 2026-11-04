@@ -17,7 +17,7 @@ import zipfile
 
 BASELINE_APK = 'cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6'
 FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys'
-SELECTED_FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.5.0.XPMCNXM:user/release-keys'
+SELECTED_FINGERPRINT = 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys'
 PACKAGE = 'io.liber.oracle.replace'
 
 # Selected successful runs retain the original three-root file-only scope.
