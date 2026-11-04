@@ -318,7 +318,9 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
             (evidence / 'preflight-commands.json').write_text(
                 json.dumps(receipts, indent=2) + '\n', encoding='utf-8')
         if result.returncode:
-            raise ValueError(name + ' command failed: ' + result.stderr.decode(errors='replace'))
+            error = ValueError(name + ' command failed: ' + result.stderr.decode(errors='replace'))
+            error.fields_preflight_failure = (receipts[-1], result.stdout, result.stderr)
+            raise error
         return (result.stderr if stderr else result.stdout).decode(errors='strict')
     if 'Temurin-17.0.20+8' not in run('java-version', [java / 'bin' / 'java.exe', '-version'], stderr=True):
         raise ValueError('selected JDK version differs')
@@ -394,16 +396,18 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
                 for path, blob in zip(paths, blobs)}, 'commands': receipts}
 
 
-def _retain_preflight_timeout(output, error):
-    receipt, stdout, stderr = error.fields_preflight_timeout
-    directory = Path(tempfile.mkdtemp(prefix='preflight-timeout-', dir=output))
+def _retain_preflight_failure(output, error):
+    timed_out = isinstance(error, subprocess.TimeoutExpired)
+    receipt, stdout, stderr = (error.fields_preflight_timeout if timed_out else error.fields_preflight_failure)
+    kind = 'timeout' if timed_out else 'nonzero'
+    directory = Path(tempfile.mkdtemp(prefix='preflight-' + kind + '-', dir=output))
     for name, data in [('stdout', stdout), ('stderr', stderr)]:
         with (directory / ('preflight-' + receipt['name'] + '.' + name + '.log')).open('xb') as stream:
             stream.write(data)
     with (directory / 'preflight-commands.json').open('x', encoding='utf-8') as stream:
         json.dump([receipt], stream, indent=2)
         stream.write('\n')
-    print('preflight timeout evidence: ' + str(directory), file=sys.stderr)
+    print('preflight ' + kind + ' evidence: ' + str(directory), file=sys.stderr)
 
 
 def _strict_json(data):
@@ -1755,8 +1759,9 @@ def main():
                 evidence=None if args.finalize else args.output)
         except Exception as error:
             if args.finalize:
-                if isinstance(error, subprocess.TimeoutExpired) and hasattr(error, 'fields_preflight_timeout'):
-                    _retain_preflight_timeout(args.output, error)
+                if ((isinstance(error, subprocess.TimeoutExpired) and hasattr(error, 'fields_preflight_timeout'))
+                        or (isinstance(error, ValueError) and hasattr(error, 'fields_preflight_failure'))):
+                    _retain_preflight_failure(args.output, error)
                 _write_finalize_failure(args.output, str(error), preserve_existing=True)
             else:
                 (args.output / 'preflight-failure.json').write_text(

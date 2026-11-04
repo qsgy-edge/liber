@@ -130,6 +130,87 @@ class SelectedCorpusTest(unittest.TestCase):
             self.assertEqual((output / 'preflight-java-version.stdout.log').read_bytes(), b'partial-out\n')
             self.assertEqual((output / 'preflight-java-version.stderr.log').read_bytes(), b'partial-err\n')
 
+    def test_selected_finalize_nonzero_retains_each_actual_failure_without_retry(self):
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        target = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/artifacts/legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        fixture = Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            originals = {'field-oracle.json': b'original report', 'manifest.json': b'original manifest',
+                         'preflight-commands.json': b'original ledger'}
+            for name, data in originals.items():
+                (output / name).write_bytes(data)
+            argv = ['capture.py', '--finalize', '--serial', '5615f742', '--fixture', str(fixture),
+                    '--apk', 'unused.apk', '--target-apk', str(target), '--frozen-source', 'source',
+                    '--java-home', 'java', '--output', str(output)]
+            old_files = {}
+            failure_files = {}
+            for index in range(2):
+                stdout, stderr = b'NONZERO-STDOUT-' + bytes([index, 255]), b'NONZERO-STDERR-' + bytes([index, 254])
+                result = subprocess.CompletedProcess(['in-memory'], 7, stdout, stderr)
+                with patch.object(sys, 'argv', argv), patch.object(capture.subprocess, 'run', return_value=result) as run, redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as failure:
+                        capture.main()
+                self.assertIn('java-version command failed', str(failure.exception))
+                self.assertEqual(run.call_count, 1)
+                attempts = list(output.glob('preflight-nonzero-*'))
+                self.assertEqual(len(attempts), index + 1)
+                latest = next(path for path in attempts if path not in old_files)
+                record = json.loads((latest / 'preflight-commands.json').read_bytes())
+                self.assertEqual(len(record), 1)
+                self.assertEqual(record[0]['command'], run.call_args.args[0])
+                self.assertEqual(record[0]['exitCode'], 7)
+                self.assertEqual(record[0]['stdoutSha256'], capture.sha256_bytes(stdout))
+                self.assertEqual(record[0]['stderrSha256'], capture.sha256_bytes(stderr))
+                self.assertEqual((latest / 'preflight-java-version.stdout.log').read_bytes(), stdout)
+                self.assertEqual((latest / 'preflight-java-version.stderr.log').read_bytes(), stderr)
+                for path, prior in old_files.items():
+                    self.assertEqual({p.name: p.read_bytes() for p in path.iterdir()}, prior)
+                old_files[latest] = {p.name: p.read_bytes() for p in latest.iterdir()}
+                for path, data in failure_files.items():
+                    self.assertEqual(path.read_bytes(), data)
+                failure_files = {path: path.read_bytes() for path in output.glob('finalize-failure*.json')}
+                self.assertEqual(len(failure_files), index + 1)
+                for name, data in originals.items():
+                    self.assertEqual((output / name).read_bytes(), data)
+                self.assertFalse((output / 'golden.json').exists())
+
+    def test_selected_finalize_nonzero_preserves_existing_golden(self):
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        target = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/artifacts/legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        fixture = Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            golden = output / 'golden.json'
+            golden.write_bytes(b'existing golden')
+            argv = ['capture.py', '--finalize', '--serial', '5615f742', '--fixture', str(fixture),
+                    '--apk', 'unused.apk', '--target-apk', str(target), '--frozen-source', 'source',
+                    '--java-home', 'java', '--output', str(output)]
+            failure = subprocess.CompletedProcess(['in-memory'], 7, b'out', b'err')
+            with patch.object(sys, 'argv', argv), patch.object(capture.subprocess, 'run', return_value=failure) as run, redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    capture.main()
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(golden.read_bytes(), b'existing golden')
+            self.assertEqual(len(list(output.glob('preflight-nonzero-*'))), 1)
+
+    def test_selected_finalize_semantic_error_does_not_fabricate_receipt(self):
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        fixture = Path(__file__).resolve().with_name('book-url-markers-fixtures-selected.json')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            argv = ['capture.py', '--finalize', '--serial', '5615f742', '--fixture', str(fixture),
+                    '--apk', 'unused.apk', '--target-apk', 'unused-target.apk', '--frozen-source', 'source',
+                    '--java-home', 'java', '--output', str(output)]
+            with patch.object(sys, 'argv', argv), patch.object(capture, 'selected_preflight', side_effect=ValueError('semantic mismatch')), redirect_stderr(io.StringIO()):
+                with self.assertRaisesRegex(SystemExit, 'semantic mismatch'):
+                    capture.main()
+            self.assertEqual(list(output.glob('preflight-nonzero-*')), [])
+            self.assertIn('semantic mismatch', (output / 'finalize-failure.json').read_text(encoding='utf-8'))
+
     def test_selected_finalize_timeout_retains_partial_streams_without_retry(self):
         import io
         from contextlib import redirect_stderr

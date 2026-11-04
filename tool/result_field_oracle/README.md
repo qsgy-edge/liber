@@ -186,8 +186,8 @@ admission to this collector's read-only `--verify-bundle` mode, which reruns the
 off-device preflight and reconciles its inputs with the retained command ledger,
 owner-derived cleanup and typed snapshots. Verification writes only to a fresh
 separate output directory; it never writes a golden or contacts a handset.
-Timed-out preflight commands retain their attempted command and partial streams
-in that derived failure evidence without retry. A selected comparison requires
+Timed-out and nonzero preflight commands retain their attempted command, status
+and available raw streams in derived failure evidence without retry. A selected comparison requires
 the actual native bundle and its raw receipts: a prepared APK or synthetic
 mechanics result is not native evidence.
 **The selected four-case native capture and native comparison remain NOT-RUN.**
