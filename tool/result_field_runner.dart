@@ -209,7 +209,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
               {
                 'name': hit.title,
                 'author': hit.author,
-                'bookUrl': hit.identityAddress,
+                'bookUrl': hit.addressContext!.comparisonAddress,
                 'identityAddress': hit.identityAddress,
                 'rawAddress': hit.rawAddress,
               },
@@ -237,7 +237,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         record['bookInfo'] = {
           'name': info.book.title,
           'author': info.book.author,
-          'bookUrl': info.book.identityAddress,
+          'bookUrl': info.book.addressContext!.comparisonAddress,
           'identityAddress': info.book.identityAddress,
           'rawAddress': info.book.rawAddress,
           'tocUrl': info.tocUrl,

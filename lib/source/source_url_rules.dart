@@ -922,7 +922,11 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
   if (at < 0) return '$resolved';
   final text = '$resolved';
   final encoded = text.indexOf('?');
-  return '${encoded < 0 ? text : text.substring(0, encoded)}${raw.substring(at)}';
+  final fragment = text.indexOf('#');
+  final end = fragment >= 0 && (encoded < 0 || fragment < encoded)
+      ? fragment
+      : encoded;
+  return '${end < 0 ? text : text.substring(0, end)}${raw.substring(at)}';
 }
 
 /// The textual URL the pinned native `URL(base, relativePath).toString()`

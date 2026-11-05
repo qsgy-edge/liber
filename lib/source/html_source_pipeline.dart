@@ -345,8 +345,9 @@ Future<Uri> _ordinaryChapterTarget(
   // URL constructor's own original spelling.
   final trimmed = sourceKotlinTrim(path);
   final parsed = Uri.tryParse(trimmed);
-  final resolved = parsed != null && parsed.hasScheme ? parsed : pageUrl;
-  final text = sourceUrlTextWithRawQuery(resolved, path);
+  final absolute = parsed != null && parsed.hasScheme;
+  final resolved = absolute ? parsed : pageUrl;
+  final text = sourceUrlTextWithRawQuery(resolved, absolute ? trimmed : path);
   // The frozen `AnalyzeUrl.kt:248-260` analyzes the query only on the GET path,
   // and a text no request consumed costs no charset: an unused unknown name is
   // not resolved here.
@@ -2641,7 +2642,13 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                       : ordinaryFallbackAddress;
                   final retained = fallbackText == null
                       ? null
-                      : retainedChapterPage(fallbackText, fallbackText, target);
+                      : retainedChapterPage(
+                          cachedFirstPage
+                              ? retainedLogicalText
+                              : ordinaryFallbackAddress,
+                          fallbackText,
+                          target,
+                        );
                   chapter = SourceChapter(
                     title,
                     target,

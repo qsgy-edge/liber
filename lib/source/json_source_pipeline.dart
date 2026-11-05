@@ -145,8 +145,9 @@ Future<Uri> _ordinaryChapterTarget(
   // URL constructor's own original spelling.
   final trimmed = sourceKotlinTrim(path);
   final parsed = Uri.tryParse(trimmed);
-  final resolved = parsed != null && parsed.hasScheme ? parsed : pageUrl;
-  final text = sourceUrlTextWithRawQuery(resolved, path);
+  final absolute = parsed != null && parsed.hasScheme;
+  final resolved = absolute ? parsed : pageUrl;
+  final text = sourceUrlTextWithRawQuery(resolved, absolute ? trimmed : path);
   // The frozen `AnalyzeUrl.kt:248-260` analyzes the query only on the GET path,
   // and a text no request consumed costs no charset: an unused unknown name is
   // not resolved here.
@@ -857,7 +858,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // `'null'` sent the request to `/null` (a real source's search, #94).
     final text = script == null
         ? split.path
-        : (await _evalJs(script, keyword, '$url'))?.toString() ?? split.path;
+        : (await _evalJs(
+                script,
+                keyword,
+                sourceUrlTextResolved(base, split.path),
+              ))?.toString() ??
+              split.path;
     url = _url(base, text);
     if (!split.options.isPost) {
       url = _url(
@@ -1828,7 +1834,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       : ordinaryFallbackAddress;
                   final retainedPage = fallbackText == null
                       ? null
-                      : retainedChapterPage(fallbackText, target);
+                      : retainedChapterPage(
+                          cachedFirstPage
+                              ? retainedLogicalText
+                              : ordinaryFallbackAddress,
+                          target,
+                          absoluteText: fallbackText,
+                        );
                   chapter = SourceChapter(
                     name,
                     target,

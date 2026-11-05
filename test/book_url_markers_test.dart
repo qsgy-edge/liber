@@ -419,6 +419,32 @@ void main() {
     );
   });
 
+  test('comparator uses full ordinary request text but volume target', () {
+    final corpus = _syntheticCorpus();
+    final golden = _syntheticEnvelope(corpus);
+    final product = _syntheticProduct(corpus);
+    final productRecord = (product['caseRecords'] as List).first as Map;
+    final productChapter =
+        (((productRecord['tableOfContents'] as Map)['chapters'] as List).first
+            as Map);
+    const complete = 'http://synthetic.test/c,{"charset":"gbk"}';
+    _chapters(golden).first['absoluteUrl'] = complete;
+    productChapter['persistedAddress'] = complete;
+    expect(_compare(golden, product, corpus)['status'], 'pass');
+    productChapter['persistedAddress'] = '$complete-wrong';
+    expect(_compare(golden, product, corpus)['status'], 'fail');
+    productChapter['persistedAddress'] = 'chapter0';
+    productChapter['address'] = 'chapter0';
+    productChapter['isVolume'] = true;
+    _chapters(golden).first
+      ..['url'] = 'chapter0'
+      ..['absoluteUrl'] = 'http://synthetic.test/c'
+      ..['isVolume'] = true;
+    expect(_compare(golden, product, corpus)['status'], 'pass');
+    productChapter['url'] = 'http://wrong.test/c';
+    expect(_compare(golden, product, corpus)['status'], 'fail');
+  });
+
   test('the comparator changes only its targeted C1 field', () {
     final corpus = _syntheticCorpus();
     final base = _syntheticEnvelope(corpus);
@@ -429,7 +455,7 @@ void main() {
       'isVip': 'chapters[0].isVip',
       'tag': 'chapters[0].tag',
       'raw address': 'chapters[0].url(raw vs address)',
-      'absolute target': 'chapters[0].absoluteUrl(vs url)',
+      'absolute target': 'chapters[0].absoluteUrl(vs persistedAddress)',
       'vip probe': 'sourceProbes.vipProbe',
       'raw query bytes': 'golden.requests[0].rawQuery',
     };

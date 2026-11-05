@@ -1811,9 +1811,11 @@ void _compareCases(
       _diff(
         differences,
         id,
-        'chapters[$index].absoluteUrl(vs url)',
+        pc['isVolume'] == true
+            ? 'chapters[$index].absoluteUrl(vs url)'
+            : 'chapters[$index].absoluteUrl(vs persistedAddress)',
         fc['absoluteUrl'],
-        pc['url'],
+        pc['isVolume'] == true ? pc['url'] : pc['persistedAddress'],
       );
     }
   }

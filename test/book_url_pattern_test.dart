@@ -339,6 +339,254 @@ void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
 
+  for (final json in [false, true]) {
+    test(
+      'information option fragment query reaches wire and retained content json=$json',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final origin = 'http://127.0.0.1:${server.port}';
+        final seen = <String>[];
+        final state = SourceHostState();
+        final selected = '$origin/wire#frag?probe=wire';
+        final address =
+            '$origin/book,${jsonEncode({'js': "source.put('infoRuns',String(Number(source.get('infoRuns')||'0')+1)); '$selected'"})}';
+        final source = json
+            ? _jsonSource(origin, searchUrl: '/search', bookUrlPattern: r'$^')
+            : _htmlSource(origin, searchUrl: '/search', bookUrlPattern: r'$^');
+        final page = json
+            ? jsonEncode({
+                'title': 'Book',
+                'toc': '',
+                'list': [
+                  {'label': 'Chapter', 'href': ''},
+                ],
+                'text': 'Body',
+              })
+            : '${_repair06Page(false, hit: false, chapter: '')}<div id="content">Body</div>';
+        server.listen((request) async {
+          seen.add(request.uri.toString());
+          if (request.uri.path == '/search') {
+            request.response.write(
+              json
+                  ? jsonEncode({
+                      'listing': [
+                        {'name': 'Book', 'url': address},
+                      ],
+                    })
+                  : '<div class="item"><h3><a href="${HtmlEscape().convert(address)}">Book</a></h3></div>',
+            );
+          } else if (request.uri.path == '/wire' &&
+              request.uri.query == 'probe=wire') {
+            request.response.write(page);
+          } else {
+            request.response.statusCode = 404;
+            request.response.write('unexpected');
+          }
+          await request.response.close();
+        });
+        final pipeline = json
+            ? JsonSourcePipeline(
+                source,
+                HttpSourceTransport(),
+                hostState: state,
+              )
+            : HtmlSourcePipeline(
+                source,
+                HttpSourceTransport(),
+                hostState: state,
+              );
+        try {
+          final hit = (await pipeline.search('book')).single;
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'infoRuns'),
+            ),
+            json ? '1' : isNull,
+          );
+          final info = await pipeline.bookInfo(hit);
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'infoRuns'),
+            ),
+            '1',
+          );
+          final (book, chapters) = await pipeline.tableOfContents(info);
+          final body = await pipeline.chapter(chapters.single, book: book);
+          expect(body.text, 'Body');
+          expect(seen, ['/search', '/wire?probe=wire']);
+          expect(
+            await state.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'infoRuns'),
+            ),
+            '1',
+          );
+        } finally {
+          pipeline.cancel();
+          await server.close(force: true);
+        }
+      },
+    );
+  }
+
+  for (final json in [false, true]) {
+    test(
+      'relative Unicode-tail book text reuses retained chapter json=$json',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final origin = 'http://127.0.0.1:${server.port}';
+        final seen = <String>[];
+        const rule = '@js: "book?q=word\\u2000"';
+        final source = json
+            ? _jsonSource(
+                origin,
+                searchUrl: '/search',
+                bookUrlPattern: r'$^',
+                bookUrlRule: rule,
+                tocRule: rule,
+              )
+            : _htmlSource(
+                origin,
+                searchUrl: '/search',
+                bookUrlPattern: r'$^',
+                bookUrlRule: rule,
+                tocRule: rule,
+              );
+        server.listen((request) async {
+          seen.add(request.uri.toString());
+          if (request.uri.path == '/search') {
+            request.response.write(
+              json
+                  ? jsonEncode({
+                      'listing': [
+                        {'name': 'Book', 'url': '/unused'},
+                      ],
+                    })
+                  : '<div class="item"><h3><a href="/unused">Book</a></h3></div>',
+            );
+          } else if (request.uri.path == '/book' &&
+              request.uri.query == 'q=word') {
+            request.response.write(
+              json
+                  ? jsonEncode({
+                      'title': 'Book',
+                      'toc': '',
+                      'list': [
+                        {'label': 'Chapter', 'href': ''},
+                      ],
+                      'text': 'Body',
+                    })
+                  : '${_repair06Page(false, hit: false, chapter: '')}<div id="content">Body</div>',
+            );
+          } else {
+            request.response.statusCode = 404;
+            request.response.write('unexpected');
+          }
+          await request.response.close();
+        });
+        final pipeline = json
+            ? JsonSourcePipeline(source, HttpSourceTransport())
+            : HtmlSourcePipeline(source, HttpSourceTransport());
+        try {
+          final hit = (await pipeline.search('book')).single;
+          expect(
+            hit.addressContext?.comparisonAddress,
+            '$origin/book?q=word\u2000',
+          );
+          final info = await pipeline.bookInfo(hit);
+          expect(
+            info.book.addressContext?.comparisonAddress,
+            '$origin/book?q=word\u2000',
+          );
+          final (book, chapters) = await pipeline.tableOfContents(info);
+          expect(chapters.single.address, '$origin/book?q=word\u2000');
+          expect(chapters.single.fetchContext?.retainedPage, isNotNull);
+          final body = await pipeline.chapter(chapters.single, book: book);
+          expect(body.text, 'Body');
+          expect(seen, ['/search', '/book?q=word']);
+          expect(chapters.single.address, '$origin/book?q=word\u2000');
+          expect(chapters.single.persistedAddress, '$origin/book?q=word');
+        } finally {
+          pipeline.cancel();
+          await server.close(force: true);
+        }
+      },
+    );
+  }
+
+  test(
+    'JSON chapter option script keeps raw query for GBK wire encoding',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final origin = 'http://127.0.0.1:${server.port}';
+      final state = SourceHostState();
+      final address =
+          '$origin/content?q=中,${jsonEncode({'charset': 'gbk', 'js': "source.put('contentRuns',String(Number(source.get('contentRuns')||'0')+1)); source.put('chapterSnapshot',JSON.stringify(chapter)); result"})}';
+      final seen = <String>[];
+      server.listen((request) async {
+        seen.add(request.uri.toString());
+        if (request.uri.path == '/search') {
+          request.response.write(
+            jsonEncode({
+              'listing': [
+                {'name': 'Book', 'url': '/book'},
+              ],
+            }),
+          );
+        } else if (request.uri.path == '/book') {
+          request.response.write(
+            _repair06Page(true, hit: false, chapter: address),
+          );
+        } else if (request.uri.path == '/content' &&
+            request.uri.query == 'q=%D6%D0') {
+          request.response.write(jsonEncode({'text': 'Body'}));
+        } else {
+          request.response.statusCode = 404;
+          request.response.write('unexpected');
+        }
+        await request.response.close();
+      });
+      final source = _jsonSource(
+        origin,
+        searchUrl: '/search',
+        bookUrlPattern: r'$^',
+      );
+      final pipeline = JsonSourcePipeline(
+        source,
+        HttpSourceTransport(),
+        hostState: state,
+      );
+      final key = sourceRuleVariableKey(origin, 'contentRuns');
+      try {
+        final hit = (await pipeline.search('book')).single;
+        final info = await pipeline.bookInfo(hit);
+        final (book, chapters) = await pipeline.tableOfContents(info);
+        expect(await state.entry(origin, key), isNull);
+        expect(chapters.single.persistedAddress, address);
+        final stableKey = chapters.single.storeKey;
+        expect(stableKey, '$origin/content?q=%E4%B8%AD');
+        final body = await pipeline.chapter(chapters.single, book: book);
+        expect(body.text, 'Body');
+        expect(seen, ['/search', '/book', '/content?q=%D6%D0']);
+        expect(await state.entry(origin, key), '1');
+        final snapshot = await state.entry(
+          origin,
+          sourceRuleVariableKey(origin, 'chapterSnapshot'),
+        );
+        expect(snapshot, contains('url'));
+        expect(snapshot, isNot(contains('fetchContext')));
+        expect(snapshot, isNot(contains('retainedPage')));
+        expect(snapshot, isNot(contains('requestAddress')));
+        expect(chapters.single.storeKey, stableKey);
+      } finally {
+        pipeline.cancel();
+        await server.close(force: true);
+      }
+    },
+  );
+
   group('a matched detail page (BookList.kt:53-70)', () {
     test(
       'the HTML pipeline returns its one book and reads no list rule',
@@ -6066,6 +6314,66 @@ void main() {
     }
   });
 
+  test(
+    'retained chapter response stays out of shelf rows after reopen',
+    () async {
+      const origin = 'http://source.test';
+      const retainedBody = 'retained-response-body-not-a-row';
+      final document = jsonEncode({
+        ...jsonDecode(
+              _repair06Page(
+                true,
+                book: '/catalog/book/1',
+                toc: '/catalog/book/1',
+                chapter: '',
+              ),
+            )
+            as Map<String, dynamic>,
+        'text': retainedBody,
+      });
+      final pages = _ContinuationPages(
+        document,
+        allowedPaths: const ['/catalog/search', '/catalog/book/1'],
+      );
+      final source = _jsonSource(
+        origin,
+        searchUrl: '/catalog/search',
+        bookUrlPattern: r'$^',
+      );
+      final root = await Directory.systemTemp.createTemp('liber-retained-row-');
+      var workspace = await Workspace.open(root: root);
+      var shelf = ShelfService(await workspace.openSpace());
+      final pipeline = _openContinuation(
+        true,
+        source,
+        pages,
+        state: shelf.hostState,
+      );
+      try {
+        final hit = (await pipeline.search('Book')).single;
+        final info = await pipeline.bookInfo(hit);
+        final (book, chapters) = await pipeline.tableOfContents(info);
+        expect(chapters.single.fetchContext?.retainedPage?.body, document);
+        expect(jsonEncode(book.toJson()), isNot(contains(retainedBody)));
+        await shelf.add(source, book, chapters);
+        final identity = book.identityAddress;
+        await workspace.close();
+        workspace = await Workspace.open(root: root);
+        shelf = ShelfService(await workspace.openSpace());
+        final row = (await shelf.find(origin, identity))!.chapters.single;
+        final serialized = jsonEncode(row.toJson());
+        expect(serialized, isNot(contains(retainedBody)));
+        expect(serialized, isNot(contains('fetchContext')));
+        expect(serialized, isNot(contains('retainedPage')));
+        expect(row.url, chapters.single.persistedAddress);
+      } finally {
+        pipeline.cancel();
+        await workspace.close();
+        await root.delete(recursive: true);
+      }
+    },
+  );
+
   // A chapter this shelf saved and a fresh analysis rebuilt from the stored row
   // carries no in-memory request context: its real content request analyses the
   // complete saved text, so the request's own option script runs once at that
@@ -6144,6 +6452,41 @@ void main() {
           final saved = (await shelf.find(origin, bookIdentity))!;
           expect(saved.chapters.single.chapterKey, original);
           expect(saved.chapters.single.url, '$original$tail');
+          expect(
+            jsonEncode(saved.chapters.single.toJson()),
+            isNot(contains('fetchContext')),
+          );
+          expect(
+            jsonEncode(saved.chapters.single.toJson()),
+            isNot(contains('retainedPage')),
+          );
+          expect(jsonEncode(info.book.toJson()), isNot(contains('infoHtml')));
+          await shelf.saveProgress(
+            saved.id,
+            chapterKey: original,
+            chapterIndex: 0,
+            textOffset: 37,
+          );
+          await shelf.hostState.putChapterVariable(
+            origin,
+            bookIdentity,
+            original,
+            '{"owned":"chapter"}',
+          );
+          const otherIdentity = '$origin/catalog/other-book';
+          await shelf.add(
+            source,
+            HtmlBook(url: Uri.parse(otherIdentity), title: 'Other'),
+            [chapter.withVariable('{"owned":"other"}')],
+          );
+          expect(
+            await shelf.hostState.chapterVariable(
+              origin,
+              otherIdentity,
+              original,
+            ),
+            '{"owned":"other"}',
+          );
           pipeline.cancel();
           await workspace.close();
 
@@ -6153,6 +6496,19 @@ void main() {
           expect(reopened.shelved, isTrue);
           expect(reopened.chapters.single.chapterKey, original);
           expect(reopened.chapters.single.url, '$original$tail');
+          expect(reopened.chapterKey, original);
+          expect(reopened.chapterIndex, 0);
+          expect(reopened.textOffset, 37);
+          expect(reopened.chapterName, 'Chapter');
+          expect(reopened.chapters.single.variable, '{"owned":"chapter"}');
+          expect(
+            await shelf.hostState.chapterVariable(
+              origin,
+              otherIdentity,
+              original,
+            ),
+            '{"owned":"other"}',
+          );
           final row = reopened.chapters.single;
           final restored = SourceChapter.fromAddress(
             row.name,
@@ -6204,6 +6560,54 @@ void main() {
           final after = (await shelf.find(origin, bookIdentity))!;
           expect(after.chapters.single.chapterKey, original);
           expect(after.chapters.single.url, '$original$tail');
+          final refreshedInfo = await pipeline.bookInfo(reopened.htmlBook);
+          final (refreshedBook, refreshedChapters) = await pipeline
+              .tableOfContents(refreshedInfo);
+          expect(refreshedChapters.single.variable, '{"owned":"chapter"}');
+          expect(refreshedChapters.single.storeKey, original);
+          expect(refreshedChapters.single.persistedAddress, '$original$tail');
+          await shelf.updateCatalog(origin, refreshedBook, refreshedChapters);
+          final refreshed = (await shelf.find(origin, bookIdentity))!;
+          expect(refreshed.id, saved.id);
+          expect(refreshed.chapterKey, original);
+          expect(refreshed.chapterIndex, 0);
+          expect(refreshed.textOffset, 37);
+          expect(refreshed.chapterName, 'Chapter');
+          expect(refreshed.chapters.single.variable, '{"owned":"chapter"}');
+          expect(
+            await shelf.hostState.chapterVariable(
+              origin,
+              bookIdentity,
+              original,
+            ),
+            '{"owned":"chapter"}',
+          );
+          expect(refreshed.chapters.single.url, '$original$tail');
+          expect(
+            await shelf.hostState.chapterVariable(
+              origin,
+              otherIdentity,
+              original,
+            ),
+            '{"owned":"other"}',
+          );
+          final again = await pipeline.chapter(
+            refreshedChapters.single,
+            book: refreshedBook,
+          );
+          expect(again.text, 'Body');
+          expect(
+            pages.requests.last.url.toString(),
+            scripted ? selected : original,
+          );
+          expect(pages.requests.last.headers['X-Chapter'], 'stored');
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'storedRuns'),
+            ),
+            scripted ? '2' : null,
+          );
         } finally {
           pipeline.cancel();
           await workspace.close();
