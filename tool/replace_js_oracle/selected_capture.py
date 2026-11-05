@@ -43,6 +43,32 @@ def parse_inventory(data):
     return sorted(lines[:-1])
 
 
+def validate_command_receipt(name, stdout, stderr, code, timedout):
+    """The same raw-command gate runs immediately live and on later admission."""
+    expected = (0, 1) if name == 'owned-pid' else (1,) if name in (
+        'target-before', 'target-preinstrument', 'target-after', 'target-final') else (0,)
+    _require(type(code) is int and code in expected and timedout is False, name + ': exit or timeout differs')
+    _require(isinstance(stdout, bytes) and isinstance(stderr, bytes), name + ': raw output absent')
+    if name in ('pull-reference', 'pull-harness') and stderr:
+        lines = [line.strip() for line in re.split(rb'[\r\n]+', stderr) if line.strip()]
+        _require(all(b'error' not in line.lower() and b'failed' not in line.lower() and
+                     (re.search(rb'\b1 file pulled, 0 skipped\.', line) or
+                      re.match(rb'^\[[ \t]*\d{1,3}%\]', line)) for line in lines), name + ': stderr is contradictory')
+    else:
+        _require(not stderr, name + ': stderr is contradictory')
+    _require(not any(line.strip().lower().startswith((b'error:', b'failure', b'failed',
+                     b'adb: error:', b'adb: failed', b'permission denied'))
+                     for line in stdout.splitlines()), name + ': stdout is contradictory')
+    if name in ('target-before', 'target-preinstrument', 'target-after', 'target-final'):
+        _require(not stdout.strip(), name + ': target process not absent')
+    if name in ('scratch-before', 'scratch-after', 'owned-cleanup', 'stop-owned'):
+        _require(not stdout.strip(), name + ': unexpected output')
+    if name in ('install', 'remove-harness'):
+        _require(stdout.decode('utf-8').splitlines().count('Success') == 1, name + ': success missing')
+    if name == 'instrumentation':
+        decode_instrumentation(stdout)
+
+
 def classify_process(output, exit_code, identity):
     """Only a proven absent process or the one reported owned PID is usable."""
     _require(type(identity.get('pid')) is int and identity['pid'] > 0, 'invalid owned PID')
@@ -68,12 +94,14 @@ def decode_instrumentation(data):
     _require(all(marker not in data for marker in (b'INSTRUMENTATION_FAILED', b'INSTRUMENTATION_ABORTED',
              b'INSTRUMENTATION_RESULT: shortMsg=', b'INSTRUMENTATION_RESULT: longMsg=', b'FAILURES!!!')),
              'instrumentation explicitly failed')
-    terminal = re.findall(rb'^INSTRUMENTATION_CODE:\s*(-?\d+)\s*$', data, re.M)
+    _require(data.count(b'INSTRUMENTATION_CODE:') == 1 and data.count(b'REPLACE_JS_ORACLE_BASE64=') == 1,
+             'instrumentation framing missing or repeated')
+    terminal = re.findall(rb'^INSTRUMENTATION_CODE:[ \t]*(-?\d+)[ \t]*\r?$', data, re.M)
     _require(terminal == [b'-1'], 'instrumentation terminal missing, repeated or failed')
-    payloads = re.findall(rb'REPLACE_JS_ORACLE_BASE64=([A-Za-z0-9+/=]+)', data)
-    _require(len(payloads) == 1, 'instrumentation payload missing or repeated')
+    payloads = re.findall(rb'^INSTRUMENTATION_RESULT: stream=REPLACE_JS_ORACLE_BASE64=([A-Za-z0-9+/=]+)\r?$', data, re.M)
+    _require(len(payloads) == 1, 'instrumentation payload malformed')
     try:
-        report = json.loads(base64.b64decode(payloads[0], validate=True).decode('utf-8'))
+        report = strict_json(base64.b64decode(payloads[0], validate=True).decode('utf-8'))
     except (ValueError, UnicodeError) as error:
         raise ValueError('instrumentation payload invalid') from error
     _require(isinstance(report, dict), 'instrumentation payload is not an object')
@@ -83,9 +111,9 @@ def decode_instrumentation(data):
 def check_provider_preflight(data):
     text = data.decode('utf-8', errors='strict')
     matches = re.findall(r'^\s*Current WebView package \(name, version\): \(([^,]+), ([^)]+)\)\s*$', text, re.M)
-    _require(matches == [(WEBVIEW_PACKAGE, WEBVIEW_VERSION)] and
-             re.search(r'^\s*WebView package dirty:\s*false\s*$', text, re.M) is not None and
-             re.search(r'^\s*Any WebView package installed:\s*true\s*$', text, re.M) is not None,
+    dirty = re.findall(r'^[ \t]*WebView package dirty:[ \t]*([^\r\n]*)\r?$', text, re.M)
+    installed = re.findall(r'^[ \t]*Any WebView package installed:[ \t]*([^\r\n]*)\r?$', text, re.M)
+    _require(matches == [(WEBVIEW_PACKAGE, WEBVIEW_VERSION)] and dirty == ['false'] and installed == ['true'],
              'current WebView provider differs, is dirty, or is ambiguous')
 
 
@@ -110,17 +138,25 @@ def _strict_object(pairs):
     return result
 
 
+def strict_json(data):
+    def reject_constant(value):
+        raise ValueError('invalid JSON constant: ' + value)
+    return json.loads(data, object_pairs_hook=_strict_object, parse_constant=reject_constant)
+
+
 def validate_owned_state(report, owner_data, role_owner_data, before_data, retained_data):
     """Check both durable owners and every original file before permitting removal."""
     identity = report['identity']
-    owner = json.loads(owner_data, object_pairs_hook=_strict_object)
-    role_owner = json.loads(role_owner_data, object_pairs_hook=_strict_object)
+    owner = strict_json(owner_data)
+    role_owner = strict_json(role_owner_data)
     _require(isinstance(owner, dict) and isinstance(role_owner, dict) and role_owner == identity,
              'durable role owner differs')
     for key in ('fixtureId', 'corpusVersion', 'corpusSha256Lf', 'targetPackage',
                 'targetApkSha256', 'harnessPackage', 'harnessApkSha256'):
         _require(owner.get(key) == identity.get(key), 'durable scratch owner differs: ' + key)
     registered = report['cleanup']['registeredPreferences']
+    _require(_strings(registered) and registered and len(registered) == len(set(registered)) and
+             all(safe_preference_name(name) for name in registered), 'unsafe owner preference names')
     _require(type(owner.get('createdAt')) is int and owner['createdAt'] > 0 and
              isinstance(owner.get('preferences'), list) and
              sorted(owner['preferences']) == sorted(registered), 'durable preference owner differs')
@@ -138,15 +174,23 @@ def validate_owned_state(report, owner_data, role_owner_data, before_data, retai
     _require(retained.get(scratch_prefix + b'owner.json') == hashlib.sha256(owner_data).hexdigest().encode('ascii') and
              retained.get(scratch_prefix + b'role-owner.json') == hashlib.sha256(role_owner_data).hexdigest().encode('ascii'),
              'owned manifests absent from or differ from retained inventory')
+    probe = report['isolation']['preferenceProbe']['name']
+    _require(probe in registered and ('shared_prefs/' + probe + '.xml').encode('ascii') in retained,
+             'scoped preference probe missing from owner or retained inventory')
     return registered
+
+
+def safe_preference_name(name):
+    return (isinstance(name, str) and name.startswith(PREFIX) and len(name) > len(PREFIX) and
+            re.fullmatch(r'[A-Za-z0-9_.:+-]+', name) is not None and '..' not in name)
 
 
 def cleanup_script(registered):
     _require(_strings(registered) and registered and len(set(registered)) == len(registered) and
-             all(x.startswith(PREFIX) and re.fullmatch(r'[A-Za-z0-9_]+', x) for x in registered),
-             'unsafe cleanup preference names')
-    files = ' '.join('shared_prefs/' + name + suffix for name in sorted(registered) for suffix in ('.xml', '.xml.bak'))
-    return ('set -e; if pidof com.legado.app.debug >/dev/null; then exit 30; fi; '
+             all(safe_preference_name(x) for x in registered), 'unsafe cleanup preference names')
+    files = ' '.join("'shared_prefs/" + name + suffix + "'" for name in sorted(registered) for suffix in ('.xml', '.xml.bak'))
+    return ('set -e; set +e; p=$(pidof com.legado.app.debug 2>&1); code=$?; set -e; '
+            '[ "$code" -eq 1 ] && [ -z "$p" ] || exit 30; '
             'test -d cache/liber-replace-js-selected; test ! -L cache; '
             'test ! -L cache/liber-replace-js-selected; test -d shared_prefs; test ! -L shared_prefs; '
             'rm -rf cache/liber-replace-js-selected; rm -f ' + files)
@@ -196,7 +240,9 @@ def check_selected_report(fixture, report, binding, role):
              host.get('method') == fixture['hostInitialization']['method'] and
              host.get('registeredWrappers') == wrappers, 'host initialization unverified')
     startup = report.get('startupContainment') or {}
-    _require(startup.get('intercepted') == 1 and startup.get('handled') == 1 and
+    _require(startup.get('service') == 'shortcut' and startup.get('provider') == 'io.legado.app.api.ReaderProvider' and
+             type(startup.get('intercepted')) is int and startup['intercepted'] == 1 and
+             type(startup.get('handled')) is int and startup['handled'] == 1 and
              startup.get('beforeBinding') is True, 'startup containment unverified')
     isolation = report.get('isolation') or {}
     probe = isolation.get('preferenceProbe') or {}
@@ -209,6 +255,8 @@ def check_selected_report(fixture, report, binding, role):
              isolation.get('files') == root + '/files' and isolation.get('database') == root + '/databases/legado.db' and
              isolation.get('preferencesPrefix') == PREFIX and
              report.get('roleOwner') == root + '/role-owner.json' and report.get('roleOwnerIdentity') == identity and
+             probe.get('name') == PREFIX + 'liber_replace_js_probe' and
+             probe.get('mode') == 'written-once-and-retained-in-the-owned-set' and
              probe.get('registered') is True and probe.get('committed') is True and
              probe.get('scopedFile') is True and probe.get('installationFile') is False,
              'scratch routing unverified')
@@ -217,6 +265,7 @@ def check_selected_report(fixture, report, binding, role):
     computed = webview.get('computed') or {}
     actual = webview.get('actual') or {}
     provider = webview.get('provider') or {}
+    candidate = webview.get('candidate') or {}
     canonical_root = webview.get('scratchCanonicalRoot')
     _require(canonical_root in ('/data/user/0/com.legado.app.debug/cache/liber-replace-js-selected',
                                 '/data/data/com.legado.app.debug/cache/liber-replace-js-selected'), 'WebView scratch root differs')
@@ -224,11 +273,13 @@ def check_selected_report(fixture, report, binding, role):
              webview.get('suffixStatus') == 'set-in-Instrumentation.newApplication' and
              webview.get('applicationClass') == 'io.liber.oracle.nested.GuardedReaderApplication' and
              webview.get('resolvedApplicationContextIsApplication') is True and webview.get('deviceProtected') is False and
+             type(config.get('classPresent')) is bool and type(config.get('configSet')) is bool and
+             (config['classPresent'] or not config['configSet']) and
              'dataDirectoryBasePath' in config and config['dataDirectoryBasePath'] is None and
              'cacheDirectoryBasePath' in config and config['cacheDirectoryBasePath'] is None and
              config.get('dataDirectorySuffixKey') is False and
              provider.get('package') == WEBVIEW_PACKAGE and provider.get('versionName') == WEBVIEW_VERSION and
-             type(provider.get('versionCode')) is int and provider['versionCode'] > 0 and
+             type(provider.get('versionCode')) is int and provider['versionCode'] > 0 and candidate == provider and
              computed == {'data': canonical_root + '/dir-webview_' + WEBVIEW_SUFFIX,
                           'cache': canonical_root + '/cache/webview_' + WEBVIEW_SUFFIX, 'textures': canonical_root + '/dir-textures'} and
              all(actual.get(key) == computed[key] for key in ('data', 'cache', 'textures')) and
@@ -239,8 +290,12 @@ def check_selected_report(fixture, report, binding, role):
     _require(isinstance(before, dict) and before == after and
              set(before) == {'app_webview', 'app_webview_suffixed'} and
              all(isinstance(value, dict) and type(value.get('exists')) is bool and
-                 type(value.get('directory')) is bool and type(value.get('length')) is int and
-                 type(value.get('lastModified')) is int for value in before.values()), 'WebView installation metadata changed')
+                 type(value.get('directory')) is bool and type(value.get('length')) is int and value['length'] >= 0 and
+                 type(value.get('lastModified')) is int and value['lastModified'] >= 0 for value in before.values()) and
+             before['app_webview'].get('path') in ('/data/user/0/com.legado.app.debug/app_webview', '/data/data/com.legado.app.debug/app_webview') and
+             before['app_webview_suffixed'].get('path') in ('/data/user/0/com.legado.app.debug/app_webview_' + WEBVIEW_SUFFIX,
+                                                            '/data/data/com.legado.app.debug/app_webview_' + WEBVIEW_SUFFIX),
+             'WebView installation metadata changed or malformed')
     settings = report.get('settingsBefore') or {}
     _require('backupPath' in settings and settings['backupPath'] is None and
              isinstance(settings.get('paragraphIndent'), str) and
@@ -249,10 +304,17 @@ def check_selected_report(fixture, report, binding, role):
              type(settings.get('chineseConverterType')) is int, 'scratch settings unverified')
     entry = report.get('entryPoints') or {}
     _require('java.lang.String io.legado.app.data.entities.BookChapter.getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)' in entry.get('getDisplayTitle', '') and
-             'io.legado.app.help.book.BookContent io.legado.app.help.book.ContentProcessor.getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)' in entry.get('getContent', ''), 'selected entry ABI differs')
+             'io.legado.app.help.book.BookContent io.legado.app.help.book.ContentProcessor.getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)' in entry.get('getContent', '') and
+             'io.legado.app.data.entities.ReplaceBook io.legado.app.data.entities.Book.toReplaceBook()' in entry.get('toReplaceBook', '') and
+             all(entry.get(key) == 'public io.legado.app.data.entities.' + cls + '()' for key, cls in
+                 (('bookConstructor', 'Book'), ('chapterConstructor', 'BookChapter'), ('ruleConstructor', 'ReplaceRule'))) and
+             'java.util.List io.legado.app.help.book.BookContent.getTextList()' in entry.get('textList', '') and
+             'boolean io.legado.app.help.book.BookContent.getSameTitleRemoved()' in entry.get('sameTitleRemoved', '') and
+             'java.util.List io.legado.app.help.book.BookContent.getEffectiveReplaceRules()' in entry.get('effectiveRules', ''),
+             'selected entry ABI differs')
     owner = report.get('terminalOwner') or {}
     _require(owner.get('scope') == 'Coroutine.DEFAULT' and owner.get('rootActive') is True and
-             owner.get('rootCompleted') is False and owner.get('baselineChildren') == 0 and
+             owner.get('rootCompleted') is False and type(owner.get('baselineChildren')) is int and owner['baselineChildren'] == 0 and
              'kotlinx.coroutines.Job.getChildren()' in owner.get('childrenMethod', '') and
              'kotlinx.coroutines.Job.isCompleted()' in owner.get('completionMethod', ''),
              'coroutine owner not verified')
@@ -264,7 +326,7 @@ def check_selected_report(fixture, report, binding, role):
              cleanup.get('hostCleanup') == 'required-after-owned-process-termination' and
              'preferencesRemoved' not in cleanup and
              _strings(registered) and bool(registered) and len(registered) == len(set(registered)) and
-             all(x.startswith(PREFIX) and re.fullmatch(r'[A-Za-z0-9_]+', x) for x in registered),
+             all(safe_preference_name(x) for x in registered),
              'native closure or retained ownership not verified')
     ids = [c['id'] for c in fixture['cases']]
     _require(len(ids) == 13 and len(set(ids)) == 13 and ids[-1] == 'js-timeout', 'full corpus differs')
@@ -275,7 +337,9 @@ def check_selected_report(fixture, report, binding, role):
              [r.get('id') for r in rows] == expected, 'fixed role row order differs')
     for row in rows:
         selection, calls = row.get('selection'), row.get('readerCalls')
-        _require(row.get('status') == 'observed' and isinstance(row.get('title'), str) and
+        _require(row.get('status') == 'observed' and row.get('error') is None and
+                 (row.get('timedOut') is None or row.get('timedOut') is False) and
+                 type(row.get('elapsedMillis')) is int and row['elapsedMillis'] >= 0 and isinstance(row.get('title'), str) and
                  isinstance(row.get('content'), str) and _strings(row.get('textList')) and
                  '\n'.join(row['textList']) == row['content'] and
                  type(row.get('sameTitleRemoved')) is bool and type(row.get('useReplaceRule')) is bool and
@@ -334,8 +398,8 @@ def preflight(apk, reference_apk, source, sdk, java_home, output):
     root = Path(__file__).resolve().parents[2]
     tool = Path(__file__).parent
     fixture_bytes = (tool / 'fixtures-selected.json').read_bytes()
-    fixture = json.loads(fixture_bytes)
-    original = json.loads((tool / 'fixtures.json').read_bytes())
+    fixture = strict_json(fixture_bytes)
+    original = strict_json((tool / 'fixtures.json').read_bytes())
     _require(fixture['cases'] == original['cases'], 'selected inputs differ from original')
     _require(fixture.get('baselineCommit') == 'a7d37f1707a70a459ad708f4fe79341d1e42d716' and
              fixture.get('target', {}).get('package') == TARGET and
@@ -375,7 +439,7 @@ def preflight(apk, reference_apk, source, sdk, java_home, output):
                 _require(archive.namelist().count(name) == 1, 'missing or duplicate APK member: ' + name)
             _require(archive.read('assets/fixtures-selected.json') == fixture_bytes, 'packaged fixture differs')
             provenance_bytes = archive.read('assets/provenance.json')
-            provenance = json.loads(provenance_bytes.decode('utf-8-sig'))
+            provenance = strict_json(provenance_bytes.decode('utf-8-sig'))
             dex = archive.read('classes.dex')
         fixture_hash = hashlib.sha256(fixture_bytes).hexdigest()
         _require(provenance.get('baselineCommit') == fixture['baselineCommit'] and
@@ -401,6 +465,12 @@ def preflight(apk, reference_apk, source, sdk, java_home, output):
         aapt = Path(sdk) / 'build-tools/35.0.1/aapt.exe'
         java = Path(java_home) / 'bin/java.exe'
         signer = Path(sdk) / 'build-tools/35.0.1/lib/apksigner.jar'
+        idsig = Path(str(apk) + '.idsig')
+        _require(idsig.is_file(), 'signed APK sidecar missing')
+        verifier = output / 'VerifyV4.java'
+        verifier.write_text('''import java.io.File;\nimport com.android.apksig.ApkVerifier;\nclass VerifyV4 { public static void main(String[] a) throws Exception {\n  ApkVerifier.Result r = new ApkVerifier.Builder(new File(a[0])).setV4SignatureFile(new File(a[1])).build().verify();\n  System.out.println("verified=" + r.isVerified() + " v4=" + r.isVerifiedUsingV4Scheme());\n  if (!r.isVerified() || !r.isVerifiedUsingV4Scheme()) { System.err.println(r.getErrors()); System.exit(1); }\n} }\n''', encoding='utf-8')
+        _require('verified=true v4=true' in run('harness-v4', [java, '--class-path', signer, verifier, apk, idsig]),
+                 'APK v4 sidecar verification failed')
         manifest = run('harness-manifest', [aapt, 'dump', 'xmltree', apk, 'AndroidManifest.xml'])
         check_manifest(manifest)
         signer_text = run('harness-signature', [java, '-jar', signer, 'verify', '--verbose', '--print-certs', apk])
@@ -413,7 +483,7 @@ def preflight(apk, reference_apk, source, sdk, java_home, output):
         digests = re.findall(r'Signer #(\d+) certificate SHA-256 digest: ([0-9a-f]{64})', target_sign, re.I)
         _require([(n, x.lower()) for n, x in digests] == [('1', '954abf2c4e9528b2226457d598e2ff9d1b608f83ac00c52ad66e023d61b2f2ad')], 'reference signer differs')
         result = {'status': 'preflight-only', 'fixtureSha256': fixture_hash, 'targetApkSha256': _sha(reference_apk),
-                  'harnessApkSha256': _sha(apk), 'provenanceAssetSha256': hashlib.sha256(provenance_bytes).hexdigest(),
+                  'harnessApkSha256': _sha(apk), 'harnessIdsigSha256': _sha(idsig), 'provenanceAssetSha256': hashlib.sha256(provenance_bytes).hexdigest(),
                   'corpusAssetSha256': fixture_hash, 'corpusSha256Lf': fixture_hash, 'provenance': provenance}
         return result
     finally:
@@ -423,7 +493,7 @@ def preflight(apk, reference_apk, source, sdk, java_home, output):
 def verify_bundle(directory, fixture, binding, role):
     """Admit only complete physical logs for one fixed selected lifetime."""
     directory = Path(directory)
-    manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+    manifest = strict_json((directory / 'manifest.json').read_text(encoding='utf-8'))
     _require(manifest.get('status') == 'observed' and manifest.get('role') == role and
              manifest.get('serial') == '5615f742' and manifest.get('error') is None and
              manifest.get('failure') is None and (manifest.get('timedOut') is None or manifest.get('timedOut') is False),
@@ -442,16 +512,13 @@ def verify_bundle(directory, fixture, binding, role):
     serial = manifest['serial']
     for item in commands:
         name = item['name']
-        expected_codes = (0, 1) if name == 'owned-pid' else (1,) if name in ('target-before', 'target-preinstrument', 'target-after', 'target-final') else (0,)
-        _require(type(item.get('exitCode')) is int and item['exitCode'] in expected_codes and item.get('timeout') is False and
-                 isinstance(item.get('argv'), list) and item['argv'][:3] == ['adb', '-s', serial],
-                 'physical command failed or is not owned: ' + name)
+        _require(isinstance(item.get('argv'), list) and item['argv'][:3] == ['adb', '-s', serial],
+                 'physical command is not owned: ' + name)
         stdout = (directory / (name + '.stdout')).read_bytes()
         stderr = (directory / (name + '.stderr')).read_bytes()
-        _require((not stderr or (name in ('pull-reference', 'pull-harness') and
-                  b'error' not in stderr.lower() and b'failed' not in stderr.lower())) and
-                 item.get('stdoutSha256') == hashlib.sha256(stdout).hexdigest() and
+        _require(item.get('stdoutSha256') == hashlib.sha256(stdout).hexdigest() and
                  item.get('stderrSha256') == hashlib.sha256(stderr).hexdigest(), 'command log differs: ' + name)
+        validate_command_receipt(name, stdout, stderr, item.get('exitCode'), item.get('timeout'))
         logs[name] = stdout
     def argv(name):
         return commands[names.index(name)]['argv'][3:]
@@ -496,6 +563,7 @@ def verify_bundle(directory, fixture, binding, role):
              'pulled APK command differs')
     _require(argv('install') == ['install', '-r', str(directory / 'harness.apk')], 'install command differs')
     _require(_sha(directory / 'reference.apk') == binding['targetApkSha256'] and
+             _sha(directory / 'harness.apk.idsig') == binding['harnessIdsigSha256'] and
              _sha(directory / 'harness.apk') == binding['harnessApkSha256'] and
              _sha(directory / 'installed-harness.apk') == binding['harnessApkSha256'], 'physical APK differs')
     for name in ('harness-existing', 'harness-removed'):
@@ -508,7 +576,7 @@ def verify_bundle(directory, fixture, binding, role):
             line.lower().startswith(('failure', 'error', 'failed')) for line in lines),
             'install/remove not confirmed: ' + name)
     report = decode_instrumentation(logs['instrumentation'])
-    _require(report == json.loads((directory / 'observation.json').read_text(encoding='utf-8')), 'raw payload differs from observation')
+    _require(report == strict_json((directory / 'observation.json').read_text(encoding='utf-8')), 'raw payload differs from observation')
     check_selected_report(fixture, report, binding, role)
     _require(logs['owner-before'] == logs['owner-after'] and logs['role-owner-before'] == logs['role-owner-after'],
              'durable owner changed during termination')
@@ -536,7 +604,7 @@ def check_backup(fixture, backup):
         _require(archive.namelist().count(source['entry']) == 1, 'backup entry missing or duplicated')
         entry = archive.read(source['entry'])
     _require(hashlib.sha256(entry).hexdigest() == source['entrySha256'], 'backup entry differs')
-    rules = json.loads(entry.decode('utf-8'))
+    rules = strict_json(entry.decode('utf-8'))
     _require(len(rules) == source['ruleCount'], 'backup rule count differs')
     indexed = {r['id']: r for r in rules}
     for row in fixture['cases']:
@@ -554,7 +622,7 @@ def capture(args):
     _require(args.role in ('main12', 'timeout') and args.serial == '5615f742', 'unapproved role or handset')
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
-    fixture = json.loads(Path(__file__).with_name('fixtures-selected.json').read_bytes())
+    fixture = strict_json(Path(__file__).with_name('fixtures-selected.json').read_bytes())
     manifest = {'status': 'not-run', 'role': args.role, 'serial': args.serial, 'commands': []}
     installed = False
     def run(name, argv, timeout=60, expected_code=0):
@@ -570,14 +638,17 @@ def capture(args):
                                      'stdoutSha256': hashlib.sha256(stdout).hexdigest(),
                                      'stderrSha256': hashlib.sha256(stderr).hexdigest()})
         allowed = expected_code if isinstance(expected_code, tuple) else (expected_code,)
-        _require(code in allowed and not timedout, name + ' failed or timed out')
+        _require(code in allowed, name + ' failed')
+        validate_command_receipt(name, stdout, stderr, code, timedout)
         return stdout
     try:
         check_backup(fixture, args.backup)
         binding = preflight(args.apk, args.reference_apk, args.frozen_source, args.android_sdk, args.java_home,
                             output / 'preflight')
         shutil.copyfile(args.apk, output / 'harness.apk')
-        _require(_sha(output / 'harness.apk') == binding['harnessApkSha256'], 'copied harness differs')
+        shutil.copyfile(str(args.apk) + '.idsig', output / 'harness.apk.idsig')
+        _require(_sha(output / 'harness.apk') == binding['harnessApkSha256'] and
+                 _sha(output / 'harness.apk.idsig') == binding['harnessIdsigSha256'], 'copied harness pair differs')
         _require(run('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint']).decode().strip() == FINGERPRINT,
                  'device fingerprint differs')
         check_provider_preflight(run('webview-provider', ['shell', 'dumpsys', 'webviewupdate']))
@@ -650,7 +721,7 @@ def capture(args):
             payloads = re.findall(rb'REPLACE_JS_ORACLE_BASE64=([A-Za-z0-9+/=]+)', raw_path.read_bytes())
             if len(payloads) == 1:
                 try:
-                    partial = json.loads(base64.b64decode(payloads[0], validate=True).decode('utf-8'))
+                    partial = strict_json(base64.b64decode(payloads[0], validate=True).decode('utf-8'))
                     (output / 'failure-observation.json').write_text(
                         json.dumps(partial, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
                     manifest['failureObservation'] = 'unadmitted; see raw instrumentation and failure-observation.json'
@@ -682,7 +753,7 @@ def main(argv=None):
     try:
         _require(not (args.preflight_only and args.verify_only), 'incompatible modes')
         if args.verify_only:
-            fixture = json.loads(Path(__file__).with_name('fixtures-selected.json').read_bytes())
+            fixture = strict_json(Path(__file__).with_name('fixtures-selected.json').read_bytes())
             check_backup(fixture, args.backup)
             binding = preflight(args.apk, args.reference_apk, args.frozen_source, args.android_sdk, args.java_home, args.output)
             result = {'main12': None, 'timeout': None, 'states': {'main12': 'not-run', 'timeout': 'not-run'},
@@ -692,7 +763,7 @@ def main(argv=None):
                 if directory is None:
                     continue
                 path = directory.resolve()
-                metadata = json.loads((path / 'manifest.json').read_text(encoding='utf-8'))
+                metadata = strict_json((path / 'manifest.json').read_text(encoding='utf-8'))
                 if metadata.get('status') == 'failed':
                     result['states'][role] = 'unadmitted-failure-claim'
                     result['recovery'][role] = 'not-run: independent recovery is not verified by this verifier'

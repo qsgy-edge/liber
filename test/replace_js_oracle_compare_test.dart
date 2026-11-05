@@ -52,6 +52,28 @@ void main() {
   int indexOf(String id) =>
       (fixture['cases'] as List).indexWhere((row) => row['id'] == id);
 
+  test('timeout policy requires exactly the product preserved text', () {
+    expect(selectedTimeoutPreservesText('　　正文广告。', '　　正文广告。'), isTrue);
+    expect(selectedTimeoutPreservesText('　　改动。', '　　正文广告。'), isFalse);
+    expect(selectedTimeoutPreservesText(null, '　　正文广告。'), isFalse);
+  });
+
+  test('binding policy refuses arbitrary body and requires diagnostic tokens', () {
+    const actual =
+        '　　result=string \$1=undefined \$name=undefined book=object source=object java=object sourceKey=string';
+    const other =
+        '　　result=string \$1=undefined \$name=undefined book=undefined source=undefined java=object sourceKey=undefined';
+    expect(selectedBindingDifference(actual, other), isTrue);
+    expect(selectedBindingDifference(actual, '　　广告'), isFalse);
+    expect(
+      selectedBindingDifference(
+        actual,
+        other.replaceFirst('result=string', 'result=number'),
+      ),
+      isFalse,
+    );
+  });
+
   test('selected fixture cannot bypass the physical bundle verifier', () {
     fixture['baselineCommit'] = 'a7d37f1707a70a459ad708f4fe79341d1e42d716';
     synthetic['baselineCommit'] = fixture['baselineCommit'];

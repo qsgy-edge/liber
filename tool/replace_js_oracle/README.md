@@ -280,14 +280,17 @@ Both roles preflight the selected WebView provider: an early unique suffix and
 the scratch application context must produce owned canonical PathUtils data,
 cache and texture paths. The OS6 provider `com.google.android.webview`
 `158.0.8127.2` is a historical candidate pin, not a current observation; a
-future approved capture must first verify the actual provider and then record
-the in-process containment receipt. This is not WebView behavior parity.
+future approved capture must first verify the actual provider, check the
+noninitializing candidate in process, and then record the loaded provider and
+in-process containment receipt. This is not WebView behavior parity.
 
 Build against the stage JDK/source/APK with `build.ps1 -Selected -FrozenSource
 <source> -ReferenceApk <apk> -JavaHome <jdk> -OutputDirectory <fresh-dir>`.
 Use `capture.py --selected --preflight-only --apk <harness> --reference-apk
 <reference> --frozen-source <source> --android-sdk <sdk> --java-home <jdk>
---output <fresh-dir>` for offline inspection. A later separately approved device
+--output <fresh-dir>` for offline inspection. The signed APK and its matching
+`.idsig` are verified as a v4 pair and staged together for incremental install.
+A later separately approved device
 operation requires `--role main12` or `--role timeout`; failure preserves raw
 logs and owned residue and requires independent recovery, not an automatic
 cleanup retry. Do not run a handset from this tooling checkpoint.

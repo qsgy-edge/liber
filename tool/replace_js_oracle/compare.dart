@@ -422,7 +422,31 @@ Future<void> _selectedMain(List<String> args) async {
   await NativeLibrary.initialize(libraryPath: args[0]);
   try {
     final product = await observeProduct(fixture, typedNotices: true);
-    final rows = _compareSelected(fixture, product, admitted);
+    final timeout = (fixture['cases'] as List).cast<Map>().singleWhere(
+      (row) => row['id'] == 'js-timeout',
+    );
+    final unmodified = <String, dynamic>{
+      ...fixture,
+      'cases': [
+        <String, dynamic>{
+          ...Map<String, dynamic>.from(timeout),
+          'rules': <Object>[],
+        },
+      ],
+    };
+    final preserved = (await observeProduct(
+      unmodified,
+      typedNotices: true,
+    )).single;
+    if (preserved['status'] != 'observed' || preserved['content'] is! String) {
+      throw const FormatException('Product preserved-text control failed');
+    }
+    final rows = _compareSelected(
+      fixture,
+      product,
+      admitted,
+      preserved['content'] as String,
+    );
     final counts = <String, int>{
       for (final state in ['pass', 'fail', 'notCompared', 'not-run'])
         state: rows.where((row) => row['status'] == state).length,
@@ -472,6 +496,9 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
       !notices.every(
         (n) =>
             n is Map &&
+            n.length == 2 &&
+            n.containsKey('code') &&
+            n.containsKey('arguments') &&
             n['code'] is String &&
             (n['code'] as String).isNotEmpty &&
             n['arguments'] is List &&
@@ -484,23 +511,42 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
       : id == 'js-timeout'
       ? 'replaceRuleTimedOut'
       : null;
-  if (requiredCode == null) return true;
-  return notices.any((n) {
-    if (n is! Map || n['code'] != requiredCode || n['arguments'] is! List) {
-      return false;
-    }
-    final args = n['arguments'] as List;
-    if (args.length != 2 || args[0] != id) return false;
-    return id == 'js-timeout'
-        ? args[1] == 200
-        : args[1] is String && (args[1] as String).trim().isNotEmpty;
-  });
+  final relevant = notices
+      .where(
+        (n) =>
+            n is Map &&
+            (n['code'] == 'replaceRuleFailed' ||
+                n['code'] == 'replaceRuleTimedOut'),
+      )
+      .toList();
+  if (requiredCode == null) return relevant.isEmpty;
+  if (relevant.length != 1) return false;
+  final n = relevant.single as Map;
+  if (n['code'] != requiredCode || n['arguments'] is! List) return false;
+  final args = n['arguments'] as List;
+  if (args.length != 2 || args[0] != id) return false;
+  return id == 'js-timeout'
+      ? args[1] == 200
+      : args[1] is String && (args[1] as String).trim().isNotEmpty;
+}
+
+/// Product timeout policy retains the exact separately processed source text.
+bool selectedTimeoutPreservesText(Object? actual, String preserved) =>
+    actual is String && actual == preserved;
+
+/// Only differences inside the fixed binding diagnostic qualify for that policy.
+bool selectedBindingDifference(String product, String native) {
+  final shape = RegExp(
+    r'^　　result=string \$1=undefined \$name=undefined book=(object|undefined) source=(object|undefined) java=(object|undefined) sourceKey=(string|undefined)$',
+  );
+  return shape.hasMatch(product) && shape.hasMatch(native);
 }
 
 List<Map<String, Object?>> _compareSelected(
   Map<String, dynamic> fixture,
   List<Map<String, Object?>> product,
   Map<String, dynamic> admitted,
+  String timeoutPreservedText,
 ) {
   final cases = (fixture['cases'] as List).cast<Map>();
   if (product.length != cases.length ||
@@ -560,13 +606,23 @@ List<Map<String, Object?>> _compareSelected(
         (expected['content'] as String).contains('RegexTimeoutException');
     final onlyContent = differences.every((d) => d['field'] == 'content');
     final String status;
-    if (actual['status'] != 'observed' || !validNotices) {
+    if (actual['status'] != 'observed' ||
+        !validNotices ||
+        (id == 'js-timeout' &&
+            !selectedTimeoutPreservesText(
+              actual['content'],
+              timeoutPreservedText,
+            ))) {
       status = 'fail';
     } else if (expected == null) {
       status = 'not-run';
     } else if (differences.isNotEmpty &&
         !(onlyContent &&
-            (id == 'js-binding-surface' ||
+            ((id == 'js-binding-surface' &&
+                    selectedBindingDifference(
+                      actual['content'] as String,
+                      expected['content'] as String,
+                    )) ||
                 (id == 'js-timeout' && timeoutObserved)))) {
       status = 'fail';
     } else if (id == 'js-timeout' && !timeoutObserved) {

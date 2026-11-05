@@ -42,6 +42,10 @@ final class SelectedWebViewContainment {
             throw new IllegalStateException("resolved WebView context paths differ");
         File installation = new File(target.getApplicationInfo().dataDir);
         JSONObject before = profile(installation);
+        // The standard query reports the candidate without loading WebView.
+        PackageInfo candidate = WebView.getCurrentWebViewPackage();
+        if (candidate == null || !PROVIDER.equals(candidate.packageName) || !VERSION.equals(candidate.versionName))
+            throw new IllegalStateException("candidate WebView provider differs from pin before initialization");
         // Same provider initialization used by AUTH; no cookie operation or navigation.
         CookieManager manager = CookieManager.getInstance();
         PackageInfo provider = WebView.getCurrentWebViewPackage();
@@ -58,7 +62,9 @@ final class SelectedWebViewContainment {
             .put("resolvedApplicationContextIsApplication", true).put("deviceProtected", false)
             .put("computed", new JSONObject().put("data", data.getCanonicalPath()).put("cache", cache.getCanonicalPath())
                 .put("textures", textures.getCanonicalPath()))
-            .put("actual", actual).put("provider", new JSONObject().put("package", provider.packageName)
+            .put("actual", actual).put("candidate", new JSONObject().put("package", candidate.packageName)
+                .put("versionName", candidate.versionName).put("versionCode", candidate.getLongVersionCode()))
+            .put("provider", new JSONObject().put("package", provider.packageName)
                 .put("versionName", provider.versionName).put("versionCode", provider.getLongVersionCode()))
             .put("realProfileBefore", before).put("realProfileAfter", after)
             .put("pathSource", "org.chromium.base.PathUtils via provider classloader");

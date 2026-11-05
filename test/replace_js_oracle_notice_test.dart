@@ -108,6 +108,13 @@ void main() {
         [
           {
             'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'boom'],
+            'extra': true,
+          },
+        ],
+        [
+          {
+            'code': 'replaceRuleFailed',
             'arguments': ['other', 'Error: boom'],
           },
         ],
@@ -120,6 +127,19 @@ void main() {
       ]) {
         expect(selectedNoticeIntegrity('js-error', value), isFalse);
       }
+      expect(
+        selectedNoticeIntegrity('js-error', [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'boom'],
+          },
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': ['js-error', 200],
+          },
+        ]),
+        isFalse,
+      );
       expect(
         selectedNoticeIntegrity('js-timeout', [
           {
