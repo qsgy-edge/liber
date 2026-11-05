@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:liber/source/source_url_rules.dart';
 import 'package:pointycastle/export.dart';
 
 const _selectedCorpusHashes = {
@@ -1817,6 +1818,30 @@ void _compareCases(
         fc['absoluteUrl'],
         pc['isVolume'] == true ? pc['url'] : pc['persistedAddress'],
       );
+      if (fc['isVolume'] == false) {
+        final nativeAddress = fc['absoluteUrl'] as String;
+        final boundary = sourceUrlOptionBoundaryOf(nativeAddress);
+        final path = sourceKotlinTrim(
+          boundary == null
+              ? nativeAddress
+              : nativeAddress.substring(0, boundary),
+        );
+        final target = Uri.parse(path);
+        if (!target.hasScheme || target.host.isEmpty) {
+          throw StateError(
+            '$id.chapters[$index].absoluteUrl has no absolute target',
+          );
+        }
+        for (final field in ['url', 'storeKey']) {
+          _diff(
+            differences,
+            id,
+            'chapters[$index].$field(vs native pre-option target)',
+            '$target',
+            pc[field],
+          );
+        }
+      }
     }
   }
   if (frozen['chapter'] == null || product['chapter'] == null) {

@@ -310,33 +310,12 @@ String _sourceUrlStringBase(String text) {
   return comma < 0 ? text : text.substring(0, comma);
 }
 
-/// The request target an ordinary empty chapter keeps when the TOC page's own
-/// address stands in for a rule that answered nothing.
+/// The pre-option target an ordinary empty chapter keeps when the TOC page's
+/// own address stands in for a rule that answered nothing.
 ///
-/// The frozen empty-URL fallback writes the page's own finished address as the
-/// chapter text (`BookChapterList.kt:229-243`), and this carrier keeps that text
-/// in `rawAddress` so its options persist exactly once. The content stage then
-/// analyzes that text as a URL (`WebBook.kt:320-330`): the target is its text
-/// before the `,{…}` boundary, resolved against the same finished text, with its
-/// query encoded by the `charset` option that text declares
-/// (`AnalyzeUrl.kt:214-222`, `:279-334`).
-///
-/// Only the method and charset that text declares are read, not the rest of its
-/// options: an unsupported family stays the fetch consumer's refusal
-/// (`SourceChapter.options`), not this conversion's. Whether the query is
-/// consumed at all is the completed request's fact. [informationAddress] says
-/// whether this text is the information request's own address — the frozen
-/// `book.tocUrl = baseUrl` fallback — and a `js` option in such a text already
-/// replaced that request's URL, so then only [completedRequest]'s surviving
-/// query says whether a query was consumed. A declared TOC address was never
-/// that request's text and keeps its own declaration. No script runs here.
-Future<Uri> _ordinaryChapterTarget(
-  String fallbackAddress,
-  Uri pageUrl, {
-  required bool informationAddress,
-  required Uri completedRequest,
-}) async {
-  final facts = sourceUrlTargetOptionFacts(fallbackAddress);
+/// The complete request text remains separate; identity reads no request option
+/// and does not depend on the information request that supplied the page.
+Uri _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) {
   final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
   final path = boundary == null
       ? fallbackAddress
@@ -345,19 +324,7 @@ Future<Uri> _ordinaryChapterTarget(
   // URL constructor's own original spelling.
   final trimmed = sourceKotlinTrim(path);
   final parsed = Uri.tryParse(trimmed);
-  final absolute = parsed != null && parsed.hasScheme;
-  final resolved = absolute ? parsed : pageUrl;
-  final text = sourceUrlTextWithRawQuery(resolved, absolute ? trimmed : path);
-  // The frozen `AnalyzeUrl.kt:248-260` analyzes the query only on the GET path,
-  // and a text no request consumed costs no charset: an unused unknown name is
-  // not resolved here.
-  final consumesQuery =
-      facts.method != 'POST' &&
-      (!facts.scripted || !informationAddress || completedRequest.hasQuery);
-  final target = consumesQuery
-      ? await encodeSourceQuery(text, charset: facts.charset)
-      : text;
-  return Uri.tryParse(target) ?? pageUrl;
+  return parsed != null && parsed.hasScheme ? parsed : pageUrl.resolve(path);
 }
 
 /// The frozen four-stage HTML pipeline over the Rust rule adapter.
@@ -2625,12 +2592,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                   );
                 } else {
                   final target = cachedFirstPage
-                      ? await _ordinaryChapterTarget(
-                          ordinaryFallbackAddress,
-                          pageUrl,
-                          informationAddress: info.tocAddress.isEmpty,
-                          completedRequest: bookUrl,
-                        )
+                      ? _ordinaryChapterTarget(ordinaryFallbackAddress, pageUrl)
                       : pageUrl;
                   // The fallback text is this chapter's completed native text
                   // (`BookChapterList.kt:229-243`); on a retained page it is the

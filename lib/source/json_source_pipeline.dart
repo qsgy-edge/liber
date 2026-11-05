@@ -110,33 +110,12 @@ bool _isPendingAddressText(String address) {
   return block != null && block.start < (boundary ?? address.length);
 }
 
-/// The request target an ordinary empty chapter keeps when the TOC page's own
-/// address stands in for a rule that answered nothing.
+/// The pre-option target an ordinary empty chapter keeps when the TOC page's
+/// own address stands in for a rule that answered nothing.
 ///
-/// The frozen empty-URL fallback writes the page's own finished address as the
-/// chapter text (`BookChapterList.kt:229-243`), and this carrier keeps that text
-/// in `rawAddress` so its options persist exactly once. The content stage then
-/// analyzes that text as a URL (`WebBook.kt:320-330`): the target is its text
-/// before the `,{…}` boundary, resolved against the same finished text, with its
-/// query encoded by the `charset` option that text declares
-/// (`AnalyzeUrl.kt:214-222`, `:279-334`).
-///
-/// Only the method and charset that text declares are read, not the rest of its
-/// options: an unsupported family stays the fetch consumer's refusal
-/// (`SourceChapter.options`), not this conversion's. Whether the query is
-/// consumed at all is the completed request's fact. [informationAddress] says
-/// whether this text is the information request's own address — the frozen
-/// `book.tocUrl = baseUrl` fallback — and a `js` option in such a text already
-/// replaced that request's URL, so then only [completedRequest]'s surviving
-/// query says whether a query was consumed. A declared TOC address was never
-/// that request's text and keeps its own declaration. No script runs here.
-Future<Uri> _ordinaryChapterTarget(
-  String fallbackAddress,
-  Uri pageUrl, {
-  required bool informationAddress,
-  required Uri completedRequest,
-}) async {
-  final facts = sourceUrlTargetOptionFacts(fallbackAddress);
+/// The complete request text remains separate; identity reads no request option
+/// and does not depend on the information request that supplied the page.
+Uri _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) {
   final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
   final path = boundary == null
       ? fallbackAddress
@@ -145,19 +124,7 @@ Future<Uri> _ordinaryChapterTarget(
   // URL constructor's own original spelling.
   final trimmed = sourceKotlinTrim(path);
   final parsed = Uri.tryParse(trimmed);
-  final absolute = parsed != null && parsed.hasScheme;
-  final resolved = absolute ? parsed : pageUrl;
-  final text = sourceUrlTextWithRawQuery(resolved, absolute ? trimmed : path);
-  // The frozen `AnalyzeUrl.kt:248-260` analyzes the query only on the GET path,
-  // and a text no request consumed costs no charset: an unused unknown name is
-  // not resolved here.
-  final consumesQuery =
-      facts.method != 'POST' &&
-      (!facts.scripted || !informationAddress || completedRequest.hasQuery);
-  final target = consumesQuery
-      ? await encodeSourceQuery(text, charset: facts.charset)
-      : text;
-  return Uri.tryParse(target) ?? pageUrl;
+  return parsed != null && parsed.hasScheme ? parsed : pageUrl.resolve(path);
 }
 
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
@@ -840,10 +807,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (captureIdentity != null) {
       capturedPreOption = _url(base, split.path);
       if (!split.options.isPost) {
+        final fragment = split.path.indexOf('#');
+        final query = split.path.indexOf('?');
+        final fragmentFirst = fragment >= 0 && (query < 0 || fragment < query);
+        final identityInput = fragmentFirst
+            ? split.path.substring(0, fragment)
+            : split.path;
+        final identityUrl = fragmentFirst
+            ? capturedPreOption.removeFragment()
+            : capturedPreOption;
         capturedPreOption = _url(
           base,
           await encodeSourceQuery(
-            sourceUrlTextWithRawQuery(capturedPreOption, split.path),
+            sourceUrlTextWithRawQuery(identityUrl, identityInput),
             charset: split.options.charset,
           ),
         ).removeFragment();
@@ -1815,11 +1791,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
                       // chapter text; a fetched TOC page keeps its actual
                       // response target.
                       cachedFirstPage
-                      ? await _ordinaryChapterTarget(
+                      ? _ordinaryChapterTarget(
                           ordinaryFallbackAddress,
                           tocPage.url,
-                          informationAddress: info.tocAddress.isEmpty,
-                          completedRequest: bookUrl,
                         )
                       : tocPage.url;
                   // The frozen empty-URL fallback writes this TOC page's own

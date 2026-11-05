@@ -516,6 +516,47 @@ void main() {
     );
   }
 
+  test('relative JSON book fragment query keeps pre-option identity', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final origin = 'http://127.0.0.1:${server.port}';
+    final seen = <String>[];
+    final tail = ',${jsonEncode({'js': "'$origin/wire#frag?probe=wire'"})}';
+    server.listen((request) async {
+      seen.add(request.uri.toString());
+      if (request.uri.path == '/search') {
+        request.response.write(
+          jsonEncode({
+            'listing': [
+              {'name': 'Book', 'url': '/book#frag?probe=wire$tail'},
+            ],
+          }),
+        );
+      } else if (request.uri.path == '/wire' &&
+          request.uri.query == 'probe=wire') {
+        request.response.write(_repair06Page(true, hit: false));
+      } else {
+        request.response.statusCode = 404;
+      }
+      await request.response.close();
+    });
+    final pipeline = JsonSourcePipeline(
+      _jsonSource(origin, searchUrl: '/search', bookUrlPattern: r'$^'),
+      HttpSourceTransport(),
+    );
+    try {
+      final hit = (await pipeline.search('book')).single;
+      expect(hit.preOptionUrl.toString(), '$origin/book');
+      expect(hit.identityAddress, '$origin/book$tail');
+      final info = await pipeline.bookInfo(hit);
+      expect(info.book.title, 'Book');
+      expect(info.book.identityAddress, '$origin/book$tail');
+      expect(seen, ['/search', '/wire?probe=wire']);
+    } finally {
+      pipeline.cancel();
+      await server.close(force: true);
+    }
+  });
+
   test(
     'JSON chapter option script keeps raw query for GBK wire encoding',
     () async {
@@ -3784,9 +3825,8 @@ void main() {
       }
     }
 
-    // The same empty chapter keeps the query the information request actually
-    // sent: the supported `charset` option of its own tail decides the target's
-    // encoding once, while the stored text keeps its raw spelling.
+    // Information applies its declared charset on the wire; the retained
+    // chapter keeps the pre-option URI and the complete raw request text.
     for (final json in [false, true]) {
       for (final value in ['unicode', 'preencoded', 'ascii']) {
         test('repair07 empty charset json=$json value=$value', () async {
@@ -3804,6 +3844,8 @@ void main() {
               })}';
           final raw = '$origin/book?q=$query$tail';
           final wire = '$origin/book?q=$encoded';
+          final preOption =
+              '$origin/book?q=${value == 'unicode' ? '%E4%B8%AD' : encoded}';
           final page = _repair06Page(json, chapter: '');
           final document = json
               ? jsonEncode({
@@ -3858,10 +3900,10 @@ void main() {
             );
             expect(
               chapter.url.toString(),
-              wire,
-              reason: 'target: named charset target',
+              preOption,
+              reason: 'target: pre-option chapter identity',
             );
-            expect(chapter.storeKey, wire);
+            expect(chapter.storeKey, preOption);
             expect(chapter.persistedAddress, raw);
             final body = await pipeline.chapter(chapter, book: info.book);
             expect(body.text, 'Body');
@@ -4323,14 +4365,8 @@ void main() {
   });
 
   group('repair08 fallback target and comparison consumers', () {
-    // An ordinary empty chapter's target is its own fallback text analyzed as a
-    // URL (`WebBook.kt:320-330` over `AnalyzeUrl.kt:214-222`), so the charset it
-    // consumes is the one that text declares — not the information request's.
-    // This adapter's own book-request map is what a retained information page
-    // usually lacks here: a special pattern hit, an empty-list fallback and a
-    // fresh pipeline handoff keep no entry, so the carrying request's evaluated
-    // options never arrive and the fallback text's own `gbk` still decides its
-    // target, store key and persisted tail.
+    // The information wire consumes its charset while retained chapter
+    // identity stays pre-option across pattern and fresh-pipeline handoffs.
     for (final json in [false, true]) {
       for (final flow in ['pattern', 'fallback', 'fresh-pattern']) {
         for (final valueCase in ['unicode', 'preencoded', 'ascii']) {
@@ -4347,6 +4383,8 @@ void main() {
               final raw = '$origin/book?q=$value$tail';
               final wire =
                   '$origin/book?q=${valueCase == 'ascii' ? 'word' : '%D6%D0'}';
+              final preOption =
+                  '$origin/book?q=${valueCase == 'unicode' ? '%E4%B8%AD' : value}';
               final page = _repair06Page(json, chapter: '', hit: false);
               final document = json
                   ? jsonEncode({
@@ -4414,11 +4452,11 @@ void main() {
                 );
                 expect(
                   '${chapter.url}',
-                  wire,
+                  preOption,
                   reason:
-                      'target: the empty target uses the charset its own fallback text declares',
+                      'target: retained identity precedes charset processing',
                 );
-                expect(chapter.storeKey, wire);
+                expect(chapter.storeKey, preOption);
                 expect(chapter.persistedAddress, raw);
                 final body = await pipeline.chapter(chapter, book: info.book);
                 expect(body.text, 'Body');
@@ -4436,10 +4474,8 @@ void main() {
       }
     }
 
-    // The information request and the TOC text it returns can declare different
-    // charsets: the first option object of the book scalar decides the request,
-    // the whole scalar decides the comparison, and the retained TOC text's own
-    // `gbk` still decides the empty chapter's target.
+    // Information and TOC option charsets remain distinct from the retained
+    // chapter's pre-option identity and its complete persisted text.
     for (final json in [false, true]) {
       for (final sameCharset in [false, true]) {
         test(
@@ -4450,7 +4486,7 @@ void main() {
             final book =
                 'book/1,{"charset":"$first"}/../target?q=中,{"charset":"gbk"}';
             const rawToc = '$origin/catalog/book/target?q=中,{"charset":"gbk"}';
-            const wire = '$origin/catalog/book/target?q=%D6%D0';
+            const preOption = '$origin/catalog/book/target?q=%E4%B8%AD';
             final page = _repair06Page(
               json,
               book: book,
@@ -4520,11 +4556,10 @@ void main() {
               );
               expect(
                 '${chapter.url}',
-                wire,
-                reason:
-                    'target: the empty target consumes its own fallback charset',
+                preOption,
+                reason: 'target: fallback identity precedes charset processing',
               );
-              expect(chapter.storeKey, wire);
+              expect(chapter.storeKey, preOption);
               expect(chapter.persistedAddress, rawToc);
               final body = await pipeline.chapter(chapter, book: info.book);
               expect(body.text, 'Body');
@@ -4540,11 +4575,8 @@ void main() {
       }
     }
 
-    // A declared TOC address is the TOC page's own text, not the text of the
-    // information request that returned it: its method, charset and option
-    // script are its own facts, and a script in it has not run. The empty
-    // chapter still targets its own `gbk` query, and no information request's
-    // query history reaches it.
+    // A declared TOC's options remain pending; its empty chapter identity
+    // precedes charset processing and information-request history.
     for (final json in [false, true]) {
       for (final scripted in [false, true]) {
         test(
@@ -4615,7 +4647,7 @@ void main() {
                 scripted ? 'result' : null,
                 reason: 'premise: the declared TOC keeps its own script',
               );
-              const expected = '$origin/catalog/book/target?q=%D6%D0';
+              const expected = '$origin/catalog/book/target?q=%E4%B8%AD';
               expect(
                 '${chapter.url}',
                 expected,
@@ -4987,78 +5019,88 @@ void main() {
       }
     }
 
-    // Whether the completed request consumed its query decides whether the
-    // empty chapter's own query is encoded: the kept-query script control keeps
-    // the GBK target, and the discarded one keeps the URI's default spelling.
     for (final json in [false, true]) {
-      for (final keepQuery in [false, true]) {
-        test('repair08 query consumption json=$json kept=$keepQuery', () async {
-          const origin = 'http://source.test';
-          final replacement = keepQuery ? '$origin/wire?q=中' : '$origin/wire';
-          final tail =
-              ',${jsonEncode({'charset': 'gbk', 'js': "source.put('once',String(Number(source.get('once')||'0')+1)); '$replacement'"})}';
-          final raw = '$origin/book?q=中$tail';
-          final pages = _ContinuationPages(
-            _repair06Page(json, chapter: ''),
-            allowedPaths: const ['/wire'],
-          );
+      test(
+        'retained fallback identity ignores information wire json=$json',
+        () async {
+          final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          final origin = 'http://127.0.0.1:${server.port}';
+          final seen = <String>[];
+          final page = json
+              ? jsonEncode({
+                  ...jsonDecode(_repair06Page(true, chapter: ''))
+                      as Map<String, dynamic>,
+                  'text': 'Body',
+                })
+              : '${_repair06Page(false, chapter: '')}<div id="content">Body</div>';
+          server.listen((request) async {
+            seen.add(request.uri.toString());
+            request.response.write(page);
+            await request.response.close();
+          });
+          final script =
+              "source.put('once',String(Number(source.get('once')||'0')+1)); '$origin/wire'+source.get('choice')";
+          final raw =
+              '$origin/book?q=中,${jsonEncode({'charset': 'gbk', 'js': script})}';
           final source = json ? _jsonSource(origin) : _htmlSource(origin);
-          final state = SourceHostState();
-          final pipeline = _openContinuation(json, source, pages, state: state);
+          final keys = <String>[];
+          final saved = <String>[];
           try {
-            final info = await pipeline.bookInfo(
-              HtmlBook(
-                url: Uri.parse('$origin/book?q=中'),
-                rawAddress: raw,
-                title: 'Book',
-              ),
-            );
-            expect(info.book.title, 'Book');
-            expect(
-              info.bookOptions.charset,
-              'gbk',
-              reason: 'premise: the request kept its charset option',
-            );
-            expect(
-              info.tocHtml,
-              isNotEmpty,
-              reason: 'premise: information reused as TOC',
-            );
-            expect(info.tocUrl, raw, reason: 'premise: raw fallback text');
-            expect(
-              '${pages.requests.single.url}',
-              keepQuery ? '$origin/wire?q=%D6%D0' : '$origin/wire',
-              reason: 'premise: the script result decided the real request',
-            );
-            expect(
-              await state.entry(origin, sourceRuleVariableKey(origin, 'once')),
-              '1',
-              reason: 'premise: one script effect for the request',
-            );
-            final (_, chapters) = await pipeline.tableOfContents(info);
-            final chapter = chapters.single;
-            final expected =
-                '$origin/book?q=${keepQuery ? '%D6%D0' : '%E4%B8%AD'}';
-            expect(chapter.address, raw);
-            expect(
-              '${chapter.url}',
-              expected,
-              reason:
-                  'target: the conversion keeps whether the request consumed its query',
-            );
-            expect(chapter.storeKey, expected);
-            expect(chapter.persistedAddress, raw);
-            expect(pages.requests.length, 1);
-            expect(
-              await state.entry(origin, sourceRuleVariableKey(origin, 'once')),
-              '1',
-              reason: 'target: the script is not re-executed',
-            );
+            for (final choice in ['', '#frag?probe=wire']) {
+              final state = SourceHostState();
+              await state.putEntry(
+                origin,
+                sourceRuleVariableKey(origin, 'choice'),
+                choice,
+              );
+              final pipeline = json
+                  ? JsonSourcePipeline(
+                      source,
+                      HttpSourceTransport(),
+                      hostState: state,
+                    )
+                  : HtmlSourcePipeline(
+                      source,
+                      HttpSourceTransport(),
+                      hostState: state,
+                    );
+              try {
+                final info = await pipeline.bookInfo(
+                  HtmlBook(
+                    url: Uri.parse('$origin/book?q=中'),
+                    rawAddress: raw,
+                    title: 'Book',
+                  ),
+                );
+                final (book, chapters) = await pipeline.tableOfContents(info);
+                final chapter = chapters.single;
+                keys.add(chapter.storeKey);
+                saved.add(chapter.persistedAddress);
+                expect(chapter.storeKey, '$origin/book?q=%E4%B8%AD');
+                expect(chapter.persistedAddress, raw);
+                expect(
+                  (await pipeline.chapter(chapter, book: book)).text,
+                  'Body',
+                );
+                expect(
+                  await state.entry(
+                    origin,
+                    sourceRuleVariableKey(origin, 'once'),
+                  ),
+                  '1',
+                );
+              } finally {
+                pipeline.cancel();
+              }
+            }
+            expect(seen, ['/wire', '/wire?probe=wire']);
+            expect(keys.toSet(), hasLength(1));
+            expect(saved, [raw, raw]);
           } finally {
-            pipeline.cancel();
+            await server.close(force: true);
           }
-        });
-      }
+        },
+      );
     }
   });
 

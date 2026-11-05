@@ -431,6 +431,33 @@ void main() {
     _chapters(golden).first['absoluteUrl'] = complete;
     productChapter['persistedAddress'] = complete;
     expect(_compare(golden, product, corpus)['status'], 'pass');
+    for (final fields in [
+      <String>['url'],
+      <String>['storeKey'],
+      <String>['url', 'storeKey'],
+    ]) {
+      final changed = _clone(product);
+      final row =
+          (((((changed['caseRecords'] as List).first as Map)['tableOfContents']
+                          as Map)['chapters']
+                      as List)
+                  .first
+              as Map);
+      for (final field in fields) {
+        row[field] = 'http://wrong.test/c';
+      }
+      final result = _compare(golden, changed, corpus);
+      expect(result['status'], 'fail', reason: '$fields');
+      final differences = (result['differences'] as List).map(
+        (item) => item['field'],
+      );
+      for (final field in fields) {
+        expect(
+          differences,
+          contains('chapters[0].$field(vs native pre-option target)'),
+        );
+      }
+    }
     productChapter['persistedAddress'] = '$complete-wrong';
     expect(_compare(golden, product, corpus)['status'], 'fail');
     productChapter['persistedAddress'] = 'chapter0';
