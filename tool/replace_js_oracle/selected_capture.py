@@ -63,8 +63,18 @@ def validate_command_receipt(name, stdout, stderr, code, timedout):
         _require(not stdout.strip(), name + ': target process not absent')
     if name in ('scratch-before', 'scratch-after', 'owned-cleanup', 'stop-owned'):
         _require(not stdout.strip(), name + ': unexpected output')
+    if name in ('pull-reference', 'pull-harness'):
+        combined = stdout + b'\n' + stderr
+        headings = re.findall(rb'\b[0-9]+ files? pulled\b', combined)
+        summaries = re.findall(rb'\b[0-9]+ files? pulled, [0-9]+ skipped\.', combined)
+        _require(headings == [b'1 file pulled'] and summaries == [b'1 file pulled, 0 skipped.'], name + ': transfer summary differs')
     if name in ('install', 'remove-harness'):
-        _require(stdout.decode('utf-8').splitlines().count('Success') == 1, name + ': success missing')
+        lines = stdout.decode('utf-8').splitlines()
+        _require(lines.count('Success') == 1, name + ': success missing')
+        if name == 'install':
+            modes = [line.strip() for line in lines if line.strip().startswith('Performing ')]
+            _require(modes == ['Performing Incremental Install'] and lines.index('Performing Incremental Install') < lines.index('Success'),
+                     'install: incremental mode not confirmed')
     if name == 'instrumentation':
         decode_instrumentation(stdout)
 
@@ -94,12 +104,12 @@ def decode_instrumentation(data):
     _require(all(marker not in data for marker in (b'INSTRUMENTATION_FAILED', b'INSTRUMENTATION_ABORTED',
              b'INSTRUMENTATION_RESULT: shortMsg=', b'INSTRUMENTATION_RESULT: longMsg=', b'FAILURES!!!')),
              'instrumentation explicitly failed')
-    _require(data.count(b'INSTRUMENTATION_CODE:') == 1 and data.count(b'REPLACE_JS_ORACLE_BASE64=') == 1,
-             'instrumentation framing missing or repeated')
-    terminal = re.findall(rb'^INSTRUMENTATION_CODE:[ \t]*(-?\d+)[ \t]*\r?$', data, re.M)
-    _require(terminal == [b'-1'], 'instrumentation terminal missing, repeated or failed')
-    payloads = re.findall(rb'^INSTRUMENTATION_RESULT: stream=REPLACE_JS_ORACLE_BASE64=([A-Za-z0-9+/=]+)\r?$', data, re.M)
-    _require(len(payloads) == 1, 'instrumentation payload malformed')
+    lines = [line for line in data.splitlines() if line.strip()]
+    _require(len(lines) == 2 and re.fullmatch(rb'INSTRUMENTATION_CODE:[ \t]*-1[ \t]*', lines[1]) is not None,
+             'instrumentation frame must be one ordered result followed by success terminal')
+    payload = re.fullmatch(rb'INSTRUMENTATION_RESULT: stream=REPLACE_JS_ORACLE_BASE64=([A-Za-z0-9+/=]+)', lines[0])
+    _require(payload is not None, 'instrumentation result malformed')
+    payloads = [payload.group(1)]
     try:
         report = strict_json(base64.b64decode(payloads[0], validate=True).decode('utf-8'))
     except (ValueError, UnicodeError) as error:
@@ -110,10 +120,19 @@ def decode_instrumentation(data):
 
 def check_provider_preflight(data):
     text = data.decode('utf-8', errors='strict')
-    matches = re.findall(r'^\s*Current WebView package \(name, version\): \(([^,]+), ([^)]+)\)\s*$', text, re.M)
+    headings = re.findall(r'^[ \t]*Current WebView package[^\r\n]*', text, re.M)
+    matches = re.findall(r'^[ \t]*Current WebView package \(name, version\): \(([^,]+), ([^)]+)\)[ \t]*\r?$', text, re.M)
+    pinned = [line.strip() for line in text.splitlines() if re.match(
+        r'^[ \t]*(?:\S+ package )?' + re.escape(WEBVIEW_PACKAGE) + r'(?:[ \t(]|$)', line)]
+    pinned_valid = (r'Valid package ' + re.escape(WEBVIEW_PACKAGE) + r' \(versionName: ' +
+                    re.escape(WEBVIEW_VERSION) + r', versionCode: [0-9]+, targetSdkVersion: [0-9]+\) is +installed/enabled for all users')
     dirty = re.findall(r'^[ \t]*WebView package dirty:[ \t]*([^\r\n]*)\r?$', text, re.M)
     installed = re.findall(r'^[ \t]*Any WebView package installed:[ \t]*([^\r\n]*)\r?$', text, re.M)
-    _require(matches == [(WEBVIEW_PACKAGE, WEBVIEW_VERSION)] and dirty == ['false'] and installed == ['true'],
+    _require(len(headings) == 1 and matches == [(WEBVIEW_PACKAGE, WEBVIEW_VERSION)] and
+             len(pinned) == 1 and re.fullmatch(pinned_valid, pinned[0]) is not None and
+             len(re.findall(r'^[ \t]*WebView package dirty[^\r\n]*', text, re.M)) == 1 and
+             len(re.findall(r'^[ \t]*Any WebView package installed[^\r\n]*', text, re.M)) == 1 and
+             dirty == ['false'] and installed == ['true'],
              'current WebView provider differs, is dirty, or is ambiguous')
 
 
@@ -124,6 +143,16 @@ def _sha(path):
 def _require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def typed_equal(left, right):
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(typed_equal(left[k], right[k]) for k in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(typed_equal(a, b) for a, b in zip(left, right))
+    return left == right
 
 
 def _strings(value):
@@ -149,11 +178,11 @@ def validate_owned_state(report, owner_data, role_owner_data, before_data, retai
     identity = report['identity']
     owner = strict_json(owner_data)
     role_owner = strict_json(role_owner_data)
-    _require(isinstance(owner, dict) and isinstance(role_owner, dict) and role_owner == identity,
+    _require(isinstance(owner, dict) and isinstance(role_owner, dict) and typed_equal(role_owner, identity),
              'durable role owner differs')
     for key in ('fixtureId', 'corpusVersion', 'corpusSha256Lf', 'targetPackage',
                 'targetApkSha256', 'harnessPackage', 'harnessApkSha256'):
-        _require(owner.get(key) == identity.get(key), 'durable scratch owner differs: ' + key)
+        _require(typed_equal(owner.get(key), identity.get(key)), 'durable scratch owner differs: ' + key)
     registered = report['cleanup']['registeredPreferences']
     _require(_strings(registered) and registered and len(registered) == len(set(registered)) and
              all(safe_preference_name(name) for name in registered), 'unsafe owner preference names')
@@ -210,7 +239,7 @@ def check_selected_report(fixture, report, binding, role):
              report.get('cleanupFailure') is None and report.get('error') is None and
              (report.get('timedOut') is None or report.get('timedOut') is False), 'selected instrumentation failed or timed out')
     for key in ('fixtureId', 'corpusVersion', 'baselineCommit'):
-        _require(report.get(key) == fixture.get(key), 'selected report identity differs: ' + key)
+        _require(typed_equal(report.get(key), fixture.get(key)), 'selected report identity differs: ' + key)
     _require(report.get('fixtureSha256') == binding['corpusSha256Lf'] and
              report.get('boundary') == fixture['comparisonBoundary'] and
              report.get('role') == role and report.get('fingerprint') == FINGERPRINT and
@@ -220,9 +249,9 @@ def check_selected_report(fixture, report, binding, role):
                 'provenanceAssetSha256', 'targetApkSha256'):
         _require(identity.get(key) == binding[key], 'selected measured identity differs: ' + key)
     _require(identity.get('fixtureId') == fixture['fixtureId'] and
-             identity.get('corpusVersion') == fixture['corpusVersion'] and
+             typed_equal(identity.get('corpusVersion'), fixture['corpusVersion']) and
              identity.get('targetPackage') == TARGET and identity.get('harnessPackage') == PACKAGE and
-             identity.get('role') == role and identity.get('pid') == report.get('pid') and
+             identity.get('role') == role and type(identity.get('pid')) is int and typed_equal(identity.get('pid'), report.get('pid')) and
              isinstance(identity.get('processStartTicks'), str) and
              re.fullmatch(r'[0-9]+', identity['processStartTicks']) is not None,
              'selected identity role, process or packages differ')
@@ -233,7 +262,7 @@ def check_selected_report(fixture, report, binding, role):
     provenance = report.get('provenance') or {}
     _require(provenance.get('baselineCommit') == fixture['baselineCommit'] and
              provenance.get('corpusAssetSha256') == binding['corpusAssetSha256'] and
-             ('provenance' not in binding or provenance == binding['provenance']), 'provenance differs')
+             ('provenance' not in binding or typed_equal(provenance, binding['provenance'])), 'provenance differs')
     host = report.get('hostInitialization') or {}
     wrappers = {r['type']: r['factory'] for r in fixture['hostInitialization']['registrations']}
     _require(host.get('verified') is True and host.get('applicationAttached') is False and
@@ -254,7 +283,7 @@ def check_selected_report(fixture, report, binding, role):
              isolation.get('externalCache') == root + '/external-cache' and
              isolation.get('files') == root + '/files' and isolation.get('database') == root + '/databases/legado.db' and
              isolation.get('preferencesPrefix') == PREFIX and
-             report.get('roleOwner') == root + '/role-owner.json' and report.get('roleOwnerIdentity') == identity and
+             report.get('roleOwner') == root + '/role-owner.json' and typed_equal(report.get('roleOwnerIdentity'), identity) and
              probe.get('name') == PREFIX + 'liber_replace_js_probe' and
              probe.get('mode') == 'written-once-and-retained-in-the-owned-set' and
              probe.get('registered') is True and probe.get('committed') is True and
@@ -279,7 +308,7 @@ def check_selected_report(fixture, report, binding, role):
              'cacheDirectoryBasePath' in config and config['cacheDirectoryBasePath'] is None and
              config.get('dataDirectorySuffixKey') is False and
              provider.get('package') == WEBVIEW_PACKAGE and provider.get('versionName') == WEBVIEW_VERSION and
-             type(provider.get('versionCode')) is int and provider['versionCode'] > 0 and candidate == provider and
+             type(provider.get('versionCode')) is int and provider['versionCode'] > 0 and typed_equal(candidate, provider) and
              computed == {'data': canonical_root + '/dir-webview_' + WEBVIEW_SUFFIX,
                           'cache': canonical_root + '/cache/webview_' + WEBVIEW_SUFFIX, 'textures': canonical_root + '/dir-textures'} and
              all(actual.get(key) == computed[key] for key in ('data', 'cache', 'textures')) and
@@ -287,7 +316,7 @@ def check_selected_report(fixture, report, binding, role):
              webview.get('pathSource') == 'org.chromium.base.PathUtils via provider classloader',
              'WebView containment unverified')
     before, after = webview.get('realProfileBefore'), webview.get('realProfileAfter')
-    _require(isinstance(before, dict) and before == after and
+    _require(isinstance(before, dict) and typed_equal(before, after) and
              set(before) == {'app_webview', 'app_webview_suffixed'} and
              all(isinstance(value, dict) and type(value.get('exists')) is bool and
                  type(value.get('directory')) is bool and type(value.get('length')) is int and value['length'] >= 0 and
@@ -303,20 +332,24 @@ def check_selected_report(fixture, report, binding, role):
              type(settings.get('replaceEnableDefault')) is bool and
              type(settings.get('chineseConverterType')) is int, 'scratch settings unverified')
     entry = report.get('entryPoints') or {}
-    _require('java.lang.String io.legado.app.data.entities.BookChapter.getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)' in entry.get('getDisplayTitle', '') and
-             'io.legado.app.help.book.BookContent io.legado.app.help.book.ContentProcessor.getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)' in entry.get('getContent', '') and
-             'io.legado.app.data.entities.ReplaceBook io.legado.app.data.entities.Book.toReplaceBook()' in entry.get('toReplaceBook', '') and
+    signatures = {
+        'getDisplayTitle': 'java.lang.String io.legado.app.data.entities.BookChapter.getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)',
+        'getContent': 'io.legado.app.help.book.BookContent io.legado.app.help.book.ContentProcessor.getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)',
+        'toReplaceBook': 'io.legado.app.data.entities.ReplaceBook io.legado.app.data.entities.Book.toReplaceBook()',
+        'textList': 'java.util.List io.legado.app.help.book.BookContent.getTextList()',
+        'sameTitleRemoved': 'boolean io.legado.app.help.book.BookContent.getSameTitleRemoved()',
+        'effectiveRules': 'java.util.List io.legado.app.help.book.BookContent.getEffectiveReplaceRules()',
+    }
+    _require(isinstance(entry, dict) and all(type(entry.get(k)) is str and entry[k] == 'public final ' + signature
+             for k, signature in signatures.items()) and
              all(entry.get(key) == 'public io.legado.app.data.entities.' + cls + '()' for key, cls in
-                 (('bookConstructor', 'Book'), ('chapterConstructor', 'BookChapter'), ('ruleConstructor', 'ReplaceRule'))) and
-             'java.util.List io.legado.app.help.book.BookContent.getTextList()' in entry.get('textList', '') and
-             'boolean io.legado.app.help.book.BookContent.getSameTitleRemoved()' in entry.get('sameTitleRemoved', '') and
-             'java.util.List io.legado.app.help.book.BookContent.getEffectiveReplaceRules()' in entry.get('effectiveRules', ''),
+                 (('bookConstructor', 'Book'), ('chapterConstructor', 'BookChapter'), ('ruleConstructor', 'ReplaceRule'))),
              'selected entry ABI differs')
     owner = report.get('terminalOwner') or {}
     _require(owner.get('scope') == 'Coroutine.DEFAULT' and owner.get('rootActive') is True and
              owner.get('rootCompleted') is False and type(owner.get('baselineChildren')) is int and owner['baselineChildren'] == 0 and
-             'kotlinx.coroutines.Job.getChildren()' in owner.get('childrenMethod', '') and
-             'kotlinx.coroutines.Job.isCompleted()' in owner.get('completionMethod', ''),
+             owner.get('childrenMethod') == 'public abstract kotlin.sequences.Sequence kotlinx.coroutines.Job.getChildren()' and
+             owner.get('completionMethod') == 'public abstract boolean kotlinx.coroutines.Job.isCompleted()',
              'coroutine owner not verified')
     cleanup = report.get('cleanup') or {}
     registered = cleanup.get('registeredPreferences')
@@ -332,7 +365,7 @@ def check_selected_report(fixture, report, binding, role):
     _require(len(ids) == 13 and len(set(ids)) == 13 and ids[-1] == 'js-timeout', 'full corpus differs')
     expected = ids[:-1] if role == 'main12' else ids[-1:]
     rows = report.get('rows')
-    _require(report.get('partition') == {'role': role, 'caseIds': expected} and
+    _require(typed_equal(report.get('partition'), {'role': role, 'caseIds': expected}) and
              isinstance(rows, list) and all(isinstance(r, dict) for r in rows) and
              [r.get('id') for r in rows] == expected, 'fixed role row order differs')
     for row in rows:
@@ -576,7 +609,7 @@ def verify_bundle(directory, fixture, binding, role):
             line.lower().startswith(('failure', 'error', 'failed')) for line in lines),
             'install/remove not confirmed: ' + name)
     report = decode_instrumentation(logs['instrumentation'])
-    _require(report == strict_json((directory / 'observation.json').read_text(encoding='utf-8')), 'raw payload differs from observation')
+    _require(typed_equal(report, strict_json((directory / 'observation.json').read_text(encoding='utf-8'))), 'raw payload differs from observation')
     check_selected_report(fixture, report, binding, role)
     _require(logs['owner-before'] == logs['owner-after'] and logs['role-owner-before'] == logs['role-owner-after'],
              'durable owner changed during termination')

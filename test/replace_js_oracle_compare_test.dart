@@ -52,6 +52,36 @@ void main() {
   int indexOf(String id) =>
       (fixture['cases'] as List).indexWhere((row) => row['id'] == id);
 
+  test(
+    'timeout diagnostic requires rule and exact native diagnostic structure',
+    () {
+      const text =
+          '　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　规则名称:js-timeout\n　　替换规则:广告\n　　替换内容:正文广告。';
+      expect(selectedTimeoutDiagnostic(text), isTrue);
+      expect(
+        selectedTimeoutDiagnostic('$text\n　　at example.Method(file.kt:1)'),
+        isTrue,
+      );
+      expect(
+        selectedTimeoutDiagnostic('$text\n　　Caused by: unrelated'),
+        isFalse,
+      );
+      expect(selectedTimeoutDiagnostic('$text\n'), isFalse);
+      expect(
+        selectedTimeoutDiagnostic(
+          'unrelated body containing RegexTimeoutException',
+        ),
+        isFalse,
+      );
+      expect(
+        selectedTimeoutDiagnostic(
+          text.replaceFirst('规则名称:js-timeout', '规则名称:other'),
+        ),
+        isFalse,
+      );
+    },
+  );
+
   test('timeout policy requires exactly the product preserved text', () {
     expect(selectedTimeoutPreservesText('　　正文广告。', '　　正文广告。'), isTrue);
     expect(selectedTimeoutPreservesText('　　改动。', '　　正文广告。'), isFalse);

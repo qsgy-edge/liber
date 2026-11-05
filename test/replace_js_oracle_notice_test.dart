@@ -128,6 +128,32 @@ void main() {
         expect(selectedNoticeIntegrity('js-error', value), isFalse);
       }
       expect(
+        selectedNoticeIntegrity('js-timeout', [
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': ['js-timeout', 200],
+          },
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': ['js-timeout', 'bad'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity('js-error', [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'boom'],
+          },
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': ['js-error', 'bad'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
         selectedNoticeIntegrity('js-error', [
           {
             'code': 'replaceRuleFailed',

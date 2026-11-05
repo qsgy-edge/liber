@@ -49,7 +49,8 @@ final class SelectedWebViewContainment {
         // Same provider initialization used by AUTH; no cookie operation or navigation.
         CookieManager manager = CookieManager.getInstance();
         PackageInfo provider = WebView.getCurrentWebViewPackage();
-        if (provider == null || !PROVIDER.equals(provider.packageName) || !VERSION.equals(provider.versionName))
+        if (provider == null || !PROVIDER.equals(provider.packageName) || !VERSION.equals(provider.versionName) ||
+                candidate.getLongVersionCode() != provider.getLongVersionCode())
             throw new IllegalStateException("current WebView provider differs from candidate pin");
         JSONObject actual = paths(manager.getClass().getClassLoader(), target.getClassLoader());
         if (!same(data, new File(actual.getString("data"))) || !same(cache, new File(actual.getString("cache"))) ||

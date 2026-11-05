@@ -66,9 +66,9 @@ class SelectedReportTest(unittest.TestCase):
                            'pathSource': 'org.chromium.base.PathUtils via provider classloader'},
                        'settingsBefore': {'backupPath': None, 'paragraphIndent': '', 'adaptSpecialStyle': False,
                                           'replaceEnableDefault': True, 'chineseConverterType': 0},
-                       'entryPoints': {'getDisplayTitle': 'public java.lang.String io.legado.app.data.entities.BookChapter.getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)',
-                           'getContent': 'public io.legado.app.help.book.BookContent io.legado.app.help.book.ContentProcessor.getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)',
-                           'toReplaceBook': 'public io.legado.app.data.entities.ReplaceBook io.legado.app.data.entities.Book.toReplaceBook()',
+                       'entryPoints': {'getDisplayTitle': 'public final java.lang.String io.legado.app.data.entities.BookChapter.getDisplayTitle(java.util.List,boolean,boolean,io.legado.app.data.entities.ReplaceBook)',
+                           'getContent': 'public final io.legado.app.help.book.BookContent io.legado.app.help.book.ContentProcessor.getContent(io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,boolean,boolean,boolean,java.lang.Boolean,java.util.List,java.util.List)',
+                           'toReplaceBook': 'public final io.legado.app.data.entities.ReplaceBook io.legado.app.data.entities.Book.toReplaceBook()',
                            'bookConstructor': 'public io.legado.app.data.entities.Book()', 'chapterConstructor': 'public io.legado.app.data.entities.BookChapter()',
                            'ruleConstructor': 'public io.legado.app.data.entities.ReplaceRule()',
                            'textList': 'public final java.util.List io.legado.app.help.book.BookContent.getTextList()',
@@ -80,8 +80,8 @@ class SelectedReportTest(unittest.TestCase):
                            'method': self.fixture['hostInitialization']['method'],
                            'registeredWrappers': {r['type']: r['factory'] for r in self.fixture['hostInitialization']['registrations']}},
                        'terminalOwner': {'scope': 'Coroutine.DEFAULT', 'rootActive': True, 'rootCompleted': False,
-                                         'baselineChildren': 0, 'childrenMethod': 'kotlinx.coroutines.Job.getChildren()',
-                                         'completionMethod': 'kotlinx.coroutines.Job.isCompleted()'},
+                                         'baselineChildren': 0, 'childrenMethod': 'public abstract kotlin.sequences.Sequence kotlinx.coroutines.Job.getChildren()',
+                                         'completionMethod': 'public abstract boolean kotlinx.coroutines.Job.isCompleted()'},
                        'cleanup': {'databaseClosed': True, 'terminalProved': True, 'activityLaunchAttempts': 0,
                                    'scratchRemoved': False, 'scratchRetained': True,
                                    'hostCleanup': 'required-after-owned-process-termination',
@@ -130,6 +130,39 @@ class SelectedReportTest(unittest.TestCase):
                 b'WebView package dirty: false\nAny WebView package installed: true\n')
         for bad in (good + b'WebView package dirty: true\n', good + b'Any WebView package installed: false\n'):
             with self.assertRaises(ValueError): selected_capture.check_provider_preflight(bad)
+
+    def test_ordered_two_record_instrumentation_frame(self):
+        import base64
+        payload = base64.b64encode(json.dumps(self.report).encode())
+        result = b'INSTRUMENTATION_RESULT: stream=REPLACE_JS_ORACLE_BASE64=' + payload
+        terminal = b'INSTRUMENTATION_CODE: -1'
+        for good in (result + b'\n\n' + terminal + b'\n', result + b'\r\n\r\n' + terminal + b'\r\n'):
+            selected_capture.decode_instrumentation(good)
+        for bad in (terminal + b'\n' + result + b'\n', result + b'\nINSTRUMENTATION_RESULT: stream=garbled\n' + terminal + b'\n',
+                    result + b'\nINSTRUMENTATION_STATUS: code=0\n' + terminal + b'\n'):
+            with self.assertRaises(ValueError): selected_capture.decode_instrumentation(bad)
+
+    def test_type_sensitive_json_and_scalar_reflection(self):
+        self.assertFalse(selected_capture.typed_equal({'pid': 42}, {'pid': 42.0}))
+        self.assertFalse(selected_capture.typed_equal({'pid': 1}, {'pid': True}))
+        report = copy.deepcopy(self.report)
+        report['entryPoints']['textList'] = [report['entryPoints']['textList']]
+        with self.assertRaises(ValueError): selected_capture.check_selected_report(self.fixture, report, self.binding, 'main12')
+        report = copy.deepcopy(self.report)
+        report['roleOwnerIdentity'] = copy.deepcopy(report['identity'])
+        report['roleOwnerIdentity']['pid'] = 42.0
+        with self.assertRaises(ValueError): selected_capture.check_selected_report(self.fixture, report, self.binding, 'main12')
+
+    def test_pull_and_incremental_receipt_meanings(self):
+        pull = b'/data/app/base.apk: 1 file pulled, 0 skipped. 16.4 MB/s (61933 bytes in 0.004s)\n'
+        install = b'Serving...\nPerforming Incremental Install\nSuccess\nInstall command complete in 3354 ms\nAll files should be loaded. Notifying the device.\n'
+        selected_capture.validate_command_receipt('pull-harness', b'', pull, 0, False)
+        selected_capture.validate_command_receipt('install', install, b'', 0, False)
+        for name, out, err in (('pull-harness', b'0 files pulled, 1 skipped.\n', b''),
+                               ('pull-harness', pull + b'0 files pulled, 1 skipped\n', b''),
+                               ('install', b'Performing Streamed Install\nSuccess\n', b''),
+                               ('install', install + b'Performing Streamed Install (contradiction)\n', b'')):
+            with self.assertRaises(ValueError): selected_capture.validate_command_receipt(name, out, err, 0, False)
 
     def test_main12_complete(self):
         selected_capture.check_selected_report(self.fixture, self.report, self.binding, 'main12')
@@ -214,12 +247,21 @@ class SelectedReportTest(unittest.TestCase):
                         source.index('CookieManager manager = CookieManager.getInstance()'))
         self.assertLess(source.index('CookieManager manager = CookieManager.getInstance()'),
                         source.index('PackageInfo provider = WebView.getCurrentWebViewPackage()'))
+        self.assertIn('candidate.getLongVersionCode() != provider.getLongVersionCode()', source)
+        report = copy.deepcopy(self.report)
+        report['webViewContainment']['candidate']['versionCode'] += 1
+        with self.assertRaises(ValueError): selected_capture.check_selected_report(self.fixture, report, self.binding, 'main12')
 
     def test_webview_provider_preflight_is_current_and_unambiguous(self):
         line = (b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'
-                b'WebView package dirty: false\nAny WebView package installed: true\n')
+                b'WebView package dirty: false\nAny WebView package installed: true\n'
+                b'Valid package com.google.android.webview (versionName: 158.0.8127.2, versionCode: 812700213, targetSdkVersion: 36) is  installed/enabled for all users\n')
         selected_capture.check_provider_preflight(line)
-        for bad in (b'', line + line, line.replace(b'158.0.8127.2', b'1.0')):
+        for bad in (b'', line + line, line.replace(b'158.0.8127.2', b'1.0'),
+                    line + b'Current WebView package: malformed\n',
+                    line + b'WebView package dirty malformed\n',
+                    line + b'Invalid package com.google.android.webview malformed\n',
+                    line.replace(b'Valid package com.google.android.webview (versionName: 158.0.8127.2, versionCode: 812700213, targetSdkVersion: 36) is  installed/enabled for all users', b'com.google.android.webview is NOT installed.')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 selected_capture.check_provider_preflight(bad)
 
@@ -303,16 +345,16 @@ class SelectedReportTest(unittest.TestCase):
             values = [
                 ('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint'], (selected_capture.FINGERPRINT + '\n').encode()),
                 ('webview-provider', ['shell', 'dumpsys', 'webviewupdate'],
-                 b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\nWebView package dirty: false\nAny WebView package installed: true\n'),
+                 b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\nWebView package dirty: false\nAny WebView package installed: true\nValid package com.google.android.webview (versionName: 158.0.8127.2, versionCode: 812700213, targetSdkVersion: 36) is  installed/enabled for all users\n'),
                 ('target-before', ['shell', 'pidof', target], b''),
                 ('reference-path', ['shell', 'pm', 'path', target], b'package:/device/reference.apk\n'),
-                ('pull-reference', ['pull', '/device/reference.apk', str(root / 'reference.apk')], b''),
+                ('pull-reference', ['pull', '/device/reference.apk', str(root / 'reference.apk')], b'/device/reference.apk: 1 file pulled, 0 skipped. 38 MB/s\n'),
                 ('harness-existing', ['shell', 'pm', 'list', 'packages', package], b''),
                 ('private-before', ['shell', 'run-as', target, 'sh', '-c', shlex.quote(selected_capture.INVENTORY_SCRIPT)], inv),
                 ('scratch-before', ['shell', 'run-as', target, 'sh', '-c', shlex.quote('test ! -e cache/liber-replace-js-selected')], b''),
-                ('install', ['install', '-r', str(root / 'harness.apk')], b'Success\n'),
+                ('install', ['install', '-r', str(root / 'harness.apk')], b'Serving...\nPerforming Incremental Install\nSuccess\nInstall command complete in 3354 ms\nAll files should be loaded. Notifying the device.\n'),
                 ('harness-path', ['shell', 'pm', 'path', package], b'package:/device/harness.apk\n'),
-                ('pull-harness', ['pull', '/device/harness.apk', str(root / 'installed-harness.apk')], b''),
+                ('pull-harness', ['pull', '/device/harness.apk', str(root / 'installed-harness.apk')], b'/device/harness.apk: 1 file pulled, 0 skipped. 16 MB/s\n'),
                 ('target-preinstrument', ['shell', 'pidof', target], b''),
                 ('instrumentation', ['shell', 'am', 'instrument', '-w', '-r', '-e', 'role', 'main12', package + '/io.liber.oracle.nested.SelectedReplaceJsOracle'], raw),
                 ('owner-before', ['shell', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/owner.json'], owner_data),
@@ -345,7 +387,7 @@ class SelectedReportTest(unittest.TestCase):
             import subprocess
             import types
             from unittest.mock import patch
-            for bad_name in ('instrumentation', 'owned-pid', 'owner-after'):
+            for bad_name in ('instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
                 with tempfile.TemporaryDirectory() as transport_tmp:
                     destination = Path(transport_tmp) / 'attempt'
                     seen = []
@@ -356,8 +398,14 @@ class SelectedReportTest(unittest.TestCase):
                         if name in ('pull-reference', 'pull-harness'):
                             import shutil
                             shutil.copyfile(root / Path(argv[-1]).name, argv[-1])
-                        return subprocess.CompletedProcess(argv, item['exitCode'],
-                            (root / (name + '.stdout')).read_bytes(),
+                        stdout = (root / (name + '.stdout')).read_bytes()
+                        if name == 'instrumentation' and bad_name == 'frame-reversed':
+                            lines = stdout.splitlines(); stdout = lines[1] + b'\n' + lines[0] + b'\n'
+                        if name == 'instrumentation' and bad_name == 'frame-extra':
+                            stdout = stdout.replace(b'INSTRUMENTATION_CODE:', b'INSTRUMENTATION_RESULT: stream=garbled\nINSTRUMENTATION_CODE:')
+                        if name == 'install' and bad_name == 'install-streamed': stdout = b'Performing Streamed Install\nSuccess\n'
+                        if name == 'pull-harness' and bad_name == 'pull-skipped': stdout = b'0 files pulled, 1 skipped.\n'
+                        return subprocess.CompletedProcess(argv, item['exitCode'], stdout,
                             b'error: injected\n' if name == bad_name else b'')
                     args = types.SimpleNamespace(output=destination, role='main12', serial='5615f742',
                         apk=root / 'harness.apk', backup='not-used', reference_apk='not-used',
@@ -365,16 +413,22 @@ class SelectedReportTest(unittest.TestCase):
                     with patch.object(selected_capture, 'check_backup'), patch.object(selected_capture, 'preflight', return_value=self.binding), \
                          patch.object(selected_capture.subprocess, 'run', side_effect=fake_run):
                         self.assertEqual(selected_capture.capture(args), 1)
-                    self.assertIn(bad_name, seen)
+                    affected = ('instrumentation' if bad_name.startswith('frame-') else
+                                'install' if bad_name == 'install-streamed' else
+                                'pull-harness' if bad_name == 'pull-skipped' else bad_name)
+                    self.assertIn(affected, seen)
                     self.assertEqual((destination / 'harness.apk').read_bytes(), harness_bytes)
                     self.assertEqual((destination / 'harness.apk.idsig').read_bytes(), idsig_bytes)
                     failure = json.loads((destination / 'manifest.json').read_text(encoding='utf-8'))
                     self.assertEqual(failure['status'], 'failed')
-                    self.assertIn('stderr is contradictory', failure['error'])
+                    if bad_name in ('instrumentation', 'owned-pid', 'owner-after'):
+                        self.assertIn('stderr is contradictory', failure['error'])
                     self.assertNotIn('owned-cleanup', seen)
                     self.assertNotIn('remove-harness', seen)
-                    if bad_name in ('instrumentation', 'owned-pid'):
+                    if bad_name != 'owner-after':
                         self.assertNotIn('stop-owned', seen)
+                    if bad_name in ('install-streamed', 'pull-skipped'):
+                        self.assertNotIn('instrumentation', seen)
             # A live process is stoppable only when its PID, start ticks and cmdline match.
             live = copy.deepcopy(manifest)
             owned = next(c for c in live['commands'] if c['name'] == 'owned-pid')
@@ -401,7 +455,7 @@ class SelectedReportTest(unittest.TestCase):
             (root / 'manifest.json').write_text(json.dumps(live), encoding='utf-8')
             with self.assertRaises(ValueError): selected_capture.verify_bundle(root, self.fixture, self.binding, 'main12')
             (root / 'owned-pid.stdout').write_bytes(b'')
-            for change in ('missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install'):
+            for change in ('missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
                 bad = copy.deepcopy(manifest)
                 if change == 'missing-command': bad['commands'].pop(2)
                 if change == 'preinstrument-live':
@@ -419,13 +473,42 @@ class SelectedReportTest(unittest.TestCase):
                 if change == 'contradictory-install':
                     (root / 'install.stdout').write_bytes(b'Success\nFailure: install failed\n')
                     next(c for c in bad['commands'] if c['name'] == 'install')['stdoutSha256'] = hashlib.sha256(b'Success\nFailure: install failed\n').hexdigest()
+                if change in ('reversed-frame', 'extra-result'):
+                    lines = raw.splitlines()
+                    altered = (lines[1] + b'\n' + lines[0] + b'\n' if change == 'reversed-frame' else
+                               raw.replace(b'INSTRUMENTATION_CODE:', b'INSTRUMENTATION_RESULT: stream=garbled\nINSTRUMENTATION_CODE:'))
+                    (root / 'instrumentation.stdout').write_bytes(altered)
+                    next(c for c in bad['commands'] if c['name'] == 'instrumentation')['stdoutSha256'] = hashlib.sha256(altered).hexdigest()
+                if change == 'float-observation':
+                    altered = copy.deepcopy(self.report); altered['rows'][0]['elapsedMillis'] = 1.0
+                    (root / 'observation.json').write_text(json.dumps(altered), encoding='utf-8')
+                if change == 'nonscalar-getter':
+                    altered = copy.deepcopy(self.report); altered['entryPoints']['textList'] = [altered['entryPoints']['textList']]
+                    altered_raw = b'INSTRUMENTATION_RESULT: stream=REPLACE_JS_ORACLE_BASE64=' + base64.b64encode(json.dumps(altered).encode()) + b'\nINSTRUMENTATION_CODE: -1\n'
+                    (root / 'instrumentation.stdout').write_bytes(altered_raw)
+                    (root / 'observation.json').write_text(json.dumps(altered), encoding='utf-8')
+                    next(c for c in bad['commands'] if c['name'] == 'instrumentation')['stdoutSha256'] = hashlib.sha256(altered_raw).hexdigest()
+                if change == 'float-owner':
+                    float_owner = dict(self.identity, pid=42.0); altered_owner = json.dumps(float_owner).encode()
+                    altered_retained = retained.replace(hashlib.sha256(role_data).hexdigest().encode(), hashlib.sha256(altered_owner).hexdigest().encode())
+                    for name in ('role-owner-before', 'role-owner-after'):
+                        (root / (name + '.stdout')).write_bytes(altered_owner)
+                        next(c for c in bad['commands'] if c['name'] == name)['stdoutSha256'] = hashlib.sha256(altered_owner).hexdigest()
+                    for name in ('private-retained-before', 'private-retained'):
+                        (root / (name + '.stdout')).write_bytes(altered_retained)
+                        next(c for c in bad['commands'] if c['name'] == name)['stdoutSha256'] = hashlib.sha256(altered_retained).hexdigest()
                 (root / 'manifest.json').write_text(json.dumps(bad), encoding='utf-8')
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     selected_capture.verify_bundle(root, self.fixture, self.binding, 'main12')
                 (root / 'private-after.stdout').write_bytes(inv)
                 (root / 'instrumentation.stdout').write_bytes(raw)
-                (root / 'install.stdout').write_bytes(b'Success\n')
+                (root / 'install.stdout').write_bytes(b'Serving...\nPerforming Incremental Install\nSuccess\nInstall command complete in 3354 ms\nAll files should be loaded. Notifying the device.\n')
                 (root / 'target-preinstrument.stdout').write_bytes(b'')
+                (root / 'observation.json').write_text(json.dumps(self.report), encoding='utf-8')
+                for name in ('role-owner-before', 'role-owner-after'):
+                    (root / (name + '.stdout')).write_bytes(role_data)
+                for name in ('private-retained-before', 'private-retained'):
+                    (root / (name + '.stdout')).write_bytes(retained)
             (root / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
 
     def test_inventory_requires_completion_and_cache_scope(self):

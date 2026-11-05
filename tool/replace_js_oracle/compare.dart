@@ -520,6 +520,16 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
       )
       .toList();
   if (requiredCode == null) return relevant.isEmpty;
+  if (notices.any(
+    (n) =>
+        n is Map &&
+        n['code'] == 'replaceRuleUnusable' &&
+        n['arguments'] is List &&
+        (n['arguments'] as List).isNotEmpty &&
+        (n['arguments'] as List).first == id,
+  )) {
+    return false;
+  }
   if (relevant.length != 1) return false;
   final n = relevant.single as Map;
   if (n['code'] != requiredCode || n['arguments'] is! List) return false;
@@ -528,6 +538,15 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
   return id == 'js-timeout'
       ? args[1] == 200
       : args[1] is String && (args[1] as String).trim().isNotEmpty;
+}
+
+/// The selected timeout's returned diagnostic, not a manufactured expected result.
+bool selectedTimeoutDiagnostic(String text) {
+  final shape = RegExp(
+    r'^　　js-timeoutio\.legado\.app\.exception\.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　规则名称:js-timeout\n　　替换规则:广告\n　　替换内容:正文广告。(?:\n　　at .+)*$',
+  );
+  final match = shape.firstMatch(text);
+  return match != null && match.end == text.length;
 }
 
 /// Product timeout policy retains the exact separately processed source text.
@@ -603,7 +622,7 @@ List<Map<String, Object?>> _compareSelected(
         id == 'js-timeout' &&
         expected != null &&
         (expected['rulesDisabledByRun'] as List).contains('js-timeout') &&
-        (expected['content'] as String).contains('RegexTimeoutException');
+        selectedTimeoutDiagnostic(expected['content'] as String);
     final onlyContent = differences.every((d) => d['field'] == 'content');
     final String status;
     if (actual['status'] != 'observed' ||
