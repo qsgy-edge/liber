@@ -43,28 +43,36 @@ def parse_inventory(data):
     return sorted(lines[:-1])
 
 
-def validate_command_receipt(name, stdout, stderr, code, timedout):
+def validate_command_receipt(name, stdout, stderr, code, timedout, argv=None):
     """The same raw-command gate runs immediately live and on later admission."""
     expected = (0, 1) if name == 'owned-pid' else (1,) if name in (
         'target-before', 'target-preinstrument', 'target-after', 'target-final') else (0,)
     _require(type(code) is int and code in expected and timedout is False, name + ': exit or timeout differs')
     _require(isinstance(stdout, bytes) and isinstance(stderr, bytes), name + ': raw output absent')
     if name in ('pull-reference', 'pull-harness'):
-        lines = [line.strip() for stream in (stdout, stderr) for line in re.split(rb'[\r\n]+', stream) if line.strip()]
+        _require(isinstance(argv, list) and len(argv) == 3 and argv[0] == 'pull' and
+                 all(isinstance(x, str) and x and not any(ord(c) < 32 or ord(c) == 127 for c in x) for x in argv[1:]) and
+                 re.fullmatch(r'/[^\s:]+\.apk', argv[1]) is not None, name + ': pull arguments invalid')
+        remote, destination = (x.encode('utf-8') for x in argv[1:])
+        _require(all(not any(c < 32 and c not in (10, 13) or c == 127 for c in stream)
+                     for stream in (stdout, stderr)), name + ': control byte in transfer output')
+        lines = [line for stream in (stdout, stderr) for line in re.split(rb'[\r\n]+', stream) if line]
         _require(b'error' not in stderr.lower() and b'failed' not in stderr.lower(), name + ': stderr is contradictory')
-        summary = rb'/[^\r\n:]+: 1 file pulled, 0 skipped\. [0-9]+(?:\.[0-9]+)? [KMG]B/s \([0-9]+ bytes in [0-9]+(?:\.[0-9]+)?s\)'
+        summary = re.escape(remote) + rb': 1 file pulled, 0 skipped\. [0-9]+\.[0-9] MB/s \([0-9]+ bytes in [0-9]+\.[0-9]{3}s\)'
         summaries = 0
         for line in lines:
             if re.fullmatch(summary, line):
                 summaries += 1
             else:
-                progress = re.fullmatch(rb'\[[ \t]*([0-9]{1,3})%\][ \t]+/[^ \t\r\n]+', line)
-                _require(progress is not None and int(progress.group(1)) <= 100, name + ': transfer output is contradictory')
+                progress = re.fullmatch(rb'\[( {0,2}[0-9]{1,3})%\] (.+)', line)
+                _require(progress is not None and int(progress.group(1)) <= 100 and
+                         progress.group(1) == ('%3d' % int(progress.group(1))).encode('ascii') and
+                         progress.group(2) in (remote, destination), name + ': transfer output is contradictory')
         _require(summaries == 1, name + ': transfer summary differs')
     elif name == 'install':
         notification = b'All files should be loaded. Notifying the device.'
         _require(stderr in (b'', notification + b'\n', notification + b'\r\n'), name + ': stderr is contradictory')
-        _require(not (stderr and notification in stdout), name + ': repeated notification')
+        _require(notification not in stdout, name + ': notification on stdout')
     else:
         _require(not stderr, name + ': stderr is contradictory')
     _require(not any(line.strip().lower().startswith((b'error:', b'failure', b'failed',
@@ -557,7 +565,7 @@ def verify_bundle(directory, fixture, binding, role):
         stderr = (directory / (name + '.stderr')).read_bytes()
         _require(item.get('stdoutSha256') == hashlib.sha256(stdout).hexdigest() and
                  item.get('stderrSha256') == hashlib.sha256(stderr).hexdigest(), 'command log differs: ' + name)
-        validate_command_receipt(name, stdout, stderr, item.get('exitCode'), item.get('timeout'))
+        validate_command_receipt(name, stdout, stderr, item.get('exitCode'), item.get('timeout'), item['argv'][3:])
         logs[name] = stdout
     def argv(name):
         return commands[names.index(name)]['argv'][3:]
@@ -678,7 +686,7 @@ def capture(args):
                                      'stderrSha256': hashlib.sha256(stderr).hexdigest()})
         allowed = expected_code if isinstance(expected_code, tuple) else (expected_code,)
         _require(code in allowed, name + ' failed')
-        validate_command_receipt(name, stdout, stderr, code, timedout)
+        validate_command_receipt(name, stdout, stderr, code, timedout, command[3:])
         return stdout
     try:
         check_backup(fixture, args.backup)

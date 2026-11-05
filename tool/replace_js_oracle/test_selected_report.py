@@ -101,7 +101,7 @@ class SelectedReportTest(unittest.TestCase):
             selected_capture.validate_command_receipt('target-after', b'', b'pidof error', 1, False)
         with self.assertRaises(ValueError):
             selected_capture.validate_command_receipt('pull-harness', b'adb: error: injected\n', b'', 0, False)
-        selected_capture.validate_command_receipt('pull-harness', b'', b'/device/base.apk: 1 file pulled, 0 skipped. 18 MB/s (61933 bytes in 0.004s)\n', 0, False)
+        selected_capture.validate_command_receipt('pull-harness', b'', b'/device/base.apk: 1 file pulled, 0 skipped. 18.0 MB/s (61933 bytes in 0.004s)\n', 0, False, ['pull', '/device/base.apk', 'C:/tmp/base.apk'])
         with self.assertRaises(ValueError):
             selected_capture.validate_command_receipt('pull-harness', b'', b'[ 20%] error: denied\n', 0, False)
 
@@ -155,21 +155,21 @@ class SelectedReportTest(unittest.TestCase):
 
     def test_pull_and_incremental_receipt_meanings(self):
         pull = b'/data/app/base.apk: 1 file pulled, 0 skipped. 16.4 MB/s (61933 bytes in 0.004s)\n'
-        install = b'Serving...\nPerforming Incremental Install\nSuccess\nInstall command complete in 3354 ms\nAll files should be loaded. Notifying the device.\n'
-        selected_capture.validate_command_receipt('pull-harness', b'', pull, 0, False)
-        selected_capture.validate_command_receipt('install', install, b'', 0, False)
+        install = b'Serving...\nPerforming Incremental Install\nSuccess\nInstall command complete in 3354 ms\n'
+        selected_capture.validate_command_receipt('pull-harness', b'', pull, 0, False, ['pull', '/data/app/base.apk', 'C:/tmp/base.apk'])
+        selected_capture.validate_command_receipt('install', install, b'All files should be loaded. Notifying the device.\n', 0, False)
         for name, out, err in (('pull-harness', b'0 files pulled, 1 skipped.\n', b''),
                                ('pull-harness', pull + b'0 files pulled, 1 skipped\n', b''),
                                ('install', b'Performing Streamed Install\nSuccess\n', b''),
                                ('install', install + b'Performing Streamed Install (contradiction)\n', b'')):
-            with self.assertRaises(ValueError): selected_capture.validate_command_receipt(name, out, err, 0, False)
+            with self.assertRaises(ValueError): selected_capture.validate_command_receipt(name, out, err, 0, False, ['pull', '/data/app/base.apk', 'C:/tmp/base.apk'] if name.startswith('pull-') else None)
 
     def test_split_incremental_install_and_full_pull_receipts(self):
         out = b'Serving...\r\nPerforming Incremental Install\r\nSuccess\r\nInstall command complete in 3354 ms\r\n'
         err = b'All files should be loaded. Notifying the device.\r\n'
         pull = b'/data/app/base.apk: 1 file pulled, 0 skipped. 16.4 MB/s (61933 bytes in 0.004s)\r\n'
         selected_capture.validate_command_receipt('install', out, err, 0, False)
-        selected_capture.validate_command_receipt('pull-harness', b'', pull, 0, False)
+        selected_capture.validate_command_receipt('pull-harness', b'', pull, 0, False, ['pull', '/data/app/base.apk', 'C:/tmp/base.apk'])
         for name, stdout, stderr, code in (
             ('install', out, err + b'error: failed\n', 0),
             ('install', out.replace(b'Incremental', b'Streamed'), err, 0),
@@ -178,7 +178,27 @@ class SelectedReportTest(unittest.TestCase):
             ('pull-harness', pull + b"adb: warning: skipping special file '/device/harness.apk' (mode = 0o20666)\n", b'', 0),
             ('pull-harness', pull + b'[ 20%] /device/path error: denied\n', b'', 0)):
             with self.subTest(name=name, stdout=stdout, stderr=stderr), self.assertRaises(ValueError):
-                selected_capture.validate_command_receipt(name, stdout, stderr, code, False)
+                selected_capture.validate_command_receipt(name, stdout, stderr, code, False, ['pull', '/data/app/base.apk', 'C:/tmp/base.apk'] if name.startswith('pull-') else None)
+
+    def test_misplaced_notification_and_wrong_transfer_formats_refuse(self):
+        out = b'Serving...\r\nPerforming Incremental Install\r\nSuccess\r\nInstall command complete in 3354 ms\r\n'
+        notification = b'All files should be loaded. Notifying the device.\r\n'
+        pull = b'/device/harness.apk: 1 file pulled, 0 skipped. 16.4 MB/s (61933 bytes in 0.004s)\r\n'
+        argv = ['pull', '/device/harness.apk', 'C:/tmp/harness.apk']
+        selected_capture.validate_command_receipt('pull-harness', b'[ 20%] /device/harness.apk\r' + pull, b'', 0, False, argv)
+        selected_capture.validate_command_receipt('pull-harness', b'[100%] C:/tmp/harness.apk\r' + pull, b'', 0, False, argv)
+        with self.assertRaises(ValueError): selected_capture.validate_command_receipt('pull-harness', pull, b'', 0, False)
+        with self.assertRaises(ValueError):
+            selected_capture.validate_command_receipt('pull-harness', pull.replace(b'/device/harness.apk', b'/Transfer aborted; stale summary was'), b'', 0, False,
+                                                      ['pull', '/Transfer aborted; stale summary was', 'C:/tmp/harness.apk'])
+        for name, stdout in (('install', out + notification), ('install', out + notification * 2),
+            ('pull-harness', pull.replace(b'16.4 MB/s', b'1 GB/s').replace(b'0.004s', b'1s')),
+            ('pull-harness', pull.replace(b'/device/harness.apk', b'/Transfer aborted; stale summary was')),
+            ('pull-harness', pull + b'[ 20%] /transfer-aborted\x00\n'),
+            ('pull-harness', pull + b'[ 20%] /other/file.apk\n'),
+            ('pull-harness', pull + b'[020%] /device/harness.apk\n')):
+            with self.subTest(name=name, stdout=stdout), self.assertRaises(ValueError):
+                selected_capture.validate_command_receipt(name, stdout, b'', 0, False, ['pull', '/device/harness.apk', 'C:/tmp/harness.apk'] if name.startswith('pull-') else None)
 
     def test_main12_complete(self):
         selected_capture.check_selected_report(self.fixture, self.report, self.binding, 'main12')
@@ -364,13 +384,13 @@ class SelectedReportTest(unittest.TestCase):
                  b'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\nWebView package dirty: false\nAny WebView package installed: true\nValid package com.google.android.webview (versionName: 158.0.8127.2, versionCode: 812700213, targetSdkVersion: 36) is  installed/enabled for all users\n'),
                 ('target-before', ['shell', 'pidof', target], b''),
                 ('reference-path', ['shell', 'pm', 'path', target], b'package:/device/reference.apk\n'),
-                ('pull-reference', ['pull', '/device/reference.apk', str(root / 'reference.apk')], b'/device/reference.apk: 1 file pulled, 0 skipped. 38.1 MB/s (50808929 bytes in 1.273s)\n'),
+                ('pull-reference', ['pull', '/device/reference.apk', str(root / 'reference.apk')], f'/device/reference.apk: 1 file pulled, 0 skipped. 38.1 MB/s ({len(target_bytes)} bytes in 1.273s)\n'.encode()),
                 ('harness-existing', ['shell', 'pm', 'list', 'packages', package], b''),
                 ('private-before', ['shell', 'run-as', target, 'sh', '-c', shlex.quote(selected_capture.INVENTORY_SCRIPT)], inv),
                 ('scratch-before', ['shell', 'run-as', target, 'sh', '-c', shlex.quote('test ! -e cache/liber-replace-js-selected')], b''),
                 ('install', ['install', '-r', str(root / 'harness.apk')], b'Serving...\r\nPerforming Incremental Install\r\nSuccess\r\nInstall command complete in 3354 ms\r\n'),
                 ('harness-path', ['shell', 'pm', 'path', package], b'package:/device/harness.apk\n'),
-                ('pull-harness', ['pull', '/device/harness.apk', str(root / 'installed-harness.apk')], b'/device/harness.apk: 1 file pulled, 0 skipped. 16.4 MB/s (61933 bytes in 0.004s)\n'),
+                ('pull-harness', ['pull', '/device/harness.apk', str(root / 'installed-harness.apk')], f'/device/harness.apk: 1 file pulled, 0 skipped. 16.4 MB/s ({len(harness_bytes)} bytes in 0.004s)\n'.encode()),
                 ('target-preinstrument', ['shell', 'pidof', target], b''),
                 ('instrumentation', ['shell', 'am', 'instrument', '-w', '-r', '-e', 'role', 'main12', package + '/io.liber.oracle.nested.SelectedReplaceJsOracle'], raw),
                 ('owner-before', ['shell', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/owner.json'], owner_data),
@@ -404,7 +424,7 @@ class SelectedReportTest(unittest.TestCase):
             import subprocess
             import types
             from unittest.mock import patch
-            for bad_name in ('split-good', 'split-error', 'install-nonzero', 'pull-faux', 'pull-warning', 'instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
+            for bad_name in ('notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-good', 'split-error', 'install-nonzero', 'pull-faux', 'pull-warning', 'instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
                 with tempfile.TemporaryDirectory() as transport_tmp:
                     destination = Path(transport_tmp) / 'attempt'
                     seen = []
@@ -425,6 +445,11 @@ class SelectedReportTest(unittest.TestCase):
                         if name == 'pull-harness' and bad_name == 'pull-faux': stdout = b'Transfer aborted; stale summary was 1 file pulled, 0 skipped.\n'
                         if name == 'pull-harness' and bad_name == 'pull-warning': stdout += b"adb: warning: skipping special file '/device/harness.apk' (mode = 0o20666)\n"
                         stderr = (root / (name + '.stderr')).read_bytes()
+                        if name == 'install' and bad_name in ('notification-moved', 'notification-doubled'):
+                            stdout += stderr * (2 if bad_name == 'notification-doubled' else 1); stderr = b''
+                        if name == 'pull-harness' and bad_name == 'pull-units': stdout = stdout.replace(b'16.4 MB/s', b'1 GB/s').replace(b'0.004s', b'1s')
+                        if name == 'pull-harness' and bad_name == 'pull-wrong-path': stdout = stdout.replace(b'/device/harness.apk', b'/Transfer aborted; stale summary was')
+                        if name == 'pull-harness' and bad_name == 'pull-control': stdout += b'[ 20%] /transfer-aborted\x00\n'
                         if name == 'install' and bad_name == 'split-error': stderr += b'error: injected\n'
                         if name == bad_name: stderr = b'error: injected\n'
                         code = 1 if name == 'install' and bad_name == 'install-nonzero' else item['exitCode']
@@ -440,8 +465,8 @@ class SelectedReportTest(unittest.TestCase):
                         selected_capture.verify_bundle(destination, self.fixture, self.binding, 'main12')
                         continue
                     affected = ('instrumentation' if bad_name.startswith('frame-') else
-                                'install' if bad_name in ('install-streamed', 'split-error', 'install-nonzero') else
-                                'pull-harness' if bad_name in ('pull-skipped', 'pull-faux', 'pull-warning') else bad_name)
+                                'install' if bad_name in ('notification-moved', 'notification-doubled', 'install-streamed', 'split-error', 'install-nonzero') else
+                                'pull-harness' if bad_name in ('pull-units', 'pull-wrong-path', 'pull-control', 'pull-skipped', 'pull-faux', 'pull-warning') else bad_name)
                     self.assertIn(affected, seen)
                     self.assertEqual((destination / 'harness.apk').read_bytes(), harness_bytes)
                     self.assertEqual((destination / 'harness.apk.idsig').read_bytes(), idsig_bytes)
@@ -453,7 +478,7 @@ class SelectedReportTest(unittest.TestCase):
                     self.assertNotIn('remove-harness', seen)
                     if bad_name != 'owner-after':
                         self.assertNotIn('stop-owned', seen)
-                    if bad_name in ('install-streamed', 'split-error', 'install-nonzero', 'pull-skipped', 'pull-faux', 'pull-warning'):
+                    if bad_name in ('notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'install-streamed', 'split-error', 'install-nonzero', 'pull-skipped', 'pull-faux', 'pull-warning'):
                         self.assertNotIn('instrumentation', seen)
             # A live process is stoppable only when its PID, start ticks and cmdline match.
             live = copy.deepcopy(manifest)
@@ -481,16 +506,24 @@ class SelectedReportTest(unittest.TestCase):
             (root / 'manifest.json').write_text(json.dumps(live), encoding='utf-8')
             with self.assertRaises(ValueError): selected_capture.verify_bundle(root, self.fixture, self.binding, 'main12')
             (root / 'owned-pid.stdout').write_bytes(b'')
-            for change in ('split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning', 'missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
+            for change in ('notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning', 'missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
                 bad = copy.deepcopy(manifest)
-                if change in ('split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning'):
-                    name = 'install' if change in ('split-error', 'install-streamed', 'install-nonzero') else 'pull-harness'
+                if change in ('notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning'):
+                    name = 'install' if change in ('notification-moved', 'notification-doubled', 'split-error', 'install-streamed', 'install-nonzero') else 'pull-harness'
                     item = next(c for c in bad['commands'] if c['name'] == name)
                     if change == 'install-nonzero': item['exitCode'] = 1
                     else:
                         ext = 'stderr' if change == 'split-error' else 'stdout'
                         path = root / (name + '.' + ext)
                         altered = path.read_bytes()
+                        if change in ('notification-moved', 'notification-doubled'):
+                            notification = (root / 'install.stderr').read_bytes()
+                            altered += notification * (2 if change == 'notification-doubled' else 1)
+                            (root / 'install.stderr').write_bytes(b'')
+                            item['stderrSha256'] = hashlib.sha256(b'').hexdigest()
+                        if change == 'pull-units': altered = altered.replace(b'16.4 MB/s', b'1 GB/s').replace(b'0.004s', b'1s')
+                        if change == 'pull-wrong-path': altered = altered.replace(b'/device/harness.apk', b'/Transfer aborted; stale summary was')
+                        if change == 'pull-control': altered += b'[ 20%] /transfer-aborted\x00\n'
                         if change == 'split-error': altered += b'error: injected\n'
                         if change == 'install-streamed': altered = altered.replace(b'Incremental', b'Streamed')
                         if change == 'pull-faux': altered = b'Transfer aborted; stale summary was 1 file pulled, 0 skipped.\n'
@@ -544,7 +577,7 @@ class SelectedReportTest(unittest.TestCase):
                 (root / 'instrumentation.stdout').write_bytes(raw)
                 (root / 'install.stdout').write_bytes(b'Serving...\r\nPerforming Incremental Install\r\nSuccess\r\nInstall command complete in 3354 ms\r\n')
                 (root / 'install.stderr').write_bytes(b'All files should be loaded. Notifying the device.\r\n')
-                (root / 'pull-harness.stdout').write_bytes(b'/device/harness.apk: 1 file pulled, 0 skipped. 16.4 MB/s (61933 bytes in 0.004s)\n')
+                (root / 'pull-harness.stdout').write_bytes(f'/device/harness.apk: 1 file pulled, 0 skipped. 16.4 MB/s ({len(harness_bytes)} bytes in 0.004s)\n'.encode())
                 (root / 'target-preinstrument.stdout').write_bytes(b'')
                 (root / 'observation.json').write_text(json.dumps(self.report), encoding='utf-8')
                 for name in ('role-owner-before', 'role-owner-after'):
