@@ -204,9 +204,9 @@ class SelectedReportTest(unittest.TestCase):
         argv = ['pull', '/device/reference.apk', 'C:/tmp/reference.apk']
         actual = b'/device/reference.apk: 1 file pulled, 0 skipped. 38.1 MB/s (50808929 bytes in 1.273s)\n'
         selected_capture.validate_command_receipt('pull-reference', actual, b'', 0, False, argv)
-        zero = b'/device/reference.apk: 1 file pulled, 0 skipped. 0.0 MB/s (0 bytes in 0.001s)\n'
-        selected_capture.validate_command_receipt('pull-reference', zero, b'', 0, False, argv)
-        for bad in (actual.replace(b'38.1 MB/s', b'038.1 MB/s'),
+        tiny = b'/device/reference.apk: 1 file pulled, 0 skipped. 0.0 MB/s (1 bytes in 0.001s)\n'
+        selected_capture.validate_command_receipt('pull-reference', tiny, b'', 0, False, argv)
+        for bad in (tiny.replace(b'1 bytes', b'0 bytes'), actual.replace(b'38.1 MB/s', b'038.1 MB/s'),
                     actual.replace(b'50808929 bytes', b'050808929 bytes'),
                     actual.replace(b'1.273s', b'01.273s')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
@@ -438,7 +438,7 @@ class SelectedReportTest(unittest.TestCase):
             import subprocess
             import types
             from unittest.mock import patch
-            for bad_name in ('pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-good', 'split-error', 'install-nonzero', 'pull-faux', 'pull-warning', 'instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
+            for bad_name in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-good', 'split-error', 'install-nonzero', 'pull-faux', 'pull-warning', 'instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
                 with tempfile.TemporaryDirectory() as transport_tmp:
                     destination = Path(transport_tmp) / 'attempt'
                     seen = []
@@ -465,6 +465,7 @@ class SelectedReportTest(unittest.TestCase):
                         if name == 'pull-harness' and bad_name == 'pull-wrong-path': stdout = stdout.replace(b'/device/harness.apk', b'/Transfer aborted; stale summary was')
                         if name == 'pull-harness' and bad_name == 'pull-control': stdout += b'[ 20%] /transfer-aborted\x00\n'
                         if name == 'pull-harness' and bad_name == 'pull-padded': stdout = stdout.replace(f'{len(harness_bytes)} bytes'.encode(), f'0{len(harness_bytes)} bytes'.encode())
+                        if name == 'pull-harness' and bad_name == 'pull-zero': stdout = stdout.replace(f'{len(harness_bytes)} bytes'.encode(), b'0 bytes').replace(f'{harness_rate:.1f} MB/s'.encode(), b'0.0 MB/s')
                         if name == 'install' and bad_name == 'split-error': stderr += b'error: injected\n'
                         if name == bad_name: stderr = b'error: injected\n'
                         code = 1 if name == 'install' and bad_name == 'install-nonzero' else item['exitCode']
@@ -481,7 +482,7 @@ class SelectedReportTest(unittest.TestCase):
                         continue
                     affected = ('instrumentation' if bad_name.startswith('frame-') else
                                 'install' if bad_name in ('notification-moved', 'notification-doubled', 'install-streamed', 'split-error', 'install-nonzero') else
-                                'pull-harness' if bad_name in ('pull-padded', 'pull-units', 'pull-wrong-path', 'pull-control', 'pull-skipped', 'pull-faux', 'pull-warning') else bad_name)
+                                'pull-harness' if bad_name in ('pull-zero', 'pull-padded', 'pull-units', 'pull-wrong-path', 'pull-control', 'pull-skipped', 'pull-faux', 'pull-warning') else bad_name)
                     self.assertIn(affected, seen)
                     self.assertEqual((destination / 'harness.apk').read_bytes(), harness_bytes)
                     self.assertEqual((destination / 'harness.apk.idsig').read_bytes(), idsig_bytes)
@@ -493,7 +494,7 @@ class SelectedReportTest(unittest.TestCase):
                     self.assertNotIn('remove-harness', seen)
                     if bad_name != 'owner-after':
                         self.assertNotIn('stop-owned', seen)
-                    if bad_name in ('pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'install-streamed', 'split-error', 'install-nonzero', 'pull-skipped', 'pull-faux', 'pull-warning'):
+                    if bad_name in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'install-streamed', 'split-error', 'install-nonzero', 'pull-skipped', 'pull-faux', 'pull-warning'):
                         self.assertNotIn('instrumentation', seen)
             # A live process is stoppable only when its PID, start ticks and cmdline match.
             live = copy.deepcopy(manifest)
@@ -521,9 +522,9 @@ class SelectedReportTest(unittest.TestCase):
             (root / 'manifest.json').write_text(json.dumps(live), encoding='utf-8')
             with self.assertRaises(ValueError): selected_capture.verify_bundle(root, self.fixture, self.binding, 'main12')
             (root / 'owned-pid.stdout').write_bytes(b'')
-            for change in ('pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning', 'missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
+            for change in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning', 'missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
                 bad = copy.deepcopy(manifest)
-                if change in ('pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning'):
+                if change in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning'):
                     name = 'install' if change in ('notification-moved', 'notification-doubled', 'split-error', 'install-streamed', 'install-nonzero') else 'pull-harness'
                     item = next(c for c in bad['commands'] if c['name'] == name)
                     if change == 'install-nonzero': item['exitCode'] = 1
@@ -540,6 +541,7 @@ class SelectedReportTest(unittest.TestCase):
                         if change == 'pull-wrong-path': altered = altered.replace(b'/device/harness.apk', b'/Transfer aborted; stale summary was')
                         if change == 'pull-control': altered += b'[ 20%] /transfer-aborted\x00\n'
                         if change == 'pull-padded': altered = altered.replace(f'{len(harness_bytes)} bytes'.encode(), f'0{len(harness_bytes)} bytes'.encode())
+                        if change == 'pull-zero': altered = altered.replace(f'{len(harness_bytes)} bytes'.encode(), b'0 bytes').replace(f'{harness_rate:.1f} MB/s'.encode(), b'0.0 MB/s')
                         if change == 'split-error': altered += b'error: injected\n'
                         if change == 'install-streamed': altered = altered.replace(b'Incremental', b'Streamed')
                         if change == 'pull-faux': altered = b'Transfer aborted; stale summary was 1 file pulled, 0 skipped.\n'

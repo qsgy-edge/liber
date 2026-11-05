@@ -60,7 +60,7 @@ def validate_command_receipt(name, stdout, stderr, code, timedout, argv=None):
         _require(b'error' not in stderr.lower() and b'failed' not in stderr.lower(), name + ': stderr is contradictory')
         integer = rb'(?:0|[1-9][0-9]*)'
         summary = (re.escape(remote) + rb': 1 file pulled, 0 skipped\. ' + integer + rb'\.[0-9] MB/s \(' +
-                   integer + rb' bytes in ' + integer + rb'\.[0-9]{3}s\)')
+                   rb'[1-9][0-9]* bytes in ' + integer + rb'\.[0-9]{3}s\)')
         summaries = 0
         for line in lines:
             if re.fullmatch(summary, line):
