@@ -542,11 +542,8 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
 
 /// The selected timeout's returned diagnostic, not a manufactured expected result.
 bool selectedTimeoutDiagnostic(String text) {
-  final shape = RegExp(
-    r'^　　js-timeoutio\.legado\.app\.exception\.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　规则名称:js-timeout\n　　替换规则:广告\n　　替换内容:正文广告。(?:\n　　at .+)*$',
-  );
-  final match = shape.firstMatch(text);
-  return match != null && match.end == text.length;
+  return text ==
+      '　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　规则名称:js-timeout\n　　替换规则:广告\n　　替换内容:正文广告。';
 }
 
 /// Product timeout policy retains the exact separately processed source text.

@@ -49,11 +49,22 @@ def validate_command_receipt(name, stdout, stderr, code, timedout):
         'target-before', 'target-preinstrument', 'target-after', 'target-final') else (0,)
     _require(type(code) is int and code in expected and timedout is False, name + ': exit or timeout differs')
     _require(isinstance(stdout, bytes) and isinstance(stderr, bytes), name + ': raw output absent')
-    if name in ('pull-reference', 'pull-harness') and stderr:
-        lines = [line.strip() for line in re.split(rb'[\r\n]+', stderr) if line.strip()]
-        _require(all(b'error' not in line.lower() and b'failed' not in line.lower() and
-                     (re.search(rb'\b1 file pulled, 0 skipped\.', line) or
-                      re.match(rb'^\[[ \t]*\d{1,3}%\]', line)) for line in lines), name + ': stderr is contradictory')
+    if name in ('pull-reference', 'pull-harness'):
+        lines = [line.strip() for stream in (stdout, stderr) for line in re.split(rb'[\r\n]+', stream) if line.strip()]
+        _require(b'error' not in stderr.lower() and b'failed' not in stderr.lower(), name + ': stderr is contradictory')
+        summary = rb'/[^\r\n:]+: 1 file pulled, 0 skipped\. [0-9]+(?:\.[0-9]+)? [KMG]B/s \([0-9]+ bytes in [0-9]+(?:\.[0-9]+)?s\)'
+        summaries = 0
+        for line in lines:
+            if re.fullmatch(summary, line):
+                summaries += 1
+            else:
+                progress = re.fullmatch(rb'\[[ \t]*([0-9]{1,3})%\][ \t]+/[^ \t\r\n]+', line)
+                _require(progress is not None and int(progress.group(1)) <= 100, name + ': transfer output is contradictory')
+        _require(summaries == 1, name + ': transfer summary differs')
+    elif name == 'install':
+        notification = b'All files should be loaded. Notifying the device.'
+        _require(stderr in (b'', notification + b'\n', notification + b'\r\n'), name + ': stderr is contradictory')
+        _require(not (stderr and notification in stdout), name + ': repeated notification')
     else:
         _require(not stderr, name + ': stderr is contradictory')
     _require(not any(line.strip().lower().startswith((b'error:', b'failure', b'failed',
@@ -63,11 +74,6 @@ def validate_command_receipt(name, stdout, stderr, code, timedout):
         _require(not stdout.strip(), name + ': target process not absent')
     if name in ('scratch-before', 'scratch-after', 'owned-cleanup', 'stop-owned'):
         _require(not stdout.strip(), name + ': unexpected output')
-    if name in ('pull-reference', 'pull-harness'):
-        combined = stdout + b'\n' + stderr
-        headings = re.findall(rb'\b[0-9]+ files? pulled\b', combined)
-        summaries = re.findall(rb'\b[0-9]+ files? pulled, [0-9]+ skipped\.', combined)
-        _require(headings == [b'1 file pulled'] and summaries == [b'1 file pulled, 0 skipped.'], name + ': transfer summary differs')
     if name in ('install', 'remove-harness'):
         lines = stdout.decode('utf-8').splitlines()
         _require(lines.count('Success') == 1, name + ': success missing')

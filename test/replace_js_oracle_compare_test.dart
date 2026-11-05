@@ -60,13 +60,19 @@ void main() {
       expect(selectedTimeoutDiagnostic(text), isTrue);
       expect(
         selectedTimeoutDiagnostic('$text\n　　at example.Method(file.kt:1)'),
-        isTrue,
+        isFalse,
       );
       expect(
         selectedTimeoutDiagnostic('$text\n　　Caused by: unrelated'),
         isFalse,
       );
       expect(selectedTimeoutDiagnostic('$text\n'), isFalse);
+      expect(
+        selectedTimeoutDiagnostic(
+          '$text\n　　at UNRELATED CHAPTER BODY, not a Java stack frame',
+        ),
+        isFalse,
+      );
       expect(
         selectedTimeoutDiagnostic(
           'unrelated body containing RegexTimeoutException',
