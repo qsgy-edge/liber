@@ -5,6 +5,13 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:pointycastle/export.dart';
 
+const _selectedCorpusHashes = {
+  '049b46bbd98b9367516f923fc052d9d454057d99bd6875a89b88ce6fae09d500',
+  '0cfa3b2ddb4a43ec8e62c0b9f5396e638c6c2dde40033a27be316ee5b74055c8',
+  '98934998a2c5cc702bd24888f8ed59ce595d617870c2c5a45b79e0b947d7c7d0',
+  '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
+};
+
 /// Compares the frozen FIELDS-01 golden against the Liber-side observation of
 /// the same corpus, field row by field row.
 ///
@@ -882,8 +889,7 @@ Map<String, dynamic> _inspectHarnessApk(String path) {
     throw StateError('selected target requires its fixed baseline');
   }
   if (selectedReference) {
-    if (_sha256(assetBytes) !=
-            '049b46bbd98b9367516f923fc052d9d454057d99bd6875a89b88ce6fae09d500' ||
+    if (!_selectedCorpusHashes.contains(_sha256(assetBytes)) ||
         target is! Map ||
         target.length != 3 ||
         target['package'] != 'com.legado.app.debug' ||
@@ -992,8 +998,7 @@ void _admitExternalArtifact(
   required Map<String, dynamic> expectedProvenance,
 }) {
   if (corpus['baselineCommit'] == 'a7d37f1707a70a459ad708f4fe79341d1e42d716' &&
-      (corpusSha256 !=
-              '049b46bbd98b9367516f923fc052d9d454057d99bd6875a89b88ce6fae09d500' ||
+      (!_selectedCorpusHashes.contains(corpusSha256) ||
           corpusSha256Lf != corpusSha256 ||
           target['package'] != 'com.legado.app.debug' ||
           target['apkSha256'] !=
@@ -1838,6 +1843,9 @@ String _expectedRawQuery(Map<String, dynamic> request) {
   final query = request['query'];
   if (query == null) return '';
   final map = _stringMap(query, 'expected.query');
+  if (request.containsKey('rawQuery')) {
+    return _requiredString(request, 'rawQuery', 'expected');
+  }
   return map.entries
       .map(
         (entry) =>

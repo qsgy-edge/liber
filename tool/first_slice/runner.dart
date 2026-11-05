@@ -82,20 +82,20 @@ class SliceReplayServer {
           ? values.single
           : List<String>.from(values);
     });
+    final query = Uri.splitQueryString(
+      request.uri.query,
+      encoding: const Utf8Codec(allowMalformed: true),
+    );
     final observed = <String, Object?>{
       'method': request.method,
       'path': request.uri.path,
-      'query': request.uri.queryParameters,
+      'query': query,
       'rawQuery': request.uri.query,
       'headers': headers,
       'body': body,
     };
     requests.add(observed);
-    final declared = _match(
-      request.method,
-      request.uri.path,
-      request.uri.queryParameters,
-    );
+    final declared = _match(request.method, request.uri.path, query);
     final receipt = <String, Object?>{
       'terminal': 'pending',
       'send': 'pending',

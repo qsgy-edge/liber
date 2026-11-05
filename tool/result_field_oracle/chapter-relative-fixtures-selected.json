@@ -1,0 +1,391 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18745",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "Relative search and declared TOC URL text with original trailing U+2000 versus ASCII control, HTML and JSON; actual four-stage chain"
+  ],
+  "coverageGaps": [
+    "Separate focused corpus, original native-02 capture and inputs unchanged.",
+    "Does not exercise the prior GBK canonical rawQuery admission limitation."
+  ],
+  "cases": [
+    {
+      "id": "whitespace-html-plain",
+      "terminal": "four-stage",
+      "keyword": "plain",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-html-plain",
+        "bookSourceName": "Native chain whitespace-html-plain",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-html-plain/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "@js: \"book?q=word\""
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": "@js: \"book?q=word\""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-html-unicode-tail",
+      "terminal": "four-stage",
+      "keyword": "unicode-tail",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-html-unicode-tail",
+        "bookSourceName": "Native chain whitespace-html-unicode-tail",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-html-unicode-tail/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "@js: \"book?q=word \""
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": "@js: \"book?q=word \""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-json-plain",
+      "terminal": "four-stage",
+      "keyword": "plain",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-json-plain",
+        "bookSourceName": "Native chain whitespace-json-plain",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-json-plain/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "@js: \"book?q=word\""
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "@js: \"book?q=word\""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-json-unicode-tail",
+      "terminal": "four-stage",
+      "keyword": "unicode-tail",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-json-unicode-tail",
+        "bookSourceName": "Native chain whitespace-json-unicode-tail",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-json-unicode-tail/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "@js: \"book?q=word \""
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "@js: \"book?q=word \""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "whitespace-html-plain-search",
+      "method": "GET",
+      "path": "/whitespace-html-plain/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/whitespace-html-plain/book?q=word\">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "whitespace-html-plain-information",
+      "method": "GET",
+      "path": "/whitespace-html-plain/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "whitespace-html-unicode-tail-search",
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/whitespace-html-unicode-tail/book?q=word \">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "whitespace-html-unicode-tail-information",
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "whitespace-json-plain-search",
+      "method": "GET",
+      "path": "/whitespace-json-plain/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/whitespace-json-plain/book?q=word\"}]}"
+    },
+    {
+      "id": "whitespace-json-plain-information",
+      "method": "GET",
+      "path": "/whitespace-json-plain/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "whitespace-json-unicode-tail-search",
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/whitespace-json-unicode-tail/book?q=word \"}]}"
+    },
+    {
+      "id": "whitespace-json-unicode-tail-information",
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "word"
+      }
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/whitespace-html-plain/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-plain/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-plain/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-plain/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    }
+  ],
+  "scenario": [
+    "Each case uses a relative book and TOC field; raw chapters retain the native stage base, getAbsoluteURL applies its own consumer boundary, content cache behavior is observed."
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d898c88dfd844d73f06d9396d0b46f39939f7e6c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "7591a026a072ac8a6fe4902add0795812fe0a0a6"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "517f63c18998be2f57087486069df9f67281d642"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/http/OkHttpUtils.kt",
+      "sha1": "d918f0efbee7bd36394e1218ed608a5ffaa99fd6"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}

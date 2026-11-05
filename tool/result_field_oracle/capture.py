@@ -34,6 +34,11 @@ FIELDS_01 = 'FIELDS-01'
 FIELDS_02 = 'FIELDS-02'
 SELECTED_BASELINE = 'a7d37f1707a70a459ad708f4fe79341d1e42d716'
 SELECTED_CORPUS_SHA256 = '049b46bbd98b9367516f923fc052d9d454057d99bd6875a89b88ce6fae09d500'
+SELECTED_CHAPTER_CORPUS_SHA256 = (
+    '0cfa3b2ddb4a43ec8e62c0b9f5396e638c6c2dde40033a27be316ee5b74055c8',
+    '98934998a2c5cc702bd24888f8ed59ce595d617870c2c5a45b79e0b947d7c7d0',
+    '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
+)
 SELECTED_SIGNER = '954abf2c4e9528b2226457d598e2ff9d1b608f83ac00c52ad66e023d61b2f2ad'
 SELECTED_TARGET = {
     'package': 'com.legado.app.debug',
@@ -165,7 +170,8 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     fixture_sha = sha256_bytes(fixture_bytes)
     fixture_sha_lf = sha256_bytes(lf_bytes(fixture_bytes))
     if fixture.get('baselineCommit') == SELECTED_BASELINE and (
-            fixture_sha != SELECTED_CORPUS_SHA256 or fixture_sha_lf != fixture_sha):
+            fixture_sha not in (SELECTED_CORPUS_SHA256, *SELECTED_CHAPTER_CORPUS_SHA256)
+            or fixture_sha_lf != fixture_sha):
         raise ValueError('selected corpus raw bytes differ')
     if fixture.get('fixtureId') != FIELDS_02:
         raise ValueError('the selected fixture is not FIELDS-02')
@@ -277,7 +283,7 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
     if not target_apk.is_file() or sha256(target_apk) != SELECTED_TARGET['apkSha256']:
         raise ValueError('selected target APK is missing or differs')
     data = fixture_path.read_bytes()
-    if sha256_bytes(data) != SELECTED_CORPUS_SHA256 or lf_bytes(data) != data:
+    if sha256_bytes(data) not in (SELECTED_CORPUS_SHA256, *SELECTED_CHAPTER_CORPUS_SHA256) or lf_bytes(data) != data:
         raise ValueError('selected corpus raw bytes differ')
     fixture = json.loads(data)
     _admit_selected_shape(fixture, 'selected fixture')
@@ -858,6 +864,8 @@ def _canonical_raw_query(request):
         return ''
     if not isinstance(query, dict):
         raise ValueError('expected request query must be an object')
+    if 'rawQuery' in request:
+        return _required_string(request, 'rawQuery', 'expected request')
     return '&'.join(
         urllib.parse.quote(str(key), safe='') + '=' +
         urllib.parse.quote(str(value), safe='')

@@ -135,6 +135,29 @@ void main() {
     expect(result.requests, isEmpty);
   });
 
+  test('declared raw query bytes remain distinct from decoded query', () {
+    final corpus = _syntheticCorpus();
+    ((corpus['expectedRequests'] as List).first as Map)
+      ..['query'] = {'q': '��'}
+      ..['rawQuery'] = 'q=%D6%D0';
+    final golden = _syntheticEnvelope(corpus);
+    final product = _syntheticProduct(corpus);
+    for (final envelope in [golden, product]) {
+      final records =
+          (envelope[envelope == golden ? 'cases' : 'caseRecords'] as List);
+      for (final request in [
+        (envelope['requests'] as List).first as Map,
+        ((records.first as Map)['requests'] as List).first as Map,
+      ]) {
+        request['query'] = {'q': '��'};
+        request['rawQuery'] = 'q=%D6%D0';
+      }
+      ((envelope['stageTrace'] as List).first as Map)['path'] =
+          'http://127.0.0.1:18733/s?q=%D6%D0';
+    }
+    expect(_compare(golden, product, corpus)['status'], 'pass');
+  });
+
   test('an absent terminal is materialized as four-stage', () {
     final corpus = _syntheticCorpus();
     ((corpus['cases'] as List).first as Map).remove('terminal');

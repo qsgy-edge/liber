@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18745",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "Existing JSON chapter identity observes option-script target versus raw target; product-only diagnostic, not new native evidence."
+  ],
+  "coverageGaps": [
+    "Native script timing was observed in the original corpus; this URL-replacement pair is a product-only identity diagnostic."
+  ],
+  "cases": [
+    {
+      "id": "key-json-control",
+      "terminal": "four-stage",
+      "keyword": "script",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/key-json-control",
+        "bookSourceName": "Native chain key-json-control",
+        "searchUrl": "http://127.0.0.1:18745/key-json-control/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "key-json-changed",
+      "terminal": "four-stage",
+      "keyword": "script",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/key-json-changed",
+        "bookSourceName": "Native chain key-json-changed",
+        "searchUrl": "http://127.0.0.1:18745/key-json-changed/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "key-json-control-search",
+      "method": "GET",
+      "path": "/key-json-control/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/key-json-control/book\"}]}"
+    },
+    {
+      "id": "key-json-control-information",
+      "method": "GET",
+      "path": "/key-json-control/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"Book\",\"author\":\"Author\",\"toc\":\"\",\"chapters\":[{\"name\":\"Chapter\",\"url\":\"http://127.0.0.1:18745/key-json-control/content?q=ascii,{\\\"charset\\\":\\\"gbk\\\",\\\"js\\\":\\\"source.put('contentOnce',String(Number(source.get('contentOnce')||'0')+1));source.put('vipProbe','content-script-ran');result\\\",\\\"headers\\\":{\\\"X-Case\\\":\\\"key-json-control\\\"}}\"}],\"body\":\"BODY\"}"
+    },
+    {
+      "id": "key-json-control-content",
+      "method": "GET",
+      "path": "/key-json-control/content",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "ascii"
+      }
+    },
+    {
+      "id": "key-json-changed-search",
+      "method": "GET",
+      "path": "/key-json-changed/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/key-json-changed/book\"}]}"
+    },
+    {
+      "id": "key-json-changed-information",
+      "method": "GET",
+      "path": "/key-json-changed/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"Book\",\"author\":\"Author\",\"toc\":\"\",\"chapters\":[{\"name\":\"Chapter\",\"url\":\"http://127.0.0.1:18745/key-json-changed/content?q=ascii,{\\\"charset\\\":\\\"gbk\\\",\\\"js\\\":\\\"source.put('contentOnce',String(Number(source.get('contentOnce')||'0')+1));source.put('vipProbe','content-script-ran');\\\\\\\"http://127.0.0.1:18745/key-json-changed/content-selected?q=ascii\\\\\\\"\\\",\\\"headers\\\":{\\\"X-Case\\\":\\\"key-json-changed\\\"}}\"}],\"body\":\"BODY\"}"
+    },
+    {
+      "id": "key-json-changed-content",
+      "method": "GET",
+      "path": "/key-json-changed/content-selected",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "ascii"
+      }
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/key-json-control/search"
+    },
+    {
+      "method": "GET",
+      "path": "/key-json-control/book"
+    },
+    {
+      "method": "GET",
+      "path": "/key-json-control/content",
+      "query": {
+        "q": "ascii"
+      },
+      "rawQuery": "q=ascii"
+    },
+    {
+      "method": "GET",
+      "path": "/key-json-changed/search"
+    },
+    {
+      "method": "GET",
+      "path": "/key-json-changed/book"
+    },
+    {
+      "method": "GET",
+      "path": "/key-json-changed/content-selected",
+      "query": {
+        "q": "ascii"
+      },
+      "rawQuery": "q=ascii"
+    }
+  ],
+  "scenario": [
+    "Two actual four-stage product calls, one script returns its input and one changes its target; compare TOC storeKey, persistedAddress and actual content request."
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d898c88dfd844d73f06d9396d0b46f39939f7e6c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "7591a026a072ac8a6fe4902add0795812fe0a0a6"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "517f63c18998be2f57087486069df9f67281d642"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/http/OkHttpUtils.kt",
+      "sha1": "d918f0efbee7bd36394e1218ed608a5ffaa99fd6"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}
