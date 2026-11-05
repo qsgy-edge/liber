@@ -259,3 +259,49 @@ Named, not hidden:
 - The corpus uses one book identity and one chapter per row; no per-book
   `useReplaceRule` switch is exercised (the frozen call and the product call both
   pass the frozen text-book default).
+
+## Selected-reference preparation (#138; native roles NOT-RUN)
+
+The selected tooling is a separate path. `fixtures-selected.json` retains all
+13 original case objects, including the disabled backup rules and timeout
+input; the legacy fixture and golden above retain their historical identity.
+The selected APK targets `com.legado.app.debug`. Its entry takes exactly one of
+`main12` or `timeout`, with a fresh owned scratch lifetime for each; no prefix
+of a failed run qualifies as evidence. Its guarded application refuses a launch
+attempt and an unclosed DEFAULT Job or failed attempt retains owned state for
+independent recovery. Successful native rows retain the owned root and prefs;
+the host proves the role owner and PID/start-time identity, terminates only a
+proven live target (or records it already absent), rechecks ownership, removes
+only owned files, then checks a complete final inventory. A failed attempt is
+not a successful native cleanup or returned timeout result. No selected capture
+has been executed.
+
+Both roles preflight the selected WebView provider: an early unique suffix and
+the scratch application context must produce owned canonical PathUtils data,
+cache and texture paths. The OS6 provider `com.google.android.webview`
+`158.0.8127.2` is a historical candidate pin, not a current observation; a
+future approved capture must first verify the actual provider and then record
+the in-process containment receipt. This is not WebView behavior parity.
+
+Build against the stage JDK/source/APK with `build.ps1 -Selected -FrozenSource
+<source> -ReferenceApk <apk> -JavaHome <jdk> -OutputDirectory <fresh-dir>`.
+Use `capture.py --selected --preflight-only --apk <harness> --reference-apk
+<reference> --frozen-source <source> --android-sdk <sdk> --java-home <jdk>
+--output <fresh-dir>` for offline inspection. A later separately approved device
+operation requires `--role main12` or `--role timeout`; failure preserves raw
+logs and owned residue and requires independent recovery, not an automatic
+cleanup retry. Do not run a handset from this tooling checkpoint.
+
+The selected comparator form is `dart tool/replace_js_oracle/compare.dart
+--selected <fjs.dll> <harness.apk> <reference.apk> <source> <sdk> <jdk>
+<backup.zip> <main12-bundle|-> <timeout-bundle|-> <output.json>`. It invokes the
+physical verifier with the current source, signed artifacts and raw bundles;
+a product-only capture or missing/failed role remains `not-run`. Native text,
+`textList`, effective rules and other returned fields stay in the report.
+Typed product notice integrity is checked separately from native notice channel
+parity; the named binding/error/timeout differences do not waive unrelated title,
+selection or rule-state fields. Hashes bind physical raw receipts; they do not
+authenticate the origin of a wholesale fabrication of those receipts. Native
+qualification requires the controller's directly guarded capture and custody plus
+independent review. Synthetic test controls exercise mechanics only and are not
+native evidence, including any mechanically reported observed rows.

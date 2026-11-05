@@ -52,6 +52,12 @@ void main() {
   int indexOf(String id) =>
       (fixture['cases'] as List).indexWhere((row) => row['id'] == id);
 
+  test('selected fixture cannot bypass the physical bundle verifier', () {
+    fixture['baselineCommit'] = 'a7d37f1707a70a459ad708f4fe79341d1e42d716';
+    synthetic['baselineCommit'] = fixture['baselineCommit'];
+    expect(() => compare(synthetic), throwsFormatException);
+  });
+
   test('missing frozen evidence leaves every row not-run', () {
     for (final id in ['js-error', 'js-timeout']) {
       product[indexOf(id)].remove('notices');
