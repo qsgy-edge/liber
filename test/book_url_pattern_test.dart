@@ -516,6 +516,52 @@ void main() {
     );
   }
 
+  for (final (json, search, link, expected) in [
+    (false, '/search', '/book#frag?probe=wire', 'http://source.test/book'),
+    (
+      true,
+      '/search?seed=base',
+      '#frag?probe=wire',
+      'http://source.test/search?probe=wire',
+    ),
+  ]) {
+    test(
+      'relative book identity retains original fragment semantics json=$json',
+      () async {
+        final page = json
+            ? jsonEncode({
+                'listing': [
+                  {'name': 'Book', 'url': link},
+                ],
+              })
+            : '<div class="item"><h3><a href="$link">Book</a></h3></div>';
+        final pages = _Pages({'/search': page});
+        final source = json
+            ? _jsonSource(
+                'http://source.test',
+                searchUrl: search,
+                bookUrlPattern: r'$^',
+              )
+            : _htmlSource(
+                'http://source.test',
+                searchUrl: search,
+                bookUrlPattern: r'$^',
+              );
+        final pipeline = json
+            ? JsonSourcePipeline(source, pages)
+            : HtmlSourcePipeline(source, pages);
+        try {
+          final hit = (await pipeline.search('book')).single;
+          expect(hit.identityAddress, expected);
+          expect('${hit.preOptionUrl}', expected);
+          expect(pages.requests, ['http://source.test$search']);
+        } finally {
+          pipeline.cancel();
+        }
+      },
+    );
+  }
+
   test('relative JSON book fragment query keeps pre-option identity', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final origin = 'http://127.0.0.1:${server.port}';

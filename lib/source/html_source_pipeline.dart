@@ -1477,7 +1477,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       final encoded = _resolve(
         base,
         await encodeSourceQuery(
-          sourceUrlTextWithRawQuery(url, text),
+          sourceUrlTextWithRawQuery(
+            text.contains('?') ? url.removeFragment() : url,
+            text,
+          ),
           charset: split.options.charset,
         ),
       );

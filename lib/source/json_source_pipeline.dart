@@ -807,19 +807,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (captureIdentity != null) {
       capturedPreOption = _url(base, split.path);
       if (!split.options.isPost) {
-        final fragment = split.path.indexOf('#');
-        final query = split.path.indexOf('?');
-        final fragmentFirst = fragment >= 0 && (query < 0 || fragment < query);
-        final identityInput = fragmentFirst
-            ? split.path.substring(0, fragment)
-            : split.path;
-        final identityUrl = fragmentFirst
-            ? capturedPreOption.removeFragment()
-            : capturedPreOption;
         capturedPreOption = _url(
           base,
           await encodeSourceQuery(
-            sourceUrlTextWithRawQuery(identityUrl, identityInput),
+            sourceUrlTextWithRawQuery(capturedPreOption, split.path),
             charset: split.options.charset,
           ),
         ).removeFragment();
@@ -845,7 +836,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
       url = _url(
         base,
         await encodeSourceQuery(
-          sourceUrlTextWithRawQuery(url, text),
+          sourceUrlTextWithRawQuery(
+            text.contains('?') ? url.removeFragment() : url,
+            text,
+          ),
           charset: split.options.charset,
         ),
       );
