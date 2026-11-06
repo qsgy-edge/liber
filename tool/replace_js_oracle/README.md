@@ -11,7 +11,14 @@ scratch directory and its own evidence directory. Nothing here reads or rewrites
 the SLICE-01, FIELDS-01, REQUEST-01, nested or replace-rule corpora, goldens or
 comparisons, and none of those tool directories is modified.
 
-## Result
+## Historical #49 result (14dd2494)
+
+The counts and per-row product values in this historical section describe the
+original #49 execution, not the current product. The selected-reference #138
+correction below intentionally changes regex `@js:` dollar expansion; comparing
+the current product against this unchanged legacy golden reports 10 pass / 1
+fail / 2 notCompared. The `js-match-and-capture` mismatch is retained, not
+rebaselined. The historical capture and comparator remain unchanged.
 
 **Executed on serial `5615f742` (Redmi/myron, Android 17): the harness installed
 on the first attempt of each run, ran once, returned all 13 rows, and was
@@ -260,7 +267,19 @@ Named, not hidden:
   `useReplaceRule` switch is exercised (the frozen call and the product call both
   pass the frozen text-book default).
 
-## Selected-reference preparation (#138; native roles NOT-RUN)
+## Selected-reference correction (#138)
+
+For regex `@js:` replacements the selected reference expands the returned
+string as Matcher capture references while preserving literal backslashes. An
+invalid reference rejects the entire rule and records one ordinary product
+error without disabling it. The selected corpus's `js-match-and-capture` and
+`js-binding-surface` rows therefore preserve their original bodies and each
+require their own typed `replaceRuleFailed` notice. Native notice channels are
+not observed. Existing selected main12 evidence belongs to the old APK; the
+new source-bound APK requires a fresh main12 capture. The original failed
+native timeout and its recovery remain separate evidence, not a new result.
+
+### Selected-reference tooling
 
 The selected tooling is a separate path. `fixtures-selected.json` retains all
 13 original case objects, including the disabled backup rules and timeout
@@ -273,8 +292,9 @@ independent recovery. Successful native rows retain the owned root and prefs;
 the host proves the role owner and PID/start-time identity, terminates only a
 proven live target (or records it already absent), rechecks ownership, removes
 only owned files, then checks a complete final inventory. A failed attempt is
-not a successful native cleanup or returned timeout result. No selected capture
-has been executed.
+not a successful native cleanup or returned timeout result. The earlier selected
+main12 capture and failed timeout remain bound to the original APK; neither is
+a native capture of the corrected comparator artifact.
 
 Both roles preflight the selected WebView provider: an early unique suffix and
 the scratch application context must produce owned canonical PathUtils data,

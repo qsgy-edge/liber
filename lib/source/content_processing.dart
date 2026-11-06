@@ -602,11 +602,17 @@ class ContentProcessing {
           cancellation: cancellation,
         );
         cancellation?.throwIfCancelled();
+        final expanded = _expandJsReplacement(
+          '$value',
+          (entry[3] as List).cast<String?>(),
+          (entry[4] as Map).cast<String, String?>(),
+        );
+        cancellation?.throwIfCancelled();
+        if (stopwatch.elapsed >= deadline) return const _Outcome.timeout();
+        if (expanded == null) return const _Outcome.error('替换里的分组引用不存在');
         buffer.write(text.substring(cursor, start));
-        // Matcher.appendReplacement quotes the script result. Building the
-        // output directly has the same effect for '$' and '\\' characters.
-        buffer.write('$value');
-        edits.add(ContentEdit(start: start, end: end, length: '$value'.length));
+        buffer.write(expanded);
+        edits.add(ContentEdit(start: start, end: end, length: expanded.length));
         cursor = end;
       }
       buffer.write(text.substring(cursor));
@@ -671,10 +677,12 @@ class ContentProcessing {
       final values = <List<Object?>>[];
       for (final value in message[1] as List) {
         if (value is! List ||
-            value.length != 3 ||
+            value.length != 5 ||
             value[0] is! int ||
             value[1] is! int ||
-            value[2] is! String) {
+            value[2] is! String ||
+            value[3] is! List ||
+            value[4] is! Map) {
           return const _JsMatches.error('替换进程返回了意外匹配');
         }
         values.add(value.cast<Object?>());
@@ -1200,12 +1208,68 @@ void _jsMatchEntry(List<Object?> args) {
     final text = args[2] as String;
     final matches = <List<Object?>>[];
     for (final match in regex.allMatches(text)) {
-      matches.add(<Object?>[match.start, match.end, match.group(0)!]);
+      matches.add(<Object?>[
+        match.start,
+        match.end,
+        match.group(0)!,
+        [for (var i = 0; i <= match.groupCount; i++) match.group(i)],
+        {for (final name in match.groupNames) name: match.namedGroup(name)},
+      ]);
     }
     send.send(<Object?>['ok', matches]);
   } catch (error) {
     send.send(<Object?>['error', '$error']);
   }
+}
+
+/// Expands the selected regex-JS return: Java Matcher dollar references, but
+/// literal backslashes (the selected quoteReplacementJs escapes them first).
+String? _expandJsReplacement(
+  String replacement,
+  List<String?> groups,
+  Map<String, String?> namedGroups,
+) {
+  final out = StringBuffer();
+  var i = 0;
+  bool digit(int c) => c >= 48 && c <= 57;
+  bool letter(int c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+  while (i < replacement.length) {
+    if (replacement[i] != r'$') {
+      out.write(replacement[i++]);
+      continue;
+    }
+    i++;
+    if (i == replacement.length) return null;
+    if (replacement[i] == '{') {
+      final start = ++i;
+      while (i < replacement.length &&
+          (letter(replacement.codeUnitAt(i)) ||
+              digit(replacement.codeUnitAt(i)))) {
+        i++;
+      }
+      if (i == start ||
+          !letter(replacement.codeUnitAt(start)) ||
+          i == replacement.length ||
+          replacement[i] != '}') {
+        return null;
+      }
+      final name = replacement.substring(start, i++);
+      if (!namedGroups.containsKey(name)) return null;
+      out.write(namedGroups[name] ?? '');
+      continue;
+    }
+    if (!digit(replacement.codeUnitAt(i))) return null;
+    var group = replacement.codeUnitAt(i++) - 48;
+    if (group >= groups.length) return null;
+    while (i < replacement.length && digit(replacement.codeUnitAt(i))) {
+      final next = group * 10 + replacement.codeUnitAt(i) - 48;
+      if (next >= groups.length) break;
+      group = next;
+      i++;
+    }
+    out.write(groups[group] ?? '');
+  }
+  return out.toString();
 }
 
 /// The isolate entry point: one Java-compatible replacement, off the reading

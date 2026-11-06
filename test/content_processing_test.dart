@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart' show SourceCancellation;
 import 'package:liber/domain/store_message.dart';
@@ -412,8 +414,153 @@ void main() {
           ruleName: 'JS 规则',
         ),
       ]).content('共20字和30字', chapterTitle: '第一章')).text;
-      expect(content, '　　共20字:20 \$1和30字:30 \$1');
+      expect(content, '　　共20字:20 20和30字:30 30');
     });
+
+    test(
+      'regex JS expands named, numeric and nonparticipating groups on title and body',
+      () async {
+        final processor = processing([
+          rule(
+            pattern: r'(?<word>a)(b)?',
+            replacement: r'@js:"$0|$12|${word}|$2|\\$1"',
+            scopeTitle: true,
+          ),
+        ]);
+        expect(await processor.displayTitle('a'), r'a|a2|a||\a');
+        expect(
+          (await processor.content('a', chapterTitle: 'other')).text,
+          r'　　a|a2|a||\a',
+        );
+      },
+    );
+
+    test('JS groups come from the original lookbehind match', () async {
+      final processor = processing([
+        rule(
+          pattern: r'(?<=x)(?<word>a)',
+          replacement: r'@js:"${word}-$0-$12"',
+        ),
+      ]);
+      expect(
+        (await processor.content('xaz', chapterTitle: 'other')).text,
+        '　　xa-a-a2z',
+      );
+    });
+
+    test(
+      'JS numeric references take the longest existing group prefix',
+      () async {
+        final processor = processing([
+          rule(
+            pattern: r'(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)',
+            replacement: r'@js:"$12|$123|$00"',
+          ),
+        ]);
+        expect(
+          (await processor.content('abcdefghijkl', chapterTitle: 'other')).text,
+          '　　l|l3|abcdefghijkl',
+        );
+      },
+    );
+
+    test(
+      'invalid JS group on a later match rejects the whole rule once and continues',
+      () async {
+        final notices = <StoreMessage>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              id: 'bad',
+              ruleName: 'bad',
+              pattern: r'(a|b)',
+              replacement: r'@js:result == "a" ? "X" : "$2"',
+              scopeTitle: true,
+            ),
+            rule(
+              id: 'next',
+              pattern: 'b',
+              replacement: 'B',
+              isRegex: false,
+              ruleOrder: 1,
+            ),
+          ],
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        expect(await processor.displayTitle('ab'), 'ab');
+        expect(
+          (await processor.content('ab', chapterTitle: 'other')).text,
+          '　　aB',
+        );
+        expect(disabled, isEmpty);
+        expect(notices, hasLength(1));
+        expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+        expect(notices.single.arguments.first, 'bad');
+      },
+    );
+
+    test(
+      'JS expanded lengths and failed atomic pass preserve raw edit mapping',
+      () async {
+        final expanded = await processing([
+          rule(pattern: r'(a)', replacement: r'@js:"$1$1$1"'),
+        ]).content('xabz', chapterTitle: 'other');
+        expect(expanded.text, '　　xaaabz');
+        expect(
+          expanded.edits.map((e) => '${e.start}:${e.end}:${e.length}'),
+          contains('1:2:3'),
+        );
+        final failed = await processing([
+          rule(
+            pattern: r'(a|b)',
+            replacement: r'@js:result == "a" ? "long" : "$2"',
+          ),
+        ]).content('xabz', chapterTitle: 'other');
+        final unchanged = await processing(
+          [],
+        ).content('xabz', chapterTitle: 'other');
+        expect(failed.text, unchanged.text);
+        expect(
+          failed.edits.map((e) => '${e.start}:${e.end}:${e.length}'),
+          unchanged.edits.map((e) => '${e.start}:${e.end}:${e.length}'),
+        );
+      },
+    );
+
+    test(
+      'malformed JS group references preserve body without disabling',
+      () async {
+        for (final template in [
+          r'$',
+          r'$x',
+          r'${1}',
+          r'${missing}',
+          r'${name',
+          r'$2',
+        ]) {
+          final notices = <StoreMessage>[];
+          final disabled = <String>[];
+          final processor = processing(
+            [rule(pattern: r'(a)', replacement: '@js:${jsonEncode(template)}')],
+            onNotice: notices.add,
+            onRuleDisabled: (rule) async => disabled.add(rule.id),
+          );
+          expect(
+            (await processor.content('a', chapterTitle: 'other')).text,
+            '　　a',
+            reason: template,
+          );
+          expect(
+            notices.single.code,
+            StoreMessageCode.replaceRuleFailed,
+            reason: template,
+          );
+          expect(disabled, isEmpty);
+        }
+      },
+    );
 
     test('a disabled @js: replacement remains inactive', () async {
       final notices = <StoreMessage>[];

@@ -506,7 +506,10 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
       )) {
     return false;
   }
-  final requiredCode = id == 'js-error'
+  final requiredCode =
+      id == 'js-error' ||
+          id == 'js-match-and-capture' ||
+          id == 'js-binding-surface'
       ? 'replaceRuleFailed'
       : id == 'js-timeout'
       ? 'replaceRuleTimedOut'
@@ -525,8 +528,10 @@ bool selectedNoticeIntegrity(String id, Object? notices) {
         n is Map &&
         n['code'] == 'replaceRuleUnusable' &&
         n['arguments'] is List &&
-        (n['arguments'] as List).isNotEmpty &&
-        (n['arguments'] as List).first == id,
+        (id == 'js-match-and-capture' ||
+            id == 'js-binding-surface' ||
+            ((n['arguments'] as List).isNotEmpty &&
+                (n['arguments'] as List).first == id)),
   )) {
     return false;
   }

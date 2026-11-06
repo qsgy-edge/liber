@@ -52,8 +52,8 @@ void main() {
             fixtureSha256: sha256File(fixtureFile),
           );
       expect(compare(product)['counts'], {
-        'pass': 11,
-        'fail': 0,
+        'pass': 10,
+        'fail': 1,
         'notCompared': 2,
         'not-run': 0,
       });
@@ -84,7 +84,7 @@ void main() {
           );
           expect(result['noticeCaptureIntegrity']['status'], 'fail');
           expect(result['noticeChannelComparison'], 'notCompared');
-          expect((report['counts'] as Map)['fail'], 1);
+          expect((report['counts'] as Map)['fail'], 2);
         }
       }
     },
@@ -186,6 +186,101 @@ void main() {
       );
     },
   );
+
+  test('selected affected rows require exactly their own ordinary error', () {
+    for (final id in ['js-match-and-capture', 'js-binding-surface']) {
+      Map<String, Object?> failure(String rule, String diagnostic) => {
+        'code': 'replaceRuleFailed',
+        'arguments': [rule, diagnostic],
+      };
+      expect(
+        selectedNoticeIntegrity(id, [failure(id, 'missing group')]),
+        isTrue,
+      );
+      for (final notices in <Object?>[
+        [],
+        [failure('other', 'missing group')],
+        [failure(id, ' ')],
+        [failure(id, 'bad'), failure(id, 'bad')],
+        [failure(id, 'bad'), failure('other', 'bad')],
+        [
+          failure(id, 'bad'),
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': [id, 200],
+          },
+        ],
+        [
+          failure(id, 'bad'),
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': [id, 'bad'],
+          },
+        ],
+        [
+          failure(id, 'bad'),
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': ['other', 'bad'],
+          },
+        ],
+        [
+          failure(id, 'bad'),
+          {'code': 'replaceRuleUnusable', 'arguments': <Object>[]},
+        ],
+      ]) {
+        expect(
+          selectedNoticeIntegrity(id, notices),
+          isFalse,
+          reason: '$id $notices',
+        );
+      }
+    }
+  });
+
+  test('selected real affected notices reject damaged copies', () async {
+    final fixture =
+        jsonDecode(
+              File(
+                'tool/replace_js_oracle/fixtures-selected.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    fixture['cases'] = (fixture['cases'] as List)
+        .where(
+          (row) =>
+              row['id'] == 'js-match-and-capture' ||
+              row['id'] == 'js-binding-surface',
+        )
+        .toList();
+    for (final row in await observeProduct(fixture, typedNotices: true)) {
+      final id = row['id'] as String;
+      final notices = (row['noticeRecords'] as List).cast<Map>();
+      expect(selectedNoticeIntegrity(id, notices), isTrue);
+      final original = Map<String, Object?>.from(notices.single);
+      expect(selectedNoticeIntegrity(id, []), isFalse);
+      expect(selectedNoticeIntegrity(id, [original, original]), isFalse);
+      expect(
+        selectedNoticeIntegrity(id, [
+          {
+            ...original,
+            'arguments': ['other', 'missing group'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity(id, [
+          original,
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': [id, 200],
+          },
+        ]),
+        isFalse,
+      );
+    }
+  });
 
   test('selected product capture keeps typed rule error notice', () async {
     final row = (await observeProduct(
