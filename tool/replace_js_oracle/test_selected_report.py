@@ -385,7 +385,7 @@ class SelectedReportTest(unittest.TestCase):
             owner = {key: self.identity[key] for key in ('fixtureId', 'corpusVersion', 'corpusSha256Lf',
                      'targetPackage', 'targetApkSha256', 'harnessPackage', 'harnessApkSha256')}
             owner.update({'createdAt': 1, 'preferences': self.report['cleanup']['registeredPreferences']})
-            owner_data, role_data = json.dumps(owner).encode(), json.dumps(self.identity).encode()
+            owner_data, role_data = json.dumps(owner, indent=2).encode(), json.dumps(self.identity).encode()
             retained = (inv[:-len(marker)] + hashlib.sha256(owner_data).hexdigest().encode() +
                         b'  cache/liber-replace-js-selected/owner.json\n' + hashlib.sha256(role_data).hexdigest().encode() +
                         b'  cache/liber-replace-js-selected/role-owner.json\n' + b'b' * 64 +
@@ -407,13 +407,13 @@ class SelectedReportTest(unittest.TestCase):
                 ('pull-harness', ['pull', '/device/harness.apk', str(root / 'installed-harness.apk')], f'/device/harness.apk: 1 file pulled, 0 skipped. {harness_rate:.1f} MB/s ({len(harness_bytes)} bytes in 0.004s)\n'.encode()),
                 ('target-preinstrument', ['shell', 'pidof', target], b''),
                 ('instrumentation', ['shell', 'am', 'instrument', '-w', '-r', '-e', 'role', 'main12', package + '/io.liber.oracle.nested.SelectedReplaceJsOracle'], raw),
-                ('owner-before', ['shell', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/owner.json'], owner_data),
-                ('role-owner-before', ['shell', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/role-owner.json'], role_data),
+                ('owner-before', ['exec-out', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/owner.json'], owner_data),
+                ('role-owner-before', ['exec-out', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/role-owner.json'], role_data),
                 ('private-retained-before', ['shell', 'run-as', target, 'sh', '-c', shlex.quote(selected_capture.INVENTORY_SCRIPT)], retained),
                 ('owned-pid', ['shell', 'pidof', target], b''),
                 ('target-after', ['shell', 'pidof', target], b''),
-                ('owner-after', ['shell', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/owner.json'], owner_data),
-                ('role-owner-after', ['shell', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/role-owner.json'], role_data),
+                ('owner-after', ['exec-out', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/owner.json'], owner_data),
+                ('role-owner-after', ['exec-out', 'run-as', target, 'cat', 'cache/liber-replace-js-selected/role-owner.json'], role_data),
                 ('private-retained', ['shell', 'run-as', target, 'sh', '-c', shlex.quote(selected_capture.INVENTORY_SCRIPT)], retained),
                 ('owned-cleanup', ['shell', 'run-as', target, 'sh', '-c', shlex.quote(selected_capture.cleanup_script(owner['preferences']))], b''),
                 ('target-final', ['shell', 'pidof', target], b''),
@@ -438,7 +438,7 @@ class SelectedReportTest(unittest.TestCase):
             import subprocess
             import types
             from unittest.mock import patch
-            for bad_name in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-good', 'split-error', 'install-nonzero', 'pull-faux', 'pull-warning', 'instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
+            for bad_name in ('owner-empty', 'owner-crlf', 'role-owner-wrong', 'owner-after-wrong', 'pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-good', 'split-error', 'install-nonzero', 'pull-faux', 'pull-warning', 'instrumentation', 'owned-pid', 'owner-after', 'frame-reversed', 'frame-extra', 'install-streamed', 'pull-skipped'):
                 with tempfile.TemporaryDirectory() as transport_tmp:
                     destination = Path(transport_tmp) / 'attempt'
                     seen = []
@@ -446,6 +446,8 @@ class SelectedReportTest(unittest.TestCase):
                         item = manifest['commands'][len(seen)]
                         name = item['name']
                         seen.append(name)
+                        if name in ('owner-before', 'role-owner-before', 'owner-after', 'role-owner-after'):
+                            self.assertEqual(argv[3], 'exec-out')
                         if name in ('pull-reference', 'pull-harness'):
                             import shutil
                             shutil.copyfile(root / Path(argv[-1]).name, argv[-1])
@@ -466,6 +468,10 @@ class SelectedReportTest(unittest.TestCase):
                         if name == 'pull-harness' and bad_name == 'pull-control': stdout += b'[ 20%] /transfer-aborted\x00\n'
                         if name == 'pull-harness' and bad_name == 'pull-padded': stdout = stdout.replace(f'{len(harness_bytes)} bytes'.encode(), f'0{len(harness_bytes)} bytes'.encode())
                         if name == 'pull-harness' and bad_name == 'pull-zero': stdout = stdout.replace(f'{len(harness_bytes)} bytes'.encode(), b'0 bytes').replace(f'{harness_rate:.1f} MB/s'.encode(), b'0.0 MB/s')
+                        if name == 'owner-before' and bad_name == 'owner-empty': stdout = b''
+                        if name == 'owner-before' and bad_name == 'owner-crlf': stdout = stdout.replace(b'\n', b'\r\n')
+                        if name == 'role-owner-before' and bad_name == 'role-owner-wrong': stdout += b' '
+                        if name == 'owner-after' and bad_name == 'owner-after-wrong': stdout += b' '
                         if name == 'install' and bad_name == 'split-error': stderr += b'error: injected\n'
                         if name == bad_name: stderr = b'error: injected\n'
                         code = 1 if name == 'install' and bad_name == 'install-nonzero' else item['exitCode']
@@ -482,7 +488,10 @@ class SelectedReportTest(unittest.TestCase):
                         continue
                     affected = ('instrumentation' if bad_name.startswith('frame-') else
                                 'install' if bad_name in ('notification-moved', 'notification-doubled', 'install-streamed', 'split-error', 'install-nonzero') else
-                                'pull-harness' if bad_name in ('pull-zero', 'pull-padded', 'pull-units', 'pull-wrong-path', 'pull-control', 'pull-skipped', 'pull-faux', 'pull-warning') else bad_name)
+                                'pull-harness' if bad_name in ('pull-zero', 'pull-padded', 'pull-units', 'pull-wrong-path', 'pull-control', 'pull-skipped', 'pull-faux', 'pull-warning') else
+                                'owner-before' if bad_name in ('owner-empty', 'owner-crlf') else
+                                'role-owner-before' if bad_name == 'role-owner-wrong' else
+                                'owner-after' if bad_name == 'owner-after-wrong' else bad_name)
                     self.assertIn(affected, seen)
                     self.assertEqual((destination / 'harness.apk').read_bytes(), harness_bytes)
                     self.assertEqual((destination / 'harness.apk.idsig').read_bytes(), idsig_bytes)
@@ -492,7 +501,7 @@ class SelectedReportTest(unittest.TestCase):
                         self.assertIn('stderr is contradictory', failure['error'])
                     self.assertNotIn('owned-cleanup', seen)
                     self.assertNotIn('remove-harness', seen)
-                    if bad_name != 'owner-after':
+                    if bad_name not in ('owner-after', 'owner-after-wrong'):
                         self.assertNotIn('stop-owned', seen)
                     if bad_name in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'install-streamed', 'split-error', 'install-nonzero', 'pull-skipped', 'pull-faux', 'pull-warning'):
                         self.assertNotIn('instrumentation', seen)
@@ -522,8 +531,18 @@ class SelectedReportTest(unittest.TestCase):
             (root / 'manifest.json').write_text(json.dumps(live), encoding='utf-8')
             with self.assertRaises(ValueError): selected_capture.verify_bundle(root, self.fixture, self.binding, 'main12')
             (root / 'owned-pid.stdout').write_bytes(b'')
-            for change in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning', 'missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
+            for change in ('shell-owner-before', 'shell-role-before', 'shell-owner-after', 'shell-role-after', 'owner-empty', 'owner-crlf', 'role-owner-wrong', 'pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning', 'missing-command', 'preinstrument-live', 'failure-code', 'truncated-inventory', 'duplicate-payload', 'contradictory-install', 'reversed-frame', 'extra-result', 'float-observation', 'float-owner', 'nonscalar-getter'):
                 bad = copy.deepcopy(manifest)
+                if change.startswith('shell-'):
+                    name = {'shell-owner-before': 'owner-before', 'shell-role-before': 'role-owner-before',
+                            'shell-owner-after': 'owner-after', 'shell-role-after': 'role-owner-after'}[change]
+                    next(c for c in bad['commands'] if c['name'] == name)['argv'][3] = 'shell'
+                if change in ('owner-empty', 'owner-crlf', 'role-owner-wrong'):
+                    name = 'owner-before' if change in ('owner-empty', 'owner-crlf') else 'role-owner-before'
+                    path = root / (name + '.stdout')
+                    altered = b'' if change == 'owner-empty' else owner_data.replace(b'\n', b'\r\n') if change == 'owner-crlf' else role_data + b' '
+                    path.write_bytes(altered)
+                    next(c for c in bad['commands'] if c['name'] == name)['stdoutSha256'] = hashlib.sha256(altered).hexdigest()
                 if change in ('pull-zero', 'pull-padded', 'notification-moved', 'notification-doubled', 'pull-units', 'pull-wrong-path', 'pull-control', 'split-error', 'install-streamed', 'install-nonzero', 'pull-faux', 'pull-warning'):
                     name = 'install' if change in ('notification-moved', 'notification-doubled', 'split-error', 'install-streamed', 'install-nonzero') else 'pull-harness'
                     item = next(c for c in bad['commands'] if c['name'] == name)
@@ -600,6 +619,8 @@ class SelectedReportTest(unittest.TestCase):
                 (root / 'observation.json').write_text(json.dumps(self.report), encoding='utf-8')
                 for name in ('role-owner-before', 'role-owner-after'):
                     (root / (name + '.stdout')).write_bytes(role_data)
+                for name in ('owner-before', 'owner-after'):
+                    (root / (name + '.stdout')).write_bytes(owner_data)
                 for name in ('private-retained-before', 'private-retained'):
                     (root / (name + '.stdout')).write_bytes(retained)
             (root / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')

@@ -583,12 +583,12 @@ def verify_bundle(directory, fixture, binding, role):
         'target-preinstrument': ['shell', 'pidof', TARGET],
         'instrumentation': ['shell', 'am', 'instrument', '-w', '-r', '-e', 'role', role,
                             PACKAGE + '/io.liber.oracle.nested.SelectedReplaceJsOracle'],
-        'owner-before': ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'],
-        'role-owner-before': ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'],
+        'owner-before': ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'],
+        'role-owner-before': ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'],
         'private-retained-before': ['shell', 'run-as', TARGET, 'sh', '-c', shlex.quote(INVENTORY_SCRIPT)],
         'owned-pid': ['shell', 'pidof', TARGET],
-        'owner-after': ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'],
-        'role-owner-after': ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'],
+        'owner-after': ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'],
+        'role-owner-after': ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'],
         'private-retained': ['shell', 'run-as', TARGET, 'sh', '-c', shlex.quote(INVENTORY_SCRIPT)],
         'target-final': ['shell', 'pidof', TARGET],
         'private-after': ['shell', 'run-as', TARGET, 'sh', '-c', shlex.quote(INVENTORY_SCRIPT)],
@@ -728,8 +728,8 @@ def capture(args):
         report = decode_instrumentation(raw)
         (output / 'observation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         check_selected_report(fixture, report, binding, args.role)
-        owner_before = run('owner-before', ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'])
-        role_owner_before = run('role-owner-before', ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'])
+        owner_before = run('owner-before', ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'])
+        role_owner_before = run('role-owner-before', ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'])
         retained_before = run('private-retained-before', ['shell', 'run-as', TARGET, 'sh', '-c', shlex.quote(INVENTORY_SCRIPT)])
         validate_owned_state(report, owner_before, role_owner_before, before, retained_before)
         process = run('owned-pid', ['shell', 'pidof', TARGET], expected_code=(0, 1))
@@ -741,8 +741,8 @@ def capture(args):
             check_live_process(stat, cmdline, report['identity'])
             run('stop-owned', ['shell', 'am', 'force-stop', TARGET])
         _require(not run('target-after', ['shell', 'pidof', TARGET], expected_code=1).strip(), 'owned target process survived')
-        owner_after = run('owner-after', ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'])
-        role_owner_after = run('role-owner-after', ['shell', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'])
+        owner_after = run('owner-after', ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/owner.json'])
+        role_owner_after = run('role-owner-after', ['exec-out', 'run-as', TARGET, 'cat', 'cache/liber-replace-js-selected/role-owner.json'])
         _require(owner_before == owner_after and role_owner_before == role_owner_after, 'durable owner changed during termination')
         retained = run('private-retained', ['shell', 'run-as', TARGET, 'sh', '-c', shlex.quote(INVENTORY_SCRIPT)])
         registered = validate_owned_state(report, owner_after, role_owner_after, before, retained)
