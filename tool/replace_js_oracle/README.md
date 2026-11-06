@@ -279,6 +279,16 @@ not observed. Existing selected main12 evidence belongs to the old APK; the
 new source-bound APK requires a fresh main12 capture. The original failed
 native timeout and its recovery remain separate evidence, not a new result.
 
+The expansion is bounded: the UTF-8 bytes inserted by those capture references
+are counted cumulatively over one rule execution on a title or content string,
+and more than 8,388,608 bytes is an ordinary own-rule `replaceRuleFailed` that
+keeps the rule enabled and lets later rules run. The count is checked before the
+expanded text is built; the unchanged input, the template's literal characters,
+non-regex `@js:` and ordinary replacement are not part of it, and the existing
+JavaScript result cap stays separate. This explicit resource policy differs from
+selected Legado a7d37f1, which uses a per-rule timeout and attempted restart
+rather than an expansion cap; the selected matcher grammar is unchanged.
+
 ### Selected-reference tooling
 
 The selected tooling is a separate path. `fixtures-selected.json` retains all

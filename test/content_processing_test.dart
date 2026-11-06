@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,8 @@ import 'package:liber/domain/contracts.dart' show SourceCancellation;
 import 'package:liber/domain/store_message.dart';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/source/content_processing.dart';
+import 'package:liber/source/js_source_runtime.dart'
+    show InProcessSourceScriptRuntime, SourceScriptRuntime;
 import 'package:liber/source/native_library.dart';
 import 'package:liber/store/database.dart';
 
@@ -59,6 +62,7 @@ void main() {
     void Function(StoreMessage)? onNotice,
     Future<void> Function(ReplaceRule)? onRuleDisabled,
     SourceCancellation? cancellation,
+    SourceScriptRuntime? scriptRuntime,
     bool useReplaceRule = true,
     bool useReSegment = false,
   }) => ContentProcessing(
@@ -69,6 +73,7 @@ void main() {
     ),
     bookName: bookName,
     script: script,
+    scriptRuntime: scriptRuntime,
     onNotice: onNotice,
     onRuleDisabled: onRuleDisabled,
     cancellation: cancellation,
@@ -706,6 +711,365 @@ void main() {
     });
   });
 
+  group('the capture-expansion resource boundary', () {
+    // These cases move megabytes through one rule. The product deadline is not
+    // what they exercise, so they carry enough of it that a loaded test host
+    // cannot turn a resource case into a timeout case.
+    const resourceTimeout = 30000;
+
+    test(
+      'a bounded capture expansion past the limit fails the rule atomically',
+      () async {
+        // The bounded repro: a 3072-character capture repeated 4096 times asks
+        // for 12,582,912 bytes, past the approved 8 MiB policy.
+        final notices = <StoreMessage>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              id: 'bounded-expansion',
+              ruleName: 'bounded-expansion',
+              pattern: r'^(a+)$',
+              replacement: r'@js:"$1".repeat(4096)',
+              scopeTitle: true,
+            ),
+          ],
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        final capture = 'a' * 3072;
+        expect(await processor.displayTitle(capture), capture);
+        expect(disabled, isEmpty);
+        expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+        expect(notices.single.arguments.first, 'bounded-expansion');
+      },
+    );
+
+    test('the exact limit succeeds and one byte more fails', () async {
+      // A 32 KiB match keeps the script and its `result` binding under the
+      // runtime's existing 64 KiB input cap; 256 references of it are exactly
+      // 8 MiB.
+      const capture = 32 * 1024;
+      final exact = await processing([
+        rule(
+          pattern: r'(a{32768})',
+          replacement: r'@js:"$1".repeat(256)',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ]).content('a' * capture, chapterTitle: 'other');
+      expect(exact.text.length, 2 + 8 * 1024 * 1024);
+
+      final notices = <StoreMessage>[];
+      final over = await processing(
+        [
+          rule(
+            pattern: r'(a{32768})(b)',
+            replacement: r'@js:"$1".repeat(256) + "$2"',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ],
+        onNotice: notices.add,
+      ).content('${'a' * capture}b', chapterTitle: 'other');
+      expect(over.text, '　　${'a' * capture}b');
+      expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+    });
+
+    test('capture bytes are UTF-8, not UTF-16', () async {
+      // 16,384 U+00E9 are 32 KiB of UTF-8 bytes: 256 references are exactly
+      // the limit, 257 pass it. A UTF-16 count would let 257 through.
+      const capture = 16 * 1024;
+      final exact = await processing([
+        rule(
+          pattern: r'(é+)',
+          replacement: r'@js:"$1".repeat(256)',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ]).content('é' * capture, chapterTitle: 'other');
+      // The output is 4 Mi UTF-16 units; the 8 MiB budget counts their UTF-8
+      // bytes.
+      expect(exact.text.length, 2 + 256 * capture);
+
+      final notices = <StoreMessage>[];
+      final over = await processing([
+        rule(
+          pattern: r'(é+)',
+          replacement: r'@js:"$1".repeat(257)',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ], onNotice: notices.add).content('é' * capture, chapterTitle: 'other');
+      expect(over.text, '　　${'é' * capture}');
+      expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+
+      // A supplementary character is two UTF-16 code units and four UTF-8
+      // bytes: 8,192 of them are 32 KiB of UTF-8, so 256 references are
+      // exactly the limit and 257 pass it. The run is captured with `.`
+      // because the engine's literal supplementary pattern is code-unit based.
+      const supplementary = 8 * 1024;
+      final pair = await processing([
+        rule(
+          pattern: r'(.+)',
+          replacement: r'@js:"$1".repeat(256)',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ]).content('𝄞' * supplementary, chapterTitle: 'other');
+      expect(pair.text.length, 2 + 2 * supplementary * 256);
+
+      final pairNotices = <StoreMessage>[];
+      final pairOver = await processing(
+        [
+          rule(
+            pattern: r'(.+)',
+            replacement: r'@js:"$1".repeat(257)',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ],
+        onNotice: pairNotices.add,
+      ).content('𝄞' * supplementary, chapterTitle: 'other');
+      expect(pairOver.text, '　　${'𝄞' * supplementary}');
+      expect(pairNotices.single.code, StoreMessageCode.replaceRuleFailed);
+    });
+
+    test('the capture budget is cumulative across matches', () async {
+      // 16 KiB of capture per match, 128 references each: four matches are
+      // exactly 8 MiB and the fifth passes it.
+      const perMatch = 16 * 1024;
+      final text = 'a' * (perMatch * 5);
+      final exact = await processing([
+        rule(
+          pattern: r'(a{16384})',
+          replacement: r'@js:"$1".repeat(128)',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ]).content(text.substring(0, perMatch * 4), chapterTitle: 'other');
+      expect(exact.text.length, 2 + 8 * 1024 * 1024);
+
+      final notices = <StoreMessage>[];
+      final over = await processing([
+        rule(
+          pattern: r'(a{16384})',
+          replacement: r'@js:"$1".repeat(128)',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ], onNotice: notices.add).content(text, chapterTitle: 'other');
+      expect(over.text, '　　$text');
+      expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+    });
+
+    test(
+      'named, whole-match and nonparticipating references count only their text',
+      () async {
+        const capture = 32 * 1024;
+        final named = await processing([
+          rule(
+            pattern: r'(?<word>a{32768})',
+            replacement: r'@js:"${word}".repeat(256)',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ]).content('a' * capture, chapterTitle: 'other');
+        expect(named.text.length, 2 + 8 * 1024 * 1024);
+
+        final whole = await processing([
+          rule(
+            pattern: r'(a{32768})',
+            replacement: r'@js:"$0".repeat(256)',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ]).content('a' * capture, chapterTitle: 'other');
+        expect(whole.text.length, 2 + 8 * 1024 * 1024);
+
+        // $2 never participates, so its thousand references insert nothing
+        // and the 256 named ones still sit exactly at the limit.
+        final nullable = await processing([
+          rule(
+            pattern: r'(?<word>a{32768})(b)?',
+            replacement: r'@js:"${word}".repeat(256) + "$2".repeat(1000)',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ]).content('a' * capture, chapterTitle: 'other');
+        expect(nullable.text.length, 2 + 8 * 1024 * 1024);
+      },
+    );
+
+    test('a later match past the limit leaves the whole rule out', () async {
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'cap',
+            ruleName: 'cap',
+            pattern: r'(a+)',
+            replacement:
+                r'@js:result.length > 1000 ? "$1".repeat(5000) : "$1".repeat(2)',
+          ),
+          rule(
+            id: 'next',
+            pattern: 'b',
+            replacement: 'B',
+            isRegex: false,
+            ruleOrder: 1,
+          ),
+        ],
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      final text = '${'a' * 100}b${'a' * 2000}';
+      final failed = await processor.content(text, chapterTitle: 'other');
+      // The first match's expansion is discarded with the whole rule, and the
+      // later rule still runs on the unchanged text.
+      expect(failed.text, '　　${'a' * 100}B${'a' * 2000}');
+      expect(disabled, isEmpty);
+      expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+      expect(notices.single.arguments.first, 'cap');
+    });
+
+    test('the budget is per title and content execution', () async {
+      // 5 MiB per execution: either one fits the 8 MiB policy, but a budget
+      // shared between the two invocations would fail the second.
+      const capture = 32 * 1024;
+      const perExecution = 5 * 1024 * 1024;
+      final processor = processing([
+        rule(
+          pattern: r'(a{32768})',
+          replacement: r'@js:"$1".repeat(160)',
+          scopeTitle: true,
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ]);
+      expect(
+        (await processor.displayTitle('a' * capture)).length,
+        perExecution,
+      );
+      expect(
+        (await processor.content(
+          'a' * capture,
+          chapterTitle: 'other',
+        )).text.length,
+        2 + perExecution,
+      );
+    });
+
+    test('literal template text is not part of the capture budget', () async {
+      final runtime = _FixedTemplateRuntime('x' * (1024 * 1024));
+      final notices = <StoreMessage>[];
+      final result = await processing(
+        [
+          rule(
+            pattern: r'(a)',
+            replacement: '@js:"x".repeat(1048576)',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ],
+        scriptRuntime: runtime,
+        onNotice: notices.add,
+      ).content('a' * 12, chapterTitle: 'other');
+      expect(result.text.length, 2 + 12 * 1024 * 1024);
+      expect(notices, isEmpty);
+    });
+
+    test('the unchanged input is not part of the capture budget', () async {
+      final input = 'a${'b' * 9000000}';
+      final notices = <StoreMessage>[];
+      final result = await processing([
+        rule(
+          pattern: r'(a)',
+          replacement: r'@js:"$1"',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ], onNotice: notices.add).content(input, chapterTitle: 'other');
+      expect(result.text.length, 2 + input.length);
+      expect(notices, isEmpty);
+    });
+
+    test('capture expansion runs off the reading isolate', () async {
+      final runtime = _FixedTemplateRuntime('x' * (1024 * 1024));
+      var ticks = 0;
+      final timer = Timer.periodic(
+        const Duration(milliseconds: 1),
+        (_) => ticks++,
+      );
+      try {
+        final result = await processing([
+          rule(
+            pattern: r'(a)',
+            replacement: '@js:"x".repeat(1048576)',
+            timeoutMillisecond: resourceTimeout,
+          ),
+        ], scriptRuntime: runtime).content('a' * 12, chapterTitle: 'other');
+        expect(result.text.length, 2 + 12 * 1024 * 1024);
+      } finally {
+        timer.cancel();
+      }
+      expect(ticks, greaterThan(0));
+    });
+
+    test('a capture no template references is never collected', () async {
+      final runtime = _FixedTemplateRuntime('X');
+      final result = await processing([
+        rule(
+          pattern: r'(?=(.*))',
+          replacement: r'@js:"X"',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ], scriptRuntime: runtime).content('a' * 3000, chapterTitle: 'other');
+      // 3001 zero-width matches, each replaced by one X with the original text
+      // kept between them; collecting every (.*) suffix would retain about 4.5
+      // million characters for a template that reads none of them.
+      expect(result.text.length, 2 + 3001 + 3000);
+      expect(result.text, startsWith('　　XaXaX'));
+    });
+
+    test('a lookahead capture is read at the original match', () async {
+      final result = await processing([
+        rule(pattern: r'(?=(a+))', replacement: r'@js:"$1"'),
+      ]).content('aaa', chapterTitle: 'other');
+      // The matches are zero-width, so the capture can only come from the
+      // original match context, never from a rematch of group 0: each match
+      // inserts its own capture and the text after the last match start is
+      // still appended.
+      expect(result.text, '　　aaaaaaaaa');
+    });
+
+    test(
+      'cancellation during capture expansion leaves the text unchanged',
+      () async {
+        final cancellation = SourceCancellation();
+        final notices = <StoreMessage>[];
+        final processor = processing(
+          [rule(pattern: r'(a)', replacement: r'@js:"$1".repeat(3)')],
+          scriptRuntime: _CancellingRuntime(cancellation),
+          cancellation: cancellation,
+          onNotice: notices.add,
+        );
+        final result = await processor.content('aaaa', chapterTitle: 'other');
+        expect(result.text, '　　aaaa');
+        expect(notices, isEmpty);
+      },
+    );
+
+    test('a slow match enumeration is still the rule timeout', () async {
+      final disabled = <String>[];
+      final notices = <StoreMessage>[];
+      final content = (await processing(
+        [
+          rule(
+            id: 'js-slow-match',
+            ruleName: '慢匹配 JS 规则',
+            pattern: r'(a+)+$',
+            replacement: r'@js:"X"',
+            timeoutMillisecond: 200,
+          ),
+        ],
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      ).content('${'a' * 32}b', chapterTitle: '第一章')).text;
+      expect(content, '　　${'a' * 32}b');
+      expect(disabled, ['js-slow-match']);
+      expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      expect(notices.single.arguments, ['慢匹配 JS 规则', 200]);
+    });
+  });
+
   group('the timeout', () {
     test('a rule past its own deadline is disabled and its text kept', () async {
       final disabled = <String>[];
@@ -792,4 +1156,39 @@ void main() {
       expect(await none.displayTitle('龍鳳'), '龙首鳳');
     });
   });
+}
+
+/// A boundary double that answers every match with the same returned text, so a
+/// resource case can be sized without the JavaScript engine's own cost.
+class _FixedTemplateRuntime extends InProcessSourceScriptRuntime {
+  _FixedTemplateRuntime(this.template);
+
+  final String template;
+
+  @override
+  Future<Object?> evaluate({
+    required String source,
+    required Map<String, Object?> input,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+  }) async => template;
+}
+
+/// A boundary double that abandons the operation on its second match.
+class _CancellingRuntime extends InProcessSourceScriptRuntime {
+  _CancellingRuntime(this.operation);
+
+  final SourceCancellation operation;
+  var _calls = 0;
+
+  @override
+  Future<Object?> evaluate({
+    required String source,
+    required Map<String, Object?> input,
+    required Duration timeout,
+    SourceCancellation? cancellation,
+  }) async {
+    if (++_calls == 2) operation.cancel();
+    return 'X';
+  }
 }

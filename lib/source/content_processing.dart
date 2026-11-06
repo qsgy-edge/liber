@@ -49,9 +49,16 @@
 /// What this module does **not** do, and why — these are recorded on #17:
 ///
 /// - an `@js:` replacement (`RegexExtensions.kt:23-64`) evaluates JavaScript
-///   once per regex match through the approved source runtime boundary; the
-///   frozen runtime exposes the complete match as `result`, and the returned
-///   value is inserted literally.
+///   once per regex match through the approved source runtime boundary, which
+///   exposes the complete match as `result`. A **regex** rule expands the
+///   returned text the way the selected reference does — `$0`/`$n`/`${name}`
+///   capture references against the original match, with literal backslashes —
+///   while a non-regex rule inserts its replacement literally and never
+///   interprets the prefix. The text those capture references insert is limited
+///   to 8 MiB of UTF-8 bytes per rule execution, cumulatively over its matches;
+///   exceeding it is an ordinary rule failure that keeps the rule enabled. That
+///   resource policy is this product's, and differs from the selected
+///   reference's per-rule timeout and attempted restart.
 /// - the frozen `removeSameTitleCache` guard (`ContentProcessor.kt:126-128`)
 ///   depends on the retired on-disk chapter files, which this product has none
 ///   of, so the duplicated-title removal always runs.
@@ -79,6 +86,7 @@
 /// reports its whole text as one rewritten range: the script never guesses.
 library;
 
+import 'dart:async';
 import 'dart:isolate';
 
 import 'package:fjs/fjs.dart' show ConvertTarget;
@@ -570,6 +578,13 @@ class ContentProcessing {
   /// Applies the frozen JavaScript replacement once per match. The stopwatch
   /// carries one rule deadline across all matches, matching the frozen worker
   /// that wraps the complete replacement pass in one timeout.
+  ///
+  /// The match enumeration, the capture access, the template parsing and the
+  /// expanded buffer live in [_JsExpansionWorker]; this method only evaluates
+  /// one script per match between two worker requests, so the reading isolate
+  /// never runs the expansion. The text the capture references insert is
+  /// counted against [_maxJsExpansionBytes] before any of it is built, and a
+  /// rule that would pass it fails ordinarily, with its input and edits kept.
   Future<_Outcome> _applyJsUnderDeadline(
     String text,
     ReplaceRule rule,
@@ -579,44 +594,79 @@ class ContentProcessing {
     final script = rule.replacement.substring(4);
     final deadline = _deadlineFor(rule);
     final stopwatch = Stopwatch()..start();
-    final buffer = StringBuffer();
-    final edits = <ContentEdit>[];
-    var cursor = 0;
+    _JsExpansionWorker? worker;
     try {
-      final remaining = deadline - stopwatch.elapsed;
+      var remaining = deadline - stopwatch.elapsed;
       if (remaining <= Duration.zero) return const _Outcome.timeout();
-      final matches = await _collectJsMatches(text, pattern, remaining);
-      if (matches.cancelled) return const _Outcome.cancelled();
-      if (matches.timedOut) return const _Outcome.timeout();
-      if (matches.error != null) return _Outcome.error(matches.error!);
-      for (final entry in matches.values!) {
-        final start = entry[0] as int;
-        final end = entry[1] as int;
-        final matchText = entry[2] as String;
-        final next = deadline - stopwatch.elapsed;
-        if (next <= Duration.zero) return const _Outcome.timeout();
-        final value = await runtime.evaluate(
-          source: script,
-          input: {'sourceKey': '', 'result': matchText},
-          timeout: next,
-          cancellation: cancellation,
-        );
-        cancellation?.throwIfCancelled();
-        final expanded = _expandJsReplacement(
-          '$value',
-          (entry[3] as List).cast<String?>(),
-          (entry[4] as Map).cast<String, String?>(),
-        );
-        cancellation?.throwIfCancelled();
-        if (stopwatch.elapsed >= deadline) return const _Outcome.timeout();
-        if (expanded == null) return const _Outcome.error('替换里的分组引用不存在');
-        buffer.write(text.substring(cursor, start));
-        buffer.write(expanded);
-        edits.add(ContentEdit(start: start, end: end, length: expanded.length));
-        cursor = end;
+      worker = await _JsExpansionWorker.start(
+        pattern: pattern,
+        text: text,
+        maxInsertedBytes: _maxJsExpansionBytes,
+        cancellation: cancellation,
+      );
+      while (true) {
+        if (cancellation?.isCancelled ?? false) {
+          return const _Outcome.cancelled();
+        }
+        remaining = deadline - stopwatch.elapsed;
+        if (remaining <= Duration.zero) return const _Outcome.timeout();
+        final next = await worker.ask(const <Object?>['next'], remaining);
+        if (next == null) return _jsWorkerStopped(timedOut: true);
+        switch (next.first) {
+          case 'match':
+            if (next.length < 4 ||
+                next[1] is! int ||
+                next[2] is! int ||
+                next[3] is! String) {
+              return const _Outcome.error('替换进程返回了意外结果');
+            }
+            remaining = deadline - stopwatch.elapsed;
+            if (remaining <= Duration.zero) return const _Outcome.timeout();
+            final value = await runtime.evaluate(
+              source: script,
+              input: {'sourceKey': '', 'result': next[3] as String},
+              timeout: remaining,
+              cancellation: cancellation,
+            );
+            cancellation?.throwIfCancelled();
+            remaining = deadline - stopwatch.elapsed;
+            if (remaining <= Duration.zero) return const _Outcome.timeout();
+            final expanded = await worker.ask(<Object?>[
+              'expand',
+              '$value',
+            ], remaining);
+            if (expanded == null) return _jsWorkerStopped(timedOut: true);
+            if (expanded.first == 'exit') {
+              return _jsWorkerStopped(timedOut: false);
+            }
+            if (expanded.first == 'over') {
+              return const _Outcome.error(_jsExpansionLimitMessage);
+            }
+            if (expanded.first == 'invalid') {
+              return const _Outcome.error('替换里的分组引用不存在');
+            }
+            if (expanded.first != 'ok') {
+              return _Outcome.error(
+                '${expanded.length > 1 ? expanded[1] : expanded.first}',
+              );
+            }
+            break;
+          case 'done':
+            if (next.length < 3 || next[1] is! String) {
+              return const _Outcome.error('替换进程返回了意外结果');
+            }
+            return _Outcome.text(
+              next[1] as String,
+              edits: _replacementEdits(next[2]),
+            );
+          case 'error':
+            return _Outcome.error('${next.length > 1 ? next[1] : next.first}');
+          case 'exit':
+            return _jsWorkerStopped(timedOut: false);
+          default:
+            return const _Outcome.error('替换进程返回了意外结果');
+        }
       }
-      buffer.write(text.substring(cursor));
-      return _Outcome.text(buffer.toString(), edits: edits);
     } on SourceScriptError catch (error) {
       if (error.category == 'cancelled') return const _Outcome.cancelled();
       if (error.category == 'timeout') return const _Outcome.timeout();
@@ -624,75 +674,21 @@ class ContentProcessing {
     } on SourceRequestCancelled {
       return const _Outcome.cancelled();
     } catch (error) {
+      if (cancellation?.isCancelled ?? false) return const _Outcome.cancelled();
       return _Outcome.error('$error');
+    } finally {
+      worker?.close();
     }
   }
 
-  Future<_JsMatches> _collectJsMatches(
-    String text,
-    JavaPattern pattern,
-    Duration timeout,
-  ) async {
-    if (cancellation?.isCancelled ?? false) return const _JsMatches.cancelled();
-    final receive = ReceivePort();
-    Isolate? isolate;
-    final unlisten = cancellation?.listen(() {
-      isolate?.kill(priority: Isolate.immediate);
-    });
-    try {
-      isolate = await Isolate.spawn(_jsMatchEntry, <Object?>[
-        receive.sendPort,
-        pattern.source,
-        text,
-        pattern.caseSensitive,
-        pattern.multiLine,
-        pattern.dotAll,
-        pattern.unicode,
-      ], onExit: receive.sendPort);
-      // Cancellation can arrive while spawn is awaiting the isolate handle.
-      if (cancellation?.isCancelled ?? false) {
-        return const _JsMatches.cancelled();
-      }
-      final message = await receive.first.timeout(
-        timeout,
-        onTimeout: () => const <Object?>['timeout'],
-      );
-      if (message is List && message.isNotEmpty && message.first == 'timeout') {
-        return const _JsMatches.timeout();
-      }
-      if (message == null) {
-        return cancellation?.isCancelled ?? false
-            ? const _JsMatches.cancelled()
-            : const _JsMatches.error('替换进程意外退出');
-      }
-      if (message is! List || message.length < 2) {
-        return const _JsMatches.error('替换进程返回了意外结果');
-      }
-      if (message.first == 'error') {
-        return _JsMatches.error('${message[1]}');
-      }
-      if (message.first != 'ok' || message[1] is! List) {
-        return const _JsMatches.error('替换进程返回了意外结果');
-      }
-      final values = <List<Object?>>[];
-      for (final value in message[1] as List) {
-        if (value is! List ||
-            value.length != 5 ||
-            value[0] is! int ||
-            value[1] is! int ||
-            value[2] is! String ||
-            value[3] is! List ||
-            value[4] is! Map) {
-          return const _JsMatches.error('替换进程返回了意外匹配');
-        }
-        values.add(value.cast<Object?>());
-      }
-      return _JsMatches.values(values);
-    } finally {
-      unlisten?.call();
-      isolate?.kill(priority: Isolate.immediate);
-      receive.close();
-    }
+  /// What a worker that stopped answering means: an abandoned operation is
+  /// cancellation, an unanswered request is the rule's own deadline, and a
+  /// worker that exited on its own is the existing unexpected-exit error.
+  _Outcome _jsWorkerStopped({required bool timedOut}) {
+    if (cancellation?.isCancelled ?? false) return const _Outcome.cancelled();
+    return timedOut
+        ? const _Outcome.timeout()
+        : const _Outcome.error('替换进程意外退出');
   }
 
   /// Runs one regex rule in a short-lived isolate under the rule's own deadline.
@@ -1134,30 +1130,121 @@ int _frozenTrimStart(String text) {
 
 bool _frozenCut(int codeUnit) => codeUnit <= 0x20 || codeUnit == 0x3000;
 
-class _JsMatches {
-  const _JsMatches.values(this.values)
-    : timedOut = false,
-      cancelled = false,
-      error = null;
-  const _JsMatches.timeout()
-    : values = null,
-      timedOut = true,
-      cancelled = false,
-      error = null;
-  const _JsMatches.cancelled()
-    : values = null,
-      timedOut = false,
-      cancelled = true,
-      error = null;
-  const _JsMatches.error(this.error)
-    : values = null,
-      timedOut = false,
-      cancelled = false;
+/// The most UTF-8 bytes one regex `@js:` rule may insert through capture
+/// references in one execution, cumulatively over its matches and repeated
+/// references. The unchanged input and the template's literal characters are
+/// not part of it, and the existing JavaScript result cap stays separate.
+const _maxJsExpansionBytes = 8 * 1024 * 1024;
 
-  final List<List<Object?>>? values;
-  final bool timedOut;
-  final bool cancelled;
-  final String? error;
+/// The ordinary own-rule failure a regex `@js:` rule reports when its capture
+/// expansion would pass [_maxJsExpansionBytes].
+const _jsExpansionLimitMessage = '替换展开超过 8 MiB 上限';
+
+/// One rule execution's match and expansion worker.
+///
+/// The selected reference runs the whole replacement pass on a worker
+/// (`RegexExtensions.kt:29-63`) and expands every script return against the
+/// original `Matcher` state. Dart's `RegExp` cannot be interrupted, so this
+/// worker owns the match enumeration, the capture access, the template parsing
+/// and the expanded buffer, and the caller evaluates one script per match
+/// between two requests: the reading isolate never runs the expansion, and the
+/// approved JavaScript boundary stays where it is.
+///
+/// The worker keeps the original text and the original `RegExpMatch`es, so a
+/// capture is read from its own match when a template asks for it — never
+/// rematched from a substring, and never collected for a group no template
+/// references. The text those references insert is counted against
+/// [maxInsertedBytes] before any of it is built.
+class _JsExpansionWorker {
+  _JsExpansionWorker._(
+    this._isolate,
+    this._replies,
+    SourceCancellation? cancellation,
+  ) : _unlisten = cancellation?.listen(() {
+        _isolate.kill(priority: Isolate.immediate);
+      }) {
+    _replies.listen(_onMessage);
+    if (cancellation?.isCancelled ?? false) {
+      _isolate.kill(priority: Isolate.immediate);
+    }
+  }
+
+  /// Spawns the worker for one rule execution.
+  static Future<_JsExpansionWorker> start({
+    required JavaPattern pattern,
+    required String text,
+    required int maxInsertedBytes,
+    SourceCancellation? cancellation,
+  }) async {
+    final replies = ReceivePort();
+    final isolate = await Isolate.spawn(_jsExpansionEntry, <Object?>[
+      replies.sendPort,
+      pattern.source,
+      text,
+      pattern.caseSensitive,
+      pattern.multiLine,
+      pattern.dotAll,
+      pattern.unicode,
+      maxInsertedBytes,
+    ], onExit: replies.sendPort);
+    return _JsExpansionWorker._(isolate, replies, cancellation);
+  }
+
+  final Isolate _isolate;
+  final ReceivePort _replies;
+  final void Function()? _unlisten;
+  final Completer<SendPort?> _ready = Completer<SendPort?>();
+  Completer<List<Object?>>? _pending;
+  bool _exited = false;
+  bool _closed = false;
+
+  /// Sends one request and waits for its reply, or null when the worker did not
+  /// answer within [timeout]. A worker that exited answers `['exit']`.
+  Future<List<Object?>?> ask(List<Object?> request, Duration timeout) async {
+    final requests = await _ready.future.timeout(
+      timeout,
+      onTimeout: () => null,
+    );
+    if (requests == null) return _exited ? const <Object?>['exit'] : null;
+    final pending = Completer<List<Object?>>();
+    _pending = pending;
+    requests.send(request);
+    final reply = await pending.future.timeout(
+      timeout,
+      onTimeout: () => const <Object?>[],
+    );
+    if (reply.isEmpty) {
+      _pending = null;
+      return _exited ? const <Object?>['exit'] : null;
+    }
+    return reply;
+  }
+
+  void _onMessage(Object? message) {
+    if (!_ready.isCompleted) {
+      if (message is SendPort) {
+        _ready.complete(message);
+      } else {
+        _exited = true;
+        _ready.complete(null);
+      }
+      return;
+    }
+    final pending = _pending;
+    _pending = null;
+    if (pending == null || pending.isCompleted) return;
+    pending.complete(
+      message is List ? message.cast<Object?>() : const <Object?>['exit'],
+    );
+  }
+
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _unlisten?.call();
+    _isolate.kill(priority: Isolate.immediate);
+    _replies.close();
+  }
 }
 
 class _Outcome {
@@ -1192,54 +1279,146 @@ class _Outcome {
   final String? error;
 }
 
-/// Collects complete regex matches off the reading isolate. The JavaScript
-/// runtime remains the approved boundary in the caller isolate; this worker
-/// only makes Dart's regexp work interruptible under the same rule deadline.
-void _jsMatchEntry(List<Object?> args) {
-  final send = args[0] as SendPort;
+/// The match/expansion worker's entry point: it holds the original text and
+/// the original matches, so match enumeration, capture access, template parsing
+/// and the expanded buffer all run here, off the reading isolate.
+void _jsExpansionEntry(List<Object?> args) {
+  final replies = args[0] as SendPort;
+  final requests = ReceivePort();
+  replies.send(requests.sendPort);
+  final _JsExpansion expansion;
   try {
-    final regex = RegExp(
-      args[1] as String,
-      caseSensitive: args[3] as bool,
-      multiLine: args[4] as bool,
-      dotAll: args[5] as bool,
-      unicode: args[6] as bool,
+    expansion = _JsExpansion(
+      RegExp(
+        args[1] as String,
+        caseSensitive: args[3] as bool,
+        multiLine: args[4] as bool,
+        dotAll: args[5] as bool,
+        unicode: args[6] as bool,
+      ),
+      args[2] as String,
+      args[7] as int,
     );
-    final text = args[2] as String;
-    final matches = <List<Object?>>[];
-    for (final match in regex.allMatches(text)) {
-      matches.add(<Object?>[
-        match.start,
-        match.end,
-        match.group(0)!,
-        [for (var i = 0; i <= match.groupCount; i++) match.group(i)],
-        {for (final name in match.groupNames) name: match.namedGroup(name)},
-      ]);
-    }
-    send.send(<Object?>['ok', matches]);
   } catch (error) {
-    send.send(<Object?>['error', '$error']);
+    replies.send(<Object?>['error', '$error']);
+    return;
+  }
+  requests.listen((message) {
+    if (message is! List) {
+      replies.send(const <Object?>['error', '替换进程收到意外请求']);
+      return;
+    }
+    try {
+      replies.send(expansion.handle(message.cast<Object?>()));
+    } catch (error) {
+      replies.send(<Object?>['error', '$error']);
+    }
+  });
+}
+
+/// One rule execution's matches and expanded buffer, inside the worker.
+class _JsExpansion {
+  _JsExpansion(this._regex, this._text, this._limit);
+
+  final RegExp _regex;
+  final String _text;
+  final int _limit;
+  final StringBuffer _buffer = StringBuffer();
+  final List<List<Object?>> _edits = <List<Object?>>[];
+  late final Iterator<RegExpMatch> _matches = _regex.allMatches(_text).iterator;
+  RegExpMatch? _current;
+  int _cursor = 0;
+  int _inserted = 0;
+
+  /// Answers one request: the next original match, or the expansion of one
+  /// script return against the current one.
+  List<Object?> handle(List<Object?> request) {
+    if (request.isEmpty) {
+      return const <Object?>['error', '替换进程收到意外请求'];
+    }
+    switch (request.first) {
+      case 'next':
+        return _next();
+      case 'expand':
+        if (request.length < 2 || request[1] is! String) {
+          return const <Object?>['error', '替换进程收到意外请求'];
+        }
+        return _expand(request[1] as String);
+      default:
+        return const <Object?>['error', '替换进程收到意外请求'];
+    }
+  }
+
+  List<Object?> _next() {
+    if (!_matches.moveNext()) {
+      _buffer.write(_text.substring(_cursor));
+      return <Object?>['done', _buffer.toString(), _edits];
+    }
+    final match = _matches.current;
+    _current = match;
+    return <Object?>['match', match.start, match.end, match.group(0)!];
+  }
+
+  List<Object?> _expand(String template) {
+    final match = _current;
+    if (match == null) {
+      return const <Object?>['error', '替换进程收到意外请求'];
+    }
+    // Count what the capture references would insert before building any of
+    // it: the budget is the sum of their UTF-8 lengths over the whole
+    // execution, and the template's literal characters are not part of it.
+    final resolved = <String, String?>{};
+    var contribution = 0;
+    final valid = _walkJsTemplate(
+      template,
+      match,
+      (_) {},
+      (index, name) => contribution += _utf8Length(
+        _jsCaptureText(index, name, match, resolved),
+      ),
+    );
+    if (!valid) return const <Object?>['invalid'];
+    if (_inserted + contribution > _limit) {
+      return <Object?>['over', _limit];
+    }
+    _inserted += contribution;
+    _buffer.write(_text.substring(_cursor, match.start));
+    final before = _buffer.length;
+    _walkJsTemplate(
+      template,
+      match,
+      _buffer.write,
+      (index, name) =>
+          _buffer.write(_jsCaptureText(index, name, match, resolved) ?? ''),
+    );
+    _edits.add(<Object?>[match.start, match.end, _buffer.length - before]);
+    _cursor = match.end;
+    return const <Object?>['ok'];
   }
 }
 
-/// Expands the selected regex-JS return: Java Matcher dollar references, but
-/// literal backslashes (the selected quoteReplacementJs escapes them first).
-String? _expandJsReplacement(
+/// Walks one selected regex-JS return the way the selected reference's
+/// `quoteReplacementJs`/`appendReplacement` pair does: literal text, `$`-numeric
+/// references taking the longest existing group prefix, and `${name}`
+/// references. Returns false when a reference is not valid for [match];
+/// [literal] and [capture] see the pieces in template order.
+bool _walkJsTemplate(
   String replacement,
-  List<String?> groups,
-  Map<String, String?> namedGroups,
+  RegExpMatch match,
+  void Function(String literal) literal,
+  void Function(int? index, String? name) capture,
 ) {
-  final out = StringBuffer();
+  final text = StringBuffer();
   var i = 0;
   bool digit(int c) => c >= 48 && c <= 57;
   bool letter(int c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
   while (i < replacement.length) {
     if (replacement[i] != r'$') {
-      out.write(replacement[i++]);
+      text.write(replacement[i++]);
       continue;
     }
     i++;
-    if (i == replacement.length) return null;
+    if (i == replacement.length) return false;
     if (replacement[i] == '{') {
       final start = ++i;
       while (i < replacement.length &&
@@ -1251,25 +1430,76 @@ String? _expandJsReplacement(
           !letter(replacement.codeUnitAt(start)) ||
           i == replacement.length ||
           replacement[i] != '}') {
-        return null;
+        return false;
       }
       final name = replacement.substring(start, i++);
-      if (!namedGroups.containsKey(name)) return null;
-      out.write(namedGroups[name] ?? '');
+      if (!match.groupNames.contains(name)) return false;
+      if (text.isNotEmpty) {
+        literal(text.toString());
+        text.clear();
+      }
+      capture(null, name);
       continue;
     }
-    if (!digit(replacement.codeUnitAt(i))) return null;
+    if (!digit(replacement.codeUnitAt(i))) return false;
     var group = replacement.codeUnitAt(i++) - 48;
-    if (group >= groups.length) return null;
+    if (group > match.groupCount) return false;
     while (i < replacement.length && digit(replacement.codeUnitAt(i))) {
       final next = group * 10 + replacement.codeUnitAt(i) - 48;
-      if (next >= groups.length) break;
+      if (next > match.groupCount) break;
       group = next;
       i++;
     }
-    out.write(groups[group] ?? '');
+    if (text.isNotEmpty) {
+      literal(text.toString());
+      text.clear();
+    }
+    capture(group, null);
   }
-  return out.toString();
+  if (text.isNotEmpty) literal(text.toString());
+  return true;
+}
+
+/// The text one capture reference inserts, read from the original match and
+/// resolved at most once per match: an unmatched or nonparticipating group
+/// inserts nothing.
+String? _jsCaptureText(
+  int? index,
+  String? name,
+  RegExpMatch match,
+  Map<String, String?> resolved,
+) {
+  final key = name == null ? 'index:$index' : 'name:$name';
+  if (resolved.containsKey(key)) return resolved[key];
+  final text = name == null ? match.group(index!) : match.namedGroup(name);
+  resolved[key] = text;
+  return text;
+}
+
+/// The UTF-8 byte length of [text], counted without encoding it: a lone
+/// surrogate counts as the replacement character's three bytes, as the
+/// encoder's own length does.
+int _utf8Length(String? text) {
+  if (text == null) return 0;
+  var bytes = 0;
+  for (var i = 0; i < text.length; i++) {
+    final unit = text.codeUnitAt(i);
+    if (unit < 0x80) {
+      bytes += 1;
+    } else if (unit < 0x800) {
+      bytes += 2;
+    } else if (unit >= 0xD800 &&
+        unit <= 0xDBFF &&
+        i + 1 < text.length &&
+        text.codeUnitAt(i + 1) >= 0xDC00 &&
+        text.codeUnitAt(i + 1) <= 0xDFFF) {
+      bytes += 4;
+      i++;
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
 }
 
 /// The isolate entry point: one Java-compatible replacement, off the reading
