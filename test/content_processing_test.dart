@@ -7,7 +7,7 @@ import 'package:liber/domain/store_message.dart';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:liber/source/content_processing.dart';
 import 'package:liber/source/js_source_runtime.dart'
-    show InProcessSourceScriptRuntime, SourceScriptRuntime;
+    show InProcessSourceScriptRuntime, SourceScriptError, SourceScriptRuntime;
 import 'package:liber/source/native_library.dart';
 import 'package:liber/store/database.dart';
 
@@ -1241,6 +1241,181 @@ void main() {
       expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
       expect(notices.single.arguments, ['late-return', 50]);
     });
+
+    test('cancellation wins over a typed timeout failure', () async {
+      // The controller's actual counterexample: the evaluator cancels the
+      // operation and then throws the runtime's timeout category. Cancellation
+      // must win with no notice or disable.
+      final cancellation = SourceCancellation();
+      final runtime = _ScriptDouble(
+        (_) => throw const SourceScriptError('timeout'),
+        onCall: (call, input) => cancellation.cancel(),
+      );
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'cancel-timeout',
+            ruleName: 'cancel-timeout',
+            pattern: r'^(a)$',
+            replacement: r'@js:"$2"',
+            scopeTitle: true,
+          ),
+        ],
+        scriptRuntime: runtime,
+        cancellation: cancellation,
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      expect(await processor.displayTitle('a'), 'a');
+      expect(runtime.calls, 1);
+      expect(cancellation.isCancelled, isTrue);
+      expect(notices, isEmpty);
+      expect(disabled, isEmpty);
+    });
+
+    test('cancellation wins over an ordinary script failure', () async {
+      // The controller's actual counterexample: the evaluator cancels the
+      // operation and then throws an ordinary script failure. Cancellation must
+      // win with no notice or disable.
+      final cancellation = SourceCancellation();
+      final runtime = _ScriptDouble(
+        (_) => throw const SourceScriptError('js', 'controlled script error'),
+        onCall: (call, input) => cancellation.cancel(),
+      );
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'cancel-js',
+            ruleName: 'cancel-js',
+            pattern: r'^(a)$',
+            replacement: r'@js:"$2"',
+            scopeTitle: true,
+          ),
+        ],
+        scriptRuntime: runtime,
+        cancellation: cancellation,
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      expect(await processor.displayTitle('a'), 'a');
+      expect(runtime.calls, 1);
+      expect(cancellation.isCancelled, isTrue);
+      expect(notices, isEmpty);
+      expect(disabled, isEmpty);
+    });
+
+    test('a typed script failure after the deadline times out', () async {
+      // The controller's actual counterexample: the evaluator runs past the
+      // rule deadline and then throws an ordinary script failure. The elapsed
+      // deadline must win over the failure's own category.
+      final runtime = _ScriptDouble((_) {
+        final pause = Stopwatch()..start();
+        while (pause.elapsedMilliseconds < 800) {}
+        throw const SourceScriptError('js', 'late controlled script error');
+      });
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'late-js',
+            ruleName: 'late-js',
+            pattern: r'^(a)$',
+            replacement: r'@js:"$2"',
+            scopeTitle: true,
+            timeoutMillisecond: 500,
+          ),
+        ],
+        scriptRuntime: runtime,
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      expect(await processor.displayTitle('a'), 'a');
+      expect(runtime.calls, 1);
+      expect(disabled, ['late-js']);
+      expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      expect(notices.single.arguments, ['late-js', 500]);
+    });
+
+    test('a host failure after the deadline times out', () async {
+      // The controller's actual counterexample: the evaluator runs past the
+      // rule deadline and then throws a generic host failure. The elapsed
+      // deadline must win over the ordinary error path.
+      final runtime = _ScriptDouble((_) {
+        final pause = Stopwatch()..start();
+        while (pause.elapsedMilliseconds < 800) {}
+        throw StateError('late controlled host error');
+      });
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'late-host',
+            ruleName: 'late-host',
+            pattern: r'^(a)$',
+            replacement: r'@js:"$2"',
+            scopeTitle: true,
+            timeoutMillisecond: 500,
+          ),
+        ],
+        scriptRuntime: runtime,
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      expect(await processor.displayTitle('a'), 'a');
+      expect(runtime.calls, 1);
+      expect(disabled, ['late-host']);
+      expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      expect(notices.single.arguments, ['late-host', 500]);
+    });
+
+    test(
+      'a queued worker reply after the rule deadline is not adopted',
+      () async {
+        // The controller's scheduling control: a successful evaluation returns
+        // a missing group and holds the caller past the rule deadline while the
+        // actual expansion worker queues its invalid-reference reply.
+        var queuedPauseRan = false;
+        final runtime = _ScriptDouble(
+          (_) => r'$2',
+          onCall: (call, input) {
+            Timer.run(() {
+              queuedPauseRan = true;
+              final pause = Stopwatch()..start();
+              while (pause.elapsedMilliseconds < 800) {}
+            });
+          },
+        );
+        final notices = <StoreMessage>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              id: 'queued-deadline',
+              ruleName: 'queued-deadline',
+              pattern: r'^(a)$',
+              replacement: r'@js:"$2"',
+              scopeTitle: true,
+              timeoutMillisecond: 500,
+            ),
+          ],
+          scriptRuntime: runtime,
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        expect(await processor.displayTitle('a'), 'a');
+        expect(runtime.calls, 1);
+        expect(queuedPauseRan, isTrue);
+        expect(disabled, ['queued-deadline']);
+        expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+        expect(notices.single.arguments, ['queued-deadline', 500]);
+      },
+    );
 
     test(
       'the first match is evaluated before a later match is enumerated',

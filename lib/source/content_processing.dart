@@ -676,13 +676,21 @@ class ContentProcessing {
         }
       }
     } on SourceScriptError catch (error) {
+      // A failed await is admitted the same way a successful one is: an
+      // explicit cancelled error stays cancellation, then a cancellation or an
+      // elapsed deadline that happened while waiting wins over the failure the
+      // runtime delivered, and only then does the failure keep its own
+      // category and diagnostic.
       if (error.category == 'cancelled') return const _Outcome.cancelled();
+      final stopped = _ruleStopped(stopwatch, deadline);
+      if (stopped != null) return stopped;
       if (error.category == 'timeout') return const _Outcome.timeout();
       return _Outcome.error('$error');
     } on SourceRequestCancelled {
       return const _Outcome.cancelled();
     } catch (error) {
-      if (cancellation?.isCancelled ?? false) return const _Outcome.cancelled();
+      final stopped = _ruleStopped(stopwatch, deadline);
+      if (stopped != null) return stopped;
       return _Outcome.error('$error');
     } finally {
       worker?.close();
@@ -1174,15 +1182,12 @@ const _jsExpansionLimitMessage = '替换展开超过 8 MiB 上限';
 /// references. The text those references insert is counted against
 /// [maxInsertedBytes] before any of it is built.
 class _JsExpansionWorker {
-  _JsExpansionWorker._(
-    this._isolate,
-    this._replies,
-    SourceCancellation? cancellation,
-  ) : _unlisten = cancellation?.listen(() {
+  _JsExpansionWorker._(this._isolate, this._replies, this._cancellation)
+    : _unlisten = _cancellation?.listen(() {
         _isolate.kill(priority: Isolate.immediate);
       }) {
     _replies.listen(_onMessage);
-    if (cancellation?.isCancelled ?? false) {
+    if (_cancellation?.isCancelled ?? false) {
       _isolate.kill(priority: Isolate.immediate);
     }
   }
@@ -1195,21 +1200,30 @@ class _JsExpansionWorker {
     SourceCancellation? cancellation,
   }) async {
     final replies = ReceivePort();
-    final isolate = await Isolate.spawn(_jsExpansionEntry, <Object?>[
-      replies.sendPort,
-      pattern.source,
-      text,
-      pattern.caseSensitive,
-      pattern.multiLine,
-      pattern.dotAll,
-      pattern.unicode,
-      maxInsertedBytes,
-    ], onExit: replies.sendPort);
+    final Isolate isolate;
+    try {
+      isolate = await Isolate.spawn(_jsExpansionEntry, <Object?>[
+        replies.sendPort,
+        pattern.source,
+        text,
+        pattern.caseSensitive,
+        pattern.multiLine,
+        pattern.dotAll,
+        pattern.unicode,
+        maxInsertedBytes,
+      ], onExit: replies.sendPort);
+    } catch (_) {
+      // No worker owns the port when spawning fails, so the caller's cleanup
+      // cannot reach it: close it here and keep the original failure.
+      replies.close();
+      rethrow;
+    }
     return _JsExpansionWorker._(isolate, replies, cancellation);
   }
 
   final Isolate _isolate;
   final ReceivePort _replies;
+  final SourceCancellation? _cancellation;
   final void Function()? _unlisten;
   final Completer<SendPort?> _ready = Completer<SendPort?>();
   Completer<List<Object?>>? _pending;
@@ -1227,6 +1241,11 @@ class _JsExpansionWorker {
       onTimeout: () => null,
     );
     if (requests == null) return _exited ? const <Object?>['exit'] : null;
+    // Cancellation can fire while readiness is pending and the queued port can
+    // still arrive afterwards: no request is sent in that state.
+    if (_closed || (_cancellation?.isCancelled ?? false)) {
+      return const <Object?>['exit'];
+    }
     final left = timeout - stopwatch.elapsed;
     if (left <= Duration.zero) return null;
     final pending = Completer<List<Object?>>();
