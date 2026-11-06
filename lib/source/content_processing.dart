@@ -604,13 +604,18 @@ class ContentProcessing {
         maxInsertedBytes: _maxJsExpansionBytes,
         cancellation: cancellation,
       );
+      // Every awaited boundary is followed by the same admission check: a
+      // cancellation or an elapsed deadline that happened while waiting wins
+      // over the reply that arrived, before that reply is interpreted or
+      // committed.
+      var stopped = _ruleStopped(stopwatch, deadline);
+      if (stopped != null) return stopped;
       while (true) {
-        if (cancellation?.isCancelled ?? false) {
-          return const _Outcome.cancelled();
-        }
         remaining = deadline - stopwatch.elapsed;
         if (remaining <= Duration.zero) return const _Outcome.timeout();
         final next = await worker.ask(const <Object?>['next'], remaining);
+        stopped = _ruleStopped(stopwatch, deadline);
+        if (stopped != null) return stopped;
         if (next == null) return _jsWorkerStopped(timedOut: true);
         switch (next.first) {
           case 'match':
@@ -628,13 +633,16 @@ class ContentProcessing {
               timeout: remaining,
               cancellation: cancellation,
             );
-            cancellation?.throwIfCancelled();
+            stopped = _ruleStopped(stopwatch, deadline);
+            if (stopped != null) return stopped;
             remaining = deadline - stopwatch.elapsed;
             if (remaining <= Duration.zero) return const _Outcome.timeout();
             final expanded = await worker.ask(<Object?>[
               'expand',
               '$value',
             ], remaining);
+            stopped = _ruleStopped(stopwatch, deadline);
+            if (stopped != null) return stopped;
             if (expanded == null) return _jsWorkerStopped(timedOut: true);
             if (expanded.first == 'exit') {
               return _jsWorkerStopped(timedOut: false);
@@ -679,6 +687,16 @@ class ContentProcessing {
     } finally {
       worker?.close();
     }
+  }
+
+  /// The rule's own elapsed deadline and the caller's cancellation, checked
+  /// after every awaited boundary: a cancellation that fired while waiting wins
+  /// over the reply that arrived, and an elapsed deadline wins over a reply
+  /// that came back too late. Null means the rule may still proceed.
+  _Outcome? _ruleStopped(Stopwatch stopwatch, Duration deadline) {
+    if (cancellation?.isCancelled ?? false) return const _Outcome.cancelled();
+    if (stopwatch.elapsed >= deadline) return const _Outcome.timeout();
+    return null;
   }
 
   /// What a worker that stopped answering means: an abandoned operation is
@@ -1199,18 +1217,23 @@ class _JsExpansionWorker {
   bool _closed = false;
 
   /// Sends one request and waits for its reply, or null when the worker did not
-  /// answer within [timeout]. A worker that exited answers `['exit']`.
+  /// answer within [timeout]. A worker that exited answers `['exit']`. The one
+  /// [timeout] covers readiness and the reply together: the reply gets only
+  /// what readiness left of it.
   Future<List<Object?>?> ask(List<Object?> request, Duration timeout) async {
+    final stopwatch = Stopwatch()..start();
     final requests = await _ready.future.timeout(
       timeout,
       onTimeout: () => null,
     );
     if (requests == null) return _exited ? const <Object?>['exit'] : null;
+    final left = timeout - stopwatch.elapsed;
+    if (left <= Duration.zero) return null;
     final pending = Completer<List<Object?>>();
     _pending = pending;
     requests.send(request);
     final reply = await pending.future.timeout(
-      timeout,
+      left,
       onTimeout: () => const <Object?>[],
     );
     if (reply.isEmpty) {
@@ -1367,46 +1390,59 @@ class _JsExpansion {
     // Count what the capture references would insert before building any of
     // it: the budget is the sum of their UTF-8 lengths over the whole
     // execution, and the template's literal characters are not part of it.
+    // The walk stops at the reference that passes the remaining allowance, so
+    // a rejected expansion costs no more than the bytes that rejected it and
+    // no later capture is resolved.
     final resolved = <String, String?>{};
+    final lengths = <String, int>{};
     var contribution = 0;
-    final valid = _walkJsTemplate(
-      template,
-      match,
-      (_) {},
-      (index, name) => contribution += _utf8Length(
+    final walk = _walkJsTemplate(template, match, (_) {}, (index, name) {
+      final key = _jsCaptureKey(index, name);
+      final length = lengths[key] ??= _utf8Length(
         _jsCaptureText(index, name, match, resolved),
-      ),
-    );
-    if (!valid) return const <Object?>['invalid'];
-    if (_inserted + contribution > _limit) {
-      return <Object?>['over', _limit];
-    }
+        stopAbove: _limit - _inserted - contribution,
+      );
+      contribution += length;
+      return _inserted + contribution <= _limit;
+    });
+    if (walk == _JsTemplateWalk.invalid) return const <Object?>['invalid'];
+    if (walk == _JsTemplateWalk.stopped) return <Object?>['over', _limit];
     _inserted += contribution;
     _buffer.write(_text.substring(_cursor, match.start));
     final before = _buffer.length;
-    _walkJsTemplate(
-      template,
-      match,
-      _buffer.write,
-      (index, name) =>
-          _buffer.write(_jsCaptureText(index, name, match, resolved) ?? ''),
-    );
+    _walkJsTemplate(template, match, _buffer.write, (index, name) {
+      _buffer.write(_jsCaptureText(index, name, match, resolved) ?? '');
+      return true;
+    });
     _edits.add(<Object?>[match.start, match.end, _buffer.length - before]);
     _cursor = match.end;
     return const <Object?>['ok'];
   }
 }
 
+/// How one walk of a selected regex-JS return ended.
+enum _JsTemplateWalk {
+  /// Every reference is valid and the walk reached the end of the template.
+  complete,
+
+  /// A reference is not valid for the match.
+  invalid,
+
+  /// The capture callback asked to stop, because the remaining budget is gone.
+  stopped,
+}
+
 /// Walks one selected regex-JS return the way the selected reference's
 /// `quoteReplacementJs`/`appendReplacement` pair does: literal text, `$`-numeric
 /// references taking the longest existing group prefix, and `${name}`
-/// references. Returns false when a reference is not valid for [match];
-/// [literal] and [capture] see the pieces in template order.
-bool _walkJsTemplate(
+/// references. [literal] and [capture] see the pieces in template order; a
+/// capture callback that returns false stops the walk, which is how a rejected
+/// expansion stops resolving captures as soon as its budget is gone.
+_JsTemplateWalk _walkJsTemplate(
   String replacement,
   RegExpMatch match,
   void Function(String literal) literal,
-  void Function(int? index, String? name) capture,
+  bool Function(int? index, String? name) capture,
 ) {
   final text = StringBuffer();
   var i = 0;
@@ -1418,7 +1454,7 @@ bool _walkJsTemplate(
       continue;
     }
     i++;
-    if (i == replacement.length) return false;
+    if (i == replacement.length) return _JsTemplateWalk.invalid;
     if (replacement[i] == '{') {
       final start = ++i;
       while (i < replacement.length &&
@@ -1430,20 +1466,20 @@ bool _walkJsTemplate(
           !letter(replacement.codeUnitAt(start)) ||
           i == replacement.length ||
           replacement[i] != '}') {
-        return false;
+        return _JsTemplateWalk.invalid;
       }
       final name = replacement.substring(start, i++);
-      if (!match.groupNames.contains(name)) return false;
+      if (!match.groupNames.contains(name)) return _JsTemplateWalk.invalid;
       if (text.isNotEmpty) {
         literal(text.toString());
         text.clear();
       }
-      capture(null, name);
+      if (!capture(null, name)) return _JsTemplateWalk.stopped;
       continue;
     }
-    if (!digit(replacement.codeUnitAt(i))) return false;
+    if (!digit(replacement.codeUnitAt(i))) return _JsTemplateWalk.invalid;
     var group = replacement.codeUnitAt(i++) - 48;
-    if (group > match.groupCount) return false;
+    if (group > match.groupCount) return _JsTemplateWalk.invalid;
     while (i < replacement.length && digit(replacement.codeUnitAt(i))) {
       final next = group * 10 + replacement.codeUnitAt(i) - 48;
       if (next > match.groupCount) break;
@@ -1454,11 +1490,15 @@ bool _walkJsTemplate(
       literal(text.toString());
       text.clear();
     }
-    capture(group, null);
+    if (!capture(group, null)) return _JsTemplateWalk.stopped;
   }
   if (text.isNotEmpty) literal(text.toString());
-  return true;
+  return _JsTemplateWalk.complete;
 }
+
+/// The key one capture reference is cached under for one match.
+String _jsCaptureKey(int? index, String? name) =>
+    name == null ? 'index:$index' : 'name:$name';
 
 /// The text one capture reference inserts, read from the original match and
 /// resolved at most once per match: an unmatched or nonparticipating group
@@ -1469,7 +1509,7 @@ String? _jsCaptureText(
   RegExpMatch match,
   Map<String, String?> resolved,
 ) {
-  final key = name == null ? 'index:$index' : 'name:$name';
+  final key = _jsCaptureKey(index, name);
   if (resolved.containsKey(key)) return resolved[key];
   final text = name == null ? match.group(index!) : match.namedGroup(name);
   resolved[key] = text;
@@ -1478,8 +1518,10 @@ String? _jsCaptureText(
 
 /// The UTF-8 byte length of [text], counted without encoding it: a lone
 /// surrogate counts as the replacement character's three bytes, as the
-/// encoder's own length does.
-int _utf8Length(String? text) {
+/// encoder's own length does. Stops as soon as the count passes [stopAbove],
+/// which is all the caller needs to know when the remaining allowance is
+/// smaller than the text.
+int _utf8Length(String? text, {int stopAbove = -1}) {
   if (text == null) return 0;
   var bytes = 0;
   for (var i = 0; i < text.length; i++) {
@@ -1498,6 +1540,7 @@ int _utf8Length(String? text) {
     } else {
       bytes += 3;
     }
+    if (stopAbove >= 0 && bytes > stopAbove) return bytes;
   }
   return bytes;
 }

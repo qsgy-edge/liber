@@ -915,9 +915,19 @@ void main() {
       );
       final text = '${'a' * 100}b${'a' * 2000}';
       final failed = await processor.content(text, chapterTitle: 'other');
-      // The first match's expansion is discarded with the whole rule, and the
-      // later rule still runs on the unchanged text.
-      expect(failed.text, '　　${'a' * 100}B${'a' * 2000}');
+      final baseline = await processing([
+        rule(id: 'next', pattern: 'b', replacement: 'B', isRegex: false),
+      ]).content(text, chapterTitle: 'other');
+      // The first match's expansion is discarded with the whole rule: the text
+      // and the public edit script are exactly what the later rule alone
+      // produces, and the cap rule stays enabled.
+      expect(failed.text, baseline.text);
+      expect(
+        failed.edits.map((edit) => '${edit.start}:${edit.end}:${edit.length}'),
+        baseline.edits.map(
+          (edit) => '${edit.start}:${edit.end}:${edit.length}',
+        ),
+      );
       expect(disabled, isEmpty);
       expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
       expect(notices.single.arguments.first, 'cap');
@@ -950,7 +960,7 @@ void main() {
     });
 
     test('literal template text is not part of the capture budget', () async {
-      final runtime = _FixedTemplateRuntime('x' * (1024 * 1024));
+      final runtime = _ScriptDouble((_) => 'x' * (1024 * 1024));
       final notices = <StoreMessage>[];
       final result = await processing(
         [
@@ -982,8 +992,12 @@ void main() {
     });
 
     test('capture expansion runs off the reading isolate', () async {
-      final runtime = _FixedTemplateRuntime('x' * (1024 * 1024));
       var ticks = 0;
+      final ticksAtCall = <int>[];
+      final runtime = _ScriptDouble(
+        (_) => 'x' * (1024 * 1024),
+        onCall: (call, input) => ticksAtCall.add(ticks),
+      );
       final timer = Timer.periodic(
         const Duration(milliseconds: 1),
         (_) => ticks++,
@@ -1000,11 +1014,15 @@ void main() {
       } finally {
         timer.cancel();
       }
-      expect(ticks, greaterThan(0));
+      // Ticks before the first script call are startup and port wait and prove
+      // nothing; the active worker phase must service the event loop between
+      // the first and the last evaluation.
+      expect(ticksAtCall, hasLength(12));
+      expect(ticksAtCall.last, greaterThan(ticksAtCall.first));
     });
 
     test('a capture no template references is never collected', () async {
-      final runtime = _FixedTemplateRuntime('X');
+      final runtime = _ScriptDouble((_) => 'X');
       final result = await processing([
         rule(
           pattern: r'(?=(.*))',
@@ -1037,7 +1055,12 @@ void main() {
         final notices = <StoreMessage>[];
         final processor = processing(
           [rule(pattern: r'(a)', replacement: r'@js:"$1".repeat(3)')],
-          scriptRuntime: _CancellingRuntime(cancellation),
+          scriptRuntime: _ScriptDouble(
+            (_) => 'X',
+            onCall: (call, _) {
+              if (call == 2) cancellation.cancel();
+            },
+          ),
           cancellation: cancellation,
           onNotice: notices.add,
         );
@@ -1068,6 +1091,192 @@ void main() {
       expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
       expect(notices.single.arguments, ['慢匹配 JS 规则', 200]);
     });
+
+    test('one byte below the limit succeeds', () async {
+      // 511 references of a 16,384-character capture plus one 16,383-character
+      // capture is 8,388,607 bytes, one below the policy.
+      const first = 16 * 1024;
+      const second = 16 * 1024 - 1;
+      final result = await processing([
+        rule(
+          pattern: r'(a{16384})(b{16383})',
+          replacement: r'@js:"$1".repeat(511) + "$2"',
+          timeoutMillisecond: resourceTimeout,
+        ),
+      ]).content('${'a' * first}${'b' * second}', chapterTitle: 'other');
+      expect(result.text.length, 2 + 8 * 1024 * 1024 - 1);
+    });
+
+    test(
+      'an over-budget template fails promptly as an ordinary cap error',
+      () async {
+        // The controller's actual counterexample: a 32,768-character capture
+        // referenced 262,144 times (524,288-byte template). Reference 257 is
+        // already over 8 MiB, so the count must stop there instead of scanning
+        // the whole template until the 1000 ms rule deadline.
+        final notices = <StoreMessage>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              id: 'bounded-counting',
+              ruleName: 'bounded-counting',
+              pattern: r'^(a+)$',
+              replacement: r'@js:"$1".repeat(262144)',
+              scopeTitle: true,
+              timeoutMillisecond: 1000,
+            ),
+          ],
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        final input = 'a' * 32768;
+        expect(await processor.displayTitle(input), input);
+        expect(disabled, isEmpty);
+        expect(notices.single.code, StoreMessageCode.replaceRuleFailed);
+        expect(notices.single.arguments.first, 'bounded-counting');
+      },
+    );
+
+    test('a cancelled queued worker error is not reported', () async {
+      // The controller's actual counterexample: the evaluator lets the worker
+      // queue its invalid-reference reply, then cancels before that reply can
+      // be consumed. Cancellation must win with no ordinary error notice.
+      final cancellation = SourceCancellation();
+      var cancellationFired = false;
+      final runtime = _ScriptDouble(
+        (_) => r'$2',
+        onCall: (call, input) {
+          if (call != 1) return;
+          Timer.run(() {
+            // Hold the caller while the actual worker enqueues its response;
+            // cancelling before the queued response is consumed must win.
+            final pause = Stopwatch()..start();
+            while (pause.elapsedMilliseconds < 100) {}
+            cancellationFired = true;
+            cancellation.cancel();
+          });
+        },
+      );
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'queued-worker-cancellation',
+            ruleName: 'queued-worker-cancellation',
+            pattern: r'^(a)$',
+            replacement: r'@js:"$2"',
+            scopeTitle: true,
+          ),
+        ],
+        scriptRuntime: runtime,
+        cancellation: cancellation,
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      expect(await processor.displayTitle('a'), 'a');
+      expect(cancellationFired, isTrue);
+      expect(cancellation.isCancelled, isTrue);
+      expect(notices, isEmpty);
+      expect(disabled, isEmpty);
+    });
+
+    test(
+      'cancellation while the worker is expanding leaves the text unchanged',
+      () async {
+        final cancellation = SourceCancellation();
+        final runtime = _ScriptDouble(
+          (_) => 'x' * (4 * 1024 * 1024),
+          onCall: (call, input) {
+            if (call == 1) {
+              Timer(const Duration(milliseconds: 1), cancellation.cancel);
+            }
+          },
+        );
+        final notices = <StoreMessage>[];
+        final processor = processing(
+          [
+            rule(
+              pattern: r'(a)',
+              replacement: '@js:"x".repeat(4194304)',
+              timeoutMillisecond: resourceTimeout,
+            ),
+          ],
+          scriptRuntime: runtime,
+          cancellation: cancellation,
+          onNotice: notices.add,
+        );
+        final result = await processor.content('aaaa', chapterTitle: 'other');
+        expect(result.text, '　　aaaa');
+        expect(notices, isEmpty);
+        expect(runtime.calls, greaterThan(0));
+      },
+    );
+
+    test('a script return after the rule deadline is not adopted', () async {
+      final notices = <StoreMessage>[];
+      final disabled = <String>[];
+      final processor = processing(
+        [
+          rule(
+            id: 'late-return',
+            ruleName: 'late-return',
+            pattern: r'(a)',
+            replacement: r'@js:"X"',
+            scopeTitle: true,
+            timeoutMillisecond: 50,
+          ),
+        ],
+        scriptRuntime: _ScriptDouble((_) {
+          final pause = Stopwatch()..start();
+          while (pause.elapsedMilliseconds < 80) {}
+          return 'X';
+        }),
+        onNotice: notices.add,
+        onRuleDisabled: (rule) async => disabled.add(rule.id),
+      );
+      expect(await processor.displayTitle('a'), 'a');
+      expect(disabled, ['late-return']);
+      expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      expect(notices.single.arguments, ['late-return', 50]);
+    });
+
+    test(
+      'the first match is evaluated before a later match is enumerated',
+      () async {
+        // The first match is cheap; enumerating the second one backtracks
+        // catastrophically. The evaluator must see the first match before that
+        // enumeration starts, which an eager all-match collection cannot do.
+        final inputs = <String>[];
+        final runtime = _ScriptDouble(
+          (_) => 'X',
+          onCall: (call, input) => inputs.add(input['result'] as String),
+        );
+        final notices = <StoreMessage>[];
+        final disabled = <String>[];
+        final processor = processing(
+          [
+            rule(
+              id: 'lazy-enumeration',
+              ruleName: 'lazy-enumeration',
+              pattern: r'(x)|((a+)+$)',
+              replacement: r'@js:"X"',
+              scopeTitle: true,
+              timeoutMillisecond: 200,
+            ),
+          ],
+          scriptRuntime: runtime,
+          onNotice: notices.add,
+          onRuleDisabled: (rule) async => disabled.add(rule.id),
+        );
+        final input = 'x${'a' * 32}b';
+        expect(await processor.displayTitle(input), input);
+        expect(inputs, ['x']);
+        expect(disabled, ['lazy-enumeration']);
+        expect(notices.single.code, StoreMessageCode.replaceRuleTimedOut);
+      },
+    );
   });
 
   group('the timeout', () {
@@ -1158,28 +1367,15 @@ void main() {
   });
 }
 
-/// A boundary double that answers every match with the same returned text, so a
-/// resource case can be sized without the JavaScript engine's own cost.
-class _FixedTemplateRuntime extends InProcessSourceScriptRuntime {
-  _FixedTemplateRuntime(this.template);
+/// A boundary double for the resource and scheduling cases: [answer] returns the
+/// script result for one call and [onCall] runs first with that call's input, so
+/// a case can be sized or phased without the JavaScript engine's own cost.
+class _ScriptDouble extends InProcessSourceScriptRuntime {
+  _ScriptDouble(this.answer, {this.onCall});
 
-  final String template;
-
-  @override
-  Future<Object?> evaluate({
-    required String source,
-    required Map<String, Object?> input,
-    required Duration timeout,
-    SourceCancellation? cancellation,
-  }) async => template;
-}
-
-/// A boundary double that abandons the operation on its second match.
-class _CancellingRuntime extends InProcessSourceScriptRuntime {
-  _CancellingRuntime(this.operation);
-
-  final SourceCancellation operation;
-  var _calls = 0;
+  final Object? Function(int call) answer;
+  final void Function(int call, Map<String, Object?> input)? onCall;
+  var calls = 0;
 
   @override
   Future<Object?> evaluate({
@@ -1188,7 +1384,8 @@ class _CancellingRuntime extends InProcessSourceScriptRuntime {
     required Duration timeout,
     SourceCancellation? cancellation,
   }) async {
-    if (++_calls == 2) operation.cancel();
-    return 'X';
+    final call = ++calls;
+    onCall?.call(call, input);
+    return answer(call);
   }
 }
