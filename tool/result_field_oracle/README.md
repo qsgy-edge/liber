@@ -194,6 +194,50 @@ mechanics result is not native evidence.
 The controller alone owns the handset capture and any evidence-backed product
 repairs.
 
+### Reader follow-through selected corpus
+
+`reader-followthrough-fixtures-selected.json` is a separate FIELDS-02/version 1
+corpus for ordinary title/body ordering and plain introductions. It has exactly
+three cases and fourteen declared GETs:
+
+| Case | What it observes |
+|---|---|
+| `html-body-replace-title-order` | Two serial HTML content pages. The body script writes `seenHtml`, the joined-content replacement rewrites it, and the title reads it plus the first-page `.chapter-title` marker; the second page has a distinct marker. Search declares a normal markup intro; information declares a blank intro rule so the incoming search intro is retained. |
+| `json-body-title-order` | Two serial JSON content pages through simple ASCII root-property reads. The body writes `seenJson` and the title reads it plus the first-page `$.title`; the second page has a distinct title. Search declares a plain intro; information declares a blank intro rule so the incoming search intro is retained. No `replaceRegex` is declared. |
+| `html-order-control` | One static HTML content page whose body, replacement and title are independent of source state. Content and both introductions carry literal escaped line breaks. |
+
+The corpus pins the reached selected `BookList.kt`, `BookInfo.kt`,
+`BookContent.kt` and `HtmlFormatter.kt` Git blobs in addition to the existing
+reached dependencies. Its target APK, package, fingerprint and initialization
+are the fixed selected-reference values above. The source map distinguishes Git
+blob SHA-1 from the CRLF checkout bytes the preflight hashes separately.
+
+A source rule map that declares `ruleSearch.intro` or `ruleBookInfo.intro`
+(including an empty rule) requires a correctly typed `intro` string at that
+stage on both the native and product records. The comparator rejects a missing
+or wrong-typed field on either side and compares present values strictly. A
+corpus that does not declare the key keeps its old record shape and comparison;
+the admission rejects an undeclared `intro` field rather than treating it as an
+optional observation. Search-empty terminals remain governed by their actual
+empty result list.
+
+```text
+pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build> \
+  -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/reader-followthrough-fixtures-selected.json
+python tool/result_field_oracle/capture.py --preflight-only \
+  --fixture tool/result_field_oracle/reader-followthrough-fixtures-selected.json \
+  --apk <build>/field-oracle.apk --target-apk <approved-reference-apk> \
+  --frozen-source <a7-checkout> --java-home <jdk17> --android-sdk <sdk> --output <fresh-preflight>
+dart run tool/result_field_replay.dart <matching fjs.dll> \
+  --fixture tool/result_field_oracle/reader-followthrough-fixtures-selected.json --out <fresh report>
+```
+
+The selected corpus hash is part of the existing fixed selected-corpus identity
+gates in `capture.py` and `result_field_compare.dart`; the four earlier selected
+corpora keep their exact hashes. The corpus and its `.gitattributes` LF entry
+are the only new input. Native capture and the Windows reader remain
+controller-owned and not-run.
+
 ## Destination side
 
 ```

@@ -107,6 +107,70 @@ void main() {
     },
   );
 
+  test(
+    'reader follow-through corpus records three cases and fourteen GETs',
+    () async {
+      final result = await runBookUrlMarkersCorpus(
+        fixture: loadResultFieldFixture(
+          'tool/result_field_oracle/reader-followthrough-fixtures-selected.json',
+        ),
+      );
+
+      expect(result.caseFailures, isEmpty);
+      expect(result.unmatched, isEmpty);
+      expect(result.serverErrors, isEmpty);
+      expect(result.caseRecords.map((record) => record['id']), [
+        'html-body-replace-title-order',
+        'json-body-title-order',
+        'html-order-control',
+      ]);
+      expect(result.requests, hasLength(14));
+      expect(result.scenarioPassed, isTrue);
+      expect(
+        result.invariants
+            .singleWhere(
+              (invariant) => invariant.id == 'declared-request-sequence',
+            )
+            .detail,
+        contains('14 declared requests observed in order'),
+      );
+
+      for (final record in result.caseRecords) {
+        final search = ((record['search'] as Map)['results'] as List).single;
+        final bookInfo = record['bookInfo'] as Map;
+        expect(search['intro'], isA<String>());
+        expect(bookInfo['intro'], isA<String>());
+      }
+
+      final html = result.caseRecords[0];
+      final htmlSearch = ((html['search'] as Map)['results'] as List).single;
+      final htmlInfo = html['bookInfo'] as Map;
+      expect(htmlInfo['intro'], htmlSearch['intro']);
+      expect(html['chapter'], isA<Map>());
+      expect((html['chapter'] as Map)['title'], contains('第一页标题'));
+      expect((html['chapter'] as Map)['title'], isNot(contains('第二页标题')));
+      expect((html['chapter'] as Map)['text'], contains('HTML BODY'));
+      expect((html['chapter'] as Map)['text'], contains('HTML PAGE2'));
+      expect(html['requests'], hasLength(5));
+
+      final json = result.caseRecords[1];
+      final jsonSearch = ((json['search'] as Map)['results'] as List).single;
+      final jsonInfo = json['bookInfo'] as Map;
+      expect(jsonInfo['intro'], jsonSearch['intro']);
+      expect((json['chapter'] as Map)['title'], contains('第一页标题'));
+      expect((json['chapter'] as Map)['title'], isNot(contains('第二页标题')));
+      expect((json['chapter'] as Map)['text'], contains('JSON BODY'));
+      expect((json['chapter'] as Map)['text'], contains('JSON PAGE2'));
+      expect(json['requests'], hasLength(5));
+
+      final control = result.caseRecords[2];
+      expect((control['chapter'] as Map)['title'], '控制标题');
+      expect((control['chapter'] as Map)['text'], contains('CONTROL BODY'));
+      expect((control['chapter'] as Map)['text'], contains('SECOND'));
+      expect(control['requests'], hasLength(4));
+    },
+  );
+
   test('a failed awaited operation retains its partial error facts', () async {
     final fixture = jsonDecode(jsonEncode(_fixture())) as Map<String, dynamic>;
     final first = ((fixture['cases'] as List).first as Map)
@@ -578,6 +642,73 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test(
+    'declared intro is strict on both sides and old undeclared shape is unchanged',
+    () {
+      Map<String, dynamic> recordOf(
+        Map<String, dynamic> envelope,
+        String key,
+      ) => ((envelope[key] as List).first as Map).cast<String, dynamic>();
+      Map<String, dynamic> searchOf(Map<String, dynamic> record) =>
+          (((record['search'] as Map)['results'] as List).first as Map)
+              .cast<String, dynamic>();
+      Map<String, dynamic> infoOf(Map<String, dynamic> record) =>
+          (record['bookInfo'] as Map).cast<String, dynamic>();
+
+      final corpus = _syntheticCorpus();
+      final entry = ((corpus['cases'] as List).first as Map)
+          .cast<String, dynamic>();
+      final source = (entry['source'] as Map).cast<String, dynamic>();
+      source['ruleSearch'] = <String, dynamic>{'intro': '.intro@text'};
+      source['ruleBookInfo'] = <String, dynamic>{'intro': ''};
+
+      final golden = _syntheticEnvelope(corpus);
+      final goldenRecord = recordOf(golden, 'cases');
+      searchOf(goldenRecord)['intro'] = 'search intro';
+      infoOf(goldenRecord)['intro'] = 'search intro';
+      final product = _syntheticProduct(corpus);
+      final productRecord = recordOf(product, 'caseRecords');
+      searchOf(productRecord)['intro'] = 'search intro';
+      infoOf(productRecord)['intro'] = 'search intro';
+
+      expect(_compare(golden, product, corpus)['status'], 'pass');
+
+      final missingNative = _clone(golden);
+      searchOf(recordOf(missingNative, 'cases')).remove('intro');
+      expect(
+        () => _compare(missingNative, product, corpus),
+        throwsA(isA<StateError>()),
+      );
+
+      final missingProduct = _clone(product);
+      infoOf(recordOf(missingProduct, 'caseRecords')).remove('intro');
+      expect(
+        () => _compare(golden, missingProduct, corpus),
+        throwsA(isA<StateError>()),
+      );
+
+      final wrongType = _clone(golden);
+      searchOf(recordOf(wrongType, 'cases'))['intro'] = 42;
+      expect(
+        () => _compare(wrongType, product, corpus),
+        throwsA(isA<StateError>()),
+      );
+
+      final changed = _clone(product);
+      infoOf(recordOf(changed, 'caseRecords'))['intro'] = 'changed intro';
+      expect(_compare(golden, changed, corpus)['status'], 'fail');
+
+      final old = _syntheticCorpus();
+      final oldReport = _compare(
+        _syntheticEnvelope(old),
+        _syntheticProduct(old),
+        old,
+      );
+      expect(oldReport['status'], 'pass');
+      expect(oldReport['differences'], isEmpty);
+    },
+  );
 
   test('the legacy FIELDS-01 corpus and golden remain present', () {
     expect(File('tool/result_field_oracle/fixtures.json').existsSync(), isTrue);

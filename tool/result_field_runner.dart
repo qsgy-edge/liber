@@ -49,6 +49,18 @@ Map<String, dynamic> loadResultFieldFixture([
 ]) =>
     (jsonDecode(File(path).readAsStringSync()) as Map).cast<String, dynamic>();
 
+/// Whether a case's source rule map declares [field]. Key presence is the
+/// observation contract, including an empty rule; an absent key keeps the old
+/// record shape.
+bool _declaresRuleField(
+  Map<String, dynamic> source,
+  String ruleName,
+  String field,
+) {
+  final rules = source[ruleName];
+  return rules is Map && rules.containsKey(field);
+}
+
 /// One corpus-shape check: the corpus ran as it declares.
 ///
 /// These are not compatibility claims. They say the corpus is healthy and the
@@ -138,6 +150,16 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
       final id = entry['id'] as String;
       final terminal = entry['terminal'] as String? ?? 'four-stage';
       final source = (entry['source'] as Map).cast<String, dynamic>();
+      final searchIntroDeclared = _declaresRuleField(
+        source,
+        'ruleSearch',
+        'intro',
+      );
+      final infoIntroDeclared = _declaresRuleField(
+        source,
+        'ruleBookInfo',
+        'intro',
+      );
       final sourceRef = '${source['bookSourceUrl']}';
       final state = SourceHostState();
       final pipeline = openBookSourcePipeline(
@@ -212,6 +234,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
                 'bookUrl': hit.addressContext!.comparisonAddress,
                 'identityAddress': hit.identityAddress,
                 'rawAddress': hit.rawAddress,
+                if (searchIntroDeclared) 'intro': hit.intro,
               },
           ],
         };
@@ -241,6 +264,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           'identityAddress': info.book.identityAddress,
           'rawAddress': info.book.rawAddress,
           'tocUrl': info.tocUrl,
+          if (infoIntroDeclared) 'intro': info.book.intro,
         };
         final tocRequestStart = server.requests.length;
         final tocTraceStart = pipeline.trace.length;

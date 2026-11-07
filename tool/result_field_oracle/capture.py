@@ -39,6 +39,12 @@ SELECTED_CHAPTER_CORPUS_SHA256 = (
     '98934998a2c5cc702bd24888f8ed59ce595d617870c2c5a45b79e0b947d7c7d0',
     '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
 )
+SELECTED_READER_CORPUS_SHA256 = '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0'
+SELECTED_CORPUS_SHA256S = (
+    SELECTED_CORPUS_SHA256,
+    *SELECTED_CHAPTER_CORPUS_SHA256,
+    SELECTED_READER_CORPUS_SHA256,
+)
 SELECTED_SIGNER = '954abf2c4e9528b2226457d598e2ff9d1b608f83ac00c52ad66e023d61b2f2ad'
 SELECTED_TARGET = {
     'package': 'com.legado.app.debug',
@@ -170,7 +176,7 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     fixture_sha = sha256_bytes(fixture_bytes)
     fixture_sha_lf = sha256_bytes(lf_bytes(fixture_bytes))
     if fixture.get('baselineCommit') == SELECTED_BASELINE and (
-            fixture_sha not in (SELECTED_CORPUS_SHA256, *SELECTED_CHAPTER_CORPUS_SHA256)
+            fixture_sha not in SELECTED_CORPUS_SHA256S
             or fixture_sha_lf != fixture_sha):
         raise ValueError('selected corpus raw bytes differ')
     if fixture.get('fixtureId') != FIELDS_02:
@@ -283,7 +289,7 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
     if not target_apk.is_file() or sha256(target_apk) != SELECTED_TARGET['apkSha256']:
         raise ValueError('selected target APK is missing or differs')
     data = fixture_path.read_bytes()
-    if sha256_bytes(data) not in (SELECTED_CORPUS_SHA256, *SELECTED_CHAPTER_CORPUS_SHA256) or lf_bytes(data) != data:
+    if sha256_bytes(data) not in SELECTED_CORPUS_SHA256S or lf_bytes(data) != data:
         raise ValueError('selected corpus raw bytes differ')
     fixture = json.loads(data)
     _admit_selected_shape(fixture, 'selected fixture')

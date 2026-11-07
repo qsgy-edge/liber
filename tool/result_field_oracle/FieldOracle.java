@@ -185,6 +185,11 @@ public final class FieldOracle extends Instrumentation {
         return super.onException(object, error);
     }
 
+    private static boolean declaresRuleField(JSONObject source, String ruleName, String field) {
+        JSONObject rules = source.optJSONObject(ruleName);
+        return rules != null && rules.has(field);
+    }
+
     private static void validateFields02Selection(JSONObject selection) {
         JSONArray declared = selection.optJSONArray("cases");
         if (declared == null || declared.length() == 0) {
@@ -559,6 +564,8 @@ public final class FieldOracle extends Instrumentation {
         int requestStart = requests.length();
         ClassLoader loader = getTargetContext().getClassLoader();
         JSONObject sourceJson = entry.getJSONObject("source");
+        boolean searchIntroDeclared = declaresRuleField(sourceJson, "ruleSearch", "intro");
+        boolean infoIntroDeclared = declaresRuleField(sourceJson, "ruleBookInfo", "intro");
         String keyword = entry.getString("keyword");
         Class<?> bookSourceClass = loader.loadClass("io.legado.app.data.entities.BookSource");
         Class<?> searchBookClass = loader.loadClass("io.legado.app.data.entities.SearchBook");
@@ -603,11 +610,15 @@ public final class FieldOracle extends Instrumentation {
         List<?> list = (List<?>) searchBooks;
         JSONArray results = new JSONArray();
         for (Object item : list) {
-            results.put(new JSONObject()
+            JSONObject result = new JSONObject()
                 .put("name", str(searchBookClass, item, "getName"))
                 .put("author", str(searchBookClass, item, "getAuthor"))
                 .put("bookUrl", str(searchBookClass, item, "getBookUrl"))
-                .put("infoHtml", searchBookClass.getMethod("getInfoHtml").invoke(item) != null));
+                .put("infoHtml", searchBookClass.getMethod("getInfoHtml").invoke(item) != null);
+            if (searchIntroDeclared) {
+                result.put("intro", str(searchBookClass, item, "getIntro"));
+            }
+            results.put(result);
         }
         observed.put("search", new JSONObject().put("results", results));
         if (list.isEmpty()) {
@@ -633,11 +644,15 @@ public final class FieldOracle extends Instrumentation {
             throw error;
         }
         recordOperation(observed, "bookInfo", infoRequestStart, infoTraceStart);
-        observed.put("bookInfo", new JSONObject()
+        JSONObject bookInfo = new JSONObject()
             .put("name", str(bookClass, book, "getName"))
             .put("author", str(bookClass, book, "getAuthor"))
             .put("bookUrl", str(bookClass, book, "getBookUrl"))
-            .put("tocUrl", str(bookClass, book, "getTocUrl")));
+            .put("tocUrl", str(bookClass, book, "getTocUrl"));
+        if (infoIntroDeclared) {
+            bookInfo.put("intro", str(bookClass, book, "getIntro"));
+        }
+        observed.put("bookInfo", bookInfo);
 
         stage.set("tableOfContents");
         log("stage tableOfContents");

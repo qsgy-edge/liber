@@ -11,6 +11,7 @@ const _selectedCorpusHashes = {
   '0cfa3b2ddb4a43ec8e62c0b9f5396e638c6c2dde40033a27be316ee5b74055c8',
   '98934998a2c5cc702bd24888f8ed59ce595d617870c2c5a45b79e0b947d7c7d0',
   '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
+  '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0',
 };
 
 /// Compares the frozen FIELDS-01 golden against the Liber-side observation of
@@ -726,7 +727,7 @@ Map<String, Object?> compareBookUrlMarkers({
   for (final id in declaredIds) {
     final frozen = goldenById[id]!;
     final product = productById[id]!;
-    _compareCases(caseDifferences, id, frozen, product);
+    _compareCases(caseDifferences, id, frozen, product, corpusById[id]!);
   }
 
   final requestDifferences = <Map<String, Object?>>[];
@@ -1572,12 +1573,33 @@ void _admitErrorFacts(Map<String, dynamic> record, String label) {
   }
 }
 
+bool _declaresRuleField(
+  Map<String, dynamic> corpusEntry,
+  String ruleName,
+  String field,
+) {
+  final source = corpusEntry['source'];
+  if (source is! Map) return false;
+  final rules = source[ruleName];
+  return rules is Map && rules.containsKey(field);
+}
+
 void _admitCaseRecord(
   Map<String, dynamic> record,
   Map<String, dynamic> corpusEntry,
   String label, {
   required bool native,
 }) {
+  final searchIntroDeclared = _declaresRuleField(
+    corpusEntry,
+    'ruleSearch',
+    'intro',
+  );
+  final infoIntroDeclared = _declaresRuleField(
+    corpusEntry,
+    'ruleBookInfo',
+    'intro',
+  );
   final id = _requiredString(record, 'id', label);
   if (id != corpusEntry['id']) throw StateError('$label id differs');
   final terminal = _requiredString(record, 'terminal', label);
@@ -1596,6 +1618,7 @@ void _admitCaseRecord(
       results[index],
       '$label.search.results[$index]',
       native: native,
+      introDeclared: searchIntroDeclared,
     );
   }
   if (terminal == 'search-empty') {
@@ -1616,6 +1639,11 @@ void _admitCaseRecord(
     final bookInfo = _requiredMap(record, 'bookInfo', label);
     for (final field in ['name', 'author', 'bookUrl', 'tocUrl']) {
       _requiredString(bookInfo, field, '$label.bookInfo');
+    }
+    if (infoIntroDeclared) {
+      _requiredString(bookInfo, 'intro', '$label.bookInfo');
+    } else if (bookInfo.containsKey('intro')) {
+      throw StateError('$label.bookInfo.intro is not declared by the corpus');
     }
     final toc = _requiredMap(record, 'tableOfContents', label);
     _requiredString(toc, 'tocUrl', '$label.tableOfContents');
@@ -1653,10 +1681,20 @@ void _admitCaseRecord(
   }
 }
 
-void _admitSearchResult(Object? value, String label, {required bool native}) {
+void _admitSearchResult(
+  Object? value,
+  String label, {
+  required bool native,
+  required bool introDeclared,
+}) {
   final result = _map(value, label);
   for (final field in ['name', 'author', 'bookUrl']) {
     _requiredString(result, field, label);
+  }
+  if (introDeclared) {
+    _requiredString(result, 'intro', label);
+  } else if (result.containsKey('intro')) {
+    throw StateError('$label.intro is not declared by the corpus');
   }
   if (native && result.containsKey('infoHtml') && result['infoHtml'] is! bool) {
     throw StateError('$label.infoHtml must be boolean when present');
@@ -1725,7 +1763,16 @@ void _compareCases(
   String id,
   Map<String, dynamic> frozen,
   Map<String, dynamic> product,
+  Map<String, dynamic> corpusEntry,
 ) {
+  final searchFields = ['name', 'author', 'bookUrl'];
+  if (_declaresRuleField(corpusEntry, 'ruleSearch', 'intro')) {
+    searchFields.add('intro');
+  }
+  final bookInfoFields = ['name', 'author', 'bookUrl', 'tocUrl'];
+  if (_declaresRuleField(corpusEntry, 'ruleBookInfo', 'intro')) {
+    bookInfoFields.add('intro');
+  }
   _diff(differences, id, 'terminal', frozen['terminal'], product['terminal']);
   final frozenSearch = _map(frozen['search'], '$id.search');
   final productSearch = _map(product['search'], '$id.search');
@@ -1752,7 +1799,7 @@ void _compareCases(
   for (var index = 0; index < resultCount; index++) {
     final f = _map(frozenResults[index], '$id.search.results[$index]');
     final p = _map(productResults[index], '$id.search.results[$index]');
-    for (final field in ['name', 'author', 'bookUrl']) {
+    for (final field in searchFields) {
       _diff(
         differences,
         id,
@@ -1768,7 +1815,7 @@ void _compareCases(
   } else {
     final f = _map(frozen['bookInfo'], '$id.bookInfo');
     final p = _map(product['bookInfo'], '$id.bookInfo');
-    for (final field in ['name', 'author', 'bookUrl', 'tocUrl']) {
+    for (final field in bookInfoFields) {
       _diff(differences, id, 'bookInfo.$field', f[field], p[field]);
     }
   }
