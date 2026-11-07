@@ -643,72 +643,225 @@ void main() {
     );
   });
 
-  test(
-    'declared intro is strict on both sides and old undeclared shape is unchanged',
-    () {
-      Map<String, dynamic> recordOf(
-        Map<String, dynamic> envelope,
-        String key,
-      ) => ((envelope[key] as List).first as Map).cast<String, dynamic>();
-      Map<String, dynamic> searchOf(Map<String, dynamic> record) =>
-          (((record['search'] as Map)['results'] as List).first as Map)
-              .cast<String, dynamic>();
-      Map<String, dynamic> infoOf(Map<String, dynamic> record) =>
-          (record['bookInfo'] as Map).cast<String, dynamic>();
+  group('declared intro public matrix', () {
+    Map<String, dynamic> recordOf(
+      Map<String, dynamic> envelope, {
+      required bool native,
+    }) => ((envelope[native ? 'cases' : 'caseRecords'] as List).first as Map)
+        .cast<String, dynamic>();
+    Map<String, dynamic> searchOf(Map<String, dynamic> record) =>
+        (((record['search'] as Map)['results'] as List).first as Map)
+            .cast<String, dynamic>();
+    Map<String, dynamic> infoOf(Map<String, dynamic> record) =>
+        (record['bookInfo'] as Map).cast<String, dynamic>();
+    void setIntro(Map<String, dynamic> record, String stage, Object? value) {
+      if (stage == 'search') {
+        final search = Map<String, dynamic>.from(record['search'] as Map);
+        final results = [
+          for (final item in (search['results'] as List))
+            Map<String, dynamic>.from(item as Map),
+        ];
+        if (value == null) {
+          results.first.remove('intro');
+        } else {
+          results.first['intro'] = value;
+        }
+        search['results'] = results;
+        record['search'] = search;
+      } else {
+        final info = Map<String, dynamic>.from(record['bookInfo'] as Map);
+        if (value == null) {
+          info.remove('intro');
+        } else {
+          info['intro'] = value;
+        }
+        record['bookInfo'] = info;
+      }
+    }
 
+    ({
+      Map<String, dynamic> corpus,
+      Map<String, dynamic> golden,
+      Map<String, dynamic> product,
+    })
+    fixture() {
       final corpus = _syntheticCorpus();
       final entry = ((corpus['cases'] as List).first as Map)
           .cast<String, dynamic>();
       final source = (entry['source'] as Map).cast<String, dynamic>();
       source['ruleSearch'] = <String, dynamic>{'intro': '.intro@text'};
       source['ruleBookInfo'] = <String, dynamic>{'intro': ''};
-
       final golden = _syntheticEnvelope(corpus);
-      final goldenRecord = recordOf(golden, 'cases');
-      searchOf(goldenRecord)['intro'] = 'search intro';
-      infoOf(goldenRecord)['intro'] = 'search intro';
       final product = _syntheticProduct(corpus);
-      final productRecord = recordOf(product, 'caseRecords');
-      searchOf(productRecord)['intro'] = 'search intro';
-      infoOf(productRecord)['intro'] = 'search intro';
+      for (final record in [
+        recordOf(golden, native: true),
+        recordOf(product, native: false),
+      ]) {
+        searchOf(record)['intro'] = 'search intro';
+        infoOf(record)['intro'] = 'search intro';
+      }
+      return (corpus: corpus, golden: golden, product: product);
+    }
 
-      expect(_compare(golden, product, corpus)['status'], 'pass');
-
-      final missingNative = _clone(golden);
-      searchOf(recordOf(missingNative, 'cases')).remove('intro');
+    void expectIntroRejection(void Function() action, String stage) {
       expect(
-        () => _compare(missingNative, product, corpus),
-        throwsA(isA<StateError>()),
+        action,
+        throwsA(
+          isA<StateError>().having(
+            (error) => '$error',
+            'message',
+            allOf(
+              contains('intro'),
+              contains(stage == 'search' ? 'search.results[0]' : 'bookInfo'),
+            ),
+          ),
+        ),
       );
+    }
 
-      final missingProduct = _clone(product);
-      infoOf(recordOf(missingProduct, 'caseRecords')).remove('intro');
+    Map<String, dynamic> difference(
+      Map<String, dynamic> report,
+      String field,
+    ) => (report['differences'] as List)
+        .cast<Map>()
+        .singleWhere((entry) => entry['field'] == field)
+        .cast<String, dynamic>();
+
+    for (final stage in ['search', 'info']) {
+      test('$stage native omission rejects for intro', () {
+        final f = fixture();
+        setIntro(recordOf(f.golden, native: true), stage, null);
+        expectIntroRejection(
+          () => _compare(f.golden, f.product, f.corpus),
+          stage,
+        );
+      });
+
+      test('$stage product omission rejects for intro', () {
+        final f = fixture();
+        setIntro(recordOf(f.product, native: false), stage, null);
+        expectIntroRejection(
+          () => _compare(f.golden, f.product, f.corpus),
+          stage,
+        );
+      });
+
+      test('$stage both omissions reject for intro', () {
+        final f = fixture();
+        setIntro(recordOf(f.golden, native: true), stage, null);
+        setIntro(recordOf(f.product, native: false), stage, null);
+        expectIntroRejection(
+          () => _compare(f.golden, f.product, f.corpus),
+          stage,
+        );
+      });
+
+      test('$stage native wrong type rejects for intro', () {
+        final f = fixture();
+        setIntro(recordOf(f.golden, native: true), stage, 42);
+        expectIntroRejection(
+          () => _compare(f.golden, f.product, f.corpus),
+          stage,
+        );
+      });
+
+      test('$stage product wrong type rejects for intro', () {
+        final f = fixture();
+        setIntro(recordOf(f.product, native: false), stage, 42);
+        expectIntroRejection(
+          () => _compare(f.golden, f.product, f.corpus),
+          stage,
+        );
+      });
+
+      test('$stage native changed string is an exact difference', () {
+        final f = fixture();
+        setIntro(
+          recordOf(f.golden, native: true),
+          stage,
+          'native $stage changed',
+        );
+        final report = _compare(f.golden, f.product, f.corpus);
+        expect(report['status'], 'fail');
+        final field = stage == 'search'
+            ? 'search.results[0].intro'
+            : 'bookInfo.intro';
+        final diff = difference(report, field);
+        expect(diff['frozen'], 'native $stage changed');
+        expect(diff['liber'], 'search intro');
+      });
+
+      test('$stage product changed string is an exact difference', () {
+        final f = fixture();
+        setIntro(
+          recordOf(f.product, native: false),
+          stage,
+          'product $stage changed',
+        );
+        final report = _compare(f.golden, f.product, f.corpus);
+        expect(report['status'], 'fail');
+        final field = stage == 'search'
+            ? 'search.results[0].intro'
+            : 'bookInfo.intro';
+        final diff = difference(report, field);
+        expect(diff['frozen'], 'search intro');
+        expect(diff['liber'], 'product $stage changed');
+      });
+    }
+
+    test('positive declared strings pass, including the empty info rule', () {
+      final f = fixture();
+      final entry = ((f.corpus['cases'] as List).first as Map)
+          .cast<String, dynamic>();
+      final source = (entry['source'] as Map).cast<String, dynamic>();
+      expect((source['ruleBookInfo'] as Map)['intro'], '');
+      final report = _compare(f.golden, f.product, f.corpus);
+      expect(report['status'], 'pass');
+      expect(report['differences'], isEmpty);
       expect(
-        () => _compare(golden, missingProduct, corpus),
-        throwsA(isA<StateError>()),
+        searchOf(recordOf(f.golden, native: true))['intro'],
+        'search intro',
       );
-
-      final wrongType = _clone(golden);
-      searchOf(recordOf(wrongType, 'cases'))['intro'] = 42;
       expect(
-        () => _compare(wrongType, product, corpus),
-        throwsA(isA<StateError>()),
+        infoOf(recordOf(f.product, native: false))['intro'],
+        'search intro',
       );
+    });
 
-      final changed = _clone(product);
-      infoOf(recordOf(changed, 'caseRecords'))['intro'] = 'changed intro';
-      expect(_compare(golden, changed, corpus)['status'], 'fail');
-
-      final old = _syntheticCorpus();
-      final oldReport = _compare(
-        _syntheticEnvelope(old),
-        _syntheticProduct(old),
-        old,
+    test('old undeclared input keeps its old shape and passes', () {
+      final corpus = _syntheticCorpus();
+      final golden = _syntheticEnvelope(corpus);
+      final product = _syntheticProduct(corpus);
+      expect(
+        searchOf(recordOf(golden, native: true)).containsKey('intro'),
+        isFalse,
       );
-      expect(oldReport['status'], 'pass');
-      expect(oldReport['differences'], isEmpty);
-    },
-  );
+      expect(
+        infoOf(recordOf(product, native: false)).containsKey('intro'),
+        isFalse,
+      );
+      final report = _compare(golden, product, corpus);
+      expect(report['status'], 'pass');
+      expect(report['differences'], isEmpty);
+    });
+
+    test('old undeclared input rejects an injected intro field', () {
+      final corpus = _syntheticCorpus();
+      final golden = _syntheticEnvelope(corpus);
+      final product = _syntheticProduct(corpus);
+      setIntro(recordOf(golden, native: true), 'search', 'injected');
+      expect(
+        () => _compare(golden, product, corpus),
+        throwsA(
+          isA<StateError>().having(
+            (error) => '$error',
+            'message',
+            allOf(contains('intro'), contains('not declared by the corpus')),
+          ),
+        ),
+      );
+    });
+  });
 
   test('the legacy FIELDS-01 corpus and golden remain present', () {
     expect(File('tool/result_field_oracle/fixtures.json').existsSync(), isTrue);
