@@ -74,10 +74,21 @@ final RegExp _otherHtmlRegex = RegExp(r'</?[a-zA-Z]+(?=[ >])[^<>]*>');
 /// `formatKeepImg` hands to `format`.
 final RegExp _keepImgHtmlRegex = RegExp(r'</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>');
 
-/// Frozen `HtmlFormatter.format(html, otherHtmlRegex)`: the entity folding, the
-/// paragraph-break tag family, comments, the tag pass [otherHtmlRegex] picks,
-/// then the paragraph indentation (`HtmlFormatter.kt:20-34`).
-String _formatHtml(String value, RegExp otherHtmlRegex) => value
+/// Frozen `HtmlFormatter.formatText(html, otherHtmlRegex, paragraphIndent)`:
+/// the entity folding, the paragraph-break tag family, comments, the tag pass
+/// [otherHtmlRegex] picks, then the paragraph indentation
+/// (`HtmlFormatter.kt:39-51`). [paragraphIndent] is the two full-width spaces
+/// of `format` or the empty string of `formatIntro`.
+String _formatHtml(
+  String value,
+  RegExp otherHtmlRegex,
+  String paragraphIndent,
+) => value
+    // Frozen `normalizeEscapedLineBreaks` runs before every formatter pass,
+    // in this order: `\\r\\n`, `\\n`, `\\r` (`HtmlFormatter.kt:24-29,41`).
+    .replaceAll(r'\r\n', '\n')
+    .replaceAll(r'\n', '\n')
+    .replaceAll(r'\r', '\n')
     .replaceAll(RegExp(r'(&nbsp;)+'), ' ')
     .replaceAll(RegExp(r'(&ensp;|&emsp;)'), ' ')
     .replaceAll(RegExp('(&thinsp;|&zwnj;|&zwj;|\u2009|\u200C|\u200D)'), '')
@@ -85,13 +96,19 @@ String _formatHtml(String value, RegExp otherHtmlRegex) => value
     .replaceAll(RegExp(r'<!--[^>]*-->'), '')
     .replaceAll(otherHtmlRegex, '')
     // Java's default \\s is ASCII, unlike Dart's ECMAScript whitespace class.
-    .replaceAll(RegExp(r'[ \t\n\x0b\f\r]*\n+[ \t\n\x0b\f\r]*'), '\n　　')
-    .replaceAll(RegExp(r'^[\n \t\x0b\f\r]+'), '　　')
+    .replaceAll(
+      RegExp(r'[ \t\n\x0b\f\r]*\n+[ \t\n\x0b\f\r]*'),
+      '\n$paragraphIndent',
+    )
+    .replaceAll(RegExp(r'^[\n \t\x0b\f\r]+'), paragraphIndent)
     .replaceAll(RegExp(r'[\n \t\x0b\f\r]+$'), '');
 
-/// Frozen `HtmlFormatter.format` used for search and book-information intros
-/// (`BookList.kt:251`, `BookInfo.kt:123`), whose tag pass is the house one.
-String formatSourceIntro(String value) => _formatHtml(value, _otherHtmlRegex);
+/// Frozen `HtmlFormatter.formatIntro` used for search and book-information
+/// intros (`BookList.kt:260`, `BookInfo.kt:123`): the house tag pass with the
+/// empty paragraph indent. The empty indent is also what trims the resulting
+/// ASCII paragraph-edge whitespace (`HtmlFormatter.kt:48-50`).
+String formatSourceIntro(String value) =>
+    _formatHtml(value, _otherHtmlRegex, '');
 
 /// The frozen content stage's own HTML pass, `BookContent.kt:178`:
 ///
@@ -124,7 +141,7 @@ String formatSourceIntro(String value) => _formatHtml(value, _otherHtmlRegex);
 ///   value a `@js:` segment produced — and a page that wrote its tags escaped
 ///   (`&lt;p&gt;`) keeps them on the frozen side where this pass strips them.
 String formatChapterContent(String value) =>
-    _formatHtml(value, _keepImgHtmlRegex);
+    _formatHtml(value, _keepImgHtmlRegex, '　　');
 
 /// The frozen content stage's whole per-page pass (`BookContent.kt:177-181`):
 /// the value `AnalyzeRule.getString(contentRule.content, unescape = false)`

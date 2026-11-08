@@ -2235,6 +2235,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final parts = <String>[];
     String? contentTitle;
+    // The selected content stage reads `ruleContent.title` after it has joined
+    // every page, against the first response's document (`BookContent.kt:65-69`,
+    // `:169-182`). The first post-login document and its raw body are retained
+    // for that later read; the page walk itself never reads them.
+    Object? firstPageDocument;
+    String? firstPageBody;
     var firstPage = true;
     // The complete native raw base of a retained first page, while that page's
     // own declared addresses are resolved. Its later page's own response base
@@ -2332,28 +2338,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
           firstPage = false;
         }
         final document = _document(BookSourceStage.content, contentPage);
-        // The frozen applies the first page's title before the content rules.
         if (parts.isEmpty) {
-          final titleRule = content['title'];
-          final title = titleRule == null
-              ? null
-              : await _optional(
-                  document,
-                  titleRule,
-                  label: 'ruleContent.title',
-                );
-          if (title != null && title.trim().isNotEmpty) {
-            contentTitle = _chapterTitle = title;
-            _chapter = SourceChapter(
-              title,
-              chapter.url,
-              rawAddress: chapter.rawAddress,
-              storedKey: chapter.storedKey,
-              addressBase: chapter.addressBase,
-              variable: chapter.variable,
-              fetchContext: chapter.fetchContext,
-            );
-          }
+          firstPageDocument = document;
+          firstPageBody = contentPage.body;
         }
         // The frozen content stage turns one page's value into text here, before
         // the pages are joined (`BookContent.kt:178-181`) — the same pass the HTML
@@ -2387,6 +2374,34 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     // The frozen joins a chapter's pages with a newline (`BookContent.kt:129`).
     final text = parts.join('\n');
+    // The selected title read is after the joined body, so the source state the
+    // content scripts wrote is visible and those scripts saw the incoming
+    // chapter title. Its document is the first post-login response, not the last
+    // page's; restoring it makes the reader's own content context the one the
+    // title rule reads (`BookContent.kt:65-69`, `:169-182`).
+    final titleRule = content['title'];
+    final firstDocument = firstPageDocument;
+    if (titleRule != null && firstDocument != null) {
+      _responseRoot = firstDocument;
+      _responseText = firstPageBody;
+      final title = await _optional(
+        firstDocument,
+        titleRule,
+        label: 'ruleContent.title',
+      );
+      if (title.trim().isNotEmpty) {
+        contentTitle = _chapterTitle = title;
+        _chapter = SourceChapter(
+          title,
+          chapter.url,
+          rawAddress: chapter.rawAddress,
+          storedKey: chapter.storedKey,
+          addressBase: chapter.addressBase,
+          variable: chapter.variable,
+          fetchContext: chapter.fetchContext,
+        );
+      }
+    }
     return HtmlChapterBody(
       text,
       pages,

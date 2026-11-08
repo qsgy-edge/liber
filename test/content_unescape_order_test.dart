@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
@@ -71,6 +72,68 @@ void main() {
     );
 
     expect(body.text, '<p>不是标签</p>& 乙');
+  });
+
+  test('literal escaped line breaks normalize before the shared HTML pass', () {
+    // `HtmlFormatter.formatText` normalizes `\\r\\n`, then `\\n`, then `\\r`
+    // before the entity/tag/indent passes (`HtmlFormatter.kt:24-29,39-51`).
+    // The content pass keeps the two-full-width-space paragraph indent; the
+    // intro pass keeps the selected empty indent. The expected strings are the
+    // selected source's answers for these exact inputs.
+    const input = r'A\r\nB\nC\rD';
+    expect(formatContentPage(input), 'A\n　　B\n　　C\n　　D');
+    expect(formatSourceIntro(input), 'A\nB\nC\nD');
+  });
+
+  test(
+    'a static content control normalizes literal escaped line breaks',
+    () async {
+      // The FIELDS-02 control's content value carries a literal `\\n`; the
+      // selected formatter turns it into a paragraph break before the joined
+      // replacement trims and re-indents every line (`BookContent.kt:169-182`).
+      final pipeline = HtmlSourcePipeline(
+        <String, dynamic>{
+          'bookSourceUrl': origin,
+          'ruleContent': {'content': '.content@text', 'replaceRegex': '##（广告）'},
+        },
+        _Pages({
+          '/chapter/1': r'<div class="content">CONTROL BODY（广告）\nSECOND</div>',
+        }),
+      );
+
+      final body = await pipeline.chapter(
+        SourceChapter('第一章', Uri.parse('$origin/chapter/1')),
+      );
+
+      expect(body.text, '　　CONTROL BODY\n　　SECOND');
+    },
+  );
+
+  test('a static intro normalizes literal escaped line breaks', () async {
+    // The same control's search intro carries a literal `\\n`; the selected
+    // `formatIntro` normalizes it and keeps the empty paragraph indent
+    // (`BookList.kt:260`, `HtmlFormatter.kt:24-29,35-51`).
+    final pipeline = HtmlSourcePipeline(
+      <String, dynamic>{
+        'bookSourceUrl': origin,
+        'searchUrl': '/search',
+        'ruleSearch': {
+          'bookList': '.result',
+          'name': 'a@text',
+          'bookUrl': 'a@href',
+          'intro': 'span.intro@html',
+        },
+      },
+      _Pages({
+        '/search':
+            r'<div class="result"><a href="/book/1">控制书</a>'
+            r'<span class="intro"><p>控制简介\n第二行</p></span></div>',
+      }),
+    );
+
+    final hit = (await pipeline.search('x')).single;
+
+    expect(hit.intro, '控制简介\n第二行');
   });
 
   test('the measured 356/179 page shape stores the folded text', () async {

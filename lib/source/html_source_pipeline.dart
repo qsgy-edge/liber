@@ -3068,6 +3068,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     }
     final parts = <String>[];
     String? contentTitle;
+    // The selected content stage reads `ruleContent.title` after it has joined
+    // every page and run the declared replacement, against the first response's
+    // document (`BookContent.kt:65-69`, `:169-182`). The first post-login body
+    // is retained for that later read; the page walk itself never reads it.
+    String? firstPageHtml;
     var firstPage = true;
     // An eligible retained response is this chapter's first content page: the
     // frozen branch reads it for what it holds — no request, no source header,
@@ -3205,34 +3210,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         }
         final html = fetched.body;
         final pageUrl = fetched.url;
-        // Frozen BookContent applies the first-page title before parsing content
-        // rules: their scripts and {{chapter.title}} see the updated value.
-        if (parts.isEmpty) {
-          final titleRule = _rule('ruleContent', 'title', optional: true);
-          if (titleRule.trim().isNotEmpty) {
-            final title = await _field(
-              titleRule,
-              content: html,
-              label: 'ruleContent.title',
-            );
-            final titleBatch = HtmlRuleBatch(html);
-            final titleValue = _declare(titleBatch, 'title', title);
-            await titleBatch.run();
-            final extracted = await _documentValue(titleValue, title, html);
-            if (extracted.trim().isNotEmpty) {
-              contentTitle = _chapterTitle = extracted;
-              _chapter = SourceChapter(
-                extracted,
-                chapter.url,
-                rawAddress: chapter.rawAddress,
-                storedKey: chapter.storedKey,
-                addressBase: chapter.addressBase,
-                variable: chapter.variable,
-                fetchContext: chapter.fetchContext,
-              );
-            }
-          }
-        }
+        if (parts.isEmpty) firstPageHtml = html;
         final content = await _field(
           _contentRule(),
           content: html,
@@ -3282,6 +3260,35 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       },
     );
     final text = await _shapeJoinedContent(parts.join('\n'));
+    // The selected title read is after the joined body and its replacement, so
+    // the state those scripts wrote is visible and the body scripts saw the
+    // incoming chapter title. Its document is the first post-login response,
+    // not the last page's.
+    final titleRule = _rule('ruleContent', 'title', optional: true);
+    final firstHtml = firstPageHtml;
+    if (titleRule.trim().isNotEmpty && firstHtml != null) {
+      final title = await _field(
+        titleRule,
+        content: firstHtml,
+        label: 'ruleContent.title',
+      );
+      final titleBatch = HtmlRuleBatch(firstHtml);
+      final titleValue = _declare(titleBatch, 'title', title);
+      await titleBatch.run();
+      final extracted = await _documentValue(titleValue, title, firstHtml);
+      if (extracted.trim().isNotEmpty) {
+        contentTitle = _chapterTitle = extracted;
+        _chapter = SourceChapter(
+          extracted,
+          chapter.url,
+          rawAddress: chapter.rawAddress,
+          storedKey: chapter.storedKey,
+          addressBase: chapter.addressBase,
+          variable: chapter.variable,
+          fetchContext: chapter.fetchContext,
+        );
+      }
+    }
     return HtmlChapterBody(
       text,
       pages,

@@ -112,6 +112,97 @@ void main() {
     },
   );
 
+  test(
+    'the content title reads after the joined body and replacement',
+    () async {
+      // The selected content stage joins the pages and runs the declared
+      // replacement before it reads `ruleContent.title` (`BookContent.kt:65-69`,
+      // `:169-182`), against the first page's document. The content script
+      // writes the state the title reads; the second page carries a different
+      // title marker, so a last-page read would answer `第二页标题`.
+      final transport = SitePages({
+        '/book/1': _bookPage,
+        '/toc/1': _listPage,
+        '/chapter/1':
+            '<h2 class="chapter-title">第一页标题</h2>'
+            '<div class="content">HTML BODY（广告）</div>'
+            '<a class="next" href="/chapter/2">下一页</a>',
+        '/chapter/2':
+            '<h2 class="chapter-title">第二页标题</h2>'
+            '<div class="content">HTML PAGE2</div>',
+      });
+      final pipeline = HtmlSourcePipeline({
+        'bookSourceUrl': 'https://a.test',
+        'ruleBookInfo': {
+          'name': '@CSS:h1 a@text',
+          'tocUrl': '@CSS:#dir a@href',
+        },
+        'ruleToc': {
+          'chapterList': '@CSS:#list li a',
+          'chapterName': '@CSS:a@text',
+          'chapterUrl': '@CSS:a@href',
+        },
+        'ruleContent': {
+          'content':
+              '@js: source.put("seenHtml","content"); '
+              'java.getString(".content@text")',
+          'nextContentUrl': '.next@href',
+          'replaceRegex': '##（广告）##{{source.put("seenHtml","replace");""}}',
+          'title':
+              '@js: (source.get("seenHtml") || "none") + "|" + '
+              'java.getString(".chapter-title@text")',
+        },
+      }, transport);
+      final (_, chapters) = await pipeline.details(_hit());
+      final body = await pipeline.chapter(chapters.single);
+      expect(body.title, 'replace|第一页标题');
+      expect(body.text, '　　HTML BODY\n　　HTML PAGE2');
+    },
+  );
+
+  test(
+    'ordinary intros use the empty paragraph indent and retain an empty details rule',
+    () async {
+      // `BookList.kt:260` and `BookInfo.kt:123` call `HtmlFormatter.formatIntro`,
+      // whose only difference from `format` is the empty paragraph indent
+      // (`HtmlFormatter.kt:35-50`). A blank information-intro rule keeps the
+      // already formatted search intro (`BookInfo.kt:123-130`).
+      final transport = SitePages({
+        '/search':
+            '<div class="results"><div class="item">'
+            '<a href="/book/1">书</a>'
+            '<span class="intro"><p>搜索简介&nbsp;&nbsp;A</p></span>'
+            '</div></div>',
+        '/book/1': _bookPage,
+        '/toc/1': _listPage,
+      });
+      final pipeline = HtmlSourcePipeline({
+        'bookSourceUrl': 'https://a.test',
+        'searchUrl': '/search?keyword={{key}}&page={{page}}',
+        'ruleSearch': {
+          'bookList': '@CSS:.results .item',
+          'name': '@CSS:a@text',
+          'bookUrl': '@CSS:a@href',
+          'intro': '@CSS:span.intro@html',
+        },
+        'ruleBookInfo': {
+          'name': '@CSS:h1 a@text',
+          'tocUrl': '@CSS:#dir a@href',
+          'intro': '',
+        },
+        'ruleToc': {
+          'chapterList': '@CSS:#list li a',
+          'chapterName': '@CSS:a@text',
+          'chapterUrl': '@CSS:a@href',
+        },
+      }, transport);
+      final hit = (await pipeline.search('书')).single;
+      expect(hit.intro, '搜索简介\u00A0\u00A0A');
+      final (book, _) = await pipeline.details(hit);
+      expect(book.intro, '搜索简介\u00A0\u00A0A');
+    },
+  );
+
   group('multi-URL page results (BookChapterList.kt:48-121, BookContent.kt:54-135)', () {
     test('a multi-match nextTocUrl runs its ## field once per item', () async {
       final transport = SitePages({

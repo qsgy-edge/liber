@@ -98,6 +98,94 @@ void main() {
     },
   );
 
+  test('the JSON content title reads after the joined body', () async {
+    // The selected content stage joins every page before it reads
+    // `ruleContent.title` (`BookContent.kt:65-69`, `:169-182`), against the
+    // first page's document. The content script writes the state the title
+    // reads; the second page carries a different title marker, so a last-page
+    // read would answer `第二页标题`.
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      final body = switch (request.uri.path) {
+        '/c/1' => {'body': 'JSON BODY', 'next': '/c/2', 'title': '第一页标题'},
+        '/c/2' => {'body': 'JSON PAGE2', 'title': '第二页标题'},
+        _ => {'error': 'Unexpected path'},
+      };
+      request.response.write(jsonEncode(body));
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final pipeline = JsonSourcePipeline({
+      'bookSourceUrl': base,
+      'ruleContent': {
+        'content':
+            '@js: source.put("seenJson","content"); '
+            r'java.getString("$.body")',
+        'nextContentUrl': r'$.next',
+        'title':
+            '@js: (source.get("seenJson") || "none") + "|" + '
+            r'java.getString("$.title")',
+      },
+    }, HttpSourceTransport());
+    final body = await pipeline.chapter(
+      SourceChapter('第一章', Uri.parse('$base/c/1')),
+    );
+    expect(body.title, 'content|第一页标题');
+    expect(body.text, 'JSON BODY\nJSON PAGE2');
+  });
+
+  test(
+    'ordinary JSON intros use the empty paragraph indent and retain an empty details rule',
+    () async {
+      // `BookList.kt:260` and `BookInfo.kt:123` call `HtmlFormatter.formatIntro`,
+      // whose only difference from `format` is the empty paragraph indent
+      // (`HtmlFormatter.kt:35-50`). A blank information-intro rule keeps the
+      // already formatted search intro (`BookInfo.kt:123-130`).
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        final body = switch (request.uri.path) {
+          '/search' => {
+            'items': [
+              {'name': 'JSON书', 'url': '/book/1', 'intro': '<p>JSON搜索简介</p>'},
+            ],
+          },
+          '/book/1' => {'title': 'JSON书', 'toc': '/toc/1'},
+          '/toc/1' => {
+            'list': [
+              {'name': '第一章', 'href': '/c/1'},
+            ],
+          },
+          _ => {'error': 'Unexpected path'},
+        };
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'searchUrl': '/search?keyword={{key}}&page={{page}}',
+        'ruleSearch': {
+          'bookList': r'$.items',
+          'name': r'$.name',
+          'bookUrl': r'$.url',
+          'intro': r'$.intro',
+        },
+        'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc', 'intro': ''},
+        'ruleToc': {
+          'chapterList': r'$.list',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.href',
+        },
+      }, HttpSourceTransport());
+      final hit = (await pipeline.search('probe')).single;
+      expect(hit.intro, 'JSON搜索简介');
+      final (book, _) = await pipeline.details(hit);
+      expect(book.intro, 'JSON搜索简介');
+    },
+  );
+
   test(
     'a reopened relative JSON chapter fetches against the owning book',
     () async {
