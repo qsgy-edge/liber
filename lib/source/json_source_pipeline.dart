@@ -2380,12 +2380,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // page's; restoring it makes the reader's own content context the one the
     // title rule reads (`BookContent.kt:65-69`, `:169-182`).
     final titleRule = content['title'];
-    final firstDocument = firstPageDocument;
-    if (titleRule != null && firstDocument != null) {
-      _responseRoot = firstDocument;
-      _responseText = firstPageBody;
+    // The captured first response is its non-null raw body; the decoded root may
+    // itself be JSON null, which is a value, not an absent response. Restore
+    // that raw-text context and let the ordinary optional read receive the
+    // nullable root.
+    final firstBody = firstPageBody;
+    if (titleRule != null && firstBody != null) {
+      _responseRoot = firstPageDocument;
+      _responseText = firstBody;
       final title = await _optional(
-        firstDocument,
+        firstPageDocument,
         titleRule,
         label: 'ruleContent.title',
       );

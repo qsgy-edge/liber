@@ -98,42 +98,100 @@ void main() {
     },
   );
 
-  test('the JSON content title reads after the joined body', () async {
-    // The selected content stage joins every page before it reads
-    // `ruleContent.title` (`BookContent.kt:65-69`, `:169-182`), against the
-    // first page's document. The content script writes the state the title
-    // reads; the second page carries a different title marker, so a last-page
-    // read would answer `第二页标题`.
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    server.listen((request) async {
-      final body = switch (request.uri.path) {
-        '/c/1' => {'body': 'JSON BODY', 'next': '/c/2', 'title': '第一页标题'},
-        '/c/2' => {'body': 'JSON PAGE2', 'title': '第二页标题'},
-        _ => {'error': 'Unexpected path'},
-      };
-      request.response.write(jsonEncode(body));
-      await request.response.close();
-    });
-    final base = 'http://127.0.0.1:${server.port}';
-    final pipeline = JsonSourcePipeline({
-      'bookSourceUrl': base,
-      'ruleContent': {
-        'content':
-            '@js: source.put("seenJson","content"); '
-            r'java.getString("$.body")',
-        'nextContentUrl': r'$.next',
-        'title':
-            '@js: (source.get("seenJson") || "none") + "|" + '
-            r'java.getString("$.title")',
-      },
-    }, HttpSourceTransport());
-    final body = await pipeline.chapter(
-      SourceChapter('第一章', Uri.parse('$base/c/1')),
-    );
-    expect(body.title, 'content|第一页标题');
-    expect(body.text, 'JSON BODY\nJSON PAGE2');
-  });
+  test(
+    'the JSON content title reads after all pages against the first page',
+    () async {
+      // The selected content stage joins every page before it reads
+      // `ruleContent.title` (`BookContent.kt:65-69`, `:169-182`), against the
+      // first page's document. The distinct page markers strengthen the existing
+      // after-all-pages placement: page one writes `first`, the final page writes
+      // `final`, so a page-one-only read would answer `first|第一页标题`; the title
+      // document is still the first page, so a last-page document would answer
+      // `final|第二页标题`. This strengthening is not a historical red — the old
+      // same-marker test already passed for the after-all-pages placement.
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        final body = switch (request.uri.path) {
+          '/c/1' => {
+            'body': 'JSON BODY',
+            'next': '/c/2',
+            'title': '第一页标题',
+            'marker': 'first',
+          },
+          '/c/2' => {'body': 'JSON PAGE2', 'title': '第二页标题', 'marker': 'final'},
+          _ => {'error': 'Unexpected path'},
+        };
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'ruleContent': {
+          'content':
+              r'@js: source.put("seenJson", java.getString("$.marker")); '
+              r'java.getString("$.body")',
+          'nextContentUrl': r'$.next',
+          'title':
+              '@js: (source.get("seenJson") || "none") + "|" + '
+              r'java.getString("$.title")',
+        },
+      }, HttpSourceTransport());
+      final body = await pipeline.chapter(
+        SourceChapter('第一章', Uri.parse('$base/c/1')),
+      );
+      expect(body.title, 'final|第一页标题');
+      expect(body.text, 'JSON BODY\nJSON PAGE2');
+    },
+  );
+
+  test(
+    'a valid JSON null root still reads the declared title after the body',
+    () async {
+      // A four-byte valid JSON `null` decodes to a null root, not an absent first
+      // response. The selected stage keeps the response's raw String as its
+      // analysis content and reads a declared title after the body
+      // (`BookContent.kt:65-69`, `:169-182`); the title script's state effect
+      // must still run.
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        request.response.headers.contentType = ContentType.json;
+        request.response.write('null');
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final state = SourceHostState();
+      final pipeline = JsonSourcePipeline(
+        {
+          'bookSourceUrl': base,
+          'ruleContent': {
+            'content': '@js:"BODY"',
+            'title': '@js: source.put("nullRootTitleRan","yes"); "TITLE"',
+          },
+        },
+        HttpSourceTransport(),
+        hostState: state,
+      );
+      final body = await pipeline.chapter(
+        SourceChapter('TOC', Uri.parse('$base/chapter')),
+      );
+      expect(body.text, 'BODY');
+      expect(body.title, 'TITLE');
+      expect(body.pages, 1);
+      expect(paths, ['/chapter']);
+      expect(
+        await state.entry(
+          base,
+          sourceRuleVariableKey(base, 'nullRootTitleRan'),
+        ),
+        'yes',
+      );
+    },
+  );
 
   test(
     'ordinary JSON intros use the empty paragraph indent and retain an empty details rule',
