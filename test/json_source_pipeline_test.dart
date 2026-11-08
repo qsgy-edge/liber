@@ -107,8 +107,7 @@ void main() {
       // after-all-pages placement: page one writes `first`, the final page writes
       // `final`, so a page-one-only read would answer `first|第一页标题`; the title
       // document is still the first page, so a last-page document would answer
-      // `final|第二页标题`. This strengthening is not a historical red — the old
-      // same-marker test already passed for the after-all-pages placement.
+      // `final|第二页标题`.
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));
       server.listen((request) async {
