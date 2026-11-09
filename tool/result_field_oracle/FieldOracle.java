@@ -279,8 +279,10 @@ public final class FieldOracle extends Instrumentation {
         }
         try {
             if (failure != null) {
+                Throwable persistenceError = persistFailureReport(failure);
+                if (persistenceError != null) failure.addSuppressed(persistenceError);
+                // Recompute AFTER persistence so the reported chain includes it.
                 String chain = describeChain(failure);
-                persistFailureReport(failure);
                 if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(chain);
                 status.putString("stream", "Fields oracle harness error: " + chain + "\n");
                 safeLog("harness error: " + chain);
@@ -312,27 +314,36 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /**
-     * F4: a minimal failure-only report in the already-bound owned scratch.
+     * F4: persist the actual failure.
      *
-     * <p>It carries no success identity, entry point or corpus observation. When
-     * no owned scratch was ever bound this writes nothing and the caller keeps
-     * the instrumentation/log-only failure channel.
+     * <p>When a full report already exists it is preserved and its
+     * {@code analysisFailure} is set to the complete chain. Only a run whose
+     * normal report was never initialized writes the minimal failure-only JSON,
+     * and only into the already-bound owned scratch. A persistence error is
+     * returned so the caller can attach it to the original failure.
      */
-    private void persistFailureReport(Throwable failure) {
+    private Throwable persistFailureReport(Throwable failure) {
         try {
-            if (scratch == null || !scratch.isBound()) return;
+            if (scratch == null || !scratch.isBound()) return null;
+            String chain = describeChain(failure);
+            if (report != null) {
+                report.put("analysisFailure", chain);
+                writeReport();
+                return null;
+            }
             File target = output != null ? output : new File(scratch.root, REPORT);
             JSONObject minimal = new JSONObject()
                 .put("fixtureId", corpus == null ? "unknown" : corpus.optString("fixtureId", ""))
                 .put("failureOnly", true)
-                .put("analysisFailure", describeChain(failure))
+                .put("analysisFailure", chain)
                 .put("caseFailures", caseFailures)
                 .put("recordedAt", timestamp());
             try (FileOutputStream stream = new FileOutputStream(target)) {
                 stream.write(minimal.toString(2).getBytes(StandardCharsets.UTF_8));
             }
-        } catch (Throwable ignored) {
-            // The original failure is preserved by the caller either way.
+            return null;
+        } catch (Throwable error) {
+            return error;
         }
     }
 
@@ -522,84 +533,56 @@ public final class FieldOracle extends Instrumentation {
         }
     }
 
+    /** Writes the owner-completion receipt once resource closure is known. */
+    interface OwnerWrite {
+        JSONObject write(boolean closureProved) throws Exception;
+    }
+
     /**
-     * The unconditional outer cleanup: the report, the replay sockets, the
-     * process guard, the real database and the owned preference fences, each
-     * attempted even when another fails. Any failure is retained and rethrown
-     * with every other failure suppressed, so no normal finish can claim
-     * resource completion that was not proved.
+     * The actual outer cleanup sequence: every owned domain is attempted in
+     * order, a failure in one never skips the rest, and the owner receipt is
+     * written only after the resource facts are known.
+     *
+     * <p>This is the one sequence the collector's {@link #outerCleanup()} runs
+     * and the host controls drive; the domain actions are supplied by the
+     * caller, the sequencing, gating and aggregation are this method's.
      */
-    private JSONObject outerCleanup() throws Exception {
-        JSONObject receipt = new JSONObject();
+    static JSONObject runOuterSequence(
+            Callable<JSONObject> report,
+            Callable<JSONObject> replay,
+            Callable<JSONObject> guard,
+            Callable<JSONObject> database,
+            Callable<JSONObject> terminal,
+            Callable<JSONObject> preferences,
+            OwnerWrite owner,
+            Callable<JSONObject> finalReport,
+            boolean strict,
+            JSONObject cleanup) throws Exception {
         List<Throwable> failures = new ArrayList<>();
-        JSONObject report = attempt(failures, "report", () -> {
-            writeReport();
-            log("report written; failures=" + caseFailures.length());
-            return new JSONObject().put("written", true);
-        });
-        JSONObject replayState = attempt(failures, "replay", () -> {
-            if (replay == null) return new JSONObject().put("serverClosed", false);
-            cleanup.put("openConnections", replay.openConnections());
-            replay.close();
-            cleanup.put("serverClosed", true);
-            int after = replay.openConnections();
-            // F5: the existing selected report field the unchanged consumer
-            // reads must stay in the persisted cleanup domain.
-            cleanup.put("openConnectionsAfterClose", after);
-            return new JSONObject().put("serverClosed", true)
-                .put("openConnectionsAfterClose", after);
-        });
-        JSONObject guard = attempt(failures, "guard", () -> {
-            if (!newFamily || !lifecycleCorpus()) {
-                return new JSONObject().put("applicable", false);
-            }
-            JSONObject released = releaseSavedContentGuard();
-            cleanup.put("savedContentGuard", released);
-            return released;
-        });
-        JSONObject database = attempt(failures, "database", () -> {
-            if (!selectedReference || selectedDatabase == null) {
-                return new JSONObject().put("applicable", false);
-            }
-            selectedDatabase.getClass().getMethod("close").invoke(selectedDatabase);
-            cleanup.put("databaseClosed", true);
-            cleanup.put("activityLaunchAttempts", selectedLaunchAttempts());
-            return new JSONObject().put("closed", true)
-                .put("activityLaunchAttempts", selectedLaunchAttempts());
-        });
-        if (selectedReference) {
-            if (!terminalProved || !replayState.optBoolean("serverClosed", false)
-                    || replayState.optInt("openConnectionsAfterClose", -1) != 0) {
-                failures.add(new IllegalStateException(
-                    "selected terminal or replay cleanup was not proven"));
-            }
-            if (database.optInt("activityLaunchAttempts", 0) != 0) {
-                failures.add(new IllegalStateException("activity launch attempted"));
-            }
-        }
-        // F2: owner completion is published only after every other owned domain
-        // has actually closed. A failed body with proved closure may still
-        // publish completion; an unproved closure may not.
-        final boolean closureProved = failures.isEmpty();
-        JSONObject preferences = attempt(failures, "preferences", () -> {
-            if (!newFamily) return new JSONObject().put("applicable", false);
-            finishScratchCleanup(closureProved);
-            boolean fenced = cleanup.optBoolean("preferencesFenced", false);
-            if (!fenced) {
-                throw new IllegalStateException("the owned preference fence did not prove closure");
-            }
-            return new JSONObject().put("fenced", true);
-        });
-        attempt(failures, "final-report", () -> {
-            writeReport();
-            log("report rewritten with cleanup=" + cleanup);
-            return new JSONObject().put("written", true);
-        });
+        JSONObject reportState = attempt(failures, "report", report, cleanup);
+        JSONObject replayState = attempt(failures, "replay", replay, cleanup);
+        JSONObject guardState = attempt(failures, "guard", guard, cleanup);
+        JSONObject databaseState = attempt(failures, "database", database, cleanup);
+        JSONObject terminalState = attempt(failures, "terminal", terminal, cleanup);
+        JSONObject preferencesState = attempt(failures, "preferences", preferences, cleanup);
+        // F2: closure is an independent fact about the owned resources, never
+        // "no errors anywhere". A report or logger failure does not make the
+        // resources unclosed, and an unclosed resource is never a success.
+        final boolean closureProved = resourceClosureProved(
+            replayState, guardState, databaseState, terminalState, preferencesState);
+        JSONObject ownerState = attempt(failures, "owner",
+            () -> owner == null ? new JSONObject().put("applicable", false)
+                : owner.write(closureProved), cleanup);
+        attempt(failures, "final-report", finalReport, cleanup);
+        JSONObject receipt = new JSONObject();
         try {
-            receipt.put("report", report).put("replay", replayState).put("guard", guard)
-                .put("database", database).put("preferences", preferences)
+            receipt.put("report", reportState).put("replay", replayState)
+                .put("guard", guardState).put("database", databaseState)
+                .put("terminal", terminalState).put("preferences", preferencesState)
+                .put("owner", ownerState)
+                .put("closureProved", closureProved)
                 .put("failureCount", failures.size())
-                .put("closed", failures.isEmpty());
+                .put("closed", closureProved && failures.isEmpty());
         } catch (Throwable ignored) {
             // The failure list below is the authoritative fact.
         }
@@ -610,35 +593,144 @@ public final class FieldOracle extends Instrumentation {
             // F5: the stronger failure policy is scoped to the approved
             // lifecycle corpus. Ordinary corpora keep their existing
             // disposition: a cleanup problem is logged and the run continues.
-            if (newFamily && lifecycleCorpus()) throw aggregate;
-            safeLog("outer cleanup recorded failures on a legacy corpus: "
+            if (strict) throw aggregate;
+            logQuietly("outer cleanup recorded failures on a legacy corpus: "
                 + describeChain(aggregate));
             try {
                 receipt.put("closed", true).put("legacyFailuresLogged", failures.size());
             } catch (Throwable ignored) {
                 // The log above already recorded them.
             }
+        } else if (strict && !closureProved) {
+            throw new IllegalStateException(
+                "the outer cleanup did not prove resource closure: " + receipt);
         }
         return receipt;
     }
 
-    /** Runs one cleanup domain, recording its failure instead of aborting the rest. */
-    private JSONObject attempt(List<Throwable> failures, String name, Callable<JSONObject> work) {
+    /** Whether each owned resource domain actually reported closure. */
+    static boolean resourceClosureProved(JSONObject replay, JSONObject guard,
+            JSONObject database, JSONObject terminal, JSONObject preferences) {
+        boolean replayClosed = replay.optBoolean("serverClosed", false)
+            && replay.optInt("openConnectionsAfterClose", -1) == 0;
+        return replayClosed
+            && applicableClosed(guard)
+            && applicableClosed(database)
+            && applicableClosed(preferences)
+            && terminal.optBoolean("proved", false);
+    }
+
+    /** A domain that reported itself inapplicable does not block closure. */
+    private static boolean applicableClosed(JSONObject state) {
+        return state.optBoolean("applicable", true) ? state.optBoolean("closed", false) : true;
+    }
+
+    /**
+     * The unconditional outer cleanup: the report, the replay sockets, the
+     * process guard, the real database, the terminal proof, the owned preference
+     * fences, the owner receipt and the final report, each attempted even when
+     * another fails.
+     */
+    private JSONObject outerCleanup() throws Exception {
+        return runOuterSequence(
+            () -> {
+                writeReport();
+                log("report written; failures=" + caseFailures.length());
+                return new JSONObject().put("closed", true).put("written", true);
+            },
+            () -> {
+                if (replay == null) return new JSONObject().put("serverClosed", false);
+                cleanup.put("openConnections", replay.openConnections());
+                replay.close();
+                cleanup.put("serverClosed", true);
+                int after = replay.openConnections();
+                // F5: the existing selected report field the unchanged consumer
+                // reads must stay in the persisted cleanup domain.
+                cleanup.put("openConnectionsAfterClose", after);
+                return new JSONObject().put("serverClosed", true)
+                    .put("openConnectionsAfterClose", after);
+            },
+            () -> {
+                if (!newFamily || !lifecycleCorpus()) {
+                    return new JSONObject().put("applicable", false);
+                }
+                JSONObject released = releaseSavedContentGuard();
+                cleanup.put("savedContentGuard", released);
+                return new JSONObject().put("closed", true).put("receipt", released);
+            },
+            () -> {
+                if (!selectedReference || selectedDatabase == null) {
+                    return new JSONObject().put("applicable", false);
+                }
+                selectedDatabase.getClass().getMethod("close").invoke(selectedDatabase);
+                cleanup.put("databaseClosed", true);
+                cleanup.put("activityLaunchAttempts", selectedLaunchAttempts());
+                return new JSONObject().put("closed", true)
+                    .put("activityLaunchAttempts", selectedLaunchAttempts());
+            },
+            () -> {
+                if (!selectedReference) return new JSONObject().put("applicable", false);
+                if (!terminalProved) {
+                    return new JSONObject().put("closed", false).put("proved", false)
+                        .put("reason", "the selected terminal was not proved");
+                }
+                return new JSONObject().put("closed", true).put("proved", true);
+            },
+            () -> {
+                if (!newFamily) return new JSONObject().put("applicable", false);
+                return fenceOwnedPreferences();
+            },
+            closureProved -> {
+                if (!newFamily) return new JSONObject().put("applicable", false);
+                return writeOwnerCompletion(closureProved);
+            },
+            () -> {
+                writeReport();
+                log("report rewritten with cleanup=" + cleanup);
+                return new JSONObject().put("closed", true).put("written", true);
+            },
+            newFamily && lifecycleCorpus(),
+            cleanup);
+    }
+
+    /**
+     * Runs one cleanup domain, recording its failure instead of aborting the
+     * rest. A logger failure is retained in the same list and never skips a
+     * later domain.
+     */
+    static JSONObject attempt(List<Throwable> failures, String name, Callable<JSONObject> work,
+            JSONObject cleanupDomain) {
         try {
             return work.call();
         } catch (Throwable error) {
             failures.add(error);
-            try {
-                cleanup.put(name + "Failure", describeChain(error));
-            } catch (Throwable ignored) {
-                // The failure list already records it.
+            if (cleanupDomain != null) {
+                try {
+                    cleanupDomain.put(name + "Failure", describeChain(error));
+                } catch (Throwable receiptError) {
+                    failures.add(receiptError);
+                }
             }
-            log("cleanup domain " + name + " failed: " + describe(error));
             try {
-                return new JSONObject().put("failed", true);
+                Log.i("FieldOracle", "cleanup domain " + name + " failed: " + describe(error));
+            } catch (Throwable logError) {
+                // F3: a logger failure is retained, not dropped.
+                failures.add(logError);
+            }
+            try {
+                return new JSONObject().put("closed", false).put("failed", true);
             } catch (Throwable ignored) {
                 return new JSONObject();
             }
+        }
+    }
+
+    /** A log call that cannot interrupt a reporting path. */
+    static void logQuietly(String message) {
+        try {
+            Log.i("FieldOracle", message);
+        } catch (Throwable ignored) {
+            // Reporting must not interrupt the caller.
         }
     }
 
@@ -879,8 +971,12 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /** FIELDS-02 hands the owned scratch/report to the external capture driver. */
-    private void finishScratchCleanup(boolean closureProved) throws Exception {
-        if (scratch == null) return;
+    /**
+     * Fences every owned preference name, each inside its own boundary, and
+     * records the real fence facts. A throwing or false fence is a failure.
+     */
+    private JSONObject fenceOwnedPreferences() throws Exception {
+        if (scratch == null) return new JSONObject().put("applicable", false);
         JSONArray owned = new JSONArray();
         boolean fenced = true;
         List<Throwable> fenceFailures = new ArrayList<>();
@@ -894,12 +990,6 @@ public final class FieldOracle extends Instrumentation {
                 fenceFailures.add(error);
             }
         }
-        if (!fenceFailures.isEmpty()) {
-            IllegalStateException aggregate = new IllegalStateException(
-                "owned preference fences recorded " + fenceFailures.size() + " failure(s)");
-            for (Throwable failure : fenceFailures) aggregate.addSuppressed(failure);
-            throw aggregate;
-        }
         cleanup.put("scratchRoot", scratch.root.getAbsolutePath())
             .put("fixtureId", "FIELDS-02")
             .put("corpusVersion", 1)
@@ -907,23 +997,42 @@ public final class FieldOracle extends Instrumentation {
             .put("rootExistedAtStart", scratch.rootExistedAtStart())
             .put("ownedPreferences", owned)
             .put("preferencesFenced", fenced)
-            .put("reportPath", output.getAbsolutePath())
+            .put("reportPath", output == null ? JSONObject.NULL : output.getAbsolutePath())
             .put("rootRetained", scratch.root.exists());
+        if (!fenceFailures.isEmpty()) {
+            IllegalStateException aggregate = new IllegalStateException(
+                "owned preference fences recorded " + fenceFailures.size() + " failure(s)");
+            for (Throwable failure : fenceFailures) aggregate.addSuppressed(failure);
+            throw aggregate;
+        }
+        if (!fenced) {
+            throw new IllegalStateException("an owned preference fence reported false");
+        }
+        return new JSONObject().put("closed", true).put("fenced", true);
+    }
+
+    /**
+     * Writes the owner-completion receipt only when the resource closure was
+     * independently proved. A failed body with proved closure may still
+     * complete ownership; an unproved closure never does.
+     */
+    private JSONObject writeOwnerCompletion(boolean closureProved) throws Exception {
+        if (scratch == null) return new JSONObject().put("applicable", false);
         boolean ownershipProven = closureProved && scratch.isBound() && scratch.root.exists()
             && isolation.optBoolean("bound")
             && isolation.optBoolean("filesRouted")
             && isolation.optBoolean("databaseRouted")
             && !isolation.optBoolean("deviceProtected")
             && !isolation.optBoolean("rootExistedAtStart")
-            && fenced;
-        if (ownershipProven) {
-            String ownerRunId = UUID.randomUUID().toString();
-            scratch.writeOwnerComplete(ownerRunId);
-            cleanup.put("ownerRunId", ownerRunId)
-                .put("ownerComplete", true);
-        } else {
+            && cleanup.optBoolean("preferencesFenced", false);
+        if (!ownershipProven) {
             cleanup.put("ownerComplete", false);
+            return new JSONObject().put("closed", false).put("ownerComplete", false);
         }
+        String ownerRunId = UUID.randomUUID().toString();
+        scratch.writeOwnerComplete(ownerRunId);
+        cleanup.put("ownerRunId", ownerRunId).put("ownerComplete", true);
+        return new JSONObject().put("closed", true).put("ownerComplete", true);
     }
 
     /** FIELDS-02: one actual case record; stage slots are present and nullable. */
