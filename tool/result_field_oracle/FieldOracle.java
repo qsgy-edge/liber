@@ -271,36 +271,19 @@ public final class FieldOracle extends Instrumentation {
 
     private void run() {
         Bundle status = new Bundle();
-        Throwable failure = null;
+        final Throwable[] primaryHolder = new Throwable[1];
         try {
             runWithCleanup(this::runBody, this::outerCleanup);
         } catch (Throwable error) {
-            failure = error;
+            primaryHolder[0] = error;
         }
         try {
-            if (failure != null) {
+            final Throwable primaryFailure = primaryHolder[0];
+            if (primaryFailure != null) {
                 // The actual final reporting: log, persist, then serialize the
                 // updated chain at the status boundary.
-                final Throwable primaryFailure = failure;
                 String chain = reportFailure(primaryFailure,
-                    () -> {
-                        Throwable persistenceError = persistFailureReport(primaryFailure);
-                        if (persistenceError != null) {
-                            throw persistenceError instanceof Exception
-                                ? (Exception) persistenceError
-                                : new IllegalStateException(persistenceError);
-                        }
-                        return new JSONObject().put("persisted", true);
-                    },
-                    () -> {
-                        Throwable logError = safeLog("harness error: " + describeChain(primaryFailure));
-                        if (logError != null) {
-                            throw logError instanceof Exception
-                                ? (Exception) logError
-                                : new IllegalStateException(logError);
-                        }
-                        return new JSONObject().put("logged", true);
-                    });
+                    persistStep(primaryFailure), reportStep(primaryFailure));
                 if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(chain);
                 status.putString("stream", "Fields oracle harness error: " + chain + "\n");
                 finished.set(true);
@@ -315,11 +298,80 @@ public final class FieldOracle extends Instrumentation {
             finished.set(true);
             finish(caseFailures.length() == 0 ? -1 : 1, status);
         } catch (Throwable error) {
-            Throwable finishLogError = safeLog("harness finish failed: " + describe(error));
-            if (finishLogError != null) error.addSuppressed(finishLogError);
+            // The real fallback: keep the original primary, attach this finish
+            // failure and the fallback reporting/persistence failures, and
+            // update the status and durable reporting with the complete chain
+            // before the best-effort second finish.
+            final Throwable finishError = error;
+            final Throwable root = primaryHolder[0] != null ? primaryHolder[0] : finishError;
+            String chain = reportFinishFailure(finishError, primaryHolder[0],
+                persistStep(root), reportStep(root));
+            if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(chain);
+            status.putString("stream", "Fields oracle harness error: " + chain + "\n");
             finished.set(true);
             finish(1, status);
         }
+    }
+
+    /** The persistence step of the final reporting, as a callable. */
+    private Callable<JSONObject> persistStep(Throwable target) {
+        return () -> {
+            Throwable persistenceError = persistFailureReport(target);
+            if (persistenceError != null) {
+                throw persistenceError instanceof Exception
+                    ? (Exception) persistenceError
+                    : new IllegalStateException(persistenceError);
+            }
+            return new JSONObject().put("persisted", true);
+        };
+    }
+
+    /** The logger step of the final reporting, as a callable. */
+    private Callable<JSONObject> reportStep(Throwable target) {
+        return () -> {
+            Throwable logError = safeLog("harness error: " + describeChain(target));
+            if (logError != null) {
+                throw logError instanceof Exception
+                    ? (Exception) logError
+                    : new IllegalStateException(logError);
+            }
+            return new JSONObject().put("logged", true);
+        };
+    }
+
+    /**
+     * The actual fallback finish-failure reporting.
+     *
+     * <p>[primary] stays the root when it exists and receives [finishError] as
+     * suppressed; without a primary the finish failure is the root. The
+     * reporting and persistence steps then run, each failure attached the same
+     * way, and the returned chain is the one the final status carries.
+     */
+    static String reportFinishFailure(Throwable finishError, Throwable primary,
+            Callable<JSONObject> persist, Callable<JSONObject> report) {
+        Throwable root = primary != null ? primary : finishError;
+        if (primary != null && finishError != null && finishError != primary) {
+            primary.addSuppressed(finishError);
+        }
+        Throwable reportError = null;
+        if (report != null) {
+            try {
+                report.call();
+            } catch (Throwable error) {
+                reportError = error;
+            }
+        }
+        if (reportError != null) root.addSuppressed(reportError);
+        Throwable persistenceError = null;
+        if (persist != null) {
+            try {
+                persist.call();
+            } catch (Throwable error) {
+                persistenceError = error;
+            }
+        }
+        if (persistenceError != null) root.addSuppressed(persistenceError);
+        return describeChain(root);
     }
 
     /**
@@ -619,15 +671,19 @@ public final class FieldOracle extends Instrumentation {
             JSONObject cleanup) throws Exception {
         List<Throwable> failures = new ArrayList<>();
         List<Throwable> fatal = new ArrayList<>();
-        JSONObject reportState = domain(failures, fatal, "report", report, strict, selected, cleanup);
-        JSONObject replayState = domain(failures, fatal, "replay", replay, strict, selected, cleanup);
-        JSONObject guardState = domain(failures, fatal, "guard", guard, strict, selected, cleanup);
+        List<String> tolerated = new ArrayList<>();
+        JSONObject reportState =
+            domain(failures, fatal, tolerated, "report", report, strict, selected, cleanup);
+        JSONObject replayState =
+            domain(failures, fatal, tolerated, "replay", replay, strict, selected, cleanup);
+        JSONObject guardState =
+            domain(failures, fatal, tolerated, "guard", guard, strict, selected, cleanup);
         JSONObject databaseState =
-            domain(failures, fatal, "database", database, strict, selected, cleanup);
+            domain(failures, fatal, tolerated, "database", database, strict, selected, cleanup);
         JSONObject terminalState =
-            domain(failures, fatal, "terminal", terminal, strict, selected, cleanup);
-        JSONObject preferencesState =
-            domain(failures, fatal, "preferences", preferences, strict, selected, cleanup);
+            domain(failures, fatal, tolerated, "terminal", terminal, strict, selected, cleanup);
+        JSONObject preferencesState = domain(failures, fatal, tolerated, "preferences",
+            preferences, strict, selected, cleanup);
         // Q4: the final measured activity-launch count is a real failure fact on
         // its own; it does not by itself mean the owned resources stayed open.
         if (selected && terminalState.optInt("activityLaunchAttempts", 0) != 0) {
@@ -642,7 +698,7 @@ public final class FieldOracle extends Instrumentation {
         // resources unclosed, and an unclosed resource is never a success.
         final boolean closureProved = resourceClosureProved(
             replayState, guardState, databaseState, terminalState, preferencesState);
-        JSONObject ownerState = domain(failures, fatal, "owner",
+        JSONObject ownerState = domain(failures, fatal, tolerated, "owner",
             () -> owner == null ? new JSONObject().put("applicable", false)
                 : owner.write(closureProved), strict, selected, cleanup);
         // Q3: a lifecycle run additionally requires the applicable owner to have
@@ -654,7 +710,8 @@ public final class FieldOracle extends Instrumentation {
             failures.add(refused);
             fatal.add(refused);
         }
-        domain(failures, fatal, "final-report", finalReport, strict, selected, cleanup);
+        domain(failures, fatal, tolerated, "final-report", finalReport, strict, selected,
+            cleanup);
         JSONObject receipt = new JSONObject();
         try {
             receipt.put("report", reportState).put("replay", replayState)
@@ -664,10 +721,13 @@ public final class FieldOracle extends Instrumentation {
                 .put("closureProved", closureProved)
                 .put("failureCount", failures.size())
                 .put("fatalCount", fatal.size())
-                .put("toleratedFailures", failures.size() - fatal.size())
-                // The resource facts stay truthful; `accepted` is the caller's
-                // own disposition for a tolerated legacy failure.
-                .put("accepted", fatal.isEmpty())
+                .put("toleratedFailures", tolerated.size())
+                // The resource facts stay truthful. `accepted` is the caller's
+                // own disposition for exactly one situation: a non-selected run
+                // whose only tolerated failure is the replay close. Nothing else
+                // is accepted without a proved closure.
+                .put("accepted", !selected && fatal.isEmpty() && !tolerated.isEmpty()
+                    && tolerated.stream().allMatch("replay"::equals))
                 .put("closed", closureProved && fatal.isEmpty());
         } catch (Throwable ignored) {
             // The failure lists below are the authoritative facts.
@@ -711,14 +771,25 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /** Runs one domain, recording its failure as tolerated or fatal. */
-    static JSONObject domain(List<Throwable> failures, List<Throwable> fatal, String name,
-            Callable<JSONObject> work, boolean strict, boolean selected, JSONObject cleanup) {
+    static JSONObject domain(List<Throwable> failures, List<Throwable> fatal,
+            List<String> tolerated, String name, Callable<JSONObject> work, boolean strict,
+            boolean selected, JSONObject cleanup) {
         List<Throwable> domainFailures = new ArrayList<>();
-        JSONObject state = attempt(domainFailures, name, work, cleanup);
+        List<Throwable> infrastructure = new ArrayList<>();
+        JSONObject state = attempt(domainFailures, infrastructure, name, work, cleanup);
         boolean isFatal = domainIsFatal(name, strict, selected);
         for (Throwable failure : domainFailures) {
             failures.add(failure);
-            if (isFatal) fatal.add(failure);
+            if (isFatal) {
+                fatal.add(failure);
+            } else {
+                tolerated.add(name);
+            }
+        }
+        // A reporting or receipt failure around a domain is never tolerated.
+        for (Throwable failure : infrastructure) {
+            failures.add(failure);
+            fatal.add(failure);
         }
         return state;
     }
@@ -824,8 +895,8 @@ public final class FieldOracle extends Instrumentation {
      * rest. A logger failure is retained in the same list and never skips a
      * later domain.
      */
-    static JSONObject attempt(List<Throwable> failures, String name, Callable<JSONObject> work,
-            JSONObject cleanupDomain) {
+    static JSONObject attempt(List<Throwable> failures, List<Throwable> infrastructure,
+            String name, Callable<JSONObject> work, JSONObject cleanupDomain) {
         try {
             return work.call();
         } catch (Throwable error) {
@@ -834,14 +905,15 @@ public final class FieldOracle extends Instrumentation {
                 try {
                     cleanupDomain.put(name + "Failure", describeChain(error));
                 } catch (Throwable receiptError) {
-                    failures.add(receiptError);
+                    infrastructure.add(receiptError);
                 }
             }
             try {
                 Log.i("FieldOracle", "cleanup domain " + name + " failed: " + describe(error));
             } catch (Throwable logError) {
-                // F3: a logger failure is retained, not dropped.
-                failures.add(logError);
+                // A reporting failure around a tolerated domain error is never
+                // itself tolerated.
+                infrastructure.add(logError);
             }
             try {
                 return new JSONObject().put("closed", false).put("failed", true);

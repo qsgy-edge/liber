@@ -1251,6 +1251,19 @@ public class Pair {
 }
 
 
+LOG_STUB = '''package android.util;
+
+/** The only OS boundary the host fixture replaces: a log call. */
+public final class Log {
+    public static boolean inject;
+
+    public static int i(String tag, String message) {
+        if (inject) throw new IllegalStateException("OS_LOG_ERROR");
+        return 0;
+    }
+}
+'''
+
 REPLAY_FIXTURE = r'''
 package io.liber.oracle.fields;
 
@@ -2554,6 +2567,80 @@ public final class StageAFixture {
         }
     }
 
+    /**
+     * The tolerated legacy replay close never tolerates its own reporting
+     * failure, and a selected run is never accepted without a proved closure.
+     */
+    static void loggerControls(JSONObject result) throws Exception {
+        JSONObject closed = new JSONObject().put("closed", true);
+        JSONObject notApplicable = new JSONObject().put("applicable", false);
+        JSONObject outcome = new JSONObject();
+        // (a) the legacy replay close alone stays tolerated and accepted, while
+        // the resource facts still say the replay did not close.
+        JSONObject tolerated = null;
+        try {
+            tolerated = FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> { throw new IllegalStateException("LEGACY_REPLAY"); },
+                () -> notApplicable, () -> notApplicable, () -> notApplicable,
+                () -> notApplicable,
+                proved -> new JSONObject().put("applicable", false),
+                () -> closed, false, false, new JSONObject());
+        } catch (Throwable error) {
+            tolerated = null;
+        }
+        outcome.put("replayAloneAccepted", tolerated != null
+            && tolerated.optBoolean("accepted") && !tolerated.optBoolean("closed")
+            && !tolerated.optBoolean("closureProved"));
+        // (b) the same replay close plus a logger failure is fatal, and both
+        // errors stay in the chain.
+        String replayLogChain = null;
+        android.util.Log.inject = true;
+        try {
+            FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> { throw new IllegalStateException("LEGACY_REPLAY"); },
+                () -> notApplicable, () -> notApplicable, () -> notApplicable,
+                () -> notApplicable,
+                proved -> new JSONObject().put("applicable", false),
+                () -> closed, false, false, new JSONObject());
+        } catch (Throwable error) {
+            replayLogChain = FieldOracle.describeChain(error);
+        } finally {
+            android.util.Log.inject = false;
+        }
+        outcome.put("replayLogFatal", replayLogChain != null);
+        outcome.put("replayLogChain", replayLogChain);
+        // (c) a selected run with an unproved terminal is rejected by the actual
+        // caller even though no work callback threw.
+        boolean unprovedRejected = false;
+        try {
+            FieldOracle.runWithCleanup(JSONObject::new, () -> FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> new JSONObject().put("serverClosed", true)
+                    .put("openConnectionsAfterClose", 0),
+                () -> closed, () -> closed,
+                () -> new JSONObject().put("closed", false).put("proved", false),
+                () -> notApplicable,
+                proved -> new JSONObject().put("closed", proved).put("ownerComplete", proved),
+                () -> closed, false, true, new JSONObject()));
+        } catch (Throwable error) {
+            unprovedRejected = true;
+        }
+        outcome.put("unprovedSelectedRejected", unprovedRejected);
+        result.put("logger", outcome);
+        // Only the logger failure is fatal; the domain's own replay error stays
+        // tolerated, so the aggregate names exactly one fatal failure.
+        require(outcome.optBoolean("replayAloneAccepted")
+            && outcome.optBoolean("replayLogFatal")
+            && replayLogChain != null
+            && replayLogChain.contains("1 fatal failure(s)")
+            && replayLogChain.contains("OS_LOG_ERROR")
+            && !replayLogChain.contains("LEGACY_REPLAY")
+            && outcome.optBoolean("unprovedSelectedRejected"),
+            "a tolerated replay close must not tolerate its own logger failure: " + outcome);
+    }
+
     public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject().put("control", args[0]);
         if (args[0].equals("replay")) replayControls(result);
@@ -2561,6 +2648,7 @@ public final class StageAFixture {
         else if (args[0].equals("outer")) outerControls(result);
         else if (args[0].equals("caller")) callerControls(result);
         else if (args[0].equals("reporting")) reportingControls(result);
+        else if (args[0].equals("logger")) loggerControls(result);
         else if (args[0].equals("adapter")) {
             try {
                 adapterControls(result);
@@ -2700,14 +2788,17 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                              compiled.stderr.decode(errors='replace'))
             fixture = root / 'StageAFixture.java'
             fixture.write_text(REPLAY_FIXTURE, encoding='utf-8')
+            log = root / 'fakes' / 'android' / 'util' / 'Log.java'
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text(LOG_STUB, encoding='utf-8')
             classpath = os.pathsep.join([str(classes), str(jar), str(android)])
             fixture_compiled = self._run(
                 [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
-                 '-cp', classpath, '-d', str(classes), str(fixture)], repo)
+                 '-cp', classpath, '-d', str(classes), str(fixture), str(log)], repo)
             self.assertEqual(fixture_compiled.returncode, 0,
                              fixture_compiled.stderr.decode(errors='replace'))
             for control in ('replay', 'preference', 'lifetime', 'outer', 'adapter',
-                            'caller', 'reporting'):
+                            'caller', 'reporting', 'logger'):
                 run = self._run(
                     [str(java / 'bin' / 'java.exe'), '-cp', classpath,
                      'io.liber.oracle.fields.StageAFixture', control], repo)
