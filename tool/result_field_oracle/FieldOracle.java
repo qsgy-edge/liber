@@ -304,12 +304,17 @@ public final class FieldOracle extends Instrumentation {
         }
     }
 
-    /** A log call that can never interrupt a cleanup or reporting path. */
-    private void safeLog(String message) {
+    /**
+     * A log call that can never interrupt a cleanup or reporting path, and that
+     * retains its own failure so the caller can serialize it.
+     */
+    private Throwable safeLog(String message) {
         try {
             log(message);
-        } catch (Throwable ignored) {
+            return null;
+        } catch (Throwable error) {
             // A logger failure must not skip later owned cleanup or reporting.
+            return error;
         }
     }
 
@@ -500,7 +505,8 @@ public final class FieldOracle extends Instrumentation {
                             // The failure is still recorded; do not fabricate a record.
                         }
                     }
-                    safeLog("case " + id + " failed: " + chain);
+                    Throwable caseLogError = safeLog("case " + id + " failed: " + chain);
+                    if (caseLogError != null) error.addSuppressed(caseLogError);
                     // F1: for the lifecycle corpus any case failure escapes to the
                     // unconditional outer cleanup; no later case runs in unknown
                     // state. Ordinary corpora keep their existing disposition.
@@ -557,23 +563,46 @@ public final class FieldOracle extends Instrumentation {
             OwnerWrite owner,
             Callable<JSONObject> finalReport,
             boolean strict,
+            boolean selected,
             JSONObject cleanup) throws Exception {
         List<Throwable> failures = new ArrayList<>();
-        JSONObject reportState = attempt(failures, "report", report, cleanup);
-        JSONObject replayState = attempt(failures, "replay", replay, cleanup);
-        JSONObject guardState = attempt(failures, "guard", guard, cleanup);
-        JSONObject databaseState = attempt(failures, "database", database, cleanup);
-        JSONObject terminalState = attempt(failures, "terminal", terminal, cleanup);
-        JSONObject preferencesState = attempt(failures, "preferences", preferences, cleanup);
+        List<Throwable> fatal = new ArrayList<>();
+        JSONObject reportState = domain(failures, fatal, "report", report, strict, selected, cleanup);
+        JSONObject replayState = domain(failures, fatal, "replay", replay, strict, selected, cleanup);
+        JSONObject guardState = domain(failures, fatal, "guard", guard, strict, selected, cleanup);
+        JSONObject databaseState =
+            domain(failures, fatal, "database", database, strict, selected, cleanup);
+        JSONObject terminalState =
+            domain(failures, fatal, "terminal", terminal, strict, selected, cleanup);
+        JSONObject preferencesState =
+            domain(failures, fatal, "preferences", preferences, strict, selected, cleanup);
+        // Q4: the final measured activity-launch count is a real failure fact on
+        // its own; it does not by itself mean the owned resources stayed open.
+        if (selected && terminalState.optInt("activityLaunchAttempts", 0) != 0) {
+            IllegalStateException activity = new IllegalStateException(
+                "a final activity launch was attempted: "
+                    + terminalState.optInt("activityLaunchAttempts", 0));
+            failures.add(activity);
+            fatal.add(activity);
+        }
         // F2: closure is an independent fact about the owned resources, never
         // "no errors anywhere". A report or logger failure does not make the
         // resources unclosed, and an unclosed resource is never a success.
         final boolean closureProved = resourceClosureProved(
             replayState, guardState, databaseState, terminalState, preferencesState);
-        JSONObject ownerState = attempt(failures, "owner",
+        JSONObject ownerState = domain(failures, fatal, "owner",
             () -> owner == null ? new JSONObject().put("applicable", false)
-                : owner.write(closureProved), cleanup);
-        attempt(failures, "final-report", finalReport, cleanup);
+                : owner.write(closureProved), strict, selected, cleanup);
+        // Q3: a lifecycle run additionally requires the applicable owner to have
+        // positively completed. Refusal is a failure, not a silent no-op.
+        if (strict && ownerState.optBoolean("applicable", true)
+                && !ownerState.optBoolean("ownerComplete", false)) {
+            IllegalStateException refused = new IllegalStateException(
+                "the applicable owner did not complete: " + ownerState);
+            failures.add(refused);
+            fatal.add(refused);
+        }
+        domain(failures, fatal, "final-report", finalReport, strict, selected, cleanup);
         JSONObject receipt = new JSONObject();
         try {
             receipt.put("report", reportState).put("replay", replayState)
@@ -582,30 +611,60 @@ public final class FieldOracle extends Instrumentation {
                 .put("owner", ownerState)
                 .put("closureProved", closureProved)
                 .put("failureCount", failures.size())
-                .put("closed", closureProved && failures.isEmpty());
+                .put("fatalCount", fatal.size())
+                .put("closed", closureProved && fatal.isEmpty());
         } catch (Throwable ignored) {
-            // The failure list below is the authoritative fact.
+            // The failure lists below are the authoritative facts.
+        }
+        if (!fatal.isEmpty()) {
+            IllegalStateException aggregate = new IllegalStateException(
+                "outer cleanup recorded " + fatal.size() + " fatal failure(s)");
+            for (Throwable failure : fatal) aggregate.addSuppressed(failure);
+            throw aggregate;
         }
         if (!failures.isEmpty()) {
-            IllegalStateException aggregate = new IllegalStateException(
-                "outer cleanup recorded " + failures.size() + " failure(s)");
-            for (Throwable failure : failures) aggregate.addSuppressed(failure);
-            // F5: the stronger failure policy is scoped to the approved
-            // lifecycle corpus. Ordinary corpora keep their existing
-            // disposition: a cleanup problem is logged and the run continues.
-            if (strict) throw aggregate;
-            logQuietly("outer cleanup recorded failures on a legacy corpus: "
-                + describeChain(aggregate));
+            // Q2: the tolerated legacy disposition is logged, and the resource
+            // facts stay truthful.
+            logQuietly("outer cleanup recorded tolerated failures: "
+                + describeChain(failures.get(0)));
             try {
-                receipt.put("closed", true).put("legacyFailuresLogged", failures.size());
+                receipt.put("toleratedFailures", failures.size());
             } catch (Throwable ignored) {
                 // The log above already recorded them.
             }
-        } else if (strict && !closureProved) {
+        }
+        if (strict && !closureProved) {
             throw new IllegalStateException(
                 "the outer cleanup did not prove resource closure: " + receipt);
         }
         return receipt;
+    }
+
+    /**
+     * Q2: the exact legacy disposition from the pre-repair collector.
+     *
+     * <p>For a lifecycle run every domain failure is fatal. For a legacy
+     * non-selected run only the replay close was tolerated; a report, scratch
+     * finalisation or final-report failure was fatal. For a legacy selected run
+     * every domain failure was fatal.
+     */
+    static boolean domainIsFatal(String name, boolean strict, boolean selected) {
+        if (strict) return true;
+        if (selected) return true;
+        return !"replay".equals(name);
+    }
+
+    /** Runs one domain, recording its failure as tolerated or fatal. */
+    static JSONObject domain(List<Throwable> failures, List<Throwable> fatal, String name,
+            Callable<JSONObject> work, boolean strict, boolean selected, JSONObject cleanup) {
+        List<Throwable> domainFailures = new ArrayList<>();
+        JSONObject state = attempt(domainFailures, name, work, cleanup);
+        boolean isFatal = domainIsFatal(name, strict, selected);
+        for (Throwable failure : domainFailures) {
+            failures.add(failure);
+            if (isFatal) fatal.add(failure);
+        }
+        return state;
     }
 
     /** Whether each owned resource domain actually reported closure. */
@@ -613,11 +672,15 @@ public final class FieldOracle extends Instrumentation {
             JSONObject database, JSONObject terminal, JSONObject preferences) {
         boolean replayClosed = replay.optBoolean("serverClosed", false)
             && replay.optInt("openConnectionsAfterClose", -1) == 0;
+        // Q2: a non-selected run's terminal is inapplicable, not unproved; only
+        // an applicable terminal must prove itself.
+        boolean terminalProved = terminal.optBoolean("applicable", true)
+            ? terminal.optBoolean("proved", false) : true;
         return replayClosed
             && applicableClosed(guard)
             && applicableClosed(database)
             && applicableClosed(preferences)
-            && terminal.optBoolean("proved", false);
+            && terminalProved;
     }
 
     /** A domain that reported itself inapplicable does not block closure. */
@@ -674,7 +737,13 @@ public final class FieldOracle extends Instrumentation {
                     return new JSONObject().put("closed", false).put("proved", false)
                         .put("reason", "the selected terminal was not proved");
                 }
-                return new JSONObject().put("closed", true).put("proved", true);
+                // Q4: the final measured activity-launch count is reported as a
+                // fact; the sequence decides it is fatal without pretending the
+                // owned resources stayed open.
+                int launches = selectedLaunchAttempts();
+                cleanup.put("activityLaunchAttempts", launches);
+                return new JSONObject().put("closed", true).put("proved", true)
+                    .put("activityLaunchAttempts", launches);
             },
             () -> {
                 if (!newFamily) return new JSONObject().put("applicable", false);
@@ -690,6 +759,7 @@ public final class FieldOracle extends Instrumentation {
                 return new JSONObject().put("closed", true).put("written", true);
             },
             newFamily && lifecycleCorpus(),
+            selectedReference,
             cleanup);
     }
 
@@ -1265,6 +1335,10 @@ public final class FieldOracle extends Instrumentation {
             .put("rows", chapters.size())
             .put("inserted", true));
 
+        // Q5: the actual mutable proof is attached BEFORE the owned lifetime can
+        // throw, so a failed case still carries its real partial facts.
+        observed.put("titleLifecycleProof", proof);
+        observed.put("titleLifecycle", lifecycle);
         // F6: the collector delegates the WHOLE saved-case lifetime to the
         // production seam the host controls also exercise.
         try {
@@ -1354,14 +1428,22 @@ public final class FieldOracle extends Instrumentation {
      * flag, so the collector validates them here rather than equating any
      * receipt with closure.
      */
-    private JSONObject adaptObserverClose(JSONObject receipt) throws Exception {
+    static JSONObject adaptObserverClose(JSONObject receipt) throws Exception {
+        // The guard acknowledges two actual valid shapes: the first end carries a
+        // nested removal acknowledgement, and a second acknowledged end carries
+        // the top-level alreadyClosed/removed pair. Both mean the observer is
+        // gone; an arbitrary top-level `removed` alone does not.
         JSONObject removal = receipt.optJSONObject("removal");
-        boolean removed = removal != null && removal.optBoolean("removed", false);
+        boolean nestedRemoved = removal != null && removal.optBoolean("removed", false);
+        boolean idempotent = receipt.optBoolean("alreadyClosed", false)
+            && receipt.optBoolean("removed", false);
+        boolean removed = nestedRemoved || idempotent;
         boolean failed = receipt.optBoolean("failed", false)
             || receipt.optInt("foreignEvents", 0) != 0
             || receipt.optInt("callbackErrors", 0) != 0;
         return new JSONObject().put("closed", removed && !failed)
-            .put("removed", removed).put("failed", failed);
+            .put("removed", removed).put("idempotent", idempotent)
+            .put("failed", failed);
     }
 
     /**

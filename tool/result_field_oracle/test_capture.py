@@ -1292,6 +1292,8 @@ public final class StageAFixture {
         RuntimeException commitError;
         /** A read that throws once, after a commit already mutated the store. */
         RuntimeException readError;
+        /** Armed BY the commit, so the fault lands after the mutation. */
+        boolean throwReadAfterWrite;
         boolean readArmed;
 
         @Override public boolean contains(String key) { return values.containsKey(key); }
@@ -1352,7 +1354,17 @@ public final class StageAFixture {
             // partial effect the lifetime must still restore.
             for (String key : removed) target.values.remove(key);
             target.values.putAll(pending);
-            if (target.refuseCommit) return false;
+            if (target.throwReadAfterWrite) {
+                // Q7: the readback fault is armed DURING the successful mutation,
+                // not before the prior capture.
+                target.readArmed = true;
+                target.throwReadAfterWrite = false;
+            }
+            if (target.refuseCommit) {
+                // One-shot: the restore's own commit must be able to succeed.
+                target.refuseCommit = false;
+                return false;
+            }
             if (target.commitError != null) {
                 RuntimeException error = target.commitError;
                 target.commitError = null;
@@ -1693,7 +1705,7 @@ public final class StageAFixture {
         StageAFixture.Preferences throwing = new StageAFixture.Preferences();
         JSONObject priorThrow = (JSONObject) capture.invoke(null, throwing);
         throwing.readError = new IllegalStateException("readback failed");
-        throwing.readArmed = true;
+        throwing.throwReadAfterWrite = true;
         boolean readbackFailed = false;
         try {
             restore.invoke(null, throwing, priorThrow);
@@ -1723,19 +1735,22 @@ public final class StageAFixture {
      *
      * <p>Every scenario calls the same {@code FieldOracle.runOuterSequence} the
      * collector's {@code outerCleanup()} runs; only the domain actions are
-     * supplied here, so the sequencing, gating and aggregation are the real
-     * collector's.
+     * supplied here, so the sequencing, gating and per-domain policy are the
+     * real collector's.
      */
     static void outerControls(JSONObject result) throws Exception {
         JSONObject outcome = new JSONObject();
         JSONObject closed = new JSONObject().put("closed", true);
         JSONObject okReplay = new JSONObject().put("serverClosed", true)
             .put("openConnectionsAfterClose", 0);
-        JSONObject okTerminal = new JSONObject().put("closed", true).put("proved", true);
+        JSONObject okTerminal = new JSONObject().put("closed", true).put("proved", true)
+            .put("activityLaunchAttempts", 0);
         JSONObject notApplicable = new JSONObject().put("applicable", false);
+        JSONObject ownerDone = new JSONObject().put("closed", true)
+            .put("ownerComplete", true);
 
-        // 1. A report failure does not skip any later domain, and the aggregate
-        //    is thrown for the lifecycle corpus.
+        // 1. A report failure does not skip any later domain, and it is fatal for
+        //    the lifecycle corpus.
         final java.util.List<String> visited = new java.util.ArrayList<>();
         RuntimeException reportError = new IllegalStateException("REPORT_WRITE");
         Throwable aggregate = null;
@@ -1747,9 +1762,9 @@ public final class StageAFixture {
                 () -> { visited.add("database"); return notApplicable; },
                 () -> { visited.add("terminal"); return okTerminal; },
                 () -> { visited.add("preferences"); return notApplicable; },
-                proved -> { visited.add("owner"); return closed; },
+                proved -> { visited.add("owner"); return ownerDone; },
                 () -> { visited.add("final-report"); return closed; },
-                true, new JSONObject());
+                true, false, new JSONObject());
         } catch (Throwable error) {
             aggregate = error;
         }
@@ -1759,8 +1774,7 @@ public final class StageAFixture {
             .put("reportFailureRetained",
                 aggregate != null && containsThrowable(aggregate, reportError));
 
-        // 2. Resource closure is independent of a report failure: the owner
-        //    write still receives a proved closure.
+        // 2. Resource closure is independent of a report failure.
         final boolean[] ownerSawProved = {false};
         try {
             FieldOracle.runOuterSequence(
@@ -1770,9 +1784,9 @@ public final class StageAFixture {
                 () -> notApplicable,
                 () -> okTerminal,
                 () -> notApplicable,
-                proved -> { ownerSawProved[0] = proved; return closed; },
+                proved -> { ownerSawProved[0] = proved; return ownerDone; },
                 () -> closed,
-                true, new JSONObject());
+                true, false, new JSONObject());
         } catch (Throwable ignored) {
             // The report failure is the expected aggregate.
         }
@@ -1788,9 +1802,9 @@ public final class StageAFixture {
                 () -> notApplicable,
                 () -> okTerminal,
                 () -> notApplicable,
-                proved -> { ownerSawGuardClosed[0] = proved; return closed; },
+                proved -> { ownerSawGuardClosed[0] = proved; return ownerDone; },
                 () -> closed,
-                true, new JSONObject());
+                true, false, new JSONObject());
         } catch (Throwable ignored) {
             // The unproved closure is the expected aggregate.
         }
@@ -1806,9 +1820,9 @@ public final class StageAFixture {
                 () -> notApplicable,
                 () -> okTerminal,
                 () -> new JSONObject().put("closed", false),
-                proved -> { ownerSawFence[0] = proved; return closed; },
+                proved -> { ownerSawFence[0] = proved; return ownerDone; },
                 () -> closed,
-                true, new JSONObject());
+                true, false, new JSONObject());
         } catch (Throwable ignored) {
             // The unproved closure is the expected aggregate.
         }
@@ -1824,31 +1838,119 @@ public final class StageAFixture {
                 () -> notApplicable,
                 () -> new JSONObject().put("closed", false).put("proved", false),
                 () -> notApplicable,
-                proved -> { ownerSawTerminal[0] = proved; return closed; },
+                proved -> { ownerSawTerminal[0] = proved; return ownerDone; },
                 () -> closed,
-                true, new JSONObject());
+                true, false, new JSONObject());
         } catch (Throwable ignored) {
             // The unproved closure is the expected aggregate.
         }
         outcome.put("unprovedTerminalBlocksOwner", !ownerSawTerminal[0]);
 
-        // 6. A proved closure with a failed body still publishes the owner
-        //    receipt: the owner writer is reached with proved=true.
-        final boolean[] ownerWritten = {false};
-        JSONObject ownerReceipt = FieldOracle.runOuterSequence(
+        // 6. Q3: an applicable owner refusal is a lifecycle failure even when
+        //    every resource closed.
+        boolean ownerRefusalFatal = false;
+        try {
+            FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> okReplay,
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> okTerminal,
+                () -> notApplicable,
+                proved -> new JSONObject().put("closed", false).put("ownerComplete", false),
+                () -> closed,
+                true, false, new JSONObject());
+        } catch (Throwable error) {
+            ownerRefusalFatal = true;
+        }
+        outcome.put("ownerRefusalFatal", ownerRefusalFatal);
+
+        // 7. Q4: a final measured activity launch is fatal for a selected run,
+        //    without pretending the resources stayed open.
+        boolean activityFatal = false;
+        try {
+            FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> okReplay,
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> new JSONObject().put("closed", true).put("proved", true)
+                    .put("activityLaunchAttempts", 1),
+                () -> notApplicable,
+                proved -> ownerDone,
+                () -> closed,
+                true, true, new JSONObject());
+        } catch (Throwable error) {
+            activityFatal = true;
+        }
+        outcome.put("finalActivityFatal", activityFatal);
+
+        // 8. Q2: the exact legacy disposition.
+        //    (a) a healthy non-selected run passes with an inapplicable terminal.
+        JSONObject healthyLegacy = FieldOracle.runOuterSequence(
             () -> closed,
             () -> okReplay,
             () -> notApplicable,
             () -> notApplicable,
-            () -> okTerminal,
             () -> notApplicable,
-            proved -> { ownerWritten[0] = proved; return closed; },
+            () -> notApplicable,
+            proved -> new JSONObject().put("applicable", false),
             () -> closed,
-            true, new JSONObject());
-        outcome.put("provedClosurePublishesOwner", ownerWritten[0]
-            && ownerReceipt.optBoolean("closureProved"));
+            false, false, new JSONObject());
+        outcome.put("legacyHealthyPasses", healthyLegacy.optBoolean("closed"));
+        //    (b) a non-selected replay-close failure is tolerated.
+        boolean replayTolerated = true;
+        try {
+            FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> { throw new IllegalStateException("LEGACY_REPLAY"); },
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> notApplicable,
+                proved -> new JSONObject().put("applicable", false),
+                () -> closed,
+                false, false, new JSONObject());
+        } catch (Throwable error) {
+            replayTolerated = false;
+        }
+        outcome.put("legacyReplayTolerated", replayTolerated);
+        //    (c) a non-selected report failure is fatal.
+        boolean legacyReportFatal = false;
+        try {
+            FieldOracle.runOuterSequence(
+                () -> { throw new IllegalStateException("LEGACY_REPORT"); },
+                () -> okReplay,
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> notApplicable,
+                proved -> new JSONObject().put("applicable", false),
+                () -> closed,
+                false, false, new JSONObject());
+        } catch (Throwable error) {
+            legacyReportFatal = true;
+        }
+        outcome.put("legacyReportFatal", legacyReportFatal);
+        //    (d) a selected replay-close failure is fatal.
+        boolean selectedReplayFatal = false;
+        try {
+            FieldOracle.runOuterSequence(
+                () -> closed,
+                () -> { throw new IllegalStateException("SELECTED_REPLAY"); },
+                () -> notApplicable,
+                () -> notApplicable,
+                () -> okTerminal,
+                () -> notApplicable,
+                proved -> ownerDone,
+                () -> closed,
+                false, true, new JSONObject());
+        } catch (Throwable error) {
+            selectedReplayFatal = true;
+        }
+        outcome.put("selectedReplayFatal", selectedReplayFatal);
 
-        // 7. Every later domain still runs after an earlier domain throws.
+        // 9. Every later domain still runs after an earlier domain throws.
         final java.util.List<String> afterFailure = new java.util.ArrayList<>();
         try {
             FieldOracle.runOuterSequence(
@@ -1858,9 +1960,9 @@ public final class StageAFixture {
                 () -> { afterFailure.add("database"); return notApplicable; },
                 () -> { afterFailure.add("terminal"); return okTerminal; },
                 () -> { afterFailure.add("preferences"); return notApplicable; },
-                proved -> { afterFailure.add("owner"); return closed; },
+                proved -> { afterFailure.add("owner"); return ownerDone; },
                 () -> { afterFailure.add("final-report"); return closed; },
-                true, new JSONObject());
+                true, false, new JSONObject());
         } catch (Throwable ignored) {
             // The replay failure is the expected aggregate.
         }
@@ -1868,22 +1970,7 @@ public final class StageAFixture {
             "replay", "guard", "database", "terminal", "preferences", "owner",
             "final-report")));
 
-        // 8. The legacy disposition: the same failures are logged, not thrown.
-        JSONObject legacy = FieldOracle.runOuterSequence(
-            () -> { throw new IllegalStateException("LEGACY_REPORT"); },
-            () -> okReplay,
-            () -> notApplicable,
-            () -> notApplicable,
-            () -> okTerminal,
-            () -> notApplicable,
-            proved -> closed,
-            () -> closed,
-            false, new JSONObject());
-        outcome.put("legacyDoesNotThrow", legacy.optBoolean("closed"))
-            .put("legacyRecordsFailures", legacy.optInt("legacyFailuresLogged", 0) >= 1);
-
-        // 9. The measured openConnectionsAfterClose stays a real fact in the
-        //    receipt the collector persists.
+        // 10. The measured openConnectionsAfterClose stays a real fact.
         JSONObject measured = FieldOracle.runOuterSequence(
             () -> closed,
             () -> new JSONObject().put("serverClosed", true)
@@ -1892,9 +1979,9 @@ public final class StageAFixture {
             () -> notApplicable,
             () -> okTerminal,
             () -> notApplicable,
-            proved -> closed,
+            proved -> ownerDone,
             () -> closed,
-            true, new JSONObject());
+            true, false, new JSONObject());
         outcome.put("openConnectionsMeasured",
             measured.optJSONObject("replay").optInt("openConnectionsAfterClose", -1) == 0);
 
@@ -1905,12 +1992,85 @@ public final class StageAFixture {
             && outcome.optBoolean("unclosedGuardBlocksOwner")
             && outcome.optBoolean("falseFenceBlocksOwner")
             && outcome.optBoolean("unprovedTerminalBlocksOwner")
-            && outcome.optBoolean("provedClosurePublishesOwner")
+            && outcome.optBoolean("ownerRefusalFatal")
+            && outcome.optBoolean("finalActivityFatal")
+            && outcome.optBoolean("legacyHealthyPasses")
+            && outcome.optBoolean("legacyReplayTolerated")
+            && outcome.optBoolean("legacyReportFatal")
+            && outcome.optBoolean("selectedReplayFatal")
             && outcome.optBoolean("laterDomainsAfterFailure")
-            && outcome.optBoolean("legacyDoesNotThrow")
-            && outcome.optBoolean("legacyRecordsFailures")
             && outcome.optBoolean("openConnectionsMeasured"),
             "every outer sequence path must behave: " + outcome);
+    }
+
+    /**
+     * Q1: the actual observer-close adapter, and the end -> refresh -> final
+     * idempotent close sequence through the real preference lifetime.
+     */
+    static void adapterControls(JSONObject result) throws Throwable {
+        JSONObject outcome = new JSONObject();
+        JSONObject nested = new JSONObject()
+            .put("events", 1)
+            .put("removal", new JSONObject().put("removed", true).put("onMain", true));
+        JSONObject idempotent = new JSONObject()
+            .put("alreadyClosed", true).put("removed", true).put("events", 1);
+        JSONObject bareRemoved = new JSONObject().put("removed", true);
+        JSONObject failed = new JSONObject()
+            .put("removal", new JSONObject().put("removed", true)).put("failed", true);
+        JSONObject foreign = new JSONObject()
+            .put("removal", new JSONObject().put("removed", true)).put("foreignEvents", 1);
+        JSONObject callbackError = new JSONObject()
+            .put("removal", new JSONObject().put("removed", true)).put("callbackErrors", 1);
+
+        outcome.put("nestedAccepted",
+                FieldOracle.adaptObserverClose(nested).optBoolean("closed"))
+            .put("idempotentAccepted",
+                FieldOracle.adaptObserverClose(idempotent).optBoolean("closed"))
+            .put("bareRemovedRejected",
+                !FieldOracle.adaptObserverClose(bareRemoved).optBoolean("closed"))
+            .put("failedRejected",
+                !FieldOracle.adaptObserverClose(failed).optBoolean("closed"))
+            .put("foreignRejected",
+                !FieldOracle.adaptObserverClose(foreign).optBoolean("closed"))
+            .put("callbackErrorRejected",
+                !FieldOracle.adaptObserverClose(callbackError).optBoolean("closed"));
+
+        // The real saved-case lifetime: end (nested) -> refresh -> final
+        // idempotent close, all through the production adapter.
+        Preferences preferences = new Preferences();
+        JSONObject proof = new JSONObject();
+        final int[] refreshes = {0};
+        final int[] closes = {0};
+        FieldOracle.TocCountWordsLifetime.run(preferences,
+            () -> new JSONObject().put("registered", true),
+            () -> {
+                // The first end acknowledgement is the nested removal shape.
+                if (!FieldOracle.adaptObserverClose(nested).optBoolean("closed")) {
+                    throw new IllegalStateException("the first end was not acknowledged");
+                }
+                refreshes[0]++;
+                return new JSONObject().put("refreshed", true);
+            },
+            () -> {
+                closes[0]++;
+                // The final close is the acknowledged idempotent shape.
+                return FieldOracle.adaptObserverClose(idempotent);
+            },
+            proof);
+        outcome.put("endBeforeRefresh", refreshes[0] == 1)
+            .put("finalIdempotentClose", closes[0] == 1)
+            .put("lifetimeClosed", !preferences.contains("tocCountWords"));
+        result.put("adapter", outcome);
+        require(outcome.optBoolean("nestedAccepted")
+            && outcome.optBoolean("idempotentAccepted")
+            && outcome.optBoolean("bareRemovedRejected")
+            && outcome.optBoolean("failedRejected")
+            && outcome.optBoolean("foreignRejected")
+            && outcome.optBoolean("callbackErrorRejected")
+            && outcome.optBoolean("endBeforeRefresh")
+            && outcome.optBoolean("finalIdempotentClose")
+            && outcome.optBoolean("lifetimeClosed"),
+            "every adapter/close path must behave: " + outcome);
     }
 
     /**
@@ -2046,7 +2206,7 @@ public final class StageAFixture {
         Preferences readback = new Preferences();
         RuntimeException readError = new IllegalStateException("READ_AFTER_MUTATION");
         readback.readError = readError;
-        readback.readArmed = true;
+        readback.throwReadAfterWrite = true;
         Throwable readbackFailure = null;
         try {
             FieldOracle.TocCountWordsLifetime.run(readback,
@@ -2163,6 +2323,14 @@ public final class StageAFixture {
         if (args[0].equals("replay")) replayControls(result);
         else if (args[0].equals("preference")) preferenceControls(result);
         else if (args[0].equals("outer")) outerControls(result);
+        else if (args[0].equals("adapter")) {
+            try {
+                adapterControls(result);
+            } catch (Throwable error) {
+                throw error instanceof Exception ? (Exception) error
+                    : new IllegalStateException(error);
+            }
+        }
         else if (args[0].equals("lifetime")) {
             try {
                 lifetimeControls(result);
@@ -2300,7 +2468,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                  '-cp', classpath, '-d', str(classes), str(fixture)], repo)
             self.assertEqual(fixture_compiled.returncode, 0,
                              fixture_compiled.stderr.decode(errors='replace'))
-            for control in ('replay', 'preference', 'lifetime', 'outer'):
+            for control in ('replay', 'preference', 'lifetime', 'outer', 'adapter'):
                 run = self._run(
                     [str(java / 'bin' / 'java.exe'), '-cp', classpath,
                      'io.liber.oracle.fields.StageAFixture', control], repo)
