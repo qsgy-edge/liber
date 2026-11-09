@@ -395,8 +395,13 @@ public final class FieldOracle extends Instrumentation {
      * retains its own failure so the caller can serialize it.
      */
     private Throwable safeLog(String message) {
+        return quietLogError(message);
+    }
+
+    /** The same log call, callable from the shared case loop. */
+    static Throwable quietLogError(String message) {
         try {
-            log(message);
+            Log.i("FieldOracle", message);
             return null;
         } catch (Throwable error) {
             // A logger failure must not skip later owned cleanup or reporting.
@@ -582,71 +587,115 @@ public final class FieldOracle extends Instrumentation {
             replay.start();
             log("replay server bound to the corpus origin: " + corpus.getString("origin"));
 
-            String analysisFailure = null;
             JSONArray declared = corpus.getJSONArray("cases");
-            for (int index = 0; index < declared.length(); index++) {
-                JSONObject entry = declared.getJSONObject(index);
-                String id = entry.getString("id");
-                stage.set("case:" + id);
-                log("case " + id);
-                if (newFamily) {
-                    fields02Observation = null;
-                    fields02RequestStart = requests.length();
-                }
-                if (selectedReference) {
-                    if (!selectedChildren().isEmpty()) throw new IllegalStateException("DEFAULT Job active before case");
-                    terminalProved = false;
-                }
-                try {
-                    if (newFamily) driveCaseFields02(entry, id);
-                    else driveCase(entry, id);
-                    log("case " + id + " done");
-                } catch (Throwable error) {
-                    // The case reporting logger runs BEFORE the chain is
-                    // serialized, so its own failure is part of the saved chain.
-                    Throwable caseLogError = safeLog("case " + id + " failed: " + describe(error));
-                    if (caseLogError != null) error.addSuppressed(caseLogError);
-                    String chain = describeChain(error);
-                    caseFailures.put(id, chain);
-                    if (newFamily && fields02Observation != null) {
-                        try {
-                            fields02Observation.put("failure", chain)
-                                .put("requests", requestSlice(fields02RequestStart));
-                            caseRecords.put(fields02Observation);
-                        } catch (Throwable ignored) {
-                            // The failure is still recorded; do not fabricate a record.
+            final AtomicReference<JSONObject> observation =
+                new AtomicReference<>(fields02Observation);
+            JSONObject recorded = runDeclaredCases(declared,
+                (entry, id) -> {
+                    fields02Observation = observation.get();
+                    try {
+                        if (selectedReference) {
+                            if (!selectedChildren().isEmpty()) {
+                                throw new IllegalStateException("DEFAULT Job active before case");
+                            }
+                            terminalProved = false;
                         }
+                        if (newFamily) driveCaseFields02(entry, id);
+                        else driveCase(entry, id);
+                    } finally {
+                        observation.set(fields02Observation);
                     }
-                    // F1: for the lifecycle corpus any case failure escapes to the
-                    // unconditional outer cleanup; no later case runs in unknown
-                    // state. Ordinary corpora keep their existing disposition.
-                    if (newFamily && lifecycleCorpus()) {
-                        throw error instanceof Exception ? (Exception) error
-                            : new IllegalStateException(error);
+                },
+                id -> {
+                    if (newFamily && lifecycleCorpus() && guardCaptureFailed()) {
+                        throw new IllegalStateException(
+                            "the saved-content guard recorded a capture failure in case " + id);
                     }
-                }
-                if (newFamily && lifecycleCorpus() && guardCaptureFailed()) {
-                    throw new IllegalStateException(
-                        "the saved-content guard recorded a capture failure in case " + id);
-                }
-                if (selectedReference) {
-                    JSONObject terminal = awaitSelectedQuiescence();
-                    if (fields02Observation != null) fields02Observation.put("terminalOwner", terminal);
-                    terminalProved = true;
-                }
-                // A freeze keeps every case that already finished.
-                writeReport();
-            }
+                    if (selectedReference) {
+                        JSONObject terminal = awaitSelectedQuiescence();
+                        if (fields02Observation != null) {
+                            fields02Observation.put("terminalOwner", terminal);
+                        }
+                        terminalProved = true;
+                    }
+                    // A freeze keeps every case that already finished.
+                    writeReport();
+                },
+                caseFailures, caseRecords, requests, observation, stage,
+                newFamily, newFamily && lifecycleCorpus());
             if (!newFamily) observeCheckKeywords();
 
             // The report is written before the replay server is torn down: the
             // run's evidence must survive a host that freezes this process after
             // a few seconds (MIUI does; see the golden's manifest).
-            return new JSONObject().put("recorded", newFamily
-                ? caseRecords.length() : cases.length());
+            return recorded;
         } catch (Throwable error) {
             throw error;
         }
+    }
+
+    /** Drives one declared case; the collector supplies the real native drive. */
+    interface CaseStep {
+        void drive(JSONObject entry, String id) throws Exception;
+    }
+
+    /** The after-case work: guard capture check, quiescence and report write. */
+    interface CaseAfter {
+        void after(String id) throws Exception;
+    }
+
+    /**
+     * The actual declared-case loop.
+     *
+     * <p>Each case resets its observation, drives the real native case, and on a
+     * failure logs first, keeps that logger failure in the same chain, records the
+     * complete chain and the actual current observation with its request slice,
+     * and then either fails fast (lifecycle) or continues with the next case. The
+     * after-case work runs only for a case that did not fail fast.
+     */
+    static JSONObject runDeclaredCases(JSONArray declared, CaseStep step, CaseAfter after,
+            JSONObject caseFailures, JSONArray caseRecords, JSONArray requests,
+            AtomicReference<JSONObject> observation, AtomicReference<String> stage,
+            boolean newFamily, boolean lifecycle) throws Exception {
+        for (int index = 0; index < declared.length(); index++) {
+            JSONObject entry = declared.getJSONObject(index);
+            String id = entry.getString("id");
+            stage.set("case:" + id);
+            logQuietly("case " + id);
+            int requestStart = requests.length();
+            if (newFamily) observation.set(null);
+            try {
+                step.drive(entry, id);
+                logQuietly("case " + id + " done");
+            } catch (Throwable error) {
+                // The case reporting logger runs BEFORE the chain is serialized,
+                // so its own failure is part of the saved chain.
+                Throwable caseLogError = quietLogError("case " + id + " failed: " + describe(error));
+                if (caseLogError != null) error.addSuppressed(caseLogError);
+                String chain = describeChain(error);
+                caseFailures.put(id, chain);
+                JSONObject current = observation.get();
+                if (newFamily && current != null) {
+                    try {
+                        current.put("failure", chain)
+                            .put("requests", requestSliceOf(requests, requestStart));
+                        caseRecords.put(current);
+                    } catch (Throwable ignored) {
+                        // The failure is still recorded; do not fabricate a record.
+                    }
+                }
+                // A lifecycle case failure escapes to the unconditional outer
+                // cleanup; no later case runs in unknown state. An ordinary
+                // corpus keeps its catch-and-continue disposition.
+                if (newFamily && lifecycle) {
+                    throw error instanceof Exception ? (Exception) error
+                        : new IllegalStateException(error);
+                }
+            }
+            if (after != null) after.after(id);
+        }
+        return new JSONObject().put("recorded",
+            newFamily ? caseRecords.length() : declared.length());
     }
 
     /** Writes the owner-completion receipt once resource closure is known. */
@@ -1542,31 +1591,27 @@ public final class FieldOracle extends Instrumentation {
             // F1: the observation's own failure/removal acknowledgement is
             // validated BEFORE the refresh can run.
             JSONObject endReceipt = saveObservation(loader, "end", bookUrl, chapterUrl);
-            proof.put("saveEvent", endReceipt);
-            JSONObject endProof = adaptObserverClose(endReceipt);
-            if (!endProof.optBoolean("closed", false)) {
-                throw new IllegalStateException(
-                    "the save observation did not close before the refresh: " + endReceipt);
-            }
-            lifecycle.put("storedAfterContent", storedRows(dao, bookUrl, chapterClass));
-            proof.put("contentFiles", contentFiles(loader, bookClass, book));
+            final int[] refreshStart = {0, 0};
+            List<?> refreshed = (List<?>) closeObserverThenRefresh(endReceipt, proof, () -> {
+                lifecycle.put("storedAfterContent", storedRows(dao, bookUrl, chapterClass));
+                proof.put("contentFiles", contentFiles(loader, bookClass, book));
 
-            stage.set("tableOfContents");
-            log("stage tableOfContents (refresh)");
-            int refreshRequestStart = requests.length();
-            int refreshTraceStart = stageTrace.length();
-            List<?> refreshed;
-            try {
-                Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
-                    "getChapterListAwait", 5,
-                    new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}, continuation));
-                refreshed = unwrapResult(tocResult);
-            } catch (Exception error) {
-                recordOperationError(observed, "tableOfContents", refreshRequestStart,
-                    refreshTraceStart, error);
-                throw error;
-            }
-            recordOperation(observed, "tableOfContents", refreshRequestStart, refreshTraceStart);
+                stage.set("tableOfContents");
+                log("stage tableOfContents (refresh)");
+                refreshStart[0] = requests.length();
+                refreshStart[1] = stageTrace.length();
+                try {
+                    Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
+                        "getChapterListAwait", 5,
+                        new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}, continuation));
+                    return unwrapResult(tocResult);
+                } catch (Exception error) {
+                    recordOperationError(observed, "tableOfContents", refreshStart[0],
+                        refreshStart[1], error);
+                    throw error;
+                }
+            });
+            recordOperation(observed, "tableOfContents", refreshStart[0], refreshStart[1]);
             lifecycle.put("refreshedChapters", chapterRows(chapterClass, refreshed));
 
             // The reference book-information view model publishes a refreshed
@@ -1587,6 +1632,25 @@ public final class FieldOracle extends Instrumentation {
         }
         observed.put("titleLifecycleProof", proof);
         observed.put("titleLifecycle", lifecycle);
+    }
+
+    /**
+     * The actual end -> validate -> refresh ordering of the saved case.
+     *
+     * <p>The end receipt is recorded, adapted and required to prove a closed
+     * observer before the refresh runs. A failed or missing removal, a foreign
+     * event or a callback error throws here, so the refresh never runs on an
+     * unproved closure. A proved closure runs the refresh exactly once.
+     */
+    static Object closeObserverThenRefresh(JSONObject endReceipt, JSONObject proof,
+            Callable<?> refresh) throws Exception {
+        if (proof != null) proof.put("saveEvent", endReceipt);
+        JSONObject endProof = adaptObserverClose(endReceipt);
+        if (!endProof.optBoolean("closed", false)) {
+            throw new IllegalStateException(
+                "the save observation did not close before the refresh: " + endReceipt);
+        }
+        return refresh == null ? null : refresh.call();
     }
 
     /**
@@ -1618,11 +1682,47 @@ public final class FieldOracle extends Instrumentation {
      * looper afterwards, so the receipt describes an actually closed domain.
      */
     private JSONObject releaseSavedContentGuard() throws Exception {
-        Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
-        JSONObject released = (JSONObject) bridge.getMethod("releaseProcessResources").invoke(null);
-        JSONObject fence = (JSONObject) bridge.getMethod("fenceMainLooper", long.class)
-            .invoke(null, 5000L);
-        JSONObject receipt = (JSONObject) bridge.getMethod("captureReceipt").invoke(null);
+        return releaseGuard(new GuardSource() {
+            @Override
+            public JSONObject released() throws Exception {
+                return (JSONObject) Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge")
+                    .getMethod("releaseProcessResources").invoke(null);
+            }
+
+            @Override
+            public JSONObject fence() throws Exception {
+                return (JSONObject) Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge")
+                    .getMethod("fenceMainLooper", long.class).invoke(null, 5000L);
+            }
+
+            @Override
+            public JSONObject receipt() throws Exception {
+                return (JSONObject) Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge")
+                    .getMethod("captureReceipt").invoke(null);
+            }
+        });
+    }
+
+    /** The three native guard-release observations, in their actual order. */
+    interface GuardSource {
+        JSONObject released() throws Exception;
+
+        JSONObject fence() throws Exception;
+
+        JSONObject receipt() throws Exception;
+    }
+
+    /**
+     * The actual process-release / main-fence adapter.
+     *
+     * <p>Release, then fence, then the receipt; a release that did not close, a
+     * fence that was not posted or did not complete, or any blocked delivery is
+     * an unproved closure and never a success.
+     */
+    static JSONObject releaseGuard(GuardSource source) throws Exception {
+        JSONObject released = source.released();
+        JSONObject fence = source.fence();
+        JSONObject receipt = source.receipt();
         JSONObject guard = new JSONObject()
             .put("release", released)
             .put("fence", fence)
@@ -1630,7 +1730,7 @@ public final class FieldOracle extends Instrumentation {
         if (!released.optBoolean("closed", false)) {
             throw new IllegalStateException("the guard did not close every owned resource: " + guard);
         }
-        // F2: a fence that was not posted or did not complete is an unproved
+        // A fence that was not posted or did not complete is an unproved
         // closure, not a success.
         if (!fence.optBoolean("posted", false) || !fence.optBoolean("completed", false)) {
             throw new IllegalStateException("the main-looper fence did not complete: " + guard);
@@ -1902,6 +2002,11 @@ public final class FieldOracle extends Instrumentation {
     }
 
     private JSONArray requestSlice(int start) throws JSONException {
+        return requestSliceOf(requests, start);
+    }
+
+    /** The requests one case actually issued, from its own start index. */
+    static JSONArray requestSliceOf(JSONArray requests, int start) throws JSONException {
         JSONArray slice = new JSONArray();
         for (int index = start; index < requests.length(); index++) {
             slice.put(requests.getJSONObject(index));

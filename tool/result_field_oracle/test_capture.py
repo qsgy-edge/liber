@@ -1267,6 +1267,7 @@ public final class Log {
 OWNED_OS_SUBSTITUTES = {
     'android/content/Context.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful Context: only the members this fixture uses. */\npublic abstract class Context {\n    public abstract File getCacheDir();\n\n    public abstract SharedPreferences getSharedPreferences(String name, int mode);\n\n    public Object getSystemService(String name) {\n        return null;\n    }\n}\n',
     'android/content/ContextWrapper.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */\npublic abstract class ContextWrapper extends Context {\n    private final Context base;\n\n    public ContextWrapper(Context base) {\n        this.base = base;\n    }\n\n    public Context getBaseContext() {\n        return base;\n    }\n\n    @Override\n    public File getCacheDir() {\n        return base.getCacheDir();\n    }\n\n    @Override\n    public SharedPreferences getSharedPreferences(String name, int mode) {\n        return base.getSharedPreferences(name, mode);\n    }\n\n    @Override\n    public Object getSystemService(String name) {\n        return base.getSystemService(name);\n    }\n}\n',
+    'android/util/Log.java': 'package android.util;\r\n\r\n/** The only OS boundary this fixture replaces: a log call. */\r\npublic final class Log {\r\n    public static RuntimeException failure;\r\n\r\n    public static int i(String tag, String message) {\r\n        if (failure != null) throw failure;\r\n        return 0;\r\n    }\r\n}\r\n',
     'android/os/Process.java': 'package android.os;\n\n/** Test-only SDK-signature-faithful Process: a fixed controlled pid. */\npublic final class Process {\n    public static int myPid() {\n        return 4242;\n    }\n}\n',
 }
 
@@ -1286,6 +1287,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -1589,6 +1592,34 @@ public final class OwnedCleanupFixture {
             }
             outcome.put("isolationRefusals", refusalsOk);
             outcome.put("isolationRows", refusalRows);
+            // (c2) a truly unbound scratch (no bindRun) publishes nothing and
+            // creates no root: the real isBound() branch.
+            StateSessionOracle.ScratchContext unboundScratch =
+                new StateSessionOracle.ScratchContext(new OwnedContext(cacheDir),
+                    "truly-unbound-root", "owned.");
+            boolean unboundRootBefore = unboundScratch.root.exists();
+            JSONObject unboundCleanup = new JSONObject().put("preferencesFenced", true);
+            JSONObject unboundRefused = FieldOracle.writeOwnerCompletion(unboundScratch,
+                true, isolationProven(), unboundCleanup);
+            outcome.put("trulyUnboundRefused", !unboundScratch.isBound()
+                && !unboundRootBefore
+                && !unboundRefused.optBoolean("ownerComplete", true)
+                && !unboundCleanup.has("ownerRunId")
+                && !unboundScratch.root.exists());
+            // (c3) a bound scratch whose own root disappeared publishes nothing
+            // and recreates no path: the real root.exists() branch.
+            StateSessionOracle.ScratchContext missing = boundScratch(cacheDir, "missing-root");
+            String missingManifestSha = sha(new File(missing.root, OWNER));
+            deleteTree(missing.root);
+            boolean missingGoneBefore = !missing.root.exists();
+            JSONObject missingCleanup = new JSONObject().put("preferencesFenced", true);
+            JSONObject missingRefused = FieldOracle.writeOwnerCompletion(missing, true,
+                isolationProven(), missingCleanup);
+            outcome.put("missingRootRefused", missing.isBound() && missingGoneBefore
+                && !missingRefused.optBoolean("ownerComplete", true)
+                && !missingCleanup.has("ownerRunId")
+                && !missing.root.exists());
+            outcome.put("missingRootManifestSha256", missingManifestSha);
             // (d) the approved host construction: a fresh bound scratch whose own
             // initial manifest is removed so the real writer publishes to an absent
             // target. This is creation-only host success, not Android replacement.
@@ -1661,6 +1692,8 @@ public final class OwnedCleanupFixture {
             && outcome.optBoolean("closureRefused")
             && outcome.optBoolean("closureManifestUnchanged")
             && outcome.optBoolean("isolationRefusals")
+            && outcome.optBoolean("trulyUnboundRefused")
+            && outcome.optBoolean("missingRootRefused")
             && outcome.optBoolean("createInitialIncomplete")
             && outcome.optBoolean("createInitialRemoved")
             && outcome.optBoolean("createPublished")
@@ -1675,10 +1708,447 @@ public final class OwnedCleanupFixture {
         return outcome;
     }
 
+/** A real in-memory preference store with a controlled commit outcome. */
+static final class MemoryPreferences implements SharedPreferences {
+    final Map<String, Object> values = new LinkedHashMap<>();
+    boolean commitResult = true;
+    RuntimeException commitFailure;
+
+    @Override public Map<String, ?> getAll() { return new LinkedHashMap<>(values); }
+    @Override public String getString(String key, String fallback) {
+        Object value = values.get(key);
+        return value instanceof String ? (String) value : fallback;
+    }
+    @Override public Set<String> getStringSet(String key, Set<String> fallback) { return fallback; }
+    @Override public int getInt(String key, int fallback) {
+        Object value = values.get(key);
+        return value instanceof Integer ? (Integer) value : fallback;
+    }
+    @Override public long getLong(String key, long fallback) { return fallback; }
+    @Override public float getFloat(String key, float fallback) { return fallback; }
+    @Override public boolean getBoolean(String key, boolean fallback) {
+        Object value = values.get(key);
+        return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+    @Override public boolean contains(String key) { return values.containsKey(key); }
+    @Override public void registerOnSharedPreferenceChangeListener(
+            OnSharedPreferenceChangeListener listener) { }
+    @Override public void unregisterOnSharedPreferenceChangeListener(
+            OnSharedPreferenceChangeListener listener) { }
+
+    @Override
+    public Editor edit() {
+        final Map<String, Object> pending = new LinkedHashMap<>();
+        final Set<String> removed = new LinkedHashSet<>();
+        return new Editor() {
+            @Override public Editor putString(String key, String value) {
+                pending.put(key, value); return this;
+            }
+            @Override public Editor putStringSet(String key, Set<String> value) { return this; }
+            @Override public Editor putInt(String key, int value) {
+                pending.put(key, value); return this;
+            }
+            @Override public Editor putLong(String key, long value) { return this; }
+            @Override public Editor putFloat(String key, float value) { return this; }
+            @Override public Editor putBoolean(String key, boolean value) {
+                pending.put(key, value); return this;
+            }
+            @Override public Editor remove(String key) { removed.add(key); return this; }
+            @Override public Editor clear() { removed.addAll(values.keySet()); return this; }
+            @Override public void apply() { }
+
+            @Override
+            public boolean commit() {
+                if (commitFailure != null) throw commitFailure;
+                if (!commitResult) return false;
+                for (String key : removed) values.remove(key);
+                values.putAll(pending);
+                return true;
+            }
+        };
+    }
+}
+
+static JSONArray twoCases() throws Exception {
+    return new JSONArray().put(new JSONObject().put("id", "case-a"))
+        .put(new JSONObject().put("id", "case-b"));
+}
+
+/** The actual declared-case loop: order, failure record, fail-fast and after-case. */
+static JSONObject caseFlowControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    File root = Files.createTempDirectory("l138-case-flow-").toFile();
+    try {
+        // (a) a healthy two-case run drives both in order and runs the after-case work.
+        JSONArray requests = new JSONArray();
+        JSONObject caseFailures = new JSONObject();
+        JSONArray caseRecords = new JSONArray();
+        AtomicReference<JSONObject> observation = new AtomicReference<>();
+        AtomicReference<String> stage = new AtomicReference<>("setup");
+        List<String> driven = new ArrayList<>();
+        List<String> after = new ArrayList<>();
+        JSONObject healthy = FieldOracle.runDeclaredCases(twoCases(),
+            (entry, id) -> {
+                driven.add(id);
+                requests.put(new JSONObject().put("case", id).put("index", requests.length()));
+                // A successful case appends its own record, as the real drive does.
+                JSONObject record = new JSONObject().put("id", id).put("operations", new JSONArray());
+                observation.set(record);
+                caseRecords.put(record);
+            },
+            id -> after.add(id), caseFailures, caseRecords, requests, observation, stage,
+            true, true);
+        outcome.put("healthyDriven", driven.equals(Arrays.asList("case-a", "case-b")));
+        outcome.put("healthyAfter", after.equals(Arrays.asList("case-a", "case-b")));
+        outcome.put("healthyRecorded", healthy.optInt("recorded", -1) == 2
+            && caseRecords.length() == 2);
+        outcome.put("healthyNoFailures", caseFailures.length() == 0);
+        outcome.put("healthyStage", "case:case-b".equals(stage.get()));
+        // (b) a lifecycle failure fails fast: no second case, no after-case, rethrown.
+        List<String> lifecycleDriven = new ArrayList<>();
+        List<String> lifecycleAfter = new ArrayList<>();
+        JSONObject lifecycleFailures = new JSONObject();
+        JSONArray lifecycleRecords = new JSONArray();
+        AtomicReference<JSONObject> lifecycleObservation = new AtomicReference<>();
+        RuntimeException lifecyclePrimary = new IllegalStateException("LIFECYCLE_PRIMARY");
+        Throwable lifecycleThrown = null;
+        try {
+            FieldOracle.runDeclaredCases(twoCases(),
+                (entry, id) -> {
+                    lifecycleDriven.add(id);
+                    lifecycleObservation.set(new JSONObject().put("id", id));
+                    if ("case-a".equals(id)) throw lifecyclePrimary;
+                },
+                id -> lifecycleAfter.add(id), lifecycleFailures, lifecycleRecords,
+                new JSONArray(), lifecycleObservation, new AtomicReference<>("setup"), true, true);
+        } catch (Throwable error) {
+            lifecycleThrown = error;
+        }
+        outcome.put("lifecycleFailFast", lifecycleDriven.equals(Arrays.asList("case-a"))
+            && lifecycleAfter.isEmpty() && lifecycleThrown == lifecyclePrimary);
+        outcome.put("lifecycleRecorded", lifecycleFailures.has("case-a")
+            && lifecycleFailures.getString("case-a").contains("LIFECYCLE_PRIMARY")
+            && lifecycleRecords.length() == 1
+            && lifecycleRecords.getJSONObject(0).getString("failure")
+                .contains("LIFECYCLE_PRIMARY"));
+        // (c) an ordinary corpus keeps catch-and-continue.
+        List<String> ordinaryDriven = new ArrayList<>();
+        List<String> ordinaryAfter = new ArrayList<>();
+        JSONObject ordinaryFailures = new JSONObject();
+        JSONArray ordinaryRecords = new JSONArray();
+        AtomicReference<JSONObject> ordinaryObservation = new AtomicReference<>();
+        JSONObject ordinary = FieldOracle.runDeclaredCases(twoCases(),
+            (entry, id) -> {
+                ordinaryDriven.add(id);
+                JSONObject record = new JSONObject().put("id", id);
+                ordinaryObservation.set(record);
+                if ("case-a".equals(id)) throw new IllegalStateException("ORDINARY_PRIMARY");
+                ordinaryRecords.put(record);
+            },
+            id -> ordinaryAfter.add(id), ordinaryFailures, ordinaryRecords, new JSONArray(),
+            ordinaryObservation, new AtomicReference<>("setup"), true, false);
+        outcome.put("ordinaryContinues", ordinaryDriven.equals(Arrays.asList("case-a", "case-b"))
+            && ordinaryAfter.equals(Arrays.asList("case-a", "case-b"))
+            && ordinary.optInt("recorded", -1) == 2
+            && ordinaryFailures.has("case-a") && !ordinaryFailures.has("case-b"));
+        // (d) a logger failure is retained in the same chain before serialization.
+        RuntimeException loggerFailure = new IllegalStateException("CASE_LOG_FAILURE");
+        android.util.Log.failure = loggerFailure;
+        JSONObject loggerFailures = new JSONObject();
+        JSONArray loggerRecords = new JSONArray();
+        AtomicReference<JSONObject> loggerObservation = new AtomicReference<>();
+        RuntimeException casePrimary = new IllegalStateException("CASE_PRIMARY");
+        Throwable loggerThrown = null;
+        try {
+            FieldOracle.runDeclaredCases(twoCases(),
+                (entry, id) -> {
+                    loggerObservation.set(new JSONObject().put("id", id));
+                    throw casePrimary;
+                },
+                null, loggerFailures, loggerRecords, new JSONArray(), loggerObservation,
+                new AtomicReference<>("setup"), true, true);
+        } catch (Throwable error) {
+            loggerThrown = error;
+        } finally {
+            android.util.Log.failure = null;
+        }
+        outcome.put("loggerSameInstance", loggerThrown == casePrimary
+            && casePrimary.getSuppressed().length == 1
+            && casePrimary.getSuppressed()[0] == loggerFailure);
+        outcome.put("loggerInChain", loggerFailures.getString("case-a").contains("CASE_LOG_FAILURE")
+            && loggerRecords.getJSONObject(0).getString("failure").contains("CASE_LOG_FAILURE"));
+        // (e) an early failure with no observation invents no case success record.
+        JSONObject earlyFailures = new JSONObject();
+        JSONArray earlyRecords = new JSONArray();
+        AtomicReference<JSONObject> earlyObservation = new AtomicReference<>();
+        try {
+            FieldOracle.runDeclaredCases(twoCases(),
+                (entry, id) -> { throw new IllegalStateException("EARLY_PRIMARY"); },
+                null, earlyFailures, earlyRecords, new JSONArray(), earlyObservation,
+                new AtomicReference<>("setup"), true, true);
+        } catch (Throwable ignored) {
+            // fail-fast is asserted elsewhere
+        }
+        outcome.put("earlyNoRecord", earlyRecords.length() == 0
+            && earlyFailures.has("case-a") && !earlyFailures.has("case-b"));
+        // (f) a real structured partial proof from the actual lifetime survives the
+        // body failure through the actual record append and the real file write.
+        MemoryPreferences preferences = new MemoryPreferences();
+        JSONObject proof = new JSONObject();
+        JSONObject lifecycle = new JSONObject().put("terminal", "four-stage");
+        RuntimeException nativeFailure = new IllegalStateException("CONTROLLED_NATIVE_CONTENT_FAILURE");
+        Throwable lifetimeError = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(preferences,
+                () -> { proof.put("saveObserver", new JSONObject().put("phase", "begin")); return new JSONObject().put("closed", true); },
+                () -> {
+                    proof.put("tocCountWordsApplied", new JSONObject().put("applied", true));
+                    lifecycle.put("storedAfterContent", new JSONArray().put("chapter-0"));
+                    throw nativeFailure;
+                },
+                () -> { proof.put("saveObserverClose", new JSONObject().put("removed", true)); return new JSONObject().put("closed", true); },
+                proof);
+        } catch (Throwable error) {
+            lifetimeError = error;
+        }
+        outcome.put("lifetimePrimary", lifetimeError == nativeFailure);
+        outcome.put("lifetimeProofMutable", proof.has("tocCountWordsApplied")
+            && proof.has("saveObserver") && proof.has("saveObserverClose")
+            && proof.has("tocCountWords"));
+        JSONObject partial = new JSONObject().put("id", "case-partial")
+            .put("titleLifecycleProof", proof).put("titleLifecycle", lifecycle);
+        JSONObject partialFailures = new JSONObject();
+        JSONArray partialRecords = new JSONArray().put(
+            new JSONObject().put("id", "case-previous").put("terminal", "four-stage"));
+        AtomicReference<JSONObject> partialObservation = new AtomicReference<>();
+        JSONArray partialRequests = new JSONArray()
+            .put(new JSONObject().put("url", "https://owned.invalid/search"))
+            .put(new JSONObject().put("url", "https://owned.invalid/book"));
+        JSONObject corpus = new JSONObject().put("fixtureId", "case-flow-fixture");
+        JSONObject partialLoop = FieldOracle.runDeclaredCases(
+            new JSONArray().put(new JSONObject().put("id", "case-partial")),
+            (entry, id) -> {
+                partialObservation.set(partial);
+                partialRequests.put(new JSONObject().put("url", "https://owned.invalid/content"));
+                throw nativeFailure;
+            },
+            null, partialFailures, partialRecords, partialRequests, partialObservation,
+            new AtomicReference<>("setup"), true, false);
+        outcome.put("partialAppended", partialRecords.length() == 2
+            && partialRecords.getJSONObject(0).getString("id").equals("case-previous")
+            && partialRecords.getJSONObject(1).getString("id").equals("case-partial"));
+        JSONObject appended = partialRecords.getJSONObject(1);
+        outcome.put("partialProofRetained", appended.getJSONObject("titleLifecycleProof")
+            .has("tocCountWordsApplied")
+            && appended.getJSONObject("titleLifecycleProof").has("saveObserverClose"));
+        outcome.put("partialRequestSlice", appended.getJSONArray("requests").length() == 1
+            && appended.getJSONArray("requests").getJSONObject(0)
+                .getString("url").equals("https://owned.invalid/content"));
+        outcome.put("partialSingleRecord", partialRecords.length() == 2
+            && partialLoop.optInt("recorded", -1) == 2);
+        File durable = new File(root, "partial-report.json");
+        Throwable persistError = FieldOracle.persistFailureReport(true, durable, root,
+            null, partialFailures, corpus, nativeFailure);
+        JSONObject durableJson = new JSONObject(text(durable));
+        JSONObject durableCases = durableJson.getJSONObject("caseFailures");
+        outcome.put("partialPersisted", persistError == null
+            && durableJson.optBoolean("failureOnly")
+            && durableJson.optString("analysisFailure").contains("CONTROLLED_NATIVE_CONTENT_FAILURE")
+            && durableCases.has("case-partial"));
+        outcome.put("partialPath", durable.getAbsolutePath());
+        outcome.put("partialSha256", sha(durable));
+        outcome.put("partialText", text(durable));
+        // The full report keeps its records: the structured partial proof reaches
+        // the real file through the same persister's preserved-report branch.
+        File fullDurable = new File(root, "partial-full-report.json");
+        JSONObject fullReport = new JSONObject().put("fixtureId", "case-flow-fixture")
+            .put("caseRecords", partialRecords);
+        Throwable fullPersistError = FieldOracle.persistFailureReport(true, fullDurable, root,
+            fullReport, partialFailures, corpus, nativeFailure);
+        JSONObject fullDurableJson = new JSONObject(text(fullDurable));
+        JSONArray fullRecords = fullDurableJson.getJSONArray("caseRecords");
+        outcome.put("partialFullPersisted", fullPersistError == null
+            && fullRecords.length() == 2
+            && fullRecords.getJSONObject(1).getJSONObject("titleLifecycleProof")
+                .has("tocCountWordsApplied")
+            && fullDurableJson.optString("analysisFailure")
+                .contains("CONTROLLED_NATIVE_CONTENT_FAILURE"));
+        outcome.put("partialFullPath", fullDurable.getAbsolutePath());
+        outcome.put("partialFullSha256", sha(fullDurable));
+        outcome.put("partialFullText", text(fullDurable));
+        outcome.put("controlledNative", "TocCountWordsLifetime.run with in-memory preferences;"
+            + " the native content failure is controlled, not Android DAO/save observation");
+    } finally {
+        deleteTree(root);
+    }
+    result.put("caseFlow", outcome);
+    require(outcome.optBoolean("healthyDriven")
+        && outcome.optBoolean("healthyAfter")
+        && outcome.optBoolean("healthyRecorded")
+        && outcome.optBoolean("healthyNoFailures")
+        && outcome.optBoolean("healthyStage")
+        && outcome.optBoolean("lifecycleFailFast")
+        && outcome.optBoolean("lifecycleRecorded")
+        && outcome.optBoolean("ordinaryContinues")
+        && outcome.optBoolean("loggerSameInstance")
+        && outcome.optBoolean("loggerInChain")
+        && outcome.optBoolean("earlyNoRecord")
+        && outcome.optBoolean("lifetimePrimary")
+        && outcome.optBoolean("lifetimeProofMutable")
+        && outcome.optBoolean("partialAppended")
+        && outcome.optBoolean("partialProofRetained")
+        && outcome.optBoolean("partialRequestSlice")
+        && outcome.optBoolean("partialSingleRecord")
+        && outcome.optBoolean("partialPersisted")
+        && outcome.optBoolean("partialFullPersisted"),
+        "the actual case loop must keep its order, records and fail-fast: " + outcome);
+    return outcome;
+}
+
+/** The actual end -> validate -> refresh ordering. */
+static JSONObject noRefreshControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    JSONObject proof = new JSONObject();
+    int[] refreshes = {0};
+    Callable<Object> refresh = () -> { refreshes[0]++; return Arrays.asList("chapter-0"); };
+    // (a) a nested removal acknowledgement proves closure and refreshes once.
+    Object refreshed = FieldOracle.closeObserverThenRefresh(
+        new JSONObject().put("removal", new JSONObject().put("removed", true)), proof, refresh);
+    outcome.put("nestedCloses", refreshes[0] == 1 && refreshed != null
+        && proof.has("saveEvent"));
+    // (b) an acknowledged idempotent close also proves closure.
+    refreshes[0] = 0;
+    FieldOracle.closeObserverThenRefresh(
+        new JSONObject().put("alreadyClosed", true).put("removed", true), new JSONObject(), refresh);
+    outcome.put("idempotentCloses", refreshes[0] == 1);
+    // (c) a failed, missing or foreign receipt never refreshes.
+    String[] reasons = {"failed", "missing", "foreign", "callbacks"};
+    JSONArray rows = new JSONArray();
+    boolean refusedOk = true;
+    for (String reason : reasons) {
+        refreshes[0] = 0;
+        JSONObject receipt;
+        if ("failed".equals(reason)) {
+            receipt = new JSONObject().put("removal", new JSONObject().put("removed", true))
+                .put("failed", true);
+        } else if ("missing".equals(reason)) {
+            receipt = new JSONObject().put("removal", new JSONObject());
+        } else if ("foreign".equals(reason)) {
+            receipt = new JSONObject().put("removal", new JSONObject().put("removed", true))
+                .put("foreignEvents", 1);
+        } else {
+            receipt = new JSONObject().put("alreadyClosed", true).put("removed", true)
+                .put("callbackErrors", 2);
+        }
+        Throwable thrown = null;
+        try {
+            FieldOracle.closeObserverThenRefresh(receipt, new JSONObject(), refresh);
+        } catch (Throwable error) {
+            thrown = error;
+        }
+        boolean ok = thrown != null && refreshes[0] == 0;
+        refusedOk &= ok;
+        rows.put(new JSONObject().put("reason", reason).put("ok", ok)
+            .put("refreshes", refreshes[0]));
+    }
+    outcome.put("refusedNoRefresh", refusedOk);
+    outcome.put("refusedRows", rows);
+    // (d) an unproved end receipt throws before the refresh is even attempted, and a
+    // throwing refresh is retained rather than swallowed.
+    refreshes[0] = 0;
+    RuntimeException endFailure = new IllegalStateException("END_OBSERVATION_FAILURE");
+    Throwable unprovedThrown = null;
+    try {
+        FieldOracle.closeObserverThenRefresh(new JSONObject().put("thrown", true),
+            new JSONObject(), () -> { refreshes[0]++; return null; });
+    } catch (Throwable error) {
+        unprovedThrown = error;
+    }
+    outcome.put("unprovedEndNoRefresh", unprovedThrown != null && refreshes[0] == 0);
+    refreshes[0] = 0;
+    Throwable endThrown = null;
+    try {
+        FieldOracle.closeObserverThenRefresh(
+            new JSONObject().put("removal", new JSONObject().put("removed", true)),
+            new JSONObject(), () -> { refreshes[0]++; throw endFailure; });
+    } catch (Throwable error) {
+        endThrown = error;
+    }
+    outcome.put("throwingRefreshRetained", endThrown == endFailure && refreshes[0] == 1);
+    result.put("noRefresh", outcome);
+    require(outcome.optBoolean("nestedCloses")
+        && outcome.optBoolean("idempotentCloses")
+        && outcome.optBoolean("refusedNoRefresh")
+        && outcome.optBoolean("unprovedEndNoRefresh")
+        && outcome.optBoolean("throwingRefreshRetained"),
+        "the refresh must never run before the observer is proved closed: " + outcome);
+    return outcome;
+}
+
+/** The actual process-release / main-fence adapter. */
+static JSONObject guardControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    JSONObject closedRelease = new JSONObject().put("closed", true);
+    JSONObject postedFence = new JSONObject().put("posted", true).put("completed", true);
+    JSONObject clearReceipt = new JSONObject().put("blockedDeliveries", 0);
+    // (a) the healthy adapter returns the exact report shape.
+    JSONObject guard = FieldOracle.releaseGuard(new FieldOracle.GuardSource() {
+        @Override public JSONObject released() { return closedRelease; }
+        @Override public JSONObject fence() { return postedFence; }
+        @Override public JSONObject receipt() { return clearReceipt; }
+    });
+    outcome.put("successShape", guard.getJSONObject("release") == closedRelease
+        && guard.getJSONObject("fence") == postedFence
+        && guard.getJSONObject("receipt") == clearReceipt);
+    // (b) each unproved closure is refused.
+    String[] refusals = {"released", "posted", "completed", "blocked", "releaseThrows",
+        "fenceThrows", "receiptThrows"};
+    JSONArray rows = new JSONArray();
+    boolean refusedOk = true;
+    for (String refusal : refusals) {
+        Throwable thrown = null;
+        try {
+            FieldOracle.releaseGuard(new FieldOracle.GuardSource() {
+                @Override public JSONObject released() {
+                    if ("releaseThrows".equals(refusal)) throw new IllegalStateException("RELEASE_THROWN");
+                    return "released".equals(refusal)
+                        ? new JSONObject().put("closed", false) : closedRelease;
+                }
+                @Override public JSONObject fence() {
+                    if ("fenceThrows".equals(refusal)) throw new IllegalStateException("FENCE_THROWN");
+                    if ("posted".equals(refusal)) return new JSONObject().put("posted", false).put("completed", true);
+                    if ("completed".equals(refusal)) return new JSONObject().put("posted", true).put("completed", false);
+                    return postedFence;
+                }
+                @Override public JSONObject receipt() {
+                    if ("receiptThrows".equals(refusal)) throw new IllegalStateException("RECEIPT_THROWN");
+                    return "blocked".equals(refusal)
+                        ? new JSONObject().put("blockedDeliveries", 2) : clearReceipt;
+                }
+            });
+        } catch (Throwable error) {
+            thrown = error;
+        }
+        boolean ok = thrown != null;
+        refusedOk &= ok;
+        rows.put(new JSONObject().put("refusal", refusal).put("ok", ok)
+            .put("chain", thrown == null ? "none" : FieldOracle.describeChain(thrown)));
+    }
+    outcome.put("refusedAll", refusedOk);
+    outcome.put("refusalRows", rows);
+    result.put("guard", outcome);
+    require(outcome.optBoolean("successShape") && outcome.optBoolean("refusedAll"),
+        "the actual guard adapter must refuse every unproved closure: " + outcome);
+    return outcome;
+}
+
     public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject().put("control", args[0]);
         if (args[0].equals("fence")) fenceControls(result);
         else if (args[0].equals("owner")) ownerControls(result);
+        else if (args[0].equals("caseFlow")) caseFlowControls(result);
+        else if (args[0].equals("noRefresh")) noRefreshControls(result);
+        else if (args[0].equals("guard")) guardControls(result);
         else throw new IllegalArgumentException("unknown control " + args[0]);
         result.put("ok", true);
         System.out.println(result);
@@ -3723,6 +4193,9 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertTrue(owner['closureRefused'])
             self.assertTrue(owner['closureManifestUnchanged'])
             self.assertTrue(owner['isolationRefusals'])
+            self.assertTrue(owner['trulyUnboundRefused'])
+            self.assertTrue(owner['missingRootRefused'])
+            self.assertEqual(len(owner['missingRootManifestSha256']), 64)
             self.assertTrue(owner['createInitialIncomplete'])
             self.assertTrue(owner['createInitialRemoved'])
             self.assertTrue(owner['createPublished'])
@@ -3751,6 +4224,119 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 source)
             self.assertIn('scratch.writeOwnerComplete(ownerRunId);', source)
 
+
+    def _owned_cleanup_classpath(self, repo, java, android, jar, root):
+        """Compiles the six actual SDK sources plus the bounded owned-cleanup fixture."""
+        classes = root / 'actual-classes'
+        classes.mkdir()
+        sources = [
+            repo / 'tool/nested_oracle/StateSessionOracle.java',
+            repo / 'tool/nested_oracle/HostRuntimeInit.java',
+            repo / 'tool/nested_oracle/ShortcutStartupGuard.java',
+            repo / 'tool/result_field_oracle/FieldOracle.java',
+            repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java',
+            repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java',
+        ]
+        compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(classes)]
+            + [str(path) for path in sources], repo)
+        self.assertEqual(compiled.returncode, 0,
+                         compiled.stderr.decode(errors='replace'))
+        substitutes = root / 'os-substitutes'
+        substitutes.mkdir()
+        substitute_sources = []
+        for name, text in OWNED_OS_SUBSTITUTES.items():
+            path = substitutes / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding='utf-8')
+            substitute_sources.append(path)
+        substitute_classes = root / 'substitute-classes'
+        substitute_classes.mkdir()
+        substituted = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(substitute_classes)]
+            + [str(path) for path in substitute_sources], repo)
+        self.assertEqual(substituted.returncode, 0,
+                         substituted.stderr.decode(errors='replace'))
+        fixture = root / 'OwnedCleanupFixture.java'
+        fixture.write_text(OWNED_CLEANUP_FIXTURE, encoding='utf-8')
+        classpath = os.pathsep.join([str(substitute_classes), str(classes),
+                                     str(jar), str(android)])
+        fixture_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', classpath, '-d', str(classes), str(fixture)],
+            repo)
+        self.assertEqual(fixture_compiled.returncode, 0,
+                         fixture_compiled.stderr.decode(errors='replace'))
+        return classpath
+
+    def test_the_actual_case_flow_controls_pass(self):
+        """The actual case loop, saved no-refresh ordering and guard adapter."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-case-flow-') as directory:
+            classpath = self._owned_cleanup_classpath(
+                repo, java, android, jar, Path(directory))
+            outcomes = {}
+            for control in ('caseFlow', 'noRefresh', 'guard'):
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', classpath,
+                     'io.liber.oracle.fields.OwnedCleanupFixture', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+                self.assertTrue(outcomes[control]['ok'], control)
+            case_flow = outcomes['caseFlow']['caseFlow']
+            no_refresh = outcomes['noRefresh']['noRefresh']
+            guard = outcomes['guard']['guard']
+            # The actual declared-case loop: order, records, fail-fast, logger chain.
+            self.assertTrue(case_flow['healthyDriven'])
+            self.assertTrue(case_flow['healthyAfter'])
+            self.assertTrue(case_flow['healthyRecorded'])
+            self.assertTrue(case_flow['healthyNoFailures'])
+            self.assertTrue(case_flow['healthyStage'])
+            self.assertTrue(case_flow['lifecycleFailFast'])
+            self.assertTrue(case_flow['lifecycleRecorded'])
+            self.assertTrue(case_flow['ordinaryContinues'])
+            self.assertTrue(case_flow['loggerSameInstance'])
+            self.assertTrue(case_flow['loggerInChain'])
+            self.assertTrue(case_flow['earlyNoRecord'])
+            # The real structured partial proof from the actual lifetime survives
+            # the body failure through the actual append and the real file write.
+            self.assertTrue(case_flow['lifetimePrimary'])
+            self.assertTrue(case_flow['lifetimeProofMutable'])
+            self.assertTrue(case_flow['partialAppended'])
+            self.assertTrue(case_flow['partialProofRetained'])
+            self.assertTrue(case_flow['partialRequestSlice'])
+            self.assertTrue(case_flow['partialSingleRecord'])
+            self.assertTrue(case_flow['partialPersisted'])
+            self.assertTrue(case_flow['partialFullPersisted'])
+            self.assertEqual(len(case_flow['partialSha256']), 64)
+            self.assertEqual(len(case_flow['partialFullSha256']), 64)
+            self.assertIn('CONTROLLED_NATIVE_CONTENT_FAILURE', case_flow['partialText'])
+            self.assertIn('tocCountWordsApplied', case_flow['partialFullText'])
+            self.assertIn('controlled', case_flow['controlledNative'])
+            # The actual end -> validate -> refresh ordering.
+            self.assertTrue(no_refresh['nestedCloses'])
+            self.assertTrue(no_refresh['idempotentCloses'])
+            self.assertTrue(no_refresh['refusedNoRefresh'])
+            self.assertTrue(no_refresh['throwingRefreshRetained'])
+            self.assertEqual(len(no_refresh['refusedRows']), 4)
+            # The actual process-release / main-fence adapter.
+            self.assertTrue(guard['successShape'])
+            self.assertTrue(guard['refusedAll'])
+            self.assertEqual(len(guard['refusalRows']), 7)
+            # The real instance callers use these same algorithms.
+            source = (repo / 'tool/result_field_oracle/FieldOracle.java').read_text(
+                encoding='utf-8')
+            self.assertIn('JSONObject recorded = runDeclaredCases(declared,', source)
+            self.assertIn('List<?> refreshed = (List<?>) closeObserverThenRefresh(', source)
+            self.assertIn('return releaseGuard(new GuardSource() {', source)
 
 class SelectedReceiptTest(unittest.TestCase):
     def test_complete_selected_receipts_and_raw_report_tamper(self):
