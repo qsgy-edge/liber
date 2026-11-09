@@ -1181,14 +1181,34 @@ public final class FieldOracle extends Instrumentation {
      */
     private JSONObject fenceOwnedPreferences() throws Exception {
         if (scratch == null) return new JSONObject().put("applicable", false);
+        return fenceOwnedPreferences(scratch, scratch.ownedPreferences(), scratch::fence,
+            cleanup, output == null ? null : output.getAbsolutePath());
+    }
+
+    /** One owned preference fence attempt; the production caller passes scratch::fence. */
+    interface Fence {
+        boolean fence(String name);
+    }
+
+    /**
+     * The actual per-owned-name fence loop.
+     *
+     * <p>Every owned name is attempted in snapshot order; a false or a thrown
+     * fence never skips a later name. The thrown instances are retained in the
+     * aggregate, and the recorded cleanup facts stay truthful.
+     */
+    static JSONObject fenceOwnedPreferences(StateSessionOracle.ScratchContext scratch,
+            java.util.Set<String> ownedNames, Fence fence, JSONObject cleanup, String reportPath)
+            throws Exception {
+        if (scratch == null) return new JSONObject().put("applicable", false);
         JSONArray owned = new JSONArray();
         boolean fenced = true;
         List<Throwable> fenceFailures = new ArrayList<>();
-        for (String name : scratch.ownedPreferences()) {
+        for (String name : ownedNames) {
             owned.put(name);
-            // F3: one throwing fence must not skip the later owned names.
+            // One throwing fence must not skip the later owned names.
             try {
-                fenced &= scratch.fence(name);
+                fenced &= fence.fence(name);
             } catch (Throwable error) {
                 fenced = false;
                 fenceFailures.add(error);
@@ -1201,7 +1221,7 @@ public final class FieldOracle extends Instrumentation {
             .put("rootExistedAtStart", scratch.rootExistedAtStart())
             .put("ownedPreferences", owned)
             .put("preferencesFenced", fenced)
-            .put("reportPath", output == null ? JSONObject.NULL : output.getAbsolutePath())
+            .put("reportPath", reportPath == null ? JSONObject.NULL : reportPath)
             .put("rootRetained", scratch.root.exists());
         if (!fenceFailures.isEmpty()) {
             IllegalStateException aggregate = new IllegalStateException(
@@ -1221,6 +1241,19 @@ public final class FieldOracle extends Instrumentation {
      * complete ownership; an unproved closure never does.
      */
     private JSONObject writeOwnerCompletion(boolean closureProved) throws Exception {
+        return writeOwnerCompletion(scratch, closureProved, isolation, cleanup);
+    }
+
+    /**
+     * The actual owner-completion policy and publication.
+     *
+     * <p>Ownership is published only when the resource closure was independently
+     * proved and every isolation fact holds; a refusal records
+     * {@code ownerComplete:false} and publishes nothing. Success calls the real
+     * {@code scratch.writeOwnerComplete} before the cleanup facts claim it.
+     */
+    static JSONObject writeOwnerCompletion(StateSessionOracle.ScratchContext scratch,
+            boolean closureProved, JSONObject isolation, JSONObject cleanup) throws Exception {
         if (scratch == null) return new JSONObject().put("applicable", false);
         boolean ownershipProven = closureProved && scratch.isBound() && scratch.root.exists()
             && isolation.optBoolean("bound")

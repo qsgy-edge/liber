@@ -1264,6 +1264,428 @@ public final class Log {
 }
 '''
 
+OWNED_OS_SUBSTITUTES = {
+    'android/content/Context.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful Context: only the members this fixture uses. */\npublic abstract class Context {\n    public abstract File getCacheDir();\n\n    public abstract SharedPreferences getSharedPreferences(String name, int mode);\n\n    public Object getSystemService(String name) {\n        return null;\n    }\n}\n',
+    'android/content/ContextWrapper.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */\npublic abstract class ContextWrapper extends Context {\n    private final Context base;\n\n    public ContextWrapper(Context base) {\n        this.base = base;\n    }\n\n    public Context getBaseContext() {\n        return base;\n    }\n\n    @Override\n    public File getCacheDir() {\n        return base.getCacheDir();\n    }\n\n    @Override\n    public SharedPreferences getSharedPreferences(String name, int mode) {\n        return base.getSharedPreferences(name, mode);\n    }\n\n    @Override\n    public Object getSystemService(String name) {\n        return base.getSystemService(name);\n    }\n}\n',
+    'android/os/Process.java': 'package android.os;\n\n/** Test-only SDK-signature-faithful Process: a fixed controlled pid. */\npublic final class Process {\n    public static int myPid() {\n        return 4242;\n    }\n}\n',
+}
+
+OWNED_CLEANUP_FIXTURE = r'''
+package io.liber.oracle.fields;
+
+import android.content.SharedPreferences;
+import io.liber.oracle.nested.StateSessionOracle;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * Actual owned-cleanup controls: the production per-name fence loop and the
+ * production owner-completion policy, driven with real files.
+ *
+ * <p>The OS substitutes in this fixture's own classpath cover only Context,
+ * ContextWrapper and Process. Preference commit behaviour and the pid are
+ * controlled; no Android OS, IPC or on-disk SharedPreferences behaviour is
+ * claimed.
+ */
+public final class OwnedCleanupFixture {
+    static final String OWNER = "owner.json";
+
+    static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static String sha(File file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        StringBuilder text = new StringBuilder();
+        for (byte value : digest.digest(Files.readAllBytes(file.toPath()))) {
+            text.append(String.format("%02x", value));
+        }
+        return text.toString();
+    }
+
+    static String text(File file) throws Exception {
+        return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+    }
+
+    static void deleteTree(File file) {
+        File[] children = file.listFiles();
+        if (children != null) for (File child : children) deleteTree(child);
+        file.delete();
+    }
+
+    /** One controlled preference namespace: commit returns true, false or throws. */
+    static final class ControlledPreferences implements SharedPreferences {
+        final String outcome;
+        final RuntimeException failure;
+
+        ControlledPreferences(String outcome, RuntimeException failure) {
+            this.outcome = outcome;
+            this.failure = failure;
+        }
+
+        @Override public Map<String, ?> getAll() { return new LinkedHashMap<String, Object>(); }
+        @Override public String getString(String key, String fallback) { return fallback; }
+        @Override public Set<String> getStringSet(String key, Set<String> fallback) { return fallback; }
+        @Override public int getInt(String key, int fallback) { return fallback; }
+        @Override public long getLong(String key, long fallback) { return fallback; }
+        @Override public float getFloat(String key, float fallback) { return fallback; }
+        @Override public boolean getBoolean(String key, boolean fallback) { return fallback; }
+        @Override public boolean contains(String key) { return false; }
+        @Override public void registerOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) { }
+        @Override public void unregisterOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) { }
+
+        @Override
+        public Editor edit() {
+            return new Editor() {
+                @Override public Editor putString(String key, String value) { return this; }
+                @Override public Editor putStringSet(String key, Set<String> values) { return this; }
+                @Override public Editor putInt(String key, int value) { return this; }
+                @Override public Editor putLong(String key, long value) { return this; }
+                @Override public Editor putFloat(String key, float value) { return this; }
+                @Override public Editor putBoolean(String key, boolean value) { return this; }
+                @Override public Editor remove(String key) { return this; }
+                @Override public Editor clear() { return this; }
+                @Override public void apply() { }
+
+                @Override
+                public boolean commit() {
+                    if (failure != null) throw failure;
+                    return "true".equals(outcome);
+                }
+            };
+        }
+    }
+
+    /** The controlled base Context: a real owned cache directory. */
+    static final class OwnedContext extends android.content.Context {
+        final File cacheDir;
+        final Map<String, ControlledPreferences> preferences = new LinkedHashMap<>();
+
+        OwnedContext(File cacheDir) {
+            this.cacheDir = cacheDir;
+        }
+
+        @Override public File getCacheDir() { return cacheDir; }
+
+        @Override public SharedPreferences getSharedPreferences(String name, int mode) {
+            ControlledPreferences current = preferences.get(name);
+            if (current == null) {
+                current = new ControlledPreferences("true", null);
+                preferences.put(name, current);
+            }
+            return current;
+        }
+    }
+
+    static JSONObject identity() throws Exception {
+        return new JSONObject()
+            .put("fixtureId", "owned-cleanup-fixture")
+            .put("corpusVersion", 1)
+            .put("corpusSha256Lf", "0000000000000000000000000000000000000000000000000000000000000001")
+            .put("targetPackage", "io.legado.app")
+            .put("targetApkSha256", "0000000000000000000000000000000000000000000000000000000000000002")
+            .put("harnessPackage", "io.legado.app.test")
+            .put("harnessApkSha256", "0000000000000000000000000000000000000000000000000000000000000003");
+    }
+
+    static JSONObject isolation(boolean bound, boolean files, boolean database,
+            boolean deviceProtected, boolean rootExisted) throws Exception {
+        return new JSONObject().put("bound", bound).put("filesRouted", files)
+            .put("databaseRouted", database).put("deviceProtected", deviceProtected)
+            .put("rootExistedAtStart", rootExisted);
+    }
+
+    static JSONObject isolationProven() throws Exception {
+        return isolation(true, true, true, false, false);
+    }
+
+    /** A freshly bound real ScratchContext under an owned cache directory. */
+    static StateSessionOracle.ScratchContext boundScratch(File cacheDir, String rootName)
+            throws Exception {
+        StateSessionOracle.ScratchContext scratch = new StateSessionOracle.ScratchContext(
+            new OwnedContext(cacheDir), rootName, "owned.");
+        scratch.bindRun(identity());
+        return scratch;
+    }
+
+    static JSONObject fenceControls(JSONObject result) throws Exception {
+        JSONObject outcome = new JSONObject();
+        File cacheDir = Files.createTempDirectory("l138-owned-fence-").toFile();
+        try {
+            StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "fence-root");
+            Set<String> names = new LinkedHashSet<>(Arrays.asList(
+                "owned.alpha", "owned.beta", "owned.gamma"));
+            // (a) every fence true.
+            List<String> attempted = new ArrayList<>();
+            JSONObject cleanupAll = new JSONObject();
+            JSONObject all = FieldOracle.fenceOwnedPreferences(scratch, names,
+                name -> { attempted.add(name); return true; }, cleanupAll, null);
+            outcome.put("allAttempted", attempted.equals(new ArrayList<>(names)));
+            outcome.put("allFenced", all.optBoolean("fenced") && all.optBoolean("closed"));
+            outcome.put("allCleanup", cleanupAll.optBoolean("preferencesFenced")
+                && cleanupAll.getJSONArray("ownedPreferences").length() == 3
+                && cleanupAll.getJSONArray("ownedPreferences").getString(0).equals("owned.alpha")
+                && cleanupAll.getJSONArray("ownedPreferences").getString(2).equals("owned.gamma")
+                && cleanupAll.optString("preferencesPrefix").equals("owned.")
+                && cleanupAll.optBoolean("rootRetained"));
+            // (b) first false, later true: no short circuit.
+            List<String> falseAttempted = new ArrayList<>();
+            JSONObject cleanupFalse = new JSONObject();
+            String falseMessage = null;
+            try {
+                FieldOracle.fenceOwnedPreferences(scratch, names,
+                    name -> { falseAttempted.add(name); return !"owned.alpha".equals(name); },
+                    cleanupFalse, null);
+            } catch (Throwable error) {
+                falseMessage = error.getMessage();
+            }
+            outcome.put("falseAttemptedAll", falseAttempted.equals(new ArrayList<>(names)));
+            outcome.put("falseNotFenced", !cleanupFalse.optBoolean("preferencesFenced", true));
+            outcome.put("falseMessage", "an owned preference fence reported false".equals(falseMessage));
+            // (c) first throws, later true: the instance is retained and later names run.
+            List<String> throwAttempted = new ArrayList<>();
+            JSONObject cleanupThrow = new JSONObject();
+            RuntimeException thrown = new IllegalStateException("FENCE_THROWN");
+            Throwable throwAggregate = null;
+            try {
+                FieldOracle.fenceOwnedPreferences(scratch, names,
+                    name -> {
+                        throwAttempted.add(name);
+                        if ("owned.alpha".equals(name)) throw thrown;
+                        return true;
+                    }, cleanupThrow, null);
+            } catch (Throwable error) {
+                throwAggregate = error;
+            }
+            outcome.put("throwAttemptedAll", throwAttempted.equals(new ArrayList<>(names)));
+            outcome.put("throwInstanceRetained", throwAggregate != null
+                && throwAggregate.getSuppressed().length == 1
+                && throwAggregate.getSuppressed()[0] == thrown);
+            outcome.put("throwChain", throwAggregate != null
+                && FieldOracle.describeChain(throwAggregate).contains("FENCE_THROWN"));
+            outcome.put("throwNotFenced", !cleanupThrow.optBoolean("preferencesFenced", true));
+            // (d) mixed false, throw and true: every name attempted, both retained.
+            List<String> mixedAttempted = new ArrayList<>();
+            RuntimeException mixedThrown = new IllegalStateException("FENCE_MIXED_THROWN");
+            Throwable mixedAggregate = null;
+            try {
+                FieldOracle.fenceOwnedPreferences(scratch, names,
+                    name -> {
+                        mixedAttempted.add(name);
+                        if ("owned.alpha".equals(name)) return false;
+                        if ("owned.beta".equals(name)) throw mixedThrown;
+                        return true;
+                    }, new JSONObject(), null);
+            } catch (Throwable error) {
+                mixedAggregate = error;
+            }
+            outcome.put("mixedAttemptedAll", mixedAttempted.equals(new ArrayList<>(names)));
+            outcome.put("mixedInstanceRetained", mixedAggregate != null
+                && mixedAggregate.getSuppressed().length == 1
+                && mixedAggregate.getSuppressed()[0] == mixedThrown);
+            // (e) an unproved fence never publishes the owner.
+            JSONObject cleanupOwner = new JSONObject();
+            cleanupOwner.put("preferencesFenced", false);
+            JSONObject refused = FieldOracle.writeOwnerCompletion(scratch, true,
+                isolationProven(), cleanupOwner);
+            outcome.put("unprovedFenceNoOwner", !refused.optBoolean("ownerComplete", true)
+                && !cleanupOwner.has("ownerRunId"));
+            // (f) the production loop with the real scratch.fence: all true.
+            JSONObject cleanupReal = new JSONObject();
+            JSONObject real = FieldOracle.fenceOwnedPreferences(scratch,
+                new LinkedHashSet<>(Arrays.asList("owned.delta")), scratch::fence, cleanupReal, null);
+            outcome.put("realFencePasses", real.optBoolean("fenced")
+                && cleanupReal.optBoolean("preferencesFenced"));
+            outcome.put("scratchRoot", scratch.root.getAbsolutePath());
+            outcome.put("controlledOs", "Context/ContextWrapper/Process substituted; pid 4242;"
+                + " preference commit controlled");
+        } finally {
+            deleteTree(cacheDir);
+        }
+        result.put("fence", outcome);
+        require(outcome.optBoolean("allAttempted")
+            && outcome.optBoolean("allFenced")
+            && outcome.optBoolean("allCleanup")
+            && outcome.optBoolean("falseAttemptedAll")
+            && outcome.optBoolean("falseNotFenced")
+            && outcome.optBoolean("falseMessage")
+            && outcome.optBoolean("throwAttemptedAll")
+            && outcome.optBoolean("throwInstanceRetained")
+            && outcome.optBoolean("throwChain")
+            && outcome.optBoolean("throwNotFenced")
+            && outcome.optBoolean("mixedAttemptedAll")
+            && outcome.optBoolean("mixedInstanceRetained")
+            && outcome.optBoolean("unprovedFenceNoOwner")
+            && outcome.optBoolean("realFencePasses"),
+            "the actual per-name fence loop must attempt every name: " + outcome);
+        return outcome;
+    }
+
+    /** Reads the real owner manifest, or null when it is absent. */
+    static JSONObject ownerManifest(StateSessionOracle.ScratchContext scratch) throws Exception {
+        File file = new File(scratch.root, OWNER);
+        if (!file.isFile()) return null;
+        return new JSONObject(text(file));
+    }
+
+    static JSONObject ownerControls(JSONObject result) throws Exception {
+        JSONObject outcome = new JSONObject();
+        File cacheDir = Files.createTempDirectory("l138-owned-owner-").toFile();
+        try {
+            // (a) a null scratch is inapplicable.
+            JSONObject nullScratch = FieldOracle.writeOwnerCompletion(
+                (StateSessionOracle.ScratchContext) null, true, isolationProven(), new JSONObject());
+            outcome.put("nullInapplicable", !nullScratch.optBoolean("applicable", true)
+                && !nullScratch.has("ownerComplete"));
+            // (b) an unproved closure never publishes.
+            StateSessionOracle.ScratchContext closureScratch = boundScratch(cacheDir, "closure-root");
+            String closureBefore = sha(new File(closureScratch.root, OWNER));
+            JSONObject closureCleanup = new JSONObject().put("preferencesFenced", true);
+            JSONObject closureRefused = FieldOracle.writeOwnerCompletion(
+                closureScratch, false, isolationProven(), closureCleanup);
+            outcome.put("closureRefused", !closureRefused.optBoolean("ownerComplete", true)
+                && closureRefused.optBoolean("closed", true) == false
+                && !closureCleanup.has("ownerRunId"));
+            outcome.put("closureManifestUnchanged",
+                closureBefore.equals(sha(new File(closureScratch.root, OWNER))));
+            // (c) every isolation refusal publishes nothing.
+            String[][] refusals = {
+                {"unbound", "false", "true", "true", "false", "false"},
+                {"files", "true", "false", "true", "false", "false"},
+                {"database", "true", "true", "false", "false", "false"},
+                {"deviceProtected", "true", "true", "true", "true", "false"},
+                {"rootExisted", "true", "true", "true", "false", "true"},
+            };
+            JSONArray refusalRows = new JSONArray();
+            boolean refusalsOk = true;
+            for (String[] row : refusals) {
+                StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "refuse-" + row[0]);
+                String before = sha(new File(scratch.root, OWNER));
+                JSONObject cleanup = new JSONObject().put("preferencesFenced", true);
+                JSONObject refused = FieldOracle.writeOwnerCompletion(scratch, true,
+                    isolation("true".equals(row[1]), "true".equals(row[2]), "true".equals(row[3]),
+                        "true".equals(row[4]), "true".equals(row[5])), cleanup);
+                JSONObject manifest = ownerManifest(scratch);
+                boolean ok = !refused.optBoolean("ownerComplete", true)
+                    && !cleanup.has("ownerRunId")
+                    && before.equals(sha(new File(scratch.root, OWNER)))
+                    && manifest != null && !manifest.optBoolean("complete", false);
+                refusalsOk &= ok;
+                refusalRows.put(new JSONObject().put("name", row[0]).put("ok", ok)
+                    .put("manifestSha256", sha(new File(scratch.root, OWNER))));
+            }
+            outcome.put("isolationRefusals", refusalsOk);
+            outcome.put("isolationRows", refusalRows);
+            // (d) the approved host construction: a fresh bound scratch whose own
+            // initial manifest is removed so the real writer publishes to an absent
+            // target. This is creation-only host success, not Android replacement.
+            StateSessionOracle.ScratchContext create = boundScratch(cacheDir, "create-root");
+            File createOwner = new File(create.root, OWNER);
+            JSONObject initial = ownerManifest(create);
+            String initialSha = sha(createOwner);
+            String initialText = text(createOwner);
+            boolean removed = createOwner.delete();
+            JSONObject createCleanup = new JSONObject().put("preferencesFenced", true);
+            JSONObject published = FieldOracle.writeOwnerCompletion(create, true,
+                isolationProven(), createCleanup);
+            JSONObject finalOwner = ownerManifest(create);
+            outcome.put("createInitialIncomplete", initial != null
+                && !initial.optBoolean("complete", false));
+            outcome.put("createInitialRemoved", removed && !createOwner.exists() == false);
+            outcome.put("createPublished", published.optBoolean("ownerComplete")
+                && published.optBoolean("closed"));
+            outcome.put("createRunIdMatch", finalOwner != null
+                && finalOwner.optBoolean("complete")
+                && finalOwner.optString("seedRunId").equals(createCleanup.optString("ownerRunId"))
+                && finalOwner.optString("seedRunId").length() == 36);
+            outcome.put("createPid", finalOwner != null && finalOwner.optInt("seedPid") == 4242);
+            outcome.put("createPreferences", finalOwner != null
+                && finalOwner.optJSONArray("preferences") != null);
+            outcome.put("createManifestPath", createOwner.getAbsolutePath());
+            outcome.put("createManifestSha256", sha(createOwner));
+            outcome.put("createManifestText", text(createOwner));
+            outcome.put("initialManifestSha256", initialSha);
+            outcome.put("initialManifestText", initialText);
+            outcome.put("createPrecondition",
+                "test-owned initial manifest removed after real bindRun; creation-only");
+            // (e) the normal existing-target write on this host: the real rename
+            // fails, the old manifest stays incomplete and nothing claims completion.
+            StateSessionOracle.ScratchContext existing = boundScratch(cacheDir, "existing-root");
+            File existingOwner = new File(existing.root, OWNER);
+            String existingBefore = sha(existingOwner);
+            JSONObject existingCleanup = new JSONObject().put("preferencesFenced", true);
+            Throwable existingError = null;
+            JSONObject existingResult = null;
+            try {
+                existingResult = FieldOracle.writeOwnerCompletion(existing, true,
+                    isolationProven(), existingCleanup);
+            } catch (Throwable error) {
+                existingError = error;
+            }
+            JSONObject existingAfter = ownerManifest(existing);
+            outcome.put("existingErrorThrown", existingError != null);
+            outcome.put("existingErrorType", existingError == null ? "none"
+                : existingError.getClass().getName());
+            outcome.put("existingErrorChain", existingError == null ? "none"
+                : FieldOracle.describeChain(existingError));
+            outcome.put("existingManifestUnchanged", existingBefore.equals(sha(existingOwner)));
+            outcome.put("existingManifestIncomplete", existingAfter != null
+                && !existingAfter.optBoolean("complete", false));
+            outcome.put("existingNoCompletion", (existingResult == null
+                || !existingResult.optBoolean("ownerComplete", true))
+                && !existingCleanup.has("ownerRunId"));
+            outcome.put("existingManifestPath", existingOwner.getAbsolutePath());
+            outcome.put("existingManifestSha256", sha(existingOwner));
+            outcome.put("existingManifestText", text(existingOwner));
+            outcome.put("hostFact",
+                "Windows File.renameTo over an existing target returns false;"
+                    + " Android replacement was not run");
+        } finally {
+            deleteTree(cacheDir);
+        }
+        result.put("owner", outcome);
+        require(outcome.optBoolean("nullInapplicable")
+            && outcome.optBoolean("closureRefused")
+            && outcome.optBoolean("closureManifestUnchanged")
+            && outcome.optBoolean("isolationRefusals")
+            && outcome.optBoolean("createInitialIncomplete")
+            && outcome.optBoolean("createInitialRemoved")
+            && outcome.optBoolean("createPublished")
+            && outcome.optBoolean("createRunIdMatch")
+            && outcome.optBoolean("createPid")
+            && outcome.optBoolean("createPreferences")
+            && outcome.optBoolean("existingErrorThrown")
+            && outcome.optBoolean("existingManifestUnchanged")
+            && outcome.optBoolean("existingManifestIncomplete")
+            && outcome.optBoolean("existingNoCompletion"),
+            "the actual owner policy must publish only on proved ownership: " + outcome);
+        return outcome;
+    }
+
+    public static void main(String[] args) throws Exception {
+        JSONObject result = new JSONObject().put("control", args[0]);
+        if (args[0].equals("fence")) fenceControls(result);
+        else if (args[0].equals("owner")) ownerControls(result);
+        else throw new IllegalArgumentException("unknown control " + args[0]);
+        result.put("ok", true);
+        System.out.println(result);
+    }
+}
+'''
+
 REPLAY_FIXTURE = r'''
 package io.liber.oracle.fields;
 
@@ -2840,6 +3262,26 @@ static void persistenceControls(JSONObject result) throws Exception {
             unboundTarget, unboundDir, null, caseFailures, corpus, fullFailure);
         outcome.put("unboundMinimalNoFile", unboundMinimalError == null
             && !unboundTarget.exists() && !unboundDir.exists());
+        // (3b) an existing sentinel at the unbound target is never overwritten.
+        File sentinel = new File(root, "sentinel.json");
+        byte[] sentinelBytes = "{\"sentinel\":\"keep\"}".getBytes(StandardCharsets.UTF_8);
+        Files.write(sentinel.toPath(), sentinelBytes);
+        String sentinelSha = fileSha(sentinel);
+        JSONObject sentinelReport = new JSONObject().put("fixtureId", "fixture-sentinel");
+        Throwable sentinelError = FieldOracle.persistFailureReport(false, sentinel, root,
+            sentinelReport, caseFailures, corpus, early);
+        outcome.put("sentinelNoError", sentinelError == null);
+        outcome.put("sentinelUnchanged", java.util.Arrays.equals(
+            Files.readAllBytes(sentinel.toPath()), sentinelBytes)
+            && fileSha(sentinel).equals(sentinelSha));
+        outcome.put("sentinelNoMutation", !sentinelReport.has("analysisFailure"));
+        Throwable sentinelMinimalError = FieldOracle.persistFailureReport(false, sentinel,
+            root, null, caseFailures, corpus, early);
+        outcome.put("sentinelMinimalUnchanged", sentinelMinimalError == null
+            && java.util.Arrays.equals(Files.readAllBytes(sentinel.toPath()), sentinelBytes)
+            && fileSha(sentinel).equals(sentinelSha));
+        outcome.put("sentinelPath", sentinel.getAbsolutePath());
+        outcome.put("sentinelSha256", sentinelSha);
         // (4) a genuine OS write failure returns the real error.
         File directoryTarget = new File(root, "is-a-directory");
         directoryTarget.mkdirs();
@@ -2927,6 +3369,10 @@ static void persistenceControls(JSONObject result) throws Exception {
         && outcome.optBoolean("unboundNoDir")
         && outcome.optBoolean("unboundNoMutation")
         && outcome.optBoolean("unboundMinimalNoFile")
+        && outcome.optBoolean("sentinelNoError")
+        && outcome.optBoolean("sentinelUnchanged")
+        && outcome.optBoolean("sentinelNoMutation")
+        && outcome.optBoolean("sentinelMinimalUnchanged")
         && outcome.optBoolean("writeErrorReal")
         && outcome.optBoolean("writeErrorPreservesOriginal")
         && outcome.optBoolean("composedPersisted")
@@ -3191,6 +3637,119 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertIn('writeReportFile(explicitOutput, report);', source)
             self.assertIn('writeReportFile(target, minimal);', source)
             self.assertIn('writeReportFile(output, report);', source)
+
+    def test_the_actual_owned_cleanup_controls_pass(self):
+        """The actual per-name fence loop and the actual owner publication policy."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-owned-cleanup-') as directory:
+            root = Path(directory)
+            classes = root / 'actual-classes'
+            classes.mkdir()
+            sources = [
+                repo / 'tool/nested_oracle/StateSessionOracle.java',
+                repo / 'tool/nested_oracle/HostRuntimeInit.java',
+                repo / 'tool/nested_oracle/ShortcutStartupGuard.java',
+                repo / 'tool/result_field_oracle/FieldOracle.java',
+                repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java',
+                repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java',
+            ]
+            compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-encoding', 'UTF-8', '-cp', str(android), '-d', str(classes)]
+                + [str(path) for path in sources], repo)
+            self.assertEqual(compiled.returncode, 0,
+                             compiled.stderr.decode(errors='replace'))
+            substitutes = root / 'os-substitutes'
+            substitutes.mkdir()
+            substitute_sources = []
+            for name, text in OWNED_OS_SUBSTITUTES.items():
+                path = substitutes / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding='utf-8')
+                substitute_sources.append(path)
+            substitute_classes = root / 'substitute-classes'
+            substitute_classes.mkdir()
+            substituted = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-encoding', 'UTF-8', '-cp', str(android), '-d', str(substitute_classes)]
+                + [str(path) for path in substitute_sources], repo)
+            self.assertEqual(substituted.returncode, 0,
+                             substituted.stderr.decode(errors='replace'))
+            fixture = root / 'OwnedCleanupFixture.java'
+            fixture.write_text(OWNED_CLEANUP_FIXTURE, encoding='utf-8')
+            classpath = os.pathsep.join([str(substitute_classes), str(classes),
+                                         str(jar), str(android)])
+            fixture_compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-encoding', 'UTF-8', '-cp', classpath, '-d', str(classes), str(fixture)],
+                repo)
+            self.assertEqual(fixture_compiled.returncode, 0,
+                             fixture_compiled.stderr.decode(errors='replace'))
+            outcomes = {}
+            for control in ('fence', 'owner'):
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', classpath,
+                     'io.liber.oracle.fields.OwnedCleanupFixture', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+                self.assertTrue(outcomes[control]['ok'], control)
+            fence = outcomes['fence']['fence']
+            owner = outcomes['owner']['owner']
+            # The actual per-name loop: every name attempted, no short circuit.
+            self.assertTrue(fence['allAttempted'])
+            self.assertTrue(fence['allFenced'])
+            self.assertTrue(fence['allCleanup'])
+            self.assertTrue(fence['falseAttemptedAll'])
+            self.assertTrue(fence['falseNotFenced'])
+            self.assertTrue(fence['falseMessage'])
+            self.assertTrue(fence['throwAttemptedAll'])
+            self.assertTrue(fence['throwInstanceRetained'])
+            self.assertTrue(fence['throwChain'])
+            self.assertTrue(fence['throwNotFenced'])
+            self.assertTrue(fence['mixedAttemptedAll'])
+            self.assertTrue(fence['mixedInstanceRetained'])
+            self.assertTrue(fence['unprovedFenceNoOwner'])
+            self.assertTrue(fence['realFencePasses'])
+            # The actual owner policy: refusals publish nothing, creation-only host
+            # success publishes through the real writer, the Windows existing-target
+            # write fails for real and leaves the old manifest incomplete.
+            self.assertTrue(owner['nullInapplicable'])
+            self.assertTrue(owner['closureRefused'])
+            self.assertTrue(owner['closureManifestUnchanged'])
+            self.assertTrue(owner['isolationRefusals'])
+            self.assertTrue(owner['createInitialIncomplete'])
+            self.assertTrue(owner['createInitialRemoved'])
+            self.assertTrue(owner['createPublished'])
+            self.assertTrue(owner['createRunIdMatch'])
+            self.assertTrue(owner['createPid'])
+            self.assertTrue(owner['createPreferences'])
+            self.assertTrue(owner['existingErrorThrown'])
+            self.assertTrue(owner['existingManifestUnchanged'])
+            self.assertTrue(owner['existingManifestIncomplete'])
+            self.assertTrue(owner['existingNoCompletion'])
+            # Real manifest bytes were read back, and the host distinction is explicit.
+            self.assertEqual(len(owner['createManifestSha256']), 64)
+            self.assertEqual(len(owner['existingManifestSha256']), 64)
+            self.assertIn('"complete": true', owner['createManifestText'])
+            self.assertNotIn('"complete": true', owner['existingManifestText'])
+            self.assertIn('creation-only', owner['createPrecondition'])
+            self.assertIn('Android replacement was not run', owner['hostFact'])
+            self.assertIn('controlled', fence['controlledOs'])
+            # The real instance callers delegate to these same algorithms.
+            source = (repo / 'tool/result_field_oracle/FieldOracle.java').read_text(
+                encoding='utf-8')
+            self.assertIn(
+                'return fenceOwnedPreferences(scratch, scratch.ownedPreferences(), scratch::fence,',
+                source)
+            self.assertIn('return writeOwnerCompletion(scratch, closureProved, isolation, cleanup);',
+                source)
+            self.assertIn('scratch.writeOwnerComplete(ownerRunId);', source)
 
 
 class SelectedReceiptTest(unittest.TestCase):
