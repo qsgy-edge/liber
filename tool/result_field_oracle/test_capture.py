@@ -11,6 +11,7 @@ import unittest
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(os.environ.get('R2A_HOST_FAKES', '')) or '.'))
 import capture  # noqa: E402
 
 ACTUAL_OWNER_PREFERENCES = [
@@ -741,6 +742,71 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         self.assertEqual(len(corpus['responses']), 18)
         self.assertEqual(len(corpus['cases']), 4)
         self.assertIn('titleLifecycle', corpus)
+
+
+class GuardedReaderApplicationHostTest(unittest.TestCase):
+    """Actual behavioural controls for the capture guard, on a plain JVM.
+
+    The real GuardedReaderApplication runs against bounded OS/dependency
+    boundary fakes written into an owned temporary directory. This is host
+    evidence for the guard's ownership, refusal and observer behaviour; it is
+    not Android execution evidence and does not exercise the reference APK.
+    """
+
+    def _java_home(self):
+        for candidate in (
+                Path('C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8'),
+                Path(os.environ.get('JAVA_HOME', '') or 'C:/nonexistent')):
+            if (candidate / 'bin' / 'javac.exe').is_file():
+                return candidate
+        raise unittest.SkipTest('the pinned JDK is unavailable')
+
+    def _json_jar(self):
+        root = Path('C:/Users/17945/.gradle/caches')
+        found = sorted(root.glob('**/instrumented-json-20180813.jar'))
+        if not found:
+            raise unittest.SkipTest('the installed org.json jar is unavailable')
+        return found[0]
+
+    def test_the_actual_guard_controls_pass(self):
+        import importlib
+        import host_fakes
+        importlib.reload(host_fakes)
+        java = self._java_home()
+        here = Path(__file__).resolve().parent
+        repo = here.parent.parent
+        with tempfile.TemporaryDirectory(prefix='r2a-guard-') as directory:
+            root = Path(directory)
+            sources = []
+            for name, text in host_fakes.FAKES.items():
+                path = root / 'fakes' / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding='utf-8')
+                sources.append(path)
+            sources.append(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java')
+            sources.append(repo / 'test/GuardedReaderApplicationTest.java')
+            classes = root / 'classes'
+            classes.mkdir()
+            compile_result = subprocess.run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-nowarn', '-cp', str(self._json_jar()), '-d', str(classes)]
+                + [str(path) for path in sources],
+                capture_output=True, timeout=300)
+            self.assertEqual(compile_result.returncode, 0,
+                             compile_result.stderr.decode(errors='replace'))
+            run_result = subprocess.run(
+                [str(java / 'bin' / 'java.exe'), '-cp',
+                 str(classes) + os.pathsep + str(self._json_jar()),
+                 'io.liber.oracle.nested.GuardedReaderApplicationTest'],
+                capture_output=True, timeout=300)
+            stdout = run_result.stdout.decode(errors='replace')
+            self.assertEqual(run_result.returncode, 0,
+                             stdout + run_result.stderr.decode(errors='replace'))
+            summary = [line for line in stdout.splitlines() if line.startswith('SUMMARY ')]
+            self.assertEqual(len(summary), 1, stdout)
+            print('guard host controls: ' + summary[0])
+            self.assertIn('fail=0', summary[0])
+            self.assertGreaterEqual(int(summary[0].split('pass=')[1].split()[0]), 30)
 
 
 class SelectedReceiptTest(unittest.TestCase):

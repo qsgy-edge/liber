@@ -1,5 +1,6 @@
 package io.liber.oracle.nested;
 
+import android.app.Application;
 import android.content.Context;
 import org.json.JSONObject;
 
@@ -31,22 +32,33 @@ public final class SelectedFieldHostBridge {
         return GuardedReaderApplication.launchAttempts();
     }
 
-    /** Enables the bounded saved-content capture guard for this lifetime. */
-    public static void beginCapture() {
-        GuardedReaderApplication.beginCapture();
+    /** Arms the one process-lifetime capture guard with its exact owner. */
+    public static void arm(Application application, ClassLoader loader) {
+        GuardedReaderApplication.arm(application, loader);
     }
 
-    /** Disables the guard after its owned registrations were released. */
-    public static void endCapture() {
-        GuardedReaderApplication.endCapture();
+    /** Whether the capture guard is armed for this lifetime. */
+    public static boolean armed() {
+        return GuardedReaderApplication.isArmed();
     }
 
-    /** Removes every registration the guard owns and reports the outcome. */
-    public static JSONObject releaseOwnedRegistrations() {
-        return GuardedReaderApplication.releaseOwnedRegistrations();
+    /** Registers this case's save-event observer on the main thread. */
+    public static JSONObject beginSaveObservation(String bookUrl, String chapterUrl)
+            throws Exception {
+        return GuardedReaderApplication.beginSaveObservation(bookUrl, chapterUrl);
     }
 
-    /** The guard's own registration/inbound/failure receipts. */
+    /** Waits for the correlated event, then removes the observer on the main thread. */
+    public static JSONObject endSaveObservation(long timeoutMillis) throws Exception {
+        return GuardedReaderApplication.endSaveObservation(timeoutMillis);
+    }
+
+    /** Removes every process-owned registration once, at the end of the lifetime. */
+    public static JSONObject releaseProcessResources() {
+        return GuardedReaderApplication.releaseProcessResources();
+    }
+
+    /** The guard's own registration/observer/failure receipts. */
     public static JSONObject captureReceipt() throws Exception {
         return GuardedReaderApplication.captureReceipt();
     }

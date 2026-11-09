@@ -309,8 +309,10 @@ public final class FieldOracle extends Instrumentation {
                 report.put("hostInitialization", bridge.getMethod("initialize",
                     ClassLoader.class, JSONObject.class).invoke(null,
                         loader, corpus.getJSONObject("hostInitialization")));
-                selectedDatabase = loader.loadClass("io.legado.app.data.AppDatabaseKt")
-                    .getMethod("getAppDb").invoke(null);
+                if (selectedDatabase == null) {
+                    selectedDatabase = loader.loadClass("io.legado.app.data.AppDatabaseKt")
+                        .getMethod("getAppDb").invoke(null);
+                }
                 setupSelectedJob(loader);
                 if (!selectedChildren().isEmpty()) throw new IllegalStateException("DEFAULT Job already has children");
                 terminalProved = true;
@@ -388,6 +390,18 @@ public final class FieldOracle extends Instrumentation {
             } catch (Throwable error) {
                 cleanup.put("serverClosed", false);
                 log("cleanup failed: " + describe(error));
+            }
+            // R4: the one process-lifetime guard is released here, once, after
+            // every case. Its receipt lives in the report's cleanup domain.
+            if (newFamily && lifecycleCorpus()) {
+                try {
+                    cleanup.put("savedContentGuard", releaseSavedContentGuard());
+                } catch (Throwable error) {
+                    cleanup.put("savedContentGuard", new JSONObject()
+                        .put("closed", false)
+                        .put("error", String.valueOf(error)));
+                    log("saved-content guard cleanup failed: " + describe(error));
+                }
             }
             if (selectedReference) {
                 cleanup.put("openConnectionsAfterClose", replay.openConnections());
@@ -534,6 +548,11 @@ public final class FieldOracle extends Instrumentation {
             .put("earlyContainment", earlyContainment);
     }
 
+    /** Whether a canonical path lies inside the owned scratch root. */
+    private static boolean within(String path, String root) {
+        return path.equals(root) || path.startsWith(root + File.separator);
+    }
+
     /** Whether this corpus declares the saved-content lifecycle observation. */
     private boolean lifecycleCorpus() {
         return corpus != null && corpus.optJSONObject("titleLifecycle") != null;
@@ -591,7 +610,8 @@ public final class FieldOracle extends Instrumentation {
         }
         if (lifecycleCorpus()) {
             Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
-            bridge.getMethod("beginCapture").invoke(null);
+            bridge.getMethod("arm", android.app.Application.class, ClassLoader.class)
+                .invoke(null, appCtxValue, loader);
             // Called once, with the guard already active, so the lifecycle
             // registration it performs is tracked and removable.
             Object appUtilsApp = loader.loadClass("com.jeremyliao.liveeventbus.utils.AppUtils")
@@ -614,6 +634,12 @@ public final class FieldOracle extends Instrumentation {
             if (!within(canonicalCache, root)) {
                 throw new IllegalStateException(
                     "the BookHelp write root escapes the owned scratch: " + containment);
+            }
+            // The database is acquired here, where it is first needed, so the
+            // Room path is checked on a real open handle rather than a null field.
+            if (selectedDatabase == null) {
+                selectedDatabase = loader.loadClass("io.legado.app.data.AppDatabaseKt")
+                    .getMethod("getAppDb").invoke(null);
             }
             Object dao = selectedDatabase.getClass().getMethod("getOpenHelper")
                 .invoke(selectedDatabase);
@@ -837,16 +863,17 @@ public final class FieldOracle extends Instrumentation {
      * variable text and are inserted through the reference chapter DAO.
      *
      * <p>Observation: the real {@code getContentAwait(..., needSave=true)}
-     * route runs, its save event is observed on the main looper through the
-     * existing LiveEventBus observable and fenced, the stored rows are read
-     * back, a real {@code getChapterListAwait} refresh runs, the refreshed list
-     * is published through the same DAO insert {@code BookInfoViewModel} uses,
-     * and the stored rows are read again. Every row comes from a real object or
-     * DAO read.
+     * route runs, its save event is observed through the guard's own
+     * main-thread observable registration, the stored rows are read back, a
+     * real {@code getChapterListAwait} refresh runs, the refreshed list is
+     * published through the same DAO insert {@code BookInfoViewModel} uses, and
+     * the stored rows are read again. Every row comes from a real object or DAO
+     * read.
      *
      * <p>The four phase arrays are the shared cross-platform observation. The
-     * containment, setup, preference, event-guard and terminal facts are
-     * native producer evidence and are recorded separately.
+     * containment, setup, preference, event-guard and observer facts are native
+     * producer evidence and are recorded separately; the process guard's own
+     * closure belongs to the report's cleanup domain, not to a case.
      */
     private void driveTitleLifecycle(JSONObject observed, ClassLoader loader, Object source,
             Object book, List<?> chapters, Class<?> bookClass, Class<?> chapterClass,
@@ -857,6 +884,12 @@ public final class FieldOracle extends Instrumentation {
         JSONObject lifecycle = new JSONObject();
         JSONObject proof = new JSONObject();
         String bookUrl = str(bookClass, book, "getBookUrl");
+        String chapterUrl = str(chapterClass, chapters.get(0), "getUrl");
+
+        // R6: the immutable prior preference state is captured BEFORE any
+        // mutation and stays reachable by the finally below even when the
+        // mutation itself throws.
+        JSONObject priorPreference = capturePriorPreference(loader);
 
         // F9: the actual parent book row, through its own DAO, before any child.
         Object bookDao = selectedDatabase.getClass().getMethod("getBookDao")
@@ -888,12 +921,13 @@ public final class FieldOracle extends Instrumentation {
             .put("rows", chapters.size())
             .put("inserted", true));
 
-        // F2: the save event is observed on the main looper and fenced.
-        Object saveObserver = observeSaveEvent(loader);
-        JSONObject preference = null;
+        // R2/R4: this case owns its own observer, registered on the main thread
+        // through the public Observable interface and acknowledged there.
+        JSONObject observation = saveObservation(loader, "begin", bookUrl, chapterUrl);
+        proof.put("saveObserver", observation);
         Throwable primaryFailure = null;
         try {
-            preference = setTocCountWords(loader, true);
+            applyTocCountWords(loader, true);
 
             stage.set("content");
             log("stage content (saved)");
@@ -918,8 +952,7 @@ public final class FieldOracle extends Instrumentation {
                 .put("title", str(chapterClass, chapters.get(0), "getTitle"))
                 .put("text", text == null ? "" : text.toString()));
 
-            proof.put("saveEvent", completeSaveEvent(loader, saveObserver, bookUrl,
-                str(chapterClass, chapters.get(0), "getUrl")));
+            proof.put("saveEvent", saveObservation(loader, "end", bookUrl, chapterUrl));
             lifecycle.put("storedAfterContent", storedRows(dao, bookUrl, chapterClass));
             proof.put("contentFiles", contentFiles(loader, bookClass, book));
 
@@ -949,189 +982,82 @@ public final class FieldOracle extends Instrumentation {
             primaryFailure = error;
             throw error;
         } finally {
-            // F6: the preference is restored on every path, including a partial
-            // setup and a later failure, and a failed restore is visible.
-            Throwable restoreFailure = null;
+            Throwable cleanupFailure = null;
+            // The observer is removed on every path, including a failure before
+            // the event completed.
             try {
-                proof.put("tocCountWords", restoreTocCountWords(loader, preference));
+                proof.put("saveObserverClose", saveObservation(loader, "close", bookUrl,
+                    chapterUrl));
             } catch (Throwable error) {
-                restoreFailure = error;
+                cleanupFailure = error;
+                proof.put("saveObserverCloseError", String.valueOf(error));
+            }
+            // R6: the prior presence and value are restored on every path.
+            try {
+                proof.put("tocCountWords", restoreTocCountWords(loader, priorPreference));
+            } catch (Throwable error) {
+                if (cleanupFailure == null) cleanupFailure = error;
                 proof.put("tocCountWordsRestoreError", String.valueOf(error));
-            }
-            try {
-                proof.put("saveObserverRemoved", removeSaveEvent(loader, saveObserver));
-            } catch (Throwable error) {
-                proof.put("saveObserverRemoveError", String.valueOf(error));
-            }
-            try {
-                proof.put("guard", releaseGuard());
-            } catch (Throwable error) {
-                proof.put("guardReleaseError", String.valueOf(error));
             }
             observed.put("titleLifecycleProof", proof);
             observed.put("titleLifecycle", lifecycle);
-            if (restoreFailure != null) {
+            if (cleanupFailure != null) {
                 if (primaryFailure != null) {
-                    primaryFailure.addSuppressed(restoreFailure);
+                    primaryFailure.addSuppressed(cleanupFailure);
                 } else {
-                    throw new IllegalStateException(
-                        "the tocCountWords preference was not restored", restoreFailure);
+                    throw cleanupFailure instanceof Exception
+                        ? (Exception) cleanupFailure
+                        : new IllegalStateException(cleanupFailure);
                 }
             }
         }
     }
 
-    /** The reference save event's observable, registered on the main looper. */
-    private Object observeSaveEvent(ClassLoader loader) throws Exception {
-        Class<?> liveEventBus = loader.loadClass("com.jeremyliao.liveeventbus.LiveEventBus");
-        Class<?> pairClass = loader.loadClass("kotlin.Pair");
-        Object observable = liveEventBus.getMethod("get", String.class, Class.class)
-            .invoke(null, SAVE_CONTENT_TAG, pairClass);
-        Class<?> observerClass = loader.loadClass("androidx.lifecycle.Observer");
-        final JSONObject received = new JSONObject();
-        Object observer = java.lang.reflect.Proxy.newProxyInstance(loader,
-            new Class<?>[]{observerClass}, (proxy, method, args) -> {
-                switch (method.getName()) {
-                    case "onChanged":
-                        synchronized (received) {
-                            received.put("delivered", true);
-                            Object value = args == null || args.length == 0 ? null : args[0];
-                            if (value != null) {
-                                Object first = value.getClass().getMethod("getFirst").invoke(value);
-                                Object second = value.getClass().getMethod("getSecond").invoke(value);
-                                received.put("bookUrl", first == null ? JSONObject.NULL
-                                        : first.getClass().getMethod("getBookUrl").invoke(first))
-                                    .put("chapterUrl", second == null ? JSONObject.NULL
-                                        : second.getClass().getMethod("getUrl").invoke(second));
-                            }
-                        }
-                        return null;
-                    case "toString":
-                        return "fields-save-observer";
-                    case "hashCode":
-                        return System.identityHashCode(proxy);
-                    case "equals":
-                        return args != null && args.length == 1 && proxy == args[0];
-                    default:
-                        return null;
-                }
-            });
-        observable.getClass().getMethod("observeForever", observerClass)
-            .invoke(observable, observer);
-        return new Object[]{observable, observer, received};
-    }
-
     /**
-     * Fences the main looper and reads what the save event delivered. The fence
-     * is the measured completion prerequisite: everything the save posted before
-     * it has run when it returns.
+     * Releases the process-owned guard resources once and fences the main
+     * looper afterwards, so the receipt describes an actually closed domain.
      */
-    private JSONObject completeSaveEvent(ClassLoader loader, Object handle, String bookUrl,
-            String chapterUrl) throws Exception {
-        Object[] parts = (Object[]) handle;
-        JSONObject fence = fenceMainLooper(loader);
-        JSONObject received;
-        synchronized (parts[2]) {
-            received = new JSONObject(parts[2].toString());
-        }
-        JSONObject event = new JSONObject()
-            .put("tag", SAVE_CONTENT_TAG)
-            .put("fence", fence)
-            .put("delivered", received.optBoolean("delivered", false))
-            .put("bookUrl", received.opt("bookUrl") == null ? JSONObject.NULL
-                : received.opt("bookUrl"))
-            .put("chapterUrl", received.opt("chapterUrl") == null ? JSONObject.NULL
-                : received.opt("chapterUrl"))
-            .put("correlates", bookUrl.equals(received.opt("bookUrl"))
-                && chapterUrl.equals(received.opt("chapterUrl")));
-        if (!event.getBoolean("delivered") || !event.getBoolean("correlates")) {
-            throw new IllegalStateException(
-                "the saved-content event did not complete for this chapter: " + event);
-        }
-        return event;
-    }
-
-    private boolean removeSaveEvent(ClassLoader loader, Object handle) throws Exception {
-        Object[] parts = (Object[]) handle;
-        Class<?> observerClass = loader.loadClass("androidx.lifecycle.Observer");
-        parts[0].getClass().getMethod("removeObserver", observerClass)
-            .invoke(parts[0], parts[1]);
-        return true;
-    }
-
-    private JSONObject fenceMainLooper(ClassLoader loader) throws Exception {
+    private JSONObject releaseSavedContentGuard() throws Exception {
         Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
-        return (JSONObject) bridge.getMethod("fenceMainLooper", long.class)
+        JSONObject released = (JSONObject) bridge.getMethod("releaseProcessResources").invoke(null);
+        JSONObject fence = (JSONObject) bridge.getMethod("fenceMainLooper", long.class)
             .invoke(null, 5000L);
-    }
-
-    /** Removes the guard's owned registrations and fences the main looper again. */
-    private JSONObject releaseGuard() throws Exception {
-        Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
-        JSONObject released = (JSONObject) bridge.getMethod("releaseOwnedRegistrations")
-            .invoke(null);
-        JSONObject fence = fenceMainLooper(getTargetContext().getClassLoader());
         JSONObject receipt = (JSONObject) bridge.getMethod("captureReceipt").invoke(null);
-        bridge.getMethod("endCapture").invoke(null);
         JSONObject guard = new JSONObject()
             .put("release", released)
             .put("fence", fence)
             .put("receipt", receipt);
-        if (receipt.optInt("blockedDeliveries", 0) != 0) {
-            throw new IllegalStateException(
-                "an external IPC attempt reached the guarded receiver: " + guard);
+        if (!released.optBoolean("closed", false)) {
+            throw new IllegalStateException("the guard did not close every owned resource: " + guard);
         }
-        if (!fence.optBoolean("completed", false)) {
-            throw new IllegalStateException("the main-looper fence did not complete: " + guard);
+        if (receipt.optInt("blockedDeliveries", 0) != 0) {
+            throw new IllegalStateException("an external IPC attempt reached the guard: " + guard);
         }
         return guard;
     }
-    /**
-     * The resolved content write root and database path, proven inside this
-     * attempt's owned scratch root before the first save. Reading
-     * {@code BookHelp.cachePath} is what initialises the class, so the check
-     * runs before any {@code saveContent} call can exist.
-     */
-    private JSONObject writeContainment(ClassLoader loader) throws Exception {
-        Object app = loader.loadClass("splitties.init.AppCtxKt")
-            .getMethod("getAppCtx").invoke(null);
-        Class<?> bookHelp = loader.loadClass("io.legado.app.help.book.BookHelp");
-        // The selected BookHelp.getCachePath() descriptor is ()Ljava/lang/String;
-        // (BookHelp.kt:138 -> FileUtils.getPath, a String), not a File.
-        String cacheText = (String) bookHelp.getMethod("getCachePath")
-            .invoke(bookHelp.getField("INSTANCE").get(null));
-        String cache = new File(cacheText).getCanonicalPath();
-        String root = scratch.root.getCanonicalPath();
-        Object helper = selectedDatabase.getClass().getMethod("getOpenHelper")
-            .invoke(selectedDatabase);
-        Object database = helper.getClass().getMethod("getWritableDatabase").invoke(helper);
-        String databasePath = new File((String) database.getClass().getMethod("getPath")
-            .invoke(database)).getCanonicalPath();
-        JSONObject containment = new JSONObject()
-            .put("appCtxClass", app.getClass().getName())
-            .put("cachePath", cache)
-            .put("scratchRoot", root)
-            .put("cachePathWithinScratch", within(cache, root))
-            .put("databasePath", databasePath)
-            .put("databasePathWithinScratch", within(databasePath, root));
-        if (!containment.getBoolean("cachePathWithinScratch")
-                || !containment.getBoolean("databasePathWithinScratch")
-                || !"io.liber.oracle.nested.GuardedReaderApplication"
-                    .equals(containment.getString("appCtxClass"))) {
-            throw new IllegalStateException(
-                "the content write root escapes the owned scratch: " + containment);
-        }
-        return containment;
-    }
 
-    private static boolean within(String path, String root) {
-        return path.equals(root) || path.startsWith(root + File.separator);
+    /** One guard-owned save-observation phase: begin, end or close. */
+    private JSONObject saveObservation(ClassLoader loader, String phase, String bookUrl,
+            String chapterUrl) throws Exception {
+        Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+        switch (phase) {
+            case "begin":
+                return (JSONObject) bridge.getMethod("beginSaveObservation", String.class,
+                    String.class).invoke(null, bookUrl, chapterUrl);
+            case "end":
+                return (JSONObject) bridge.getMethod("endSaveObservation", long.class)
+                    .invoke(null, 15000L);
+            default:
+                return (JSONObject) bridge.getMethod("endSaveObservation", long.class)
+                    .invoke(null, 0L);
+        }
     }
 
     /** The chapter files the content save actually wrote, under the proven root. */
     private JSONArray contentFiles(ClassLoader loader, Class<?> bookClass, Object book)
             throws Exception {
         Class<?> bookHelp = loader.loadClass("io.legado.app.help.book.BookHelp");
+        // The selected BookHelp.getCachePath() descriptor is ()Ljava/lang/String;.
         String cacheText = (String) bookHelp.getMethod("getCachePath")
             .invoke(bookHelp.getField("INSTANCE").get(null));
         String folder = (String) bookClass.getMethod("getFolderName").invoke(book);
@@ -1177,32 +1103,33 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /**
-     * The approved conditional restoration is gated on the reference
-     * {@code tocCountWords} preference. It is written through the owned scratch
-     * preference namespace and its previous value is recorded for the restore.
+     * R6: the immutable prior preference state, captured BEFORE any mutation so
+     * the owning finally can restore it even when the mutation itself throws.
      */
-    private JSONObject setTocCountWords(ClassLoader loader, boolean value) throws Exception {
+    private JSONObject capturePriorPreference(ClassLoader loader) throws Exception {
         android.content.SharedPreferences preferences = defaultPreferences(loader);
-        // F6: presence and value are both part of the prior state, so an
-        // originally absent key is removed again instead of being written back
-        // as an explicit value.
-        boolean present = preferences.contains(TOC_COUNT_WORDS);
-        boolean previous = preferences.getBoolean(TOC_COUNT_WORDS, true);
+        return new JSONObject()
+            .put("name", TOC_COUNT_WORDS)
+            .put("previousPresent", preferences.contains(TOC_COUNT_WORDS))
+            .put("previous", preferences.getBoolean(TOC_COUNT_WORDS, true));
+    }
+
+    /** Applies the approved value and records what was actually observed. */
+    private JSONObject applyTocCountWords(ClassLoader loader, boolean value) throws Exception {
+        android.content.SharedPreferences preferences = defaultPreferences(loader);
         boolean committed = preferences.edit().putBoolean(TOC_COUNT_WORDS, value).commit();
         boolean observed = readTocCountWords(loader);
         if (!committed || observed != value) {
             throw new IllegalStateException("tocCountWords preference did not take effect");
         }
-        return new JSONObject().put("name", TOC_COUNT_WORDS)
-            .put("previousPresent", present)
-            .put("previous", previous)
-            .put("applied", value)
-            .put("observed", observed);
+        return new JSONObject().put("name", TOC_COUNT_WORDS).put("applied", value)
+            .put("committed", committed).put("observed", observed);
     }
 
     private JSONObject restoreTocCountWords(ClassLoader loader, JSONObject state)
             throws Exception {
-        if (state == null) return new JSONObject().put("restored", true).put("skipped", true);
+        if (state == null) throw new IllegalStateException(
+            "the prior tocCountWords state was not captured");
         android.content.SharedPreferences preferences = defaultPreferences(loader);
         android.content.SharedPreferences.Editor editor = preferences.edit();
         if (state.getBoolean("previousPresent")) {
