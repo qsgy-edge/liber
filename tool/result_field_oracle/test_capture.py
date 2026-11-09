@@ -2146,6 +2146,547 @@ static JSONObject guardControls(JSONObject result) throws Exception {
     return outcome;
 }
 
+/** The repaired case boundary: setup, start/done logging, records, measured count. */
+static JSONObject repairedBoundaryControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    JSONArray declared = new JSONArray().put(new JSONObject().put("id", "case-a"))
+        .put(new JSONObject().put("id", "case-b"));
+    // (a) the setup boundary is outside the body catch: no drive, no after.
+    List<String> before = new ArrayList<>();
+    List<String> driven = new ArrayList<>();
+    List<String> after = new ArrayList<>();
+    JSONObject failures = new JSONObject();
+    RuntimeException setupFailure = new IllegalStateException("SETUP_FAILURE");
+    Throwable setupThrown = null;
+    try {
+        FieldOracle.runDeclaredCases(declared, new FieldOracle.CaseStep() {
+            @Override public void before(JSONObject entry, String id) {
+                before.add(id);
+                if ("case-a".equals(id)) throw setupFailure;
+            }
+            @Override public void drive(JSONObject entry, String id) { driven.add(id); }
+        }, id -> after.add(id), failures, new JSONArray(), new JSONArray(),
+            new AtomicReference<>(), new AtomicReference<>("setup"), true, false);
+    } catch (Throwable error) {
+        setupThrown = error;
+    }
+    outcome.put("setupStops", setupThrown == setupFailure && before.equals(Arrays.asList("case-a"))
+        && driven.isEmpty() && after.isEmpty() && failures.length() == 0);
+    // (b) the start log throws before the native drive and records nothing.
+    RuntimeException startFailure = new IllegalStateException("START_LOG_FAILURE");
+    android.util.Log.failAt = "case case-a";
+    android.util.Log.failure = startFailure;
+    List<String> startDriven = new ArrayList<>();
+    JSONObject startFailures = new JSONObject();
+    Throwable startThrown = null;
+    try {
+        FieldOracle.runDeclaredCases(declared, (entry, id) -> startDriven.add(id), null,
+            startFailures, new JSONArray(), new JSONArray(), new AtomicReference<>(),
+            new AtomicReference<>("setup"), true, false);
+    } catch (Throwable error) {
+        startThrown = error;
+    } finally {
+        android.util.Log.failure = null;
+        android.util.Log.failAt = null;
+    }
+    outcome.put("startStops", startThrown == startFailure && startDriven.isEmpty()
+        && startFailures.length() == 0);
+    // (c) the done log throws inside the body boundary: one failure, no after.
+    RuntimeException doneFailure = new IllegalStateException("DONE_LOG_FAILURE");
+    android.util.Log.failAt = "case case-a done";
+    android.util.Log.failure = doneFailure;
+    List<String> doneDriven = new ArrayList<>();
+    List<String> doneAfter = new ArrayList<>();
+    JSONObject doneFailures = new JSONObject();
+    JSONArray doneRecords = new JSONArray();
+    AtomicReference<JSONObject> doneObservation = new AtomicReference<>();
+    Throwable doneThrown = null;
+    try {
+        FieldOracle.runDeclaredCases(declared, (entry, id) -> {
+            doneDriven.add(id);
+            JSONObject record = new JSONObject().put("id", id);
+            doneObservation.set(record);
+            doneRecords.put(record);
+        }, id -> doneAfter.add(id), doneFailures, doneRecords, new JSONArray(),
+            doneObservation, new AtomicReference<>("setup"), true, true);
+    } catch (Throwable error) {
+        doneThrown = error;
+    } finally {
+        android.util.Log.failure = null;
+        android.util.Log.failAt = null;
+    }
+    outcome.put("doneStops", doneThrown == doneFailure && doneDriven.equals(Arrays.asList("case-a"))
+        && doneAfter.isEmpty() && doneFailures.has("case-a")
+        && doneFailures.getString("case-a").contains("DONE_LOG_FAILURE")
+        && doneRecords.length() == 1);
+    // (d) a recording failure is retained on the primary and reserialized.
+    RuntimeException recordFailure = new IllegalStateException("RECORD_WRITE_FAILURE");
+    RuntimeException bodyFailure = new IllegalStateException("BODY_PRIMARY");
+    JSONObject recordFailures = new JSONObject();
+    JSONArray recordRecords = new JSONArray();
+    AtomicReference<JSONObject> recordObservation = new AtomicReference<>();
+    Throwable recordThrown = null;
+    try {
+        FieldOracle.runDeclaredCases(new JSONArray().put(new JSONObject().put("id", "case-a")),
+            (entry, id) -> {
+                recordObservation.set(new RefusingObservation(recordFailure, "failure"));
+                throw bodyFailure;
+            }, null, recordFailures, recordRecords, new JSONArray(), recordObservation,
+            new AtomicReference<>("setup"), true, true);
+    } catch (Throwable error) {
+        recordThrown = error;
+    }
+    boolean recordRetained = false;
+    if (recordThrown != null) {
+        for (Throwable suppressed : recordThrown.getSuppressed()) {
+            if (suppressed == recordFailure) recordRetained = true;
+        }
+    }
+    outcome.put("recordErrorRetained", recordThrown == bodyFailure && recordRetained
+        && recordFailures.getString("case-a").contains("RECORD_WRITE_FAILURE"));
+    // (e) the measured count is the actual record collection, not the declaration.
+    JSONObject legacy = FieldOracle.runDeclaredCases(declared,
+        (entry, id) -> { throw new IllegalStateException("LEGACY_BODY"); }, null,
+        new JSONObject(), new JSONObject(), new JSONArray(), new AtomicReference<>(),
+        new AtomicReference<>("setup"), false, false);
+    outcome.put("legacyMeasured", legacy.optInt("recorded", -1) == 0);
+    result.put("repairedBoundary", outcome);
+    require(outcome.optBoolean("setupStops")
+        && outcome.optBoolean("startStops")
+        && outcome.optBoolean("doneStops")
+        && outcome.optBoolean("recordErrorRetained")
+        && outcome.optBoolean("legacyMeasured"),
+        "the repaired case boundary must keep setup, logging and record dispositions: " + outcome);
+    return outcome;
+}
+
+/** A JSONObject whose named put throws, as an explicit recording boundary. */
+static final class RefusingObservation extends JSONObject {
+    final RuntimeException failure;
+    final String name;
+
+    RefusingObservation(RuntimeException failure, String name) {
+        this.failure = failure;
+        this.name = name;
+    }
+
+    @Override
+    public JSONObject put(String key, Object value) {
+        if (name.equals(key)) throw failure;
+        return super.put(key, value);
+    }
+}
+
+/**
+ * The actual saved-case failure composed through the dispatcher, the outer
+ * cleanup and the outer sequence, with the real lifetime and persister.
+ */
+static JSONObject composedSavedFailureControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    File root = Files.createTempDirectory("l138-composed-saved-").toFile();
+    try {
+        MemoryPreferences preferences = new MemoryPreferences();
+        JSONObject observed = new JSONObject().put("id", "case-title");
+        FieldOracle.initializeTitleLifecycle(observed);
+        JSONObject proof = observed.getJSONObject("titleLifecycleProof");
+        JSONObject lifecycle = observed.getJSONObject("titleLifecycle");
+        outcome.put("initializerAttached", proof != null && lifecycle != null);
+        // Real measured prefix facts, recorded before the seed effect fails.
+        proof.put("bookParent", new JSONObject().put("stored", true).put("readBack", true));
+        lifecycle.put("beforeContent", new JSONArray().put("chapter-0"));
+        RuntimeException nativeFailure = new IllegalStateException("NATIVE_CONTENT_FAILURE");
+        JSONObject failures = new JSONObject();
+        JSONArray records = new JSONArray().put(
+            new JSONObject().put("id", "case-previous").put("terminal", "four-stage"));
+        JSONArray requests = new JSONArray()
+            .put(new JSONObject().put("url", "https://owned.invalid/seed"));
+        AtomicReference<JSONObject> observation = new AtomicReference<>();
+        JSONObject cleanup = new JSONObject();
+        JSONObject report = new JSONObject().put("fixtureId", "composed-fixture");
+        JSONObject corpus = new JSONObject().put("fixtureId", "composed-fixture");
+        // The actual outer sequence around the actual dispatcher.
+        JSONObject receipt = null;
+        Throwable composedError = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> {
+                    FieldOracle.runDeclaredCases(
+                        new JSONArray().put(new JSONObject().put("id", "case-title")),
+                        (entry, id) -> {
+                            observation.set(observed);
+                            requests.put(new JSONObject().put("url",
+                                "https://owned.invalid/content"));
+                            try {
+                                FieldOracle.TocCountWordsLifetime.run(preferences,
+                                    () -> { proof.put("saveObserver",
+                                        new JSONObject().put("phase", "begin"));
+                                        return new JSONObject().put("closed", true); },
+                                    () -> {
+                                        proof.put("tocCountWordsApplied",
+                                            new JSONObject().put("name", "tocCountWords")
+                                                .put("applied", true).put("committed", true)
+                                                .put("observed", true));
+                                        lifecycle.put("storedAfterContent",
+                                            new JSONArray().put("chapter-0"));
+                                        throw nativeFailure;
+                                    },
+                                    () -> { proof.put("saveObserverClose",
+                                        new JSONObject().put("removed", true));
+                                        return new JSONObject().put("closed", true); },
+                                    proof);
+                            } catch (Throwable error) {
+                                throw error instanceof Exception ? (Exception) error
+                                    : new IllegalStateException(error);
+                            }
+                        },
+                        null, failures, records, requests, observation,
+                        new AtomicReference<>("setup"), true, true);
+                    return new JSONObject().put("recorded", records.length());
+                },
+                () -> FieldOracle.runOuterSequence(
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("serverClosed", true)
+                        .put("openConnectionsAfterClose", 0),
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("closed", true).put("proved", true),
+                    () -> new JSONObject().put("applicable", false),
+                    proved -> new JSONObject().put("closed", proved).put("ownerComplete", proved),
+                    () -> new JSONObject().put("closed", true),
+                    true, false, cleanup));
+        } catch (Throwable error) {
+            composedError = error;
+        }
+        outcome.put("composedFails", composedError != null);
+        outcome.put("composedChain", composedError == null ? "none"
+            : FieldOracle.describeChain(composedError).contains("NATIVE_CONTENT_FAILURE"));
+        outcome.put("singleCurrentRecord", records.length() == 2
+            && records.getJSONObject(0).getString("id").equals("case-previous")
+            && records.getJSONObject(1).getString("id").equals("case-title"));
+        JSONObject current = records.getJSONObject(1);
+        outcome.put("proofSurvives", current.getJSONObject("titleLifecycleProof")
+            .getJSONObject("tocCountWordsApplied").optBoolean("committed")
+            && current.getJSONObject("titleLifecycleProof").getJSONObject("bookParent")
+                .optBoolean("readBack")
+            && current.getJSONObject("titleLifecycle").getJSONArray("beforeContent").length() == 1);
+        outcome.put("requestSlice", current.getJSONArray("requests").length() == 1
+            && current.getJSONArray("requests").getJSONObject(0).getString("url")
+                .equals("https://owned.invalid/content"));
+        // The real producer report uses `cases`, and the real persister writes it.
+        report.put("cases", records).put("caseFailures", failures);
+        File target = new File(root, "composed-report.json");
+        Throwable persistError = FieldOracle.persistFailureReport(true, target, root,
+            report, failures, corpus, composedError);
+        JSONObject readback = new JSONObject(text(target));
+        JSONObject stored = readback.getJSONArray("cases").getJSONObject(1);
+        outcome.put("persisted", persistError == null
+            && readback.getJSONArray("cases").length() == 2
+            && stored.getJSONObject("titleLifecycleProof")
+                .getJSONObject("tocCountWordsApplied").optBoolean("committed")
+            && readback.optString("analysisFailure").contains("NATIVE_CONTENT_FAILURE"));
+        outcome.put("reportPath", target.getAbsolutePath());
+        outcome.put("reportSha256", sha(target));
+        outcome.put("reportText", text(target));
+        // A failed after-case callback stops later cases but the outer domains run.
+        JSONObject afterCleanup = new JSONObject();
+        Throwable afterError = null;
+        List<String> afterDriven = new ArrayList<>();
+        List<String> afterOrder = new ArrayList<>();
+        try {
+            FieldOracle.runWithCleanup(
+                () -> FieldOracle.runDeclaredCases(
+                    new JSONArray().put(new JSONObject().put("id", "case-a"))
+                        .put(new JSONObject().put("id", "case-b")),
+                    (entry, id) -> afterDriven.add(id), id -> {
+                        throw new IllegalStateException("AFTER_CALLBACK_FAILURE");
+                    }, new JSONObject(), new JSONArray(), new JSONArray(),
+                    new AtomicReference<>(), new AtomicReference<>("setup"), true, false),
+                () -> FieldOracle.runOuterSequence(
+                    () -> { afterOrder.add("report"); return new JSONObject().put("closed", true); },
+                    () -> { afterOrder.add("replay");
+                        return new JSONObject().put("serverClosed", true)
+                            .put("openConnectionsAfterClose", 0); },
+                    () -> { afterOrder.add("guard"); return new JSONObject().put("closed", true); },
+                    () -> { afterOrder.add("database"); return new JSONObject().put("closed", true); },
+                    () -> { afterOrder.add("terminal");
+                        return new JSONObject().put("closed", true).put("proved", true); },
+                    () -> { afterOrder.add("preferences");
+                        return new JSONObject().put("applicable", false); },
+                    proved -> { afterOrder.add("owner");
+                        return new JSONObject().put("closed", proved).put("ownerComplete", proved); },
+                    () -> { afterOrder.add("final-report");
+                        return new JSONObject().put("closed", true); },
+                    true, false, afterCleanup));
+        } catch (Throwable error) {
+            afterError = error;
+        }
+        outcome.put("afterStopsLater", afterError != null
+            && afterDriven.equals(Arrays.asList("case-a"))
+            && FieldOracle.describeChain(afterError).contains("AFTER_CALLBACK_FAILURE"));
+        outcome.put("outerStillRan", afterOrder.contains("report")
+            && afterOrder.contains("replay") && afterOrder.contains("guard")
+            && afterOrder.contains("database") && afterOrder.contains("terminal")
+            && afterOrder.contains("preferences") && afterOrder.contains("owner")
+            && afterOrder.contains("final-report"));
+        outcome.put("outerOrder", new JSONArray(afterOrder));
+        outcome.put("controlledNative", "TocCountWordsLifetime.run with in-memory preferences and"
+            + " an injected content failure; no Android DAO/Job/save executed");
+    } finally {
+        deleteTree(root);
+    }
+    result.put("composedSaved", outcome);
+    require(outcome.optBoolean("initializerAttached")
+        && outcome.optBoolean("composedFails")
+        && outcome.optBoolean("composedChain")
+        && outcome.optBoolean("singleCurrentRecord")
+        && outcome.optBoolean("proofSurvives")
+        && outcome.optBoolean("requestSlice")
+        && outcome.optBoolean("persisted")
+        && outcome.optBoolean("afterStopsLater")
+        && outcome.optBoolean("outerStillRan"),
+        "the composed saved failure must keep its proof and outer effects: " + outcome);
+    return outcome;
+}
+
+/** The same close-before-refresh policy inside the real preference lifetime. */
+static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Throwable {
+    JSONObject outcome = new JSONObject();
+    // (a) a valid nested close refreshes once and the lifetime restores.
+    MemoryPreferences preferences = new MemoryPreferences();
+    preferences.values.put("tocCountWords", Boolean.TRUE);
+    JSONObject proof = new JSONObject();
+    int[] refreshes = {0};
+    JSONObject result1 = FieldOracle.TocCountWordsLifetime.run(preferences,
+        () -> new JSONObject().put("closed", true),
+        () -> {
+            FieldOracle.closeObserverThenRefresh(
+                new JSONObject().put("removal", new JSONObject().put("removed", true)), proof,
+                () -> { refreshes[0]++; return Arrays.asList("chapter-0"); });
+            return new JSONObject().put("refreshed", refreshes[0]);
+        },
+        () -> new JSONObject().put("closed", true), proof);
+    outcome.put("nestedRefreshesOnce", refreshes[0] == 1 && result1 != null
+        && proof.has("saveEvent") && proof.has("tocCountWords"));
+    // (b) an acknowledged idempotent close also refreshes once.
+    refreshes[0] = 0;
+    FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+        () -> new JSONObject().put("closed", true),
+        () -> {
+            FieldOracle.closeObserverThenRefresh(
+                new JSONObject().put("alreadyClosed", true).put("removed", true),
+                new JSONObject(), () -> { refreshes[0]++; return null; });
+            return new JSONObject().put("refreshed", refreshes[0]);
+        },
+        () -> new JSONObject().put("closed", true), new JSONObject());
+    outcome.put("idempotentRefreshesOnce", refreshes[0] == 1);
+    // (c) rejected receipts never refresh, and close/restore are still attempted.
+    String[] reasons = {"failed", "missing", "foreign", "callbacks"};
+    JSONArray rows = new JSONArray();
+    boolean refusedOk = true;
+    for (String reason : reasons) {
+        refreshes[0] = 0;
+        JSONObject receipt;
+        if ("failed".equals(reason)) {
+            receipt = new JSONObject().put("removal", new JSONObject().put("removed", true))
+                .put("failed", true);
+        } else if ("missing".equals(reason)) {
+            receipt = new JSONObject().put("removal", new JSONObject());
+        } else if ("foreign".equals(reason)) {
+            receipt = new JSONObject().put("removal", new JSONObject().put("removed", true))
+                .put("foreignEvents", 1);
+        } else {
+            receipt = new JSONObject().put("alreadyClosed", true).put("removed", true)
+                .put("callbackErrors", 2);
+        }
+        boolean[] closed = {false};
+        Throwable thrown = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+                () -> new JSONObject().put("closed", true),
+                () -> {
+                    FieldOracle.closeObserverThenRefresh(receipt, new JSONObject(),
+                        () -> { refreshes[0]++; return null; });
+                    return new JSONObject().put("refreshed", refreshes[0]);
+                },
+                () -> { closed[0] = true; return new JSONObject().put("closed", true); },
+                new JSONObject());
+        } catch (Throwable error) {
+            thrown = error;
+        }
+        boolean ok = thrown != null && refreshes[0] == 0 && closed[0];
+        refusedOk &= ok;
+        rows.put(new JSONObject().put("reason", reason).put("ok", ok)
+            .put("refreshes", refreshes[0]).put("closeAttempted", closed[0]));
+    }
+    outcome.put("refusedNoRefresh", refusedOk);
+    outcome.put("refusedRows", rows);
+    // (d) a REAL end-observation throw before the receipt is acquired.
+    refreshes[0] = 0;
+    RuntimeException endFailure = new IllegalStateException("END_OBSERVATION_FAILURE");
+    boolean[] closedAfterEnd = {false};
+    Throwable endThrown = null;
+    try {
+        FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+            () -> new JSONObject().put("closed", true),
+            () -> {
+                // The production call site obtains the end receipt here; it throws.
+                throw endFailure;
+            },
+            () -> { closedAfterEnd[0] = true; return new JSONObject().put("closed", true); },
+            new JSONObject());
+    } catch (Throwable error) {
+        endThrown = error;
+    }
+    outcome.put("realEndThrow", endThrown == endFailure && refreshes[0] == 0
+        && closedAfterEnd[0]);
+    // (e) a throwing refresh is retained and close/restore still run.
+    refreshes[0] = 0;
+    RuntimeException refreshFailure = new IllegalStateException("REFRESH_FAILURE");
+    boolean[] closedAfterRefresh = {false};
+    Throwable refreshThrown = null;
+    try {
+        FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+            () -> new JSONObject().put("closed", true),
+            () -> {
+                FieldOracle.closeObserverThenRefresh(
+                    new JSONObject().put("removal", new JSONObject().put("removed", true)),
+                    new JSONObject(), () -> { refreshes[0]++; throw refreshFailure; });
+                return new JSONObject().put("refreshed", refreshes[0]);
+            },
+            () -> { closedAfterRefresh[0] = true; return new JSONObject().put("closed", true); },
+            new JSONObject());
+    } catch (Throwable error) {
+        refreshThrown = error;
+    }
+    outcome.put("refreshThrowRetained", refreshThrown == refreshFailure
+        && refreshes[0] == 1 && closedAfterRefresh[0]);
+    result.put("composedRefresh", outcome);
+    require(outcome.optBoolean("nestedRefreshesOnce")
+        && outcome.optBoolean("idempotentRefreshesOnce")
+        && outcome.optBoolean("refusedNoRefresh")
+        && outcome.optBoolean("realEndThrow")
+        && outcome.optBoolean("refreshThrowRetained"),
+        "the composed refresh lifetime must never refresh before closure: " + outcome);
+    return outcome;
+}
+
+/** The actual guard release and owner policy joined to the outer disposition. */
+static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    File cacheDir = Files.createTempDirectory("l138-composed-outer-").toFile();
+    try {
+        String[] refusals = {"released", "posted", "completed", "blocked", "releaseThrows",
+            "fenceThrows", "receiptThrows"};
+        JSONArray rows = new JSONArray();
+        boolean refusedOk = true;
+        for (String refusal : refusals) {
+            List<String> order = new ArrayList<>();
+            JSONObject cleanup = new JSONObject();
+            Throwable thrown = null;
+            JSONObject receipt = null;
+            try {
+                FieldOracle.runWithCleanup(() -> FieldOracle.runOuterSequence(
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("serverClosed", true)
+                        .put("openConnectionsAfterClose", 0),
+                    () -> {
+                        // The actual guard adapter, joined to the outer sequence.
+                        return FieldOracle.releaseGuard(new FieldOracle.GuardSource() {
+                            @Override public JSONObject released() {
+                                order.add("release");
+                                if ("releaseThrows".equals(refusal)) {
+                                    throw new IllegalStateException("RELEASE_THROWN");
+                                }
+                                return "released".equals(refusal)
+                                    ? new JSONObject().put("closed", false)
+                                    : new JSONObject().put("closed", true);
+                            }
+                            @Override public JSONObject fence() {
+                                order.add("fence");
+                                if ("fenceThrows".equals(refusal)) {
+                                    throw new IllegalStateException("FENCE_THROWN");
+                                }
+                                if ("posted".equals(refusal)) {
+                                    return new JSONObject().put("posted", false)
+                                        .put("completed", true);
+                                }
+                                if ("completed".equals(refusal)) {
+                                    return new JSONObject().put("posted", true)
+                                        .put("completed", false);
+                                }
+                                return new JSONObject().put("posted", true)
+                                    .put("completed", true);
+                            }
+                            @Override public JSONObject receipt() {
+                                order.add("receipt");
+                                if ("receiptThrows".equals(refusal)) {
+                                    throw new IllegalStateException("RECEIPT_THROWN");
+                                }
+                                return "blocked".equals(refusal)
+                                    ? new JSONObject().put("blockedDeliveries", 2)
+                                    : new JSONObject().put("blockedDeliveries", 0);
+                            }
+                        });
+                    },
+                    () -> { order.add("database"); return new JSONObject().put("closed", true); },
+                    () -> { order.add("terminal"); return new JSONObject().put("closed", true)
+                        .put("proved", true); },
+                    () -> { order.add("preferences"); return new JSONObject().put("applicable", false); },
+                    proved -> { order.add("owner"); return new JSONObject().put("closed", proved)
+                        .put("ownerComplete", proved); },
+                    () -> { order.add("final-report"); return new JSONObject().put("closed", true); },
+                    true, false, cleanup), () -> new JSONObject().put("closed", true));
+            } catch (Throwable error) {
+                thrown = error;
+            }
+            boolean later = order.contains("database") && order.contains("terminal")
+                && order.contains("preferences") && order.contains("owner")
+                && order.contains("final-report");
+            // The adapter order up to the point that actually threw.
+            List<String> expectedPrefix = "releaseThrows".equals(refusal)
+                ? Arrays.asList("release")
+                : "fenceThrows".equals(refusal)
+                    ? Arrays.asList("release", "fence")
+                    : Arrays.asList("release", "fence", "receipt");
+            boolean ok = thrown != null && later
+                && order.subList(0, expectedPrefix.size()).equals(expectedPrefix)
+                && !cleanup.optBoolean("ownerComplete", false)
+                && !cleanup.has("ownerRunId");
+            refusedOk &= ok;
+            rows.put(new JSONObject().put("refusal", refusal).put("ok", ok)
+                .put("order", new JSONArray(order)));
+        }
+        outcome.put("guardRefusals", refusedOk);
+        outcome.put("guardRows", rows);
+        // The real owner policy and writer joined to the outer outcome.
+        StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "composed-owner");
+        JSONObject ownerCleanup = new JSONObject().put("preferencesFenced", true);
+        JSONObject refused = FieldOracle.writeOwnerCompletion(scratch, false,
+            isolationProven(), ownerCleanup);
+        outcome.put("ownerRefusedNoSuccess", !refused.optBoolean("ownerComplete", true)
+            && !ownerCleanup.has("ownerRunId"));
+        File ownerTarget = new File(scratch.root, OWNER);
+        String beforeOwner = sha(ownerTarget);
+        JSONObject errorCleanup = new JSONObject().put("preferencesFenced", true);
+        deleteTree(scratch.root);
+        JSONObject missing = FieldOracle.writeOwnerCompletion(scratch, true,
+            isolationProven(), errorCleanup);
+        outcome.put("ownerErrorNoSuccess", !missing.optBoolean("ownerComplete", true)
+            && !errorCleanup.has("ownerRunId") && !scratch.root.exists());
+        outcome.put("ownerBeforeSha256", beforeOwner);
+        outcome.put("controlledOs", "Context/ContextWrapper/Process/Log substituted;"
+            + " pid 4242; preference commit controlled");
+    } finally {
+        deleteTree(cacheDir);
+    }
+    result.put("composedOuter", outcome);
+    require(outcome.optBoolean("guardRefusals")
+        && outcome.optBoolean("ownerRefusedNoSuccess")
+        && outcome.optBoolean("ownerErrorNoSuccess"),
+        "a failed guard or owner must never yield completion: " + outcome);
+    return outcome;
+}
+
     public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject().put("control", args[0]);
         if (args[0].equals("fence")) fenceControls(result);
@@ -2153,6 +2694,17 @@ static JSONObject guardControls(JSONObject result) throws Exception {
         else if (args[0].equals("caseFlow")) caseFlowControls(result);
         else if (args[0].equals("noRefresh")) noRefreshControls(result);
         else if (args[0].equals("guard")) guardControls(result);
+        else if (args[0].equals("repairedBoundary")) repairedBoundaryControls(result);
+        else if (args[0].equals("composedSaved")) composedSavedFailureControls(result);
+        else if (args[0].equals("composedRefresh")) {
+            try {
+                composedRefreshLifetimeControls(result);
+            } catch (Throwable error) {
+                throw error instanceof Exception ? (Exception) error
+                    : new IllegalStateException(error);
+            }
+        }
+        else if (args[0].equals("composedOuter")) composedOuterGuardOwnerControls(result);
         else throw new IllegalArgumentException("unknown control " + args[0]);
         result.put("ok", true);
         System.out.println(result);
@@ -4341,6 +4893,108 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertIn('JSONObject recorded = runDeclaredCases(declared,', source)
             self.assertIn('List<?> refreshed = (List<?>) closeObserverThenRefresh(', source)
             self.assertIn('return releaseGuard(new GuardSource() {', source)
+
+    def _owned_control(self, repo, java, classpath, control):
+        """Runs one owned-fixture control and returns its parsed row."""
+        run = self._run(
+            [str(java / 'bin' / 'java.exe'), '-cp', classpath,
+             'io.liber.oracle.fields.OwnedCleanupFixture', control], repo)
+        stdout = run.stdout.decode(errors='replace').strip()
+        self.assertEqual(
+            run.returncode, 0,
+            control + ': ' + stdout + run.stderr.decode(errors='replace'))
+        row = json.loads(stdout.splitlines()[-1])
+        self.assertTrue(row['ok'], control)
+        return row
+
+    def test_the_actual_repaired_case_boundary_controls_pass(self):
+        """The repaired setup, start/done logging, record and measured-count boundary."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-repaired-boundary-') as directory:
+            classpath = self._owned_cleanup_classpath(
+                repo, java, android, jar, Path(directory))
+            boundary = self._owned_control(repo, java, classpath, 'repairedBoundary')
+            boundary = boundary['repairedBoundary']
+            # The setup boundary is outside the body catch.
+            self.assertTrue(boundary['setupStops'])
+            # The start log throws before the drive; the done log is a case failure.
+            self.assertTrue(boundary['startStops'])
+            self.assertTrue(boundary['doneStops'])
+            # A recording failure is retained on the primary and reserialized.
+            self.assertTrue(boundary['recordErrorRetained'])
+            # The measured count is the actual record collection.
+            self.assertTrue(boundary['legacyMeasured'])
+            source = (repo / 'tool/result_field_oracle/FieldOracle.java').read_text(
+                encoding='utf-8')
+            self.assertIn('default void before(JSONObject entry, String id) throws Exception {',
+                source)
+            self.assertIn('step.before(entry, id);', source)
+            self.assertIn('if (!containsIdentity(records, current)) records.put(current);',
+                source)
+
+    def test_the_actual_composed_saved_failure_controls_pass(self):
+        """The actual dispatcher inside runWithCleanup and runOuterSequence, with the real lifetime."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-composed-saved-') as directory:
+            classpath = self._owned_cleanup_classpath(
+                repo, java, android, jar, Path(directory))
+            saved = self._owned_control(repo, java, classpath, 'composedSaved')
+            saved = saved['composedSaved']
+            self.assertTrue(saved['initializerAttached'])
+            self.assertTrue(saved['composedFails'])
+            self.assertTrue(saved['composedChain'])
+            self.assertTrue(saved['singleCurrentRecord'])
+            self.assertTrue(saved['proofSurvives'])
+            self.assertTrue(saved['requestSlice'])
+            self.assertTrue(saved['persisted'])
+            self.assertTrue(saved['afterStopsLater'])
+            self.assertTrue(saved['outerStillRan'])
+            self.assertEqual(len(saved['reportSha256']), 64)
+            self.assertIn('NATIVE_CONTENT_FAILURE', saved['reportText'])
+            self.assertIn('tocCountWordsApplied', saved['reportText'])
+            self.assertIn('no Android DAO/Job/save executed', saved['controlledNative'])
+
+    def test_the_actual_composed_refresh_lifetime_controls_pass(self):
+        """The same close-before-refresh policy inside the real preference lifetime."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-composed-refresh-') as directory:
+            classpath = self._owned_cleanup_classpath(
+                repo, java, android, jar, Path(directory))
+            refresh = self._owned_control(repo, java, classpath, 'composedRefresh')
+            refresh = refresh['composedRefresh']
+            self.assertTrue(refresh['nestedRefreshesOnce'])
+            self.assertTrue(refresh['idempotentRefreshesOnce'])
+            self.assertTrue(refresh['refusedNoRefresh'])
+            self.assertTrue(refresh['realEndThrow'])
+            self.assertTrue(refresh['refreshThrowRetained'])
+            self.assertEqual(len(refresh['refusedRows']), 4)
+
+    def test_the_actual_composed_outer_guard_owner_controls_pass(self):
+        """The actual guard release and owner policy joined to the outer disposition."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-composed-outer-') as directory:
+            classpath = self._owned_cleanup_classpath(
+                repo, java, android, jar, Path(directory))
+            outer = self._owned_control(repo, java, classpath, 'composedOuter')
+            outer = outer['composedOuter']
+            self.assertTrue(outer['guardRefusals'])
+            self.assertTrue(outer['ownerRefusedNoSuccess'])
+            self.assertTrue(outer['ownerErrorNoSuccess'])
+            self.assertEqual(len(outer['guardRows']), 7)
+            self.assertEqual(len(outer['ownerBeforeSha256']), 64)
+            self.assertIn('controlled', outer['controlledOs'])
 
 class SelectedReceiptTest(unittest.TestCase):
     def test_complete_selected_receipts_and_raw_report_tamper(self):
