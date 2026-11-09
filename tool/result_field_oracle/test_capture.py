@@ -1267,7 +1267,7 @@ public final class Log {
 OWNED_OS_SUBSTITUTES = {
     'android/content/Context.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful Context: only the members this fixture uses. */\npublic abstract class Context {\n    public abstract File getCacheDir();\n\n    public abstract SharedPreferences getSharedPreferences(String name, int mode);\n\n    public Object getSystemService(String name) {\n        return null;\n    }\n}\n',
     'android/content/ContextWrapper.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */\npublic abstract class ContextWrapper extends Context {\n    private final Context base;\n\n    public ContextWrapper(Context base) {\n        this.base = base;\n    }\n\n    public Context getBaseContext() {\n        return base;\n    }\n\n    @Override\n    public File getCacheDir() {\n        return base.getCacheDir();\n    }\n\n    @Override\n    public SharedPreferences getSharedPreferences(String name, int mode) {\n        return base.getSharedPreferences(name, mode);\n    }\n\n    @Override\n    public Object getSystemService(String name) {\n        return base.getSystemService(name);\n    }\n}\n',
-    'android/util/Log.java': 'package android.util;\r\n\r\n/** The only OS boundary this fixture replaces: a log call. */\r\npublic final class Log {\r\n    public static RuntimeException failure;\r\n\r\n    public static int i(String tag, String message) {\r\n        if (failure != null) throw failure;\r\n        return 0;\r\n    }\r\n}\r\n',
+    'android/util/Log.java': 'package android.util;\r\n\r\n/** The only OS boundary this fixture replaces: a log call. */\r\npublic final class Log {\r\n    public static String failAt;\r\n    public static RuntimeException failure;\r\n\r\n    public static int i(String tag, String message) {\r\n        if (failure != null && failAt != null && message.startsWith(failAt)) throw failure;\r\n        return 0;\r\n    }\r\n}\r\n',
     'android/os/Process.java': 'package android.os;\n\n/** Test-only SDK-signature-faithful Process: a fixed controlled pid. */\npublic final class Process {\n    public static int myPid() {\n        return 4242;\n    }\n}\n',
 }
 
@@ -1853,6 +1853,9 @@ static JSONObject caseFlowControls(JSONObject result) throws Exception {
             && ordinaryFailures.has("case-a") && !ordinaryFailures.has("case-b"));
         // (d) a logger failure is retained in the same chain before serialization.
         RuntimeException loggerFailure = new IllegalStateException("CASE_LOG_FAILURE");
+        // Arm only the failure-reporting log, not the start log that now throws
+        // before the native drive.
+        android.util.Log.failAt = "case case-a failed";
         android.util.Log.failure = loggerFailure;
         JSONObject loggerFailures = new JSONObject();
         JSONArray loggerRecords = new JSONArray();
@@ -1871,6 +1874,7 @@ static JSONObject caseFlowControls(JSONObject result) throws Exception {
             loggerThrown = error;
         } finally {
             android.util.Log.failure = null;
+            android.util.Log.failAt = null;
         }
         outcome.put("loggerSameInstance", loggerThrown == casePrimary
             && casePrimary.getSuppressed().length == 1

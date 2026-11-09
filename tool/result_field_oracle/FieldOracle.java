@@ -591,19 +591,28 @@ public final class FieldOracle extends Instrumentation {
             final AtomicReference<JSONObject> observation =
                 new AtomicReference<>(fields02Observation);
             JSONObject recorded = runDeclaredCases(declared,
-                (entry, id) -> {
-                    fields02Observation = observation.get();
-                    try {
+                new CaseStep() {
+                    @Override
+                    public void before(JSONObject entry, String id) throws Exception {
+                        // The selected pre-case boundary: a failed precondition stops
+                        // the run instead of being recorded as a native case error.
                         if (selectedReference) {
                             if (!selectedChildren().isEmpty()) {
                                 throw new IllegalStateException("DEFAULT Job active before case");
                             }
                             terminalProved = false;
                         }
-                        if (newFamily) driveCaseFields02(entry, id);
-                        else driveCase(entry, id);
-                    } finally {
-                        observation.set(fields02Observation);
+                    }
+
+                    @Override
+                    public void drive(JSONObject entry, String id) throws Exception {
+                        fields02Observation = observation.get();
+                        try {
+                            if (newFamily) driveCaseFields02(entry, id);
+                            else driveCase(entry, id);
+                        } finally {
+                            observation.set(fields02Observation);
+                        }
                     }
                 },
                 id -> {
@@ -621,7 +630,7 @@ public final class FieldOracle extends Instrumentation {
                     // A freeze keeps every case that already finished.
                     writeReport();
                 },
-                caseFailures, caseRecords, requests, observation, stage,
+                caseFailures, newFamily ? caseRecords : cases, requests, observation, stage,
                 newFamily, newFamily && lifecycleCorpus());
             if (!newFamily) observeCheckKeywords();
 
@@ -636,6 +645,13 @@ public final class FieldOracle extends Instrumentation {
 
     /** Drives one declared case; the collector supplies the real native drive. */
     interface CaseStep {
+        /**
+         * The pre-case setup boundary: the selected pre-check and any setup that
+         * must fail the run rather than be treated as a native body failure.
+         */
+        default void before(JSONObject entry, String id) throws Exception {
+        }
+
         void drive(JSONObject entry, String id) throws Exception;
     }
 
@@ -654,19 +670,25 @@ public final class FieldOracle extends Instrumentation {
      * after-case work runs only for a case that did not fail fast.
      */
     static JSONObject runDeclaredCases(JSONArray declared, CaseStep step, CaseAfter after,
-            JSONObject caseFailures, JSONArray caseRecords, JSONArray requests,
+            JSONObject caseFailures, Object caseRecords, JSONArray requests,
             AtomicReference<JSONObject> observation, AtomicReference<String> stage,
             boolean newFamily, boolean lifecycle) throws Exception {
         for (int index = 0; index < declared.length(); index++) {
             JSONObject entry = declared.getJSONObject(index);
             String id = entry.getString("id");
             stage.set("case:" + id);
-            logQuietly("case " + id);
+            // The start log throws before the native drive; it is not a body failure.
+            Log.i("FieldOracle", "case " + id);
             int requestStart = requests.length();
             if (newFamily) observation.set(null);
+            // The setup boundary sits outside the body catch: a failed pre-check or
+            // setup stops the run instead of being recorded as a native case error.
+            step.before(entry, id);
             try {
                 step.drive(entry, id);
-                logQuietly("case " + id + " done");
+                // The done log runs inside the body boundary, so its failure is a
+                // case failure like any other.
+                Log.i("FieldOracle", "case " + id + " done");
             } catch (Throwable error) {
                 // The case reporting logger runs BEFORE the chain is serialized,
                 // so its own failure is part of the saved chain.
@@ -675,13 +697,22 @@ public final class FieldOracle extends Instrumentation {
                 String chain = describeChain(error);
                 caseFailures.put(id, chain);
                 JSONObject current = observation.get();
-                if (newFamily && current != null) {
+                if (newFamily && current != null && caseRecords instanceof JSONArray) {
+                    JSONArray records = (JSONArray) caseRecords;
+                    Throwable recordError = null;
                     try {
                         current.put("failure", chain)
                             .put("requests", requestSliceOf(requests, requestStart));
-                        caseRecords.put(current);
-                    } catch (Throwable ignored) {
-                        // The failure is still recorded; do not fabricate a record.
+                        // At most one occurrence of the actual current observation.
+                        if (!containsIdentity(records, current)) records.put(current);
+                    } catch (Throwable error2) {
+                        recordError = error2;
+                    }
+                    if (recordError != null) {
+                        // The recording failure is retained on the primary and the
+                        // chain known at this point is reserialized.
+                        error.addSuppressed(recordError);
+                        caseFailures.put(id, describeChain(error));
                     }
                 }
                 // A lifecycle case failure escapes to the unconditional outer
@@ -694,8 +725,8 @@ public final class FieldOracle extends Instrumentation {
             }
             if (after != null) after.after(id);
         }
-        return new JSONObject().put("recorded",
-            newFamily ? caseRecords.length() : declared.length());
+        // The measured record count of the actual record collection this run uses.
+        return new JSONObject().put("recorded", measuredRecordCount(caseRecords));
     }
 
     /** Writes the owner-completion receipt once resource closure is known. */
@@ -1511,8 +1542,11 @@ public final class FieldOracle extends Instrumentation {
         if (chapters.size() < LIFECYCLE_CHAPTERS) {
             throw new IllegalStateException("title lifecycle needs two TOC chapters");
         }
-        JSONObject lifecycle = new JSONObject();
-        JSONObject proof = new JSONObject();
+        // The two roots are created and attached before any book, preference or
+        // chapter seed effect, so a failed prefix still carries what it measured.
+        initializeTitleLifecycle(observed);
+        JSONObject lifecycle = observed.getJSONObject("titleLifecycle");
+        JSONObject proof = observed.getJSONObject("titleLifecycleProof");
         String bookUrl = str(bookClass, book, "getBookUrl");
         String chapterUrl = str(chapterClass, chapters.get(0), "getUrl");
 
@@ -1551,11 +1585,7 @@ public final class FieldOracle extends Instrumentation {
             .put("rows", chapters.size())
             .put("inserted", true));
 
-        // Q5: the actual mutable proof is attached BEFORE the owned lifetime can
-        // throw, so a failed case still carries its real partial facts.
-        observed.put("titleLifecycleProof", proof);
-        observed.put("titleLifecycle", lifecycle);
-        // F6: the collector delegates the WHOLE saved-case lifetime to the
+        // The collector delegates the WHOLE saved-case lifetime to the
         // production seam the host controls also exercise.
         try {
         TocCountWordsLifetime.run(
@@ -1630,8 +1660,6 @@ public final class FieldOracle extends Instrumentation {
             throw error instanceof Exception ? (Exception) error
                 : new IllegalStateException(error);
         }
-        observed.put("titleLifecycleProof", proof);
-        observed.put("titleLifecycle", lifecycle);
     }
 
     /**
@@ -2012,6 +2040,34 @@ public final class FieldOracle extends Instrumentation {
             slice.put(requests.getJSONObject(index));
         }
         return slice;
+    }
+
+    /** The measured size of the actual record collection, never the declaration count. */
+    static int measuredRecordCount(Object records) {
+        if (records instanceof JSONArray) return ((JSONArray) records).length();
+        if (records instanceof JSONObject) return ((JSONObject) records).length();
+        return 0;
+    }
+
+    /** Whether this exact object is already one of the recorded observations. */
+    static boolean containsIdentity(JSONArray records, Object value) {
+        for (int index = 0; index < records.length(); index++) {
+            if (records.opt(index) == value) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Creates and attaches the two title-lifecycle roots the case carries.
+     *
+     * <p>The producer calls this at creation, before the book, preference and
+     * chapter seed effects, and then keeps using these same references, so a
+     * failed prefix still carries the facts it actually measured.
+     */
+    static JSONObject initializeTitleLifecycle(JSONObject observed) throws JSONException {
+        observed.put("titleLifecycleProof", new JSONObject())
+            .put("titleLifecycle", new JSONObject());
+        return observed;
     }
 
     private static JSONObject readAssetObject(Context context, String name) throws Exception {
