@@ -1,0 +1,553 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18734",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "HTML and JSON ordinary ruleContent.title evaluation failure: the selected content stage catches the title error, keeps the readable body and the incoming table-of-contents chapter name, and completes the content operation.",
+    "HTML and JSON successful content title saved through the reference content stage with needSave=true, read back from the reference chapter DAO, then a real getChapterListAwait refresh whose returned chapters and re-published stored rows show the exact index+title restoration match and the mismatch the saved content name creates.",
+    "Reference scratch write containment: the resolved BookHelp cache root and the resolved database path are inside this attempt's owned scratch root before the content save runs."
+  ],
+  "coverageGaps": [
+    "No handset or native execution is claimed by this corpus file; only a later approved capture supplies native expected values.",
+    "The lifecycle cases invoke the reference WebBook entry points and the reference chapter DAO directly; they are not a driven native reader UI and they publish no reader screen.",
+    "Only the ordinary title error, the saved chapter name and the index+title variable restoration are observed. Title-attached images, titleMD5, wordCount/imgUrl compatibility fields, rich intros, imageStyle and every new selector, XPath, JavaScript, option or image/audio family stay outside this corpus.",
+    "The title failure is an ordinary JavaScript evaluation error only; cancellation, timeout and named policy refusal are product-policy tests and are not observed natively here."
+  ],
+  "cases": [
+    {
+      "id": "html-title-error-body-retained",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Title error HTML",
+        "searchUrl": "/html-title-error/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".results .item",
+          "name": "a@text",
+          "author": "span.author@text",
+          "bookUrl": "a@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": "span.author@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".content@text",
+          "title": "@js: throw new Error(\"title-probe\")"
+        }
+      }
+    },
+    {
+      "id": "json-title-error-body-retained",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Title error JSON",
+        "searchUrl": "/json-title-error/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "$.body",
+          "title": "@js: throw new Error(\"title-probe\")"
+        }
+      }
+    },
+    {
+      "id": "html-title-saved-refresh",
+      "terminal": "four-stage-refresh",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Title saved HTML",
+        "searchUrl": "/html-title-saved/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".results .item",
+          "name": "a@text",
+          "author": "span.author@text",
+          "bookUrl": "a@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": "span.author@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".content@text",
+          "title": ".chapter-title@text"
+        }
+      }
+    },
+    {
+      "id": "json-title-saved-refresh",
+      "terminal": "four-stage-refresh",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Title saved JSON",
+        "searchUrl": "/json-title-saved/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "$.body",
+          "title": "$.title"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "html-title-error-search",
+      "method": "GET",
+      "path": "/html-title-error/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"results\"><div class=\"item\"><a href=\"/html-title-error/book/1\">ERROR BOOK</a><span class=\"author\">AUTHOR</span></div></div></body></html>"
+    },
+    {
+      "id": "html-title-error-book",
+      "method": "GET",
+      "path": "/html-title-error/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>ERROR BOOK</h1><span class=\"author\">AUTHOR</span><p class=\"toc\"><a href=\"/html-title-error/toc/1\">TOC</a></p></body></html>"
+    },
+    {
+      "id": "html-title-error-toc",
+      "method": "GET",
+      "path": "/html-title-error/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"chapters\"><a href=\"/html-title-error/c/1\">CHAPTER ONE</a></div></body></html>"
+    },
+    {
+      "id": "html-title-error-content-1",
+      "method": "GET",
+      "path": "/html-title-error/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h2 class=\"chapter-title\">CONTENT TITLE</h2><div class=\"content\">HTML ERROR BODY</div></body></html>"
+    },
+    {
+      "id": "json-title-error-search",
+      "method": "GET",
+      "path": "/json-title-error/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[{\"name\":\"ERROR BOOK\",\"author\":\"AUTHOR\",\"url\":\"/json-title-error/book/1\"}]}"
+    },
+    {
+      "id": "json-title-error-book",
+      "method": "GET",
+      "path": "/json-title-error/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"ERROR BOOK\",\"author\":\"AUTHOR\",\"toc\":\"/json-title-error/toc/1\"}"
+    },
+    {
+      "id": "json-title-error-toc",
+      "method": "GET",
+      "path": "/json-title-error/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"CHAPTER ONE\",\"href\":\"/json-title-error/c/1\"}]}"
+    },
+    {
+      "id": "json-title-error-content-1",
+      "method": "GET",
+      "path": "/json-title-error/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"JSON ERROR BODY\",\"title\":\"CONTENT TITLE\"}"
+    },
+    {
+      "id": "html-title-saved-search",
+      "method": "GET",
+      "path": "/html-title-saved/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"results\"><div class=\"item\"><a href=\"/html-title-saved/book/1\">SAVED BOOK</a><span class=\"author\">AUTHOR</span></div></div></body></html>"
+    },
+    {
+      "id": "html-title-saved-book",
+      "method": "GET",
+      "path": "/html-title-saved/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>SAVED BOOK</h1><span class=\"author\">AUTHOR</span><p class=\"toc\"><a href=\"/html-title-saved/toc/1\">TOC</a></p></body></html>"
+    },
+    {
+      "id": "html-title-saved-toc",
+      "method": "GET",
+      "path": "/html-title-saved/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"chapters\"><a href=\"/html-title-saved/c/1\">CHAPTER ONE</a><a href=\"/html-title-saved/c/2\">CHAPTER TWO</a></div></body></html>"
+    },
+    {
+      "id": "html-title-saved-content-1",
+      "method": "GET",
+      "path": "/html-title-saved/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h2 class=\"chapter-title\">CONTENT TITLE</h2><div class=\"content\">HTML SAVED BODY</div></body></html>"
+    },
+    {
+      "id": "html-title-saved-toc-refresh",
+      "method": "GET",
+      "path": "/html-title-saved/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"chapters\"><a href=\"/html-title-saved/c/1\">CHAPTER ONE</a><a href=\"/html-title-saved/c/2\">CHAPTER TWO</a></div></body></html>"
+    },
+    {
+      "id": "json-title-saved-search",
+      "method": "GET",
+      "path": "/json-title-saved/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[{\"name\":\"SAVED BOOK\",\"author\":\"AUTHOR\",\"url\":\"/json-title-saved/book/1\"}]}"
+    },
+    {
+      "id": "json-title-saved-book",
+      "method": "GET",
+      "path": "/json-title-saved/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"SAVED BOOK\",\"author\":\"AUTHOR\",\"toc\":\"/json-title-saved/toc/1\"}"
+    },
+    {
+      "id": "json-title-saved-toc",
+      "method": "GET",
+      "path": "/json-title-saved/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"CHAPTER ONE\",\"href\":\"/json-title-saved/c/1\"},{\"name\":\"CHAPTER TWO\",\"href\":\"/json-title-saved/c/2\"}]}"
+    },
+    {
+      "id": "json-title-saved-content-1",
+      "method": "GET",
+      "path": "/json-title-saved/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"JSON SAVED BODY\",\"title\":\"CONTENT TITLE\"}"
+    },
+    {
+      "id": "json-title-saved-toc-refresh",
+      "method": "GET",
+      "path": "/json-title-saved/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"CHAPTER ONE\",\"href\":\"/json-title-saved/c/1\"},{\"name\":\"CHAPTER TWO\",\"href\":\"/json-title-saved/c/2\"}]}"
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/html-title-error/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-error/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-error/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-error/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-error/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-error/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-error/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-error/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-saved/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-saved/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-saved/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-saved/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html-title-saved/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-saved/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-saved/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-saved/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-saved/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-title-saved/toc/1"
+    }
+  ],
+  "scenario": [
+    "html-title-error-body-retained: search, information, TOC, then one HTML content page whose ruleContent.title script throws. The selected content stage catches the title error and completes with the incoming TOC chapter name and the readable body.",
+    "json-title-error-body-retained: the same four stages and the same throwing title script over a JSON source using simple ASCII property reads.",
+    "html-title-saved-refresh: search, information, TOC, one HTML content page saved with needSave=true, then a real TOC refresh. Two non-volume chapters are seeded with distinct raw variable text; the first TOC name differs from the successful content title, the second keeps its name as the positive restoration control.",
+    "json-title-saved-refresh: the same saved-row and refresh sequence over a JSON source using simple ASCII property reads."
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "97c63d635bd1dfdfca5611b568130ee6dbdd3c43"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/book/BookHelp.kt",
+      "sha1": "78e9e82b67145b835678c7aa1111eaf1631b77d2"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/dao/BookChapterDao.kt",
+      "sha1": "91c812847908e637343613d7ef43248611efd3e9"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/config/AppConfig.kt",
+      "sha1": "e256285bdc9349770f094e9171832a8413c41d0d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/ContextExtensions.kt",
+      "sha1": "3a2a963f93e7a4ae66512eacd79a0af4eb43ed80"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  },
+  "titleLifecycle": {
+    "observingTerminal": "four-stage-refresh",
+    "seedVariables": [
+      "toc-a",
+      "toc-b"
+    ],
+    "phases": [
+      "beforeContent",
+      "storedAfterContent",
+      "refreshedChapters",
+      "storedAfterRefresh"
+    ],
+    "rowFields": [
+      "index",
+      "title",
+      "variable"
+    ],
+    "tocCountWordsPreference": "tocCountWords"
+  }
+}

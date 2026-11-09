@@ -328,6 +328,69 @@ void main() {
     expect(() => inspect([...asset, 0x20]), throwsA(isA<StateError>()));
   });
 
+  test('title lifecycle selected corpus is admitted by its fixed hash', () {
+    final asset = File(
+      'tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json',
+    ).readAsBytesSync();
+    final sources = <String, String>{
+      for (final name in [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+        'HostRuntimeInit.java',
+        'ShortcutStartupGuard.java',
+        'GuardedReaderApplication.java',
+        'SelectedFieldHostBridge.java',
+        'AndroidManifest-selected.xml',
+      ])
+        name: 'a' * 64,
+    };
+    final directory = Directory.systemTemp.createTempSync(
+      'fields-title-lifecycle-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    Map<String, dynamic> inspect(List<int> corpusBytes) {
+      final provenance = utf8.encode(
+        jsonEncode({
+          'schemaVersion': 1,
+          'fixtureId': 'FIELDS-02',
+          'corpus': {
+            'asset': 'field-fixtures.json',
+            'fixtureId': 'FIELDS-02',
+            'corpusVersion': 1,
+            'bytes': corpusBytes.length,
+            'sha256': _sha256(corpusBytes),
+            'sha256Lf': _sha256(corpusBytes),
+          },
+          'sources': sources,
+        }),
+      );
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile(
+            'assets/field-fixtures.json',
+            corpusBytes.length,
+            corpusBytes,
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'assets/field-provenance.json',
+            provenance.length,
+            provenance,
+          ),
+        );
+      final apk = File('${directory.path}/fields.apk')
+        ..writeAsBytesSync(ZipEncoder().encode(archive));
+      return inspectSelectedHarnessApk(apk.path);
+    }
+
+    expect((inspect(asset)['provenance'] as Map)['sources'], sources);
+    expect(() => inspect([...asset, 0x20]), throwsA(isA<StateError>()));
+  });
+
   test('the corpus row and six of the seven field rows pass', () {
     final report = compareWith();
     for (final id in ['C1', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']) {

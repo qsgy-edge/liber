@@ -13,7 +13,22 @@ const _selectedCorpusHashes = {
   '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
   '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0',
   '0f87c6c775ff54164bc11a9a30efaa48e5155def31c37e9b7eb8e721bd776be9',
+  'c2fe9deaadffae33ac0f8b22a8ac7f1a10ed323ce056fdbc0f4c13d16089090d',
 };
+
+/// The one terminal whose case also saves a chapter and refreshes the TOC.
+const _titleLifecycleTerminal = 'four-stage-refresh';
+
+/// The four ordered phases a title-lifecycle case observes.
+const _titleLifecyclePhases = [
+  'beforeContent',
+  'storedAfterContent',
+  'refreshedChapters',
+  'storedAfterRefresh',
+];
+
+/// The chapter count every lifecycle phase must carry.
+const _titleLifecycleChapters = 2;
 
 /// Compares the frozen FIELDS-01 golden against the Liber-side observation of
 /// the same corpus, field row by field row.
@@ -1232,7 +1247,9 @@ List<Map<String, dynamic>> _admitCorpus(
     final terminal = entry.containsKey('terminal')
         ? _requiredString(entry, 'terminal', 'corpus.cases[$id]')
         : 'four-stage';
-    if (terminal != 'four-stage' && terminal != 'search-empty') {
+    if (terminal != 'four-stage' &&
+        terminal != 'search-empty' &&
+        terminal != _titleLifecycleTerminal) {
       throw StateError('unsupported corpus terminal: $terminal');
     }
     _requiredString(entry, 'keyword', 'corpus.cases[$id]');
@@ -1666,6 +1683,7 @@ void _admitCaseRecord(
     }
     _requiredString(chapter, 'text', '$label.chapter');
   }
+  _admitTitleLifecycle(record, terminal, label);
   final probes = _requiredMap(record, 'sourceProbes', label);
   for (final field in ['vipProbe', 'payProbe']) {
     _nullableStringPresent(probes, field, '$label.sourceProbes');
@@ -1679,6 +1697,121 @@ void _admitCaseRecord(
       _map(caseRequests[index], '$label.requests[$index]'),
       '$label.requests[$index]',
     );
+  }
+}
+
+/// The declared saved-name/refresh observation, present only where declared.
+///
+/// A case whose terminal is not the lifecycle terminal must not carry the field
+/// at all, so an old or non-observing case cannot smuggle one in.
+void _admitTitleLifecycle(
+  Map<String, dynamic> record,
+  String terminal,
+  String label,
+) {
+  if (terminal != _titleLifecycleTerminal) {
+    if (record.containsKey('titleLifecycle')) {
+      throw StateError('$label.titleLifecycle is not declared by its terminal');
+    }
+    return;
+  }
+  final lifecycle = _requiredMap(record, 'titleLifecycle', label);
+  final containment = _requiredMap(
+    lifecycle,
+    'writeContainment',
+    '$label.titleLifecycle',
+  );
+  for (final field in [
+    'appCtxClass',
+    'cachePath',
+    'scratchRoot',
+    'databasePath',
+  ]) {
+    _requiredString(
+      containment,
+      field,
+      '$label.titleLifecycle.writeContainment',
+    );
+  }
+  for (final field in ['cachePathWithinScratch', 'databasePathWithinScratch']) {
+    if (_requiredBool(
+          containment,
+          field,
+          '$label.titleLifecycle.writeContainment',
+        ) !=
+        true) {
+      throw StateError(
+        '$label.titleLifecycle.writeContainment.$field must be true',
+      );
+    }
+  }
+  final files = _requiredList(
+    lifecycle,
+    'contentFiles',
+    '$label.titleLifecycle',
+  );
+  if (files.isEmpty) {
+    throw StateError(
+      '$label.titleLifecycle.contentFiles must record the written file',
+    );
+  }
+  for (var index = 0; index < files.length; index++) {
+    final name = files[index];
+    if (name is! String || name.isEmpty) {
+      throw StateError(
+        '$label.titleLifecycle.contentFiles[$index] must be a nonempty string',
+      );
+    }
+  }
+  final preferenceLabel = '$label.titleLifecycle.tocCountWords';
+  final preference = _requiredMap(
+    lifecycle,
+    'tocCountWords',
+    '$label.titleLifecycle',
+  );
+  if (_requiredString(preference, 'name', preferenceLabel) != 'tocCountWords') {
+    throw StateError('$preferenceLabel.name differs');
+  }
+  for (final field in ['previous', 'applied', 'observed']) {
+    _requiredBool(preference, field, preferenceLabel);
+  }
+  if (preference['applied'] != true || preference['observed'] != true) {
+    throw StateError('$preferenceLabel was not enabled');
+  }
+  if (_requiredBool(
+        lifecycle,
+        'tocCountWordsRestored',
+        '$label.titleLifecycle',
+      ) !=
+      true) {
+    throw StateError('$label.titleLifecycle.tocCountWords was not restored');
+  }
+  for (final phase in _titleLifecyclePhases) {
+    final rows = _requiredList(lifecycle, phase, '$label.titleLifecycle');
+    if (rows.length != _titleLifecycleChapters) {
+      throw StateError('$label.titleLifecycle.$phase row count differs');
+    }
+    for (var index = 0; index < rows.length; index++) {
+      final rowLabel = '$label.titleLifecycle.$phase[$index]';
+      final row = _map(rows[index], rowLabel);
+      // A missing field is named before the extra-field check, so a missing
+      // `variable` is never reported as some other shape error.
+      for (final field in ['index', 'title', 'variable']) {
+        if (!row.containsKey(field)) {
+          throw StateError('$rowLabel.$field is missing');
+        }
+      }
+      if (row.length != 3) {
+        throw StateError('$rowLabel fields differ');
+      }
+      if (_requiredInt(row, 'index', rowLabel) != index) {
+        throw StateError('$rowLabel.index is not its ordered position');
+      }
+      if (_requiredString(row, 'title', rowLabel).isEmpty) {
+        throw StateError('$rowLabel.title must not be empty');
+      }
+      _nullableStringPresent(row, 'variable', rowLabel);
+    }
   }
 }
 
@@ -1912,6 +2045,94 @@ void _compareCases(
       pProbes[field],
     );
   }
+  _compareTitleLifecycle(differences, id, frozen, product);
+}
+
+/// Every declared lifecycle phase compared row by row, field by field.
+///
+/// A side that does not carry the field is a difference, not a skip: the
+/// admission already refuses the undeclared case, so reaching here means both
+/// sides declared it.
+void _compareTitleLifecycle(
+  List<Map<String, Object?>> differences,
+  String id,
+  Map<String, dynamic> frozen,
+  Map<String, dynamic> product,
+) {
+  final frozenLifecycle = frozen['titleLifecycle'];
+  final productLifecycle = product['titleLifecycle'];
+  if (frozenLifecycle == null || productLifecycle == null) {
+    _diff(differences, id, 'titleLifecycle', frozenLifecycle, productLifecycle);
+    return;
+  }
+  final f = _map(frozenLifecycle, '$id.titleLifecycle');
+  final p = _map(productLifecycle, '$id.titleLifecycle');
+  for (final phase in _titleLifecyclePhases) {
+    final fRows = _requiredList(f, phase, '$id.titleLifecycle');
+    final pRows = _requiredList(p, phase, '$id.titleLifecycle');
+    _diff(
+      differences,
+      id,
+      'titleLifecycle.$phase.length',
+      fRows.length,
+      pRows.length,
+    );
+    final count = fRows.length < pRows.length ? fRows.length : pRows.length;
+    for (var index = 0; index < count; index++) {
+      final fRow = _map(fRows[index], '$id.titleLifecycle.$phase[$index]');
+      final pRow = _map(pRows[index], '$id.titleLifecycle.$phase[$index]');
+      for (final field in ['index', 'title', 'variable']) {
+        _diff(
+          differences,
+          id,
+          'titleLifecycle.$phase[$index].$field',
+          fRow[field],
+          pRow[field],
+        );
+      }
+    }
+  }
+  final fContainment = _map(
+    f['writeContainment'],
+    '$id.titleLifecycle.writeContainment',
+  );
+  final pContainment = _map(
+    p['writeContainment'],
+    '$id.titleLifecycle.writeContainment',
+  );
+  for (final field in ['cachePathWithinScratch', 'databasePathWithinScratch']) {
+    _diff(
+      differences,
+      id,
+      'titleLifecycle.writeContainment.$field',
+      fContainment[field],
+      pContainment[field],
+    );
+  }
+  final fPreference = _map(
+    f['tocCountWords'],
+    '$id.titleLifecycle.tocCountWords',
+  );
+  final pPreference = _map(
+    p['tocCountWords'],
+    '$id.titleLifecycle.tocCountWords',
+  );
+  for (final field in ['previous', 'applied', 'observed']) {
+    _diff(
+      differences,
+      id,
+      'titleLifecycle.tocCountWords.$field',
+      fPreference[field],
+      pPreference[field],
+    );
+  }
+  _diff(
+    differences,
+    id,
+    'titleLifecycle.tocCountWordsRestored',
+    f['tocCountWordsRestored'],
+    p['tocCountWordsRestored'],
+  );
 }
 
 String _expectedRawQuery(Map<String, dynamic> request) {
@@ -1942,9 +2163,19 @@ void _admitOperationSpans(
   for (final record in cases) {
     final id = _requiredString(record, 'id', '$side.case');
     final terminal = _requiredString(record, 'terminal', '$side.case.$id');
-    final expectedNames = terminal == 'search-empty'
-        ? const ['search']
-        : const ['search', 'bookInfo', 'tableOfContents', 'content'];
+    final expectedNames = switch (terminal) {
+      'search-empty' => const ['search'],
+      // The saved-name case runs the ordinary four stages and then a real
+      // table-of-contents refresh, which is the same producer stage again.
+      _titleLifecycleTerminal => const [
+        'search',
+        'bookInfo',
+        'tableOfContents',
+        'content',
+        'tableOfContents',
+      ],
+      _ => const ['search', 'bookInfo', 'tableOfContents', 'content'],
+    };
     final operations = _requiredList(record, 'operations', '$side.case.$id');
     if (operations.length != expectedNames.length) {
       throw StateError('$side.$id operation set differs for its terminal');
@@ -2427,6 +2658,12 @@ String _requiredString(Map<String, dynamic> map, String key, String label) {
 int _requiredInt(Map<String, dynamic> map, String key, String label) {
   final value = _present(map, key, label);
   if (value is! int) throw StateError('$label.$key must be an integer');
+  return value;
+}
+
+bool _requiredBool(Map<String, dynamic> map, String key, String label) {
+  final value = _present(map, key, label);
+  if (value is! bool) throw StateError('$label.$key must be boolean');
   return value;
 }
 

@@ -238,6 +238,62 @@ corpora keep their exact hashes. The corpus and its `.gitattributes` LF entry
 are the only new input. Native capture and the Windows reader remain
 controller-owned and not-run.
 
+### Title lifecycle selected corpus
+
+`reader-title-lifecycle-fixtures-selected.json` is a separate FIELDS-02/version 1
+corpus for the approved ordinary title-error disposition and the saved chapter
+name. It has exactly four cases and eighteen declared GETs:
+
+| Case | Terminal | What it observes |
+|---|---|---|
+| `html-title-error-body-retained` | `four-stage` | One HTML content page whose `ruleContent.title` script throws. The selected content stage catches the title error and completes with the incoming TOC chapter name and the readable body. |
+| `json-title-error-body-retained` | `four-stage` | The same throwing title script over a JSON source using simple ASCII property reads. |
+| `html-title-saved-refresh` | `four-stage-refresh` | Two non-volume chapters seeded with distinct raw variable text through the reference DAO; the first chapter's content is saved with `needSave=true`, then a real `getChapterListAwait` refresh runs and the refreshed list is published through the reference DAO insert `BookInfoViewModel` uses. |
+| `json-title-saved-refresh` | `four-stage-refresh` | The same saved-row and refresh sequence over a JSON source using simple ASCII property reads. |
+
+The `four-stage-refresh` terminal is the only one that carries
+`titleLifecycle`, and it is the only one whose operation span has five entries
+(`search`, `bookInfo`, `tableOfContents`, `content`, `tableOfContents` again).
+The old `four-stage` terminal keeps exactly four operations, and a record that
+carries `titleLifecycle` under any other terminal is refused.
+
+`titleLifecycle` carries the four ordered phases `beforeContent`,
+`storedAfterContent`, `refreshedChapters` and `storedAfterRefresh`, each an
+ordered list of `{index:int, title:string, variable:string|null}` rows read from
+the real chapter objects or the reference chapter DAO — never copied from the
+seed or from an in-memory title assignment. It also carries `writeContainment`
+(the resolved `BookHelp.cachePath` and database path, both proven inside the
+owner-bound scratch root before the first save), `contentFiles` (the chapter
+files the save actually wrote), and the `tocCountWords` preference state with
+its restore. A missing field is named before the extra-field check, so a missing
+`variable` is never reported as a shape error, and null stays distinct from
+missing.
+
+The saved pair re-reads its own table of contents, so the same path appears
+twice in the declared sequence. The replay server serves a path's declared
+responses in declaration order only when a corpus declares more than one for
+that method and path; a corpus with one response per path keeps the original
+single answer, so every earlier corpus is unchanged.
+
+The corpus pins the reached `BookHelp.kt`, `BookChapterDao.kt`, `AppConfig.kt`
+and `ContextExtensions.kt` blobs in addition to the existing reached
+dependencies, because the saved-row path reaches them.
+
+```text
+pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build> \
+  -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json
+python tool/result_field_oracle/capture.py --preflight-only \
+  --fixture tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json \
+  --apk <build>/field-oracle.apk --target-apk <approved-reference-apk> \
+  --frozen-source <a7-checkout> --java-home <jdk17> --android-sdk <sdk> --output <fresh-preflight>
+```
+
+The lifecycle cases invoke the reference `WebBook` entry points and the
+reference chapter DAO directly. They are not a driven native reader UI and they
+publish no reader screen. The product side of this corpus is not implemented
+yet, so a public comparison of it is expected to stop at the missing product
+`titleLifecycle` until the approved reader/shelf/store slice lands.
+
 ## Destination side
 
 ```
@@ -333,6 +389,8 @@ Named, not hidden:
   not a rule that yields blank.
 - 10000/10001 word-count boundaries and negative or zero values.
 - The frozen chapter-persistence side effect of a non-blank `ruleContent.title`
-  (`getContentAwait` runs with `needSave=false`).
+  for the FIELDS-01 corpus (`getContentAwait` runs with `needSave=false` there).
+  The separate `reader-title-lifecycle-fixtures-selected.json` corpus observes
+  that side effect with `needSave=true` and reads the stored rows back.
 - No cookie, pagination, redirect, non-2xx, POST, WebView, XPath, rule-level
   JavaScript or replace-rule row: those belong to #15, #2, #11, #22 and #17.

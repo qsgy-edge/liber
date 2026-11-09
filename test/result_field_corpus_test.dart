@@ -163,6 +163,99 @@ void main() {
     },
   );
 
+  test('title lifecycle corpus: four cases, eighteen declared GETs', () {
+    // Two ordinary title-error cases and two saved-name/refresh cases. The
+    // saved pair re-reads its table of contents, so the same path appears
+    // twice in the declared sequence and the replay serves the declared
+    // responses in order.
+    final corpus = loadResultFieldFixture(
+      'tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json',
+    );
+    expect(corpus['fixtureId'], 'FIELDS-02');
+    expect(corpus['corpusVersion'], 1);
+    expect(
+      corpus['baselineCommit'],
+      'a7d37f1707a70a459ad708f4fe79341d1e42d716',
+    );
+    expect((corpus['target'] as Map)['package'], 'com.legado.app.debug');
+    expect(
+      (corpus['target'] as Map)['apkSha256'],
+      '593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5',
+    );
+    final cases = (corpus['cases'] as List).cast<Map>();
+    expect(
+      [for (final entry in cases) entry['id']],
+      [
+        'html-title-error-body-retained',
+        'json-title-error-body-retained',
+        'html-title-saved-refresh',
+        'json-title-saved-refresh',
+      ],
+    );
+    expect(
+      [for (final entry in cases) entry['terminal']],
+      ['four-stage', 'four-stage', 'four-stage-refresh', 'four-stage-refresh'],
+    );
+    final titles = [
+      for (final entry in cases)
+        ((entry['source'] as Map)['ruleContent'] as Map)['title'],
+    ];
+    expect(titles[0], '@js: throw new Error("title-probe")');
+    expect(titles[1], '@js: throw new Error("title-probe")');
+    expect(titles[2], '.chapter-title@text');
+    expect(titles[3], r'$.title');
+    expect(corpus['expectedRequests'], hasLength(18));
+    expect(corpus['responses'], hasLength(18));
+    expect(
+      [
+        for (final request in (corpus['expectedRequests'] as List).cast<Map>())
+          '${request['method']} ${request['path']}',
+      ],
+      [
+        'GET /html-title-error/search',
+        'GET /html-title-error/book/1',
+        'GET /html-title-error/toc/1',
+        'GET /html-title-error/c/1',
+        'GET /json-title-error/search',
+        'GET /json-title-error/book/1',
+        'GET /json-title-error/toc/1',
+        'GET /json-title-error/c/1',
+        'GET /html-title-saved/search',
+        'GET /html-title-saved/book/1',
+        'GET /html-title-saved/toc/1',
+        'GET /html-title-saved/c/1',
+        'GET /html-title-saved/toc/1',
+        'GET /json-title-saved/search',
+        'GET /json-title-saved/book/1',
+        'GET /json-title-saved/toc/1',
+        'GET /json-title-saved/c/1',
+        'GET /json-title-saved/toc/1',
+      ],
+    );
+    final lifecycle = corpus['titleLifecycle'] as Map;
+    expect(lifecycle['observingTerminal'], 'four-stage-refresh');
+    expect(lifecycle['seedVariables'], ['toc-a', 'toc-b']);
+    expect(lifecycle['phases'], [
+      'beforeContent',
+      'storedAfterContent',
+      'refreshedChapters',
+      'storedAfterRefresh',
+    ]);
+    expect(lifecycle['tocCountWordsPreference'], 'tocCountWords');
+    expect(
+      [
+        for (final source in (corpus['frozenSources'] as List).cast<Map>())
+          source['path'],
+      ],
+      containsAll(<String>[
+        'app/src/main/java/io/legado/app/help/book/BookHelp.kt',
+        'app/src/main/java/io/legado/app/data/dao/BookChapterDao.kt',
+        'app/src/main/java/io/legado/app/help/config/AppConfig.kt',
+        'app/src/main/java/io/legado/app/utils/ContextExtensions.kt',
+      ]),
+    );
+  });
+
   test('controlled corpus FIELDS-01: five cases, declared requests', () async {
     final result = await runResultFieldCorpus(
       fixture: loadResultFieldFixture(),

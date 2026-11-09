@@ -32,6 +32,12 @@ TARGET_PACKAGE = 'io.legado.app.debug'
 REPORT_REMOTE = '/sdcard/Android/data/io.legado.app.debug/files/field-oracle.json'
 FIELDS_01 = 'FIELDS-01'
 FIELDS_02 = 'FIELDS-02'
+# The one terminal whose case also saves a chapter and refreshes the TOC.
+TITLE_LIFECYCLE_TERMINAL = 'four-stage-refresh'
+# The four ordered phases a title-lifecycle case observes.
+TITLE_LIFECYCLE_PHASES = ('beforeContent', 'storedAfterContent', 'refreshedChapters',
+                          'storedAfterRefresh')
+TITLE_LIFECYCLE_CHAPTERS = 2
 SELECTED_BASELINE = 'a7d37f1707a70a459ad708f4fe79341d1e42d716'
 SELECTED_CORPUS_SHA256 = '049b46bbd98b9367516f923fc052d9d454057d99bd6875a89b88ce6fae09d500'
 SELECTED_CHAPTER_CORPUS_SHA256 = (
@@ -41,11 +47,13 @@ SELECTED_CHAPTER_CORPUS_SHA256 = (
 )
 SELECTED_READER_CORPUS_SHA256 = '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0'
 SELECTED_JSON_REPLACE_CORPUS_SHA256 = '0f87c6c775ff54164bc11a9a30efaa48e5155def31c37e9b7eb8e721bd776be9'
+SELECTED_TITLE_LIFECYCLE_CORPUS_SHA256 = 'c2fe9deaadffae33ac0f8b22a8ac7f1a10ed323ce056fdbc0f4c13d16089090d'
 SELECTED_CORPUS_SHA256S = (
     SELECTED_CORPUS_SHA256,
     *SELECTED_CHAPTER_CORPUS_SHA256,
     SELECTED_READER_CORPUS_SHA256,
     SELECTED_JSON_REPLACE_CORPUS_SHA256,
+    SELECTED_TITLE_LIFECYCLE_CORPUS_SHA256,
 )
 SELECTED_SIGNER = '954abf2c4e9528b2226457d598e2ff9d1b608f83ac00c52ad66e023d61b2f2ad'
 SELECTED_TARGET = {
@@ -166,7 +174,8 @@ def _admit_selected_shape(fixture, label):
         if not isinstance(case.get('source'), dict):
             raise ValueError(case_label + '.source must be an object')
         terminal = case['terminal'] if 'terminal' in case else 'four-stage'
-        if not isinstance(terminal, str) or terminal not in ('four-stage', 'search-empty'):
+        if not isinstance(terminal, str) or terminal not in (
+                'four-stage', 'search-empty', TITLE_LIFECYCLE_TERMINAL):
             raise ValueError(case_label + '.terminal is unsupported')
     return fixture
 
@@ -812,6 +821,7 @@ def _admit_native_case(case, declared, label):
         chapter = _required_map(case, 'chapter', label)
         _required_string(chapter, 'title', label + '.chapter')
         _required_string(chapter, 'text', label + '.chapter')
+    _admit_title_lifecycle(case, terminal, label)
     probes = _required_map(case, 'sourceProbes', label)
     for field in ['vipProbe', 'payProbe']:
         _nullable_string(probes, field, label + '.sourceProbes')
@@ -820,6 +830,64 @@ def _admit_native_case(case, declared, label):
         raise ValueError(label + ' has no per-case request slice')
     for index, request in enumerate(requests):
         _admit_native_request(request, f'{label}.requests[{index}]')
+
+
+def _admit_title_lifecycle(case, terminal, label):
+    """The declared saved-name/refresh observation, present only where declared.
+
+    A case whose terminal is not the lifecycle terminal must not carry the
+    field at all, so an old or non-observing case cannot smuggle one in.
+    """
+    if terminal != TITLE_LIFECYCLE_TERMINAL:
+        if 'titleLifecycle' in case:
+            raise ValueError(label + '.titleLifecycle is not declared by its terminal')
+        return
+    lifecycle = _required_map(case, 'titleLifecycle', label)
+    containment = _required_map(lifecycle, 'writeContainment', label + '.titleLifecycle')
+    for field in ['appCtxClass', 'cachePath', 'scratchRoot', 'databasePath']:
+        _required_string(containment, field, label + '.titleLifecycle.writeContainment')
+    for field in ['cachePathWithinScratch', 'databasePathWithinScratch']:
+        if _required_bool(containment, field,
+                          label + '.titleLifecycle.writeContainment') is not True:
+            raise ValueError(label + '.titleLifecycle.writeContainment.' + field
+                             + ' must be true')
+    files = _required_list(lifecycle, 'contentFiles', label + '.titleLifecycle')
+    if not files:
+        raise ValueError(label + '.titleLifecycle.contentFiles must record the written file')
+    for index, name in enumerate(files):
+        if not isinstance(name, str) or not name:
+            raise ValueError(label + '.titleLifecycle.contentFiles[' + str(index)
+                             + '] must be a nonempty string')
+    preference_label = label + '.titleLifecycle.tocCountWords'
+    preference = _required_map(lifecycle, 'tocCountWords', label + '.titleLifecycle')
+    if _required_string(preference, 'name', preference_label) != 'tocCountWords':
+        raise ValueError(preference_label + '.name differs')
+    for field in ['previous', 'applied', 'observed']:
+        _required_bool(preference, field, preference_label)
+    if preference['applied'] is not True or preference['observed'] is not True:
+        raise ValueError(preference_label + ' was not enabled')
+    if _required_bool(lifecycle, 'tocCountWordsRestored', label + '.titleLifecycle') is not True:
+        raise ValueError(label + '.titleLifecycle.tocCountWords was not restored')
+    for phase in TITLE_LIFECYCLE_PHASES:
+        rows = _required_list(lifecycle, phase, label + '.titleLifecycle')
+        if len(rows) != TITLE_LIFECYCLE_CHAPTERS:
+            raise ValueError(label + '.titleLifecycle.' + phase + ' row count differs')
+        for index, row in enumerate(rows):
+            row_label = label + '.titleLifecycle.' + phase + '[' + str(index) + ']'
+            if not isinstance(row, dict):
+                raise ValueError(row_label + ' must be an object')
+            # A missing field is named before the extra-field check, so a
+            # missing `variable` is never reported as some other shape error.
+            for field in ('index', 'title', 'variable'):
+                if field not in row:
+                    raise ValueError(row_label + '.' + field + ' is missing')
+            if set(row) != {'index', 'title', 'variable'}:
+                raise ValueError(row_label + ' fields differ')
+            if _require_int(row.get('index'), row_label + '.index') != index:
+                raise ValueError(row_label + '.index is not its ordered position')
+            if not _required_string(row, 'title', row_label):
+                raise ValueError(row_label + '.title must not be empty')
+            _nullable_string(row, 'variable', row_label)
 
 
 def _admit_provenance(manifest, fixture_bytes, fixture, isolation):
@@ -898,8 +966,15 @@ def _admit_native_operations(cases, requests, trace, fixture):
     for case in cases:
         label = 'report.cases[' + str(case.get('id')) + ']'
         terminal = case.get('terminal')
-        expected = ['search'] if terminal == 'search-empty' else [
-            'search', 'bookInfo', 'tableOfContents', 'content']
+        if terminal == 'search-empty':
+            expected = ['search']
+        elif terminal == TITLE_LIFECYCLE_TERMINAL:
+            # The saved-name case runs the ordinary four stages and then a real
+            # table-of-contents refresh, which is the same producer stage again.
+            expected = ['search', 'bookInfo', 'tableOfContents', 'content',
+                        'tableOfContents']
+        else:
+            expected = ['search', 'bookInfo', 'tableOfContents', 'content']
         operations = _required_list(case, 'operations', label)
         if len(operations) != len(expected):
             raise ValueError(label + ' operation set differs for its terminal')

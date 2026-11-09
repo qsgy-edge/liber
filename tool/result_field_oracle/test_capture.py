@@ -160,6 +160,22 @@ class SelectedCorpusTest(unittest.TestCase):
                 capture.selected_preflight(Path('unused.apk'), target, altered, Path('source'), Path('sdk'), Path('java'))
             run.assert_not_called()
 
+    def test_selected_preflight_accepts_title_lifecycle_corpus(self):
+        from unittest.mock import patch
+        target = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/artifacts/legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        here = Path(__file__).resolve().parent
+        fixture = here / 'reader-title-lifecycle-fixtures-selected.json'
+        with patch.object(capture.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['probe'], 120)) as run:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                capture.selected_preflight(Path('unused.apk'), target, fixture, Path('source'), Path('sdk'), Path('java'))
+            self.assertEqual(run.call_count, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            altered = Path(directory) / 'altered.json'
+            altered.write_bytes(fixture.read_bytes() + b' ')
+            with patch.object(capture.subprocess, 'run') as run, self.assertRaisesRegex(ValueError, 'corpus raw bytes'):
+                capture.selected_preflight(Path('unused.apk'), target, altered, Path('source'), Path('sdk'), Path('java'))
+            run.assert_not_called()
+
     def test_selected_chapter_raw_query_uses_declared_wire_bytes(self):
         self.assertEqual(capture._canonical_raw_query({'query': {'q': '��'}, 'rawQuery': 'q=%D6%D0'}), 'q=%D6%D0')
         self.assertEqual(capture._canonical_raw_query({'query': {'q': '中'}}), 'q=%E4%B8%AD')
@@ -497,6 +513,146 @@ def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source
                        'referenceDex': str(commands['reference-dex'][1]),
                        'harnessDex': str(commands['dex'][1])},
             'referenceSources': references, 'commands': receipts}
+
+
+class TitleLifecycleAdmissionTest(unittest.TestCase):
+    """The declared saved-name/refresh observation's strict admission.
+
+    These are mechanism vectors over the admission function, not native
+    results: no device, report or golden is involved.
+    """
+
+    ORIGIN = 'http://127.0.0.1:18734'
+
+    def _lifecycle(self):
+        rows = [{'index': 0, 'title': 'CHAPTER ONE', 'variable': 'toc-a'},
+                {'index': 1, 'title': 'CHAPTER TWO', 'variable': 'toc-b'}]
+        return {
+            'writeContainment': {
+                'appCtxClass': 'io.liber.oracle.nested.GuardedReaderApplication',
+                'cachePath': '/data/user/0/com.legado.app.debug/cache/liber-fields-02/'
+                             'external-files/book_cache',
+                'scratchRoot': '/data/user/0/com.legado.app.debug/cache/liber-fields-02',
+                'databasePath': '/data/user/0/com.legado.app.debug/cache/liber-fields-02/'
+                                'databases/legado.db',
+                'cachePathWithinScratch': True,
+                'databasePathWithinScratch': True,
+            },
+            'contentFiles': ['00000-0123456789abcdef.nb'],
+            'tocCountWords': {'name': 'tocCountWords', 'previous': True,
+                              'applied': True, 'observed': True},
+            'tocCountWordsRestored': True,
+            'beforeContent': [dict(row) for row in rows],
+            'storedAfterContent': [dict(row) for row in rows],
+            'refreshedChapters': [dict(row) for row in rows],
+            'storedAfterRefresh': [dict(row) for row in rows],
+        }
+
+    def _admit(self, lifecycle, terminal=None):
+        case = {'titleLifecycle': lifecycle}
+        capture._admit_title_lifecycle(
+            case, terminal or capture.TITLE_LIFECYCLE_TERMINAL, 'case')
+
+    def _rejected(self, lifecycle, pattern, terminal=None):
+        with self.assertRaisesRegex(ValueError, pattern):
+            self._admit(lifecycle, terminal)
+
+    def test_complete_lifecycle_observation_is_admitted(self):
+        self._admit(self._lifecycle())
+
+    def test_a_non_observing_terminal_must_not_carry_the_field(self):
+        self._rejected(self._lifecycle(), 'not declared by its terminal',
+                       terminal='four-stage')
+        self._rejected(self._lifecycle(), 'not declared by its terminal',
+                       terminal='search-empty')
+
+    def test_missing_lifecycle_on_an_observing_terminal_is_refused(self):
+        with self.assertRaisesRegex(ValueError, 'titleLifecycle is missing'):
+            capture._admit_title_lifecycle({}, capture.TITLE_LIFECYCLE_TERMINAL, 'case')
+
+    def test_containment_must_be_true_and_typed(self):
+        for field in ('cachePathWithinScratch', 'databasePathWithinScratch'):
+            lifecycle = self._lifecycle()
+            lifecycle['writeContainment'][field] = False
+            self._rejected(lifecycle, field + ' must be true')
+            lifecycle = self._lifecycle()
+            lifecycle['writeContainment'][field] = 'true'
+            self._rejected(lifecycle, field + ' must be boolean')
+
+    def test_a_write_file_and_an_enabled_preference_are_required(self):
+        lifecycle = self._lifecycle()
+        lifecycle['contentFiles'] = []
+        self._rejected(lifecycle, 'contentFiles must record the written file')
+        lifecycle = self._lifecycle()
+        lifecycle['tocCountWords']['applied'] = False
+        self._rejected(lifecycle, 'was not enabled')
+        lifecycle = self._lifecycle()
+        lifecycle['tocCountWordsRestored'] = False
+        self._rejected(lifecycle, 'was not restored')
+
+    def test_row_count_and_order_are_exact(self):
+        lifecycle = self._lifecycle()
+        lifecycle['refreshedChapters'] = lifecycle['refreshedChapters'][:1]
+        self._rejected(lifecycle, 'refreshedChapters row count differs')
+        lifecycle = self._lifecycle()
+        lifecycle['storedAfterRefresh'][0]['index'] = 1
+        lifecycle['storedAfterRefresh'][1]['index'] = 0
+        self._rejected(lifecycle, 'index is not its ordered position')
+
+    def test_null_and_missing_variable_stay_distinct(self):
+        lifecycle = self._lifecycle()
+        lifecycle['refreshedChapters'][0]['variable'] = None
+        self._admit(lifecycle)
+        lifecycle = self._lifecycle()
+        del lifecycle['refreshedChapters'][0]['variable']
+        self._rejected(lifecycle, 'variable is missing')
+        lifecycle = self._lifecycle()
+        lifecycle['refreshedChapters'][0]['variable'] = 7
+        self._rejected(lifecycle, 'variable must be a string or null')
+
+    def test_an_extra_row_field_is_refused(self):
+        lifecycle = self._lifecycle()
+        lifecycle['beforeContent'][0]['wordCount'] = '1'
+        self._rejected(lifecycle, 'fields differ')
+
+    def _operations_case(self, terminal, names):
+        requests = []
+        trace = []
+        operations = []
+        for index, name in enumerate(names):
+            path = '/' + name + '/' + str(index)
+            requests.append({'method': 'GET', 'path': path, 'rawQuery': '',
+                             'stage': name})
+            trace.append({'stage': name, 'path': self.ORIGIN + path})
+            operations.append({'name': name, 'outcome': 'completed',
+                               'requestStart': index, 'requestEnd': index + 1,
+                               'traceStart': index, 'traceEnd': index + 1})
+        case = {'id': 'c', 'terminal': terminal, 'operations': operations,
+                'requests': list(requests)}
+        return case, requests, trace
+
+    def test_the_extra_refresh_span_is_admitted_only_for_its_terminal(self):
+        names = ['search', 'bookInfo', 'tableOfContents', 'content',
+                 'tableOfContents']
+        case, requests, trace = self._operations_case(
+            capture.TITLE_LIFECYCLE_TERMINAL, names)
+        capture._admit_native_operations([case], requests, trace,
+                                         {'origin': self.ORIGIN})
+        case, requests, trace = self._operations_case('four-stage', names)
+        with self.assertRaisesRegex(ValueError, 'operation set differs'):
+            capture._admit_native_operations([case], requests, trace,
+                                             {'origin': self.ORIGIN})
+
+    def test_the_old_four_stage_span_stays_exactly_four(self):
+        names = ['search', 'bookInfo', 'tableOfContents', 'content']
+        case, requests, trace = self._operations_case('four-stage', names)
+        capture._admit_native_operations([case], requests, trace,
+                                         {'origin': self.ORIGIN})
+        case, requests, trace = self._operations_case(
+            capture.TITLE_LIFECYCLE_TERMINAL, names)
+        with self.assertRaisesRegex(ValueError, 'operation set differs'):
+            capture._admit_native_operations([case], requests, trace,
+                                             {'origin': self.ORIGIN})
 
 
 class SelectedReceiptTest(unittest.TestCase):
