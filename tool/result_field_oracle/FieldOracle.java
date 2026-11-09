@@ -83,6 +83,8 @@ public final class FieldOracle extends Instrumentation {
     /** The one terminal whose case also saves a chapter and refreshes the TOC. */
     private static final String TITLE_LIFECYCLE_TERMINAL = "four-stage-refresh";
     private static final String TOC_COUNT_WORDS = "tocCountWords";
+    /** The reference save event tag (EventBus.kt:32). */
+    private static final String SAVE_CONTENT_TAG = "saveContent";
     /** Distinct raw variable text seeded on the two lifecycle chapters. */
     private static final String[] SEED_VARIABLES = {"toc-a", "toc-b"};
     private static final int LIFECYCLE_CHAPTERS = 2;
@@ -488,6 +490,11 @@ public final class FieldOracle extends Instrumentation {
             throw new IllegalStateException("selected installed target differs");
         }
         scratch.bind("seed", identity);
+        // The application and storage ownership proof runs here, before the first
+        // search can initialise BookHelp (BookList formats the book name through
+        // it), so this is the real pre-initialisation boundary rather than a late
+        // check inside a later case.
+        JSONObject earlyContainment = earlyContainment(identity);
         Class<?> appCtx = getTargetContext().getClassLoader()
             .loadClass("splitties.init.AppCtxKt");
         Object app = appCtx.getMethod("getAppCtx").invoke(null);
@@ -496,11 +503,6 @@ public final class FieldOracle extends Instrumentation {
         boolean databaseRouted = ((android.content.Context) app).getDatabasePath("legado.db")
             .equals(scratch.getDatabasePath("legado.db"));
         boolean deviceProtected = ((android.content.Context) app).isDeviceProtectedStorage();
-        if (!filesRouted || !databaseRouted || deviceProtected
-                || (selectedReference && !"io.liber.oracle.nested.GuardedReaderApplication"
-                    .equals(app.getClass().getName()))) {
-            throw new IllegalStateException("target app did not route through the scratch context");
-        }
         File dataDir = new File(getTargetContext().getApplicationInfo().dataDir, "shared_prefs");
         JSONObject probe = scratch.seedProbePreferences(
             (android.content.Context) app, dataDir, "probe");
@@ -528,7 +530,104 @@ public final class FieldOracle extends Instrumentation {
             .put("scratchRoot", scratch.root.getAbsolutePath())
             .put("rootExistedAtStart", scratch.rootExistedAtStart())
             .put("preferencesPrefix", scratch.preferencesPrefix())
-            .put("preferenceProbe", probe);
+            .put("preferenceProbe", probe)
+            .put("earlyContainment", earlyContainment);
+    }
+
+    /** Whether this corpus declares the saved-content lifecycle observation. */
+    private boolean lifecycleCorpus() {
+        return corpus != null && corpus.optJSONObject("titleLifecycle") != null;
+    }
+
+    /**
+     * Actual application and storage ownership, proven by object identity and
+     * canonical paths before any reference class can capture the write root.
+     *
+     * <p>{@code splitties.appCtx} and the ActivityThread application that
+     * {@code AppUtils.getApp()} would return must be the same object, that
+     * object must be this guard, and its external-files/fallback and database
+     * directories must be the bound scratch directories. The guard is enabled
+     * before {@code AppUtils.getApp()} is called once, so its lifecycle-callback
+     * registration is tracked rather than unguarded.
+     */
+    private JSONObject earlyContainment(JSONObject identity) throws Exception {
+        ClassLoader loader = getTargetContext().getClassLoader();
+        Object appCtxValue = loader.loadClass("splitties.init.AppCtxKt")
+            .getMethod("getAppCtx").invoke(null);
+        Object thread = Class.forName("android.app.ActivityThread")
+            .getMethod("currentActivityThread").invoke(null);
+        Object threadApp = thread.getClass().getMethod("getApplication").invoke(thread);
+        android.content.Context app = (android.content.Context) appCtxValue;
+        boolean sameObject = appCtxValue == threadApp;
+        boolean guarded = !selectedReference || "io.liber.oracle.nested.GuardedReaderApplication"
+            .equals(appCtxValue.getClass().getName());
+        File external = app.getExternalFilesDir(null);
+        File externalOrFiles = external != null ? external : app.getFilesDir();
+        String canonicalExternal = externalOrFiles.getCanonicalPath();
+        String canonicalFiles = app.getFilesDir().getCanonicalPath();
+        String canonicalDatabase = app.getDatabasePath("legado.db").getCanonicalPath();
+        String root = scratch.root.getCanonicalPath();
+        boolean externalRouted = within(canonicalExternal, root)
+            && canonicalExternal.equals(scratch.getExternalFilesDir(null).getCanonicalPath());
+        boolean filesRouted = canonicalFiles.equals(scratch.getFilesDir().getCanonicalPath());
+        boolean databaseRouted = canonicalDatabase
+            .equals(scratch.getDatabasePath("legado.db").getCanonicalPath());
+        JSONObject containment = new JSONObject()
+            .put("appCtxClass", appCtxValue.getClass().getName())
+            .put("activityThreadAppClass", threadApp == null
+                ? JSONObject.NULL : threadApp.getClass().getName())
+            .put("sameApplicationObject", sameObject)
+            .put("guardedApplication", guarded)
+            .put("externalFilesPath", canonicalExternal)
+            .put("filesPath", canonicalFiles)
+            .put("databasePath", canonicalDatabase)
+            .put("scratchRoot", root)
+            .put("externalFilesRouted", externalRouted)
+            .put("filesRouted", filesRouted)
+            .put("databaseRouted", databaseRouted);
+        if (!sameObject || !guarded || !externalRouted || !filesRouted || !databaseRouted) {
+            throw new IllegalStateException(
+                "the target application or its storage is not this bound scratch: " + containment);
+        }
+        if (lifecycleCorpus()) {
+            Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+            bridge.getMethod("beginCapture").invoke(null);
+            // Called once, with the guard already active, so the lifecycle
+            // registration it performs is tracked and removable.
+            Object appUtilsApp = loader.loadClass("com.jeremyliao.liveeventbus.utils.AppUtils")
+                .getMethod("getApp").invoke(null);
+            containment.put("appUtilsApplicationClass", appUtilsApp == null
+                    ? JSONObject.NULL : appUtilsApp.getClass().getName())
+                .put("appUtilsSameApplication", appUtilsApp == appCtxValue);
+            if (appUtilsApp != appCtxValue) {
+                throw new IllegalStateException(
+                    "AppUtils resolves a different application: " + containment);
+            }
+            // Only now, after ownership is proven, is BookHelp allowed to
+            // initialise and capture its write root.
+            Class<?> bookHelp = loader.loadClass("io.legado.app.help.book.BookHelp");
+            String cachePath = (String) bookHelp.getMethod("getCachePath")
+                .invoke(bookHelp.getField("INSTANCE").get(null));
+            String canonicalCache = new File(cachePath).getCanonicalPath();
+            containment.put("bookHelpCachePath", canonicalCache)
+                .put("bookHelpCacheWithinScratch", within(canonicalCache, root));
+            if (!within(canonicalCache, root)) {
+                throw new IllegalStateException(
+                    "the BookHelp write root escapes the owned scratch: " + containment);
+            }
+            Object dao = selectedDatabase.getClass().getMethod("getOpenHelper")
+                .invoke(selectedDatabase);
+            Object database = dao.getClass().getMethod("getWritableDatabase").invoke(dao);
+            String roomPath = new File((String) database.getClass().getMethod("getPath")
+                .invoke(database)).getCanonicalPath();
+            containment.put("roomDatabasePath", roomPath)
+                .put("roomDatabaseWithinScratch", within(roomPath, root));
+            if (!within(roomPath, root)) {
+                throw new IllegalStateException(
+                    "the Room database escapes the owned scratch: " + containment);
+            }
+        }
+        return containment;
     }
 
     /** FIELDS-02 hands the owned scratch/report to the external capture driver. */
@@ -729,15 +828,25 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /**
-     * The declared saved-name/refresh observation: seed the two TOC chapters
-     * with distinct raw variable text through the reference DAO, save the first
-     * chapter's content with {@code needSave=true}, read the stored rows back,
-     * run a real {@code getChapterListAwait} refresh, then publish the refreshed
-     * list through the same DAO insert the reference book-information view model
-     * uses and read the stored rows again.
+     * The declared saved-name/refresh observation.
      *
-     * <p>Every row comes from a real object or DAO read; nothing is copied from
-     * the seed or from an in-memory title assignment.
+     * <p>Setup: the actual parent Book is inserted and read back through the
+     * reference BookDao before any child chapter row, because the reference
+     * chapter table carries a books foreign key and the selected database
+     * enables foreign keys. The two returned chapters then carry distinct raw
+     * variable text and are inserted through the reference chapter DAO.
+     *
+     * <p>Observation: the real {@code getContentAwait(..., needSave=true)}
+     * route runs, its save event is observed on the main looper through the
+     * existing LiveEventBus observable and fenced, the stored rows are read
+     * back, a real {@code getChapterListAwait} refresh runs, the refreshed list
+     * is published through the same DAO insert {@code BookInfoViewModel} uses,
+     * and the stored rows are read again. Every row comes from a real object or
+     * DAO read.
+     *
+     * <p>The four phase arrays are the shared cross-platform observation. The
+     * containment, setup, preference, event-guard and terminal facts are
+     * native producer evidence and are recorded separately.
      */
     private void driveTitleLifecycle(JSONObject observed, ClassLoader loader, Object source,
             Object book, List<?> chapters, Class<?> bookClass, Class<?> chapterClass,
@@ -746,10 +855,27 @@ public final class FieldOracle extends Instrumentation {
             throw new IllegalStateException("title lifecycle needs two TOC chapters");
         }
         JSONObject lifecycle = new JSONObject();
-        // The write root is proven before BookHelp initialises or anything is saved.
-        lifecycle.put("writeContainment", writeContainment(loader));
-
+        JSONObject proof = new JSONObject();
         String bookUrl = str(bookClass, book, "getBookUrl");
+
+        // F9: the actual parent book row, through its own DAO, before any child.
+        Object bookDao = selectedDatabase.getClass().getMethod("getBookDao")
+            .invoke(selectedDatabase);
+        Object bookArray = java.lang.reflect.Array.newInstance(bookClass, 1);
+        java.lang.reflect.Array.set(bookArray, 0, book);
+        bookDao.getClass().getMethod("insertRows", bookArray.getClass())
+            .invoke(bookDao, bookArray);
+        Object storedBook = bookDao.getClass().getMethod("getBook", String.class)
+            .invoke(bookDao, bookUrl);
+        if (storedBook == null
+                || !bookUrl.equals(str(bookClass, storedBook, "getBookUrl"))) {
+            throw new IllegalStateException("the parent book row was not stored");
+        }
+        proof.put("bookParent", new JSONObject()
+            .put("bookUrl", bookUrl)
+            .put("stored", true)
+            .put("readBack", true));
+
         Object dao = selectedDatabase.getClass().getMethod("getBookChapterDao")
             .invoke(selectedDatabase);
         java.lang.reflect.Method setVariable = chapterClass.getMethod("setVariable", String.class);
@@ -758,58 +884,208 @@ public final class FieldOracle extends Instrumentation {
         }
         lifecycle.put("beforeContent", chapterRows(chapterClass, chapters));
         insertChapters(dao, chapters, chapterClass);
+        proof.put("chapterSeed", new JSONObject()
+            .put("rows", chapters.size())
+            .put("inserted", true));
 
-        JSONObject preference = setTocCountWords(loader, true);
-        lifecycle.put("tocCountWords", preference);
-
-        stage.set("content");
-        log("stage content (saved)");
-        int contentRequestStart = requests.length();
-        int contentTraceStart = stageTrace.length();
-        Object text;
+        // F2: the save event is observed on the main looper and fenced.
+        Object saveObserver = observeSaveEvent(loader);
+        JSONObject preference = null;
+        Throwable primaryFailure = null;
         try {
-            text = runSuspend(loader, continuation -> call(webBookClass, webBook,
-                "getContentAwait", 6,
-                new Object[]{source, book, chapters.get(0), null, Boolean.TRUE}, continuation));
-            if (selectedReference && !(text instanceof String)) {
-                throw new IllegalStateException("selected content result is not a string");
+            preference = setTocCountWords(loader, true);
+
+            stage.set("content");
+            log("stage content (saved)");
+            int contentRequestStart = requests.length();
+            int contentTraceStart = stageTrace.length();
+            Object text;
+            try {
+                text = runSuspend(loader, continuation -> call(webBookClass, webBook,
+                    "getContentAwait", 6,
+                    new Object[]{source, book, chapters.get(0), null, Boolean.TRUE},
+                    continuation));
+                if (selectedReference && !(text instanceof String)) {
+                    throw new IllegalStateException("selected content result is not a string");
+                }
+            } catch (Exception error) {
+                recordOperationError(observed, "content", contentRequestStart, contentTraceStart,
+                    error);
+                throw error;
             }
-        } catch (Exception error) {
-            recordOperationError(observed, "content", contentRequestStart, contentTraceStart, error);
-            throw error;
-        }
-        recordOperation(observed, "content", contentRequestStart, contentTraceStart);
-        observed.put("chapter", new JSONObject()
-            .put("title", str(chapterClass, chapters.get(0), "getTitle"))
-            .put("text", text == null ? "" : text.toString()));
-        lifecycle.put("storedAfterContent", storedRows(dao, bookUrl, chapterClass));
-        lifecycle.put("contentFiles", contentFiles(loader, bookClass, book));
+            recordOperation(observed, "content", contentRequestStart, contentTraceStart);
+            observed.put("chapter", new JSONObject()
+                .put("title", str(chapterClass, chapters.get(0), "getTitle"))
+                .put("text", text == null ? "" : text.toString()));
 
-        stage.set("tableOfContents");
-        log("stage tableOfContents (refresh)");
-        int refreshRequestStart = requests.length();
-        int refreshTraceStart = stageTrace.length();
-        List<?> refreshed;
-        try {
-            Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
-                "getChapterListAwait", 5,
-                new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}, continuation));
-            refreshed = unwrapResult(tocResult);
-        } catch (Exception error) {
-            recordOperationError(observed, "tableOfContents", refreshRequestStart, refreshTraceStart, error);
-            throw error;
-        }
-        recordOperation(observed, "tableOfContents", refreshRequestStart, refreshTraceStart);
-        lifecycle.put("refreshedChapters", chapterRows(chapterClass, refreshed));
+            proof.put("saveEvent", completeSaveEvent(loader, saveObserver, bookUrl,
+                str(chapterClass, chapters.get(0), "getUrl")));
+            lifecycle.put("storedAfterContent", storedRows(dao, bookUrl, chapterClass));
+            proof.put("contentFiles", contentFiles(loader, bookClass, book));
 
-        // The reference book-information view model publishes a refreshed list
-        // with exactly this DAO insert (BookInfoViewModel.kt:527-532).
-        insertChapters(dao, refreshed, chapterClass);
-        lifecycle.put("storedAfterRefresh", storedRows(dao, bookUrl, chapterClass));
-        lifecycle.put("tocCountWordsRestored", restoreTocCountWords(loader, preference));
-        observed.put("titleLifecycle", lifecycle);
+            stage.set("tableOfContents");
+            log("stage tableOfContents (refresh)");
+            int refreshRequestStart = requests.length();
+            int refreshTraceStart = stageTrace.length();
+            List<?> refreshed;
+            try {
+                Object tocResult = runSuspend(loader, continuation -> call(webBookClass, webBook,
+                    "getChapterListAwait", 5,
+                    new Object[]{source, book, Boolean.FALSE, Boolean.FALSE}, continuation));
+                refreshed = unwrapResult(tocResult);
+            } catch (Exception error) {
+                recordOperationError(observed, "tableOfContents", refreshRequestStart,
+                    refreshTraceStart, error);
+                throw error;
+            }
+            recordOperation(observed, "tableOfContents", refreshRequestStart, refreshTraceStart);
+            lifecycle.put("refreshedChapters", chapterRows(chapterClass, refreshed));
+
+            // The reference book-information view model publishes a refreshed
+            // list with exactly this DAO insert (BookInfoViewModel.kt:527-532).
+            insertChapters(dao, refreshed, chapterClass);
+            lifecycle.put("storedAfterRefresh", storedRows(dao, bookUrl, chapterClass));
+        } catch (Throwable error) {
+            primaryFailure = error;
+            throw error;
+        } finally {
+            // F6: the preference is restored on every path, including a partial
+            // setup and a later failure, and a failed restore is visible.
+            Throwable restoreFailure = null;
+            try {
+                proof.put("tocCountWords", restoreTocCountWords(loader, preference));
+            } catch (Throwable error) {
+                restoreFailure = error;
+                proof.put("tocCountWordsRestoreError", String.valueOf(error));
+            }
+            try {
+                proof.put("saveObserverRemoved", removeSaveEvent(loader, saveObserver));
+            } catch (Throwable error) {
+                proof.put("saveObserverRemoveError", String.valueOf(error));
+            }
+            try {
+                proof.put("guard", releaseGuard());
+            } catch (Throwable error) {
+                proof.put("guardReleaseError", String.valueOf(error));
+            }
+            observed.put("titleLifecycleProof", proof);
+            observed.put("titleLifecycle", lifecycle);
+            if (restoreFailure != null) {
+                if (primaryFailure != null) {
+                    primaryFailure.addSuppressed(restoreFailure);
+                } else {
+                    throw new IllegalStateException(
+                        "the tocCountWords preference was not restored", restoreFailure);
+                }
+            }
+        }
     }
 
+    /** The reference save event's observable, registered on the main looper. */
+    private Object observeSaveEvent(ClassLoader loader) throws Exception {
+        Class<?> liveEventBus = loader.loadClass("com.jeremyliao.liveeventbus.LiveEventBus");
+        Class<?> pairClass = loader.loadClass("kotlin.Pair");
+        Object observable = liveEventBus.getMethod("get", String.class, Class.class)
+            .invoke(null, SAVE_CONTENT_TAG, pairClass);
+        Class<?> observerClass = loader.loadClass("androidx.lifecycle.Observer");
+        final JSONObject received = new JSONObject();
+        Object observer = java.lang.reflect.Proxy.newProxyInstance(loader,
+            new Class<?>[]{observerClass}, (proxy, method, args) -> {
+                switch (method.getName()) {
+                    case "onChanged":
+                        synchronized (received) {
+                            received.put("delivered", true);
+                            Object value = args == null || args.length == 0 ? null : args[0];
+                            if (value != null) {
+                                Object first = value.getClass().getMethod("getFirst").invoke(value);
+                                Object second = value.getClass().getMethod("getSecond").invoke(value);
+                                received.put("bookUrl", first == null ? JSONObject.NULL
+                                        : first.getClass().getMethod("getBookUrl").invoke(first))
+                                    .put("chapterUrl", second == null ? JSONObject.NULL
+                                        : second.getClass().getMethod("getUrl").invoke(second));
+                            }
+                        }
+                        return null;
+                    case "toString":
+                        return "fields-save-observer";
+                    case "hashCode":
+                        return System.identityHashCode(proxy);
+                    case "equals":
+                        return args != null && args.length == 1 && proxy == args[0];
+                    default:
+                        return null;
+                }
+            });
+        observable.getClass().getMethod("observeForever", observerClass)
+            .invoke(observable, observer);
+        return new Object[]{observable, observer, received};
+    }
+
+    /**
+     * Fences the main looper and reads what the save event delivered. The fence
+     * is the measured completion prerequisite: everything the save posted before
+     * it has run when it returns.
+     */
+    private JSONObject completeSaveEvent(ClassLoader loader, Object handle, String bookUrl,
+            String chapterUrl) throws Exception {
+        Object[] parts = (Object[]) handle;
+        JSONObject fence = fenceMainLooper(loader);
+        JSONObject received;
+        synchronized (parts[2]) {
+            received = new JSONObject(parts[2].toString());
+        }
+        JSONObject event = new JSONObject()
+            .put("tag", SAVE_CONTENT_TAG)
+            .put("fence", fence)
+            .put("delivered", received.optBoolean("delivered", false))
+            .put("bookUrl", received.opt("bookUrl") == null ? JSONObject.NULL
+                : received.opt("bookUrl"))
+            .put("chapterUrl", received.opt("chapterUrl") == null ? JSONObject.NULL
+                : received.opt("chapterUrl"))
+            .put("correlates", bookUrl.equals(received.opt("bookUrl"))
+                && chapterUrl.equals(received.opt("chapterUrl")));
+        if (!event.getBoolean("delivered") || !event.getBoolean("correlates")) {
+            throw new IllegalStateException(
+                "the saved-content event did not complete for this chapter: " + event);
+        }
+        return event;
+    }
+
+    private boolean removeSaveEvent(ClassLoader loader, Object handle) throws Exception {
+        Object[] parts = (Object[]) handle;
+        Class<?> observerClass = loader.loadClass("androidx.lifecycle.Observer");
+        parts[0].getClass().getMethod("removeObserver", observerClass)
+            .invoke(parts[0], parts[1]);
+        return true;
+    }
+
+    private JSONObject fenceMainLooper(ClassLoader loader) throws Exception {
+        Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+        return (JSONObject) bridge.getMethod("fenceMainLooper", long.class)
+            .invoke(null, 5000L);
+    }
+
+    /** Removes the guard's owned registrations and fences the main looper again. */
+    private JSONObject releaseGuard() throws Exception {
+        Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+        JSONObject released = (JSONObject) bridge.getMethod("releaseOwnedRegistrations")
+            .invoke(null);
+        JSONObject fence = fenceMainLooper(getTargetContext().getClassLoader());
+        JSONObject receipt = (JSONObject) bridge.getMethod("captureReceipt").invoke(null);
+        bridge.getMethod("endCapture").invoke(null);
+        JSONObject guard = new JSONObject()
+            .put("release", released)
+            .put("fence", fence)
+            .put("receipt", receipt);
+        if (receipt.optInt("blockedDeliveries", 0) != 0) {
+            throw new IllegalStateException(
+                "an external IPC attempt reached the guarded receiver: " + guard);
+        }
+        if (!fence.optBoolean("completed", false)) {
+            throw new IllegalStateException("the main-looper fence did not complete: " + guard);
+        }
+        return guard;
+    }
     /**
      * The resolved content write root and database path, proven inside this
      * attempt's owned scratch root before the first save. Reading
@@ -820,9 +1096,11 @@ public final class FieldOracle extends Instrumentation {
         Object app = loader.loadClass("splitties.init.AppCtxKt")
             .getMethod("getAppCtx").invoke(null);
         Class<?> bookHelp = loader.loadClass("io.legado.app.help.book.BookHelp");
-        Object cachePath = bookHelp.getMethod("getCachePath")
+        // The selected BookHelp.getCachePath() descriptor is ()Ljava/lang/String;
+        // (BookHelp.kt:138 -> FileUtils.getPath, a String), not a File.
+        String cacheText = (String) bookHelp.getMethod("getCachePath")
             .invoke(bookHelp.getField("INSTANCE").get(null));
-        String cache = ((File) cachePath).getCanonicalPath();
+        String cache = new File(cacheText).getCanonicalPath();
         String root = scratch.root.getCanonicalPath();
         Object helper = selectedDatabase.getClass().getMethod("getOpenHelper")
             .invoke(selectedDatabase);
@@ -854,10 +1132,10 @@ public final class FieldOracle extends Instrumentation {
     private JSONArray contentFiles(ClassLoader loader, Class<?> bookClass, Object book)
             throws Exception {
         Class<?> bookHelp = loader.loadClass("io.legado.app.help.book.BookHelp");
-        Object cachePath = bookHelp.getMethod("getCachePath")
+        String cacheText = (String) bookHelp.getMethod("getCachePath")
             .invoke(bookHelp.getField("INSTANCE").get(null));
         String folder = (String) bookClass.getMethod("getFolderName").invoke(book);
-        File[] files = new File((File) cachePath, folder).listFiles();
+        File[] files = new File(new File(cacheText), folder).listFiles();
         JSONArray names = new JSONArray();
         if (files != null) {
             java.util.Arrays.sort(files);
@@ -905,21 +1183,49 @@ public final class FieldOracle extends Instrumentation {
      */
     private JSONObject setTocCountWords(ClassLoader loader, boolean value) throws Exception {
         android.content.SharedPreferences preferences = defaultPreferences(loader);
+        // F6: presence and value are both part of the prior state, so an
+        // originally absent key is removed again instead of being written back
+        // as an explicit value.
+        boolean present = preferences.contains(TOC_COUNT_WORDS);
         boolean previous = preferences.getBoolean(TOC_COUNT_WORDS, true);
         boolean committed = preferences.edit().putBoolean(TOC_COUNT_WORDS, value).commit();
         boolean observed = readTocCountWords(loader);
         if (!committed || observed != value) {
             throw new IllegalStateException("tocCountWords preference did not take effect");
         }
-        return new JSONObject().put("name", TOC_COUNT_WORDS).put("previous", previous)
-            .put("applied", value).put("observed", observed);
+        return new JSONObject().put("name", TOC_COUNT_WORDS)
+            .put("previousPresent", present)
+            .put("previous", previous)
+            .put("applied", value)
+            .put("observed", observed);
     }
 
-    private boolean restoreTocCountWords(ClassLoader loader, JSONObject state) throws Exception {
-        boolean previous = state.getBoolean("previous");
-        boolean committed = defaultPreferences(loader).edit()
-            .putBoolean(TOC_COUNT_WORDS, previous).commit();
-        return committed && readTocCountWords(loader) == previous;
+    private JSONObject restoreTocCountWords(ClassLoader loader, JSONObject state)
+            throws Exception {
+        if (state == null) return new JSONObject().put("restored", true).put("skipped", true);
+        android.content.SharedPreferences preferences = defaultPreferences(loader);
+        android.content.SharedPreferences.Editor editor = preferences.edit();
+        if (state.getBoolean("previousPresent")) {
+            editor.putBoolean(TOC_COUNT_WORDS, state.getBoolean("previous"));
+        } else {
+            editor.remove(TOC_COUNT_WORDS);
+        }
+        boolean committed = editor.commit();
+        boolean present = preferences.contains(TOC_COUNT_WORDS);
+        boolean observed = readTocCountWords(loader);
+        boolean restored = committed
+            && present == state.getBoolean("previousPresent")
+            && observed == state.getBoolean("previous");
+        JSONObject receipt = new JSONObject()
+            .put("previousPresent", state.getBoolean("previousPresent"))
+            .put("committed", committed)
+            .put("presentAfter", present)
+            .put("observedAfter", observed)
+            .put("restored", restored);
+        if (!restored) {
+            throw new IllegalStateException("tocCountWords was not restored: " + receipt);
+        }
+        return receipt;
     }
 
     private android.content.SharedPreferences defaultPreferences(ClassLoader loader)
@@ -1499,15 +1805,19 @@ public final class FieldOracle extends Instrumentation {
                     .put("headers", new JSONObject(headers))
                     .put("body", body)
                     .put("stage", stage.get());
+                // F7: request receipt recording and response selection are one
+                // bounded ordering boundary, so two concurrent workers cannot be
+                // recorded in one order and served in the other.
+                JSONObject declared;
                 synchronized (requests) {
                     requests.put(observed);
                     stageTrace.put(new JSONObject()
                         .put("stage", stage.get())
                         .put("path", origin + path
                             + (rawQuery.isEmpty() ? "" : "?" + rawQuery)));
+                    declared = match(method, path, query);
                 }
                 OutputStream output = socket.getOutputStream();
-                JSONObject declared = match(method, path, query);
                 JSONObject receipt = null;
                 if (receipts) {
                     receipt = new JSONObject()
@@ -1594,6 +1904,7 @@ public final class FieldOracle extends Instrumentation {
             return query;
         }
 
+        /** Called only while holding the {@code requests} lock (see {@code serve}). */
         private JSONObject match(String method, String path, Map<String, String> query) {
             List<JSONObject> candidates = new ArrayList<>();
             JSONArray responses = corpus.optJSONArray("responses");

@@ -13,7 +13,7 @@ const _selectedCorpusHashes = {
   '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
   '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0',
   '0f87c6c775ff54164bc11a9a30efaa48e5155def31c37e9b7eb8e721bd776be9',
-  'c2fe9deaadffae33ac0f8b22a8ac7f1a10ed323ce056fdbc0f4c13d16089090d',
+  '201223b0ce0700eef9baf34ae8ad9303d027cb329c251672e12b3acc67447625',
 };
 
 /// The one terminal whose case also saves a chapter and refreshes the TOC.
@@ -1683,7 +1683,8 @@ void _admitCaseRecord(
     }
     _requiredString(chapter, 'text', '$label.chapter');
   }
-  _admitTitleLifecycle(record, terminal, label);
+  _admitTitleLifecycle(record, terminal, label, native: native);
+  if (native) _admitTitleLifecycleProof(record, terminal, label);
   final probes = _requiredMap(record, 'sourceProbes', label);
   for (final field in ['vipProbe', 'payProbe']) {
     _nullableStringPresent(probes, field, '$label.sourceProbes');
@@ -1700,91 +1701,41 @@ void _admitCaseRecord(
   }
 }
 
-/// The declared saved-name/refresh observation, present only where declared.
+/// The shared saved-name/refresh observation, present only where declared.
 ///
-/// A case whose terminal is not the lifecycle terminal must not carry the field
-/// at all, so an old or non-observing case cannot smuggle one in.
+/// Only the four ordered phase arrays are shared with the product. Everything
+/// about the native setup, storage containment, preference and event guard is
+/// producer evidence and is admitted separately by [_admitTitleLifecycleProof],
+/// so a product record never has to invent a native cache, database,
+/// preference or guard fact.
+///
+/// A case whose terminal is not the lifecycle terminal must not carry either
+/// field at all, so an old or non-observing case cannot smuggle one in.
 void _admitTitleLifecycle(
   Map<String, dynamic> record,
   String terminal,
-  String label,
-) {
+  String label, {
+  required bool native,
+}) {
+  // The native proof is producer evidence; a product record that carries one
+  // is claiming a native fact it cannot have.
+  if (!native && record.containsKey('titleLifecycleProof')) {
+    throw StateError('$label.titleLifecycleProof is native producer evidence');
+  }
   if (terminal != _titleLifecycleTerminal) {
-    if (record.containsKey('titleLifecycle')) {
-      throw StateError('$label.titleLifecycle is not declared by its terminal');
+    for (final field in ['titleLifecycle', 'titleLifecycleProof']) {
+      if (record.containsKey(field)) {
+        throw StateError('$label.$field is not declared by its terminal');
+      }
     }
     return;
   }
   final lifecycle = _requiredMap(record, 'titleLifecycle', label);
-  final containment = _requiredMap(
-    lifecycle,
-    'writeContainment',
-    '$label.titleLifecycle',
-  );
-  for (final field in [
-    'appCtxClass',
-    'cachePath',
-    'scratchRoot',
-    'databasePath',
-  ]) {
-    _requiredString(
-      containment,
-      field,
-      '$label.titleLifecycle.writeContainment',
-    );
-  }
-  for (final field in ['cachePathWithinScratch', 'databasePathWithinScratch']) {
-    if (_requiredBool(
-          containment,
-          field,
-          '$label.titleLifecycle.writeContainment',
-        ) !=
-        true) {
-      throw StateError(
-        '$label.titleLifecycle.writeContainment.$field must be true',
-      );
-    }
-  }
-  final files = _requiredList(
-    lifecycle,
-    'contentFiles',
-    '$label.titleLifecycle',
-  );
-  if (files.isEmpty) {
+  if (lifecycle.length != _titleLifecyclePhases.length ||
+      !lifecycle.keys.every(_titleLifecyclePhases.contains)) {
     throw StateError(
-      '$label.titleLifecycle.contentFiles must record the written file',
+      '$label.titleLifecycle fields differ: ${lifecycle.keys.toList()..sort()}',
     );
-  }
-  for (var index = 0; index < files.length; index++) {
-    final name = files[index];
-    if (name is! String || name.isEmpty) {
-      throw StateError(
-        '$label.titleLifecycle.contentFiles[$index] must be a nonempty string',
-      );
-    }
-  }
-  final preferenceLabel = '$label.titleLifecycle.tocCountWords';
-  final preference = _requiredMap(
-    lifecycle,
-    'tocCountWords',
-    '$label.titleLifecycle',
-  );
-  if (_requiredString(preference, 'name', preferenceLabel) != 'tocCountWords') {
-    throw StateError('$preferenceLabel.name differs');
-  }
-  for (final field in ['previous', 'applied', 'observed']) {
-    _requiredBool(preference, field, preferenceLabel);
-  }
-  if (preference['applied'] != true || preference['observed'] != true) {
-    throw StateError('$preferenceLabel was not enabled');
-  }
-  if (_requiredBool(
-        lifecycle,
-        'tocCountWordsRestored',
-        '$label.titleLifecycle',
-      ) !=
-      true) {
-    throw StateError('$label.titleLifecycle.tocCountWords was not restored');
   }
   for (final phase in _titleLifecyclePhases) {
     final rows = _requiredList(lifecycle, phase, '$label.titleLifecycle');
@@ -1812,6 +1763,236 @@ void _admitTitleLifecycle(
       }
       _nullableStringPresent(row, 'variable', rowLabel);
     }
+  }
+}
+
+/// The native producer evidence for the saved-content observation.
+///
+/// Required on the native report only, and never on the product: it binds the
+/// actual owner/root, the recorded paths and objects, the observed save event
+/// and the successful cleanup rather than free-standing true flags.
+void _admitTitleLifecycleProof(
+  Map<String, dynamic> record,
+  String terminal,
+  String label,
+) {
+  if (terminal != _titleLifecycleTerminal) return;
+  final proof = _requiredMap(record, 'titleLifecycleProof', label);
+  const expected = {
+    'bookParent',
+    'chapterSeed',
+    'saveEvent',
+    'contentFiles',
+    'tocCountWords',
+    'saveObserverRemoved',
+    'guard',
+  };
+  final undeclared = proof.keys.toSet().difference(expected);
+  if (undeclared.isNotEmpty) {
+    throw StateError(
+      '$label.titleLifecycleProof has undeclared fields: $undeclared',
+    );
+  }
+  for (final field in expected) {
+    if (!proof.containsKey(field)) {
+      throw StateError('$label.titleLifecycleProof.$field is missing');
+    }
+  }
+
+  final parent = _requiredMap(
+    proof,
+    'bookParent',
+    '$label.titleLifecycleProof',
+  );
+  _requiredString(parent, 'bookUrl', '$label.titleLifecycleProof.bookParent');
+  for (final field in ['stored', 'readBack']) {
+    if (_requiredBool(parent, field, '$label.titleLifecycleProof.bookParent') !=
+        true) {
+      throw StateError(
+        '$label.titleLifecycleProof.bookParent.$field must be true',
+      );
+    }
+  }
+
+  final seed = _requiredMap(proof, 'chapterSeed', '$label.titleLifecycleProof');
+  if (_requiredInt(seed, 'rows', '$label.titleLifecycleProof.chapterSeed') !=
+      _titleLifecycleChapters) {
+    throw StateError('$label.titleLifecycleProof.chapterSeed.rows differs');
+  }
+  if (_requiredBool(
+        seed,
+        'inserted',
+        '$label.titleLifecycleProof.chapterSeed',
+      ) !=
+      true) {
+    throw StateError(
+      '$label.titleLifecycleProof.chapterSeed.inserted must be true',
+    );
+  }
+
+  final event = _requiredMap(proof, 'saveEvent', '$label.titleLifecycleProof');
+  if (_requiredString(event, 'tag', '$label.titleLifecycleProof.saveEvent') !=
+      'saveContent') {
+    throw StateError('$label.titleLifecycleProof.saveEvent.tag differs');
+  }
+  for (final field in ['delivered', 'correlates']) {
+    if (_requiredBool(event, field, '$label.titleLifecycleProof.saveEvent') !=
+        true) {
+      throw StateError(
+        '$label.titleLifecycleProof.saveEvent.$field must be true',
+      );
+    }
+  }
+  final fence = _requiredMap(
+    event,
+    'fence',
+    '$label.titleLifecycleProof.saveEvent',
+  );
+  if (_requiredBool(
+        fence,
+        'completed',
+        '$label.titleLifecycleProof.saveEvent.fence',
+      ) !=
+      true) {
+    throw StateError(
+      '$label.titleLifecycleProof.saveEvent.fence did not complete',
+    );
+  }
+
+  final files = _requiredList(
+    proof,
+    'contentFiles',
+    '$label.titleLifecycleProof',
+  );
+  if (files.isEmpty) {
+    throw StateError(
+      '$label.titleLifecycleProof.contentFiles must not be empty',
+    );
+  }
+  for (var index = 0; index < files.length; index++) {
+    final name = files[index];
+    if (name is! String || name.isEmpty) {
+      throw StateError(
+        '$label.titleLifecycleProof.contentFiles[$index] must be a nonempty string',
+      );
+    }
+  }
+
+  final preference = _requiredMap(
+    proof,
+    'tocCountWords',
+    '$label.titleLifecycleProof',
+  );
+  for (final field in [
+    'previousPresent',
+    'committed',
+    'presentAfter',
+    'observedAfter',
+    'restored',
+  ]) {
+    _requiredBool(
+      preference,
+      field,
+      '$label.titleLifecycleProof.tocCountWords',
+    );
+  }
+  if (preference['restored'] != true) {
+    throw StateError(
+      '$label.titleLifecycleProof.tocCountWords was not restored',
+    );
+  }
+  if (preference['presentAfter'] != preference['previousPresent']) {
+    throw StateError(
+      '$label.titleLifecycleProof.tocCountWords presence differs',
+    );
+  }
+  if (_requiredBool(
+        proof,
+        'saveObserverRemoved',
+        '$label.titleLifecycleProof',
+      ) !=
+      true) {
+    throw StateError(
+      '$label.titleLifecycleProof.saveObserverRemoved must be true',
+    );
+  }
+
+  final guard = _requiredMap(proof, 'guard', '$label.titleLifecycleProof');
+  final release = _requiredMap(
+    guard,
+    'release',
+    '$label.titleLifecycleProof.guard',
+  );
+  for (final field in [
+    'ownedReceivers',
+    'removedReceivers',
+    'ownedLifecycleCallbacks',
+    'removedLifecycleCallbacks',
+  ]) {
+    _requiredInt(release, field, '$label.titleLifecycleProof.guard.release');
+  }
+  if (release['removedReceivers'] != release['ownedReceivers'] ||
+      release['removedLifecycleCallbacks'] !=
+          release['ownedLifecycleCallbacks']) {
+    throw StateError(
+      '$label.titleLifecycleProof.guard did not remove every registration it owned',
+    );
+  }
+  final guardFence = _requiredMap(
+    guard,
+    'fence',
+    '$label.titleLifecycleProof.guard',
+  );
+  if (_requiredBool(
+        guardFence,
+        'completed',
+        '$label.titleLifecycleProof.guard.fence',
+      ) !=
+      true) {
+    throw StateError('$label.titleLifecycleProof.guard.fence did not complete');
+  }
+  final receipt = _requiredMap(
+    guard,
+    'receipt',
+    '$label.titleLifecycleProof.guard',
+  );
+  if (_requiredInt(
+        receipt,
+        'blockedDeliveries',
+        '$label.titleLifecycleProof.guard.receipt',
+      ) !=
+      0) {
+    throw StateError(
+      '$label.titleLifecycleProof.guard received an external IPC attempt',
+    );
+  }
+  if (_requiredInt(
+        receipt,
+        'pendingWrappers',
+        '$label.titleLifecycleProof.guard.receipt',
+      ) !=
+      0) {
+    throw StateError(
+      '$label.titleLifecycleProof.guard left a wrapper registered',
+    );
+  }
+  if (_requiredList(
+    receipt,
+    'inboundAttempts',
+    '$label.titleLifecycleProof.guard.receipt',
+  ).isNotEmpty) {
+    throw StateError(
+      '$label.titleLifecycleProof.guard recorded an inbound IPC attempt',
+    );
+  }
+  if (_requiredList(
+    receipt,
+    'failures',
+    '$label.titleLifecycleProof.guard.receipt',
+  ).isNotEmpty) {
+    throw StateError(
+      '$label.titleLifecycleProof.guard recorded a guard failure',
+    );
   }
 }
 
@@ -2092,47 +2273,6 @@ void _compareTitleLifecycle(
       }
     }
   }
-  final fContainment = _map(
-    f['writeContainment'],
-    '$id.titleLifecycle.writeContainment',
-  );
-  final pContainment = _map(
-    p['writeContainment'],
-    '$id.titleLifecycle.writeContainment',
-  );
-  for (final field in ['cachePathWithinScratch', 'databasePathWithinScratch']) {
-    _diff(
-      differences,
-      id,
-      'titleLifecycle.writeContainment.$field',
-      fContainment[field],
-      pContainment[field],
-    );
-  }
-  final fPreference = _map(
-    f['tocCountWords'],
-    '$id.titleLifecycle.tocCountWords',
-  );
-  final pPreference = _map(
-    p['tocCountWords'],
-    '$id.titleLifecycle.tocCountWords',
-  );
-  for (final field in ['previous', 'applied', 'observed']) {
-    _diff(
-      differences,
-      id,
-      'titleLifecycle.tocCountWords.$field',
-      fPreference[field],
-      pPreference[field],
-    );
-  }
-  _diff(
-    differences,
-    id,
-    'titleLifecycle.tocCountWordsRestored',
-    f['tocCountWordsRestored'],
-    p['tocCountWordsRestored'],
-  );
 }
 
 String _expectedRawQuery(Map<String, dynamic> request) {

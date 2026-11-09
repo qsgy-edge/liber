@@ -233,6 +233,396 @@ void main() {
     expect(report['status'], 'pass');
   });
 
+  group('title lifecycle public consumer', () {
+    // The four phase arrays are shared with the product; the native proof is
+    // producer evidence and must never be required of the product. These run
+    // through the real public comparator, not a copied one.
+    List<Map<String, Object?>> rows() => [
+      {'index': 0, 'title': 'CHAPTER ONE', 'variable': 'toc-a'},
+      {'index': 1, 'title': 'CHAPTER TWO', 'variable': 'toc-b'},
+    ];
+
+    Map<String, Object?> proof() => {
+      'bookParent': {
+        'bookUrl': 'http://synthetic.test/book',
+        'stored': true,
+        'readBack': true,
+      },
+      'chapterSeed': {'rows': 2, 'inserted': true},
+      'saveEvent': {
+        'tag': 'saveContent',
+        'delivered': true,
+        'correlates': true,
+        'fence': {'posted': true, 'completed': true},
+      },
+      'contentFiles': ['00000-abc.nb'],
+      'tocCountWords': {
+        'previousPresent': true,
+        'committed': true,
+        'presentAfter': true,
+        'observedAfter': true,
+        'restored': true,
+      },
+      'saveObserverRemoved': true,
+      'guard': {
+        'release': {
+          'ownedReceivers': 1,
+          'removedReceivers': 1,
+          'ownedLifecycleCallbacks': 1,
+          'removedLifecycleCallbacks': 1,
+        },
+        'fence': {'posted': true, 'completed': true},
+        'receipt': {
+          'blockedDeliveries': 0,
+          'pendingWrappers': 0,
+          'inboundAttempts': <Object?>[],
+          'failures': <Object?>[],
+        },
+      },
+    };
+
+    Map<String, Object?> lifecycle() => {
+      'beforeContent': rows(),
+      'storedAfterContent': rows(),
+      'refreshedChapters': rows(),
+      'storedAfterRefresh': rows(),
+    };
+
+    Map<String, dynamic> corpus({String terminal = 'four-stage-refresh'}) {
+      final base = _syntheticCorpus();
+      base['cases'] = [
+        {
+          'id': 'synthetic-case',
+          'terminal': terminal,
+          'keyword': 'k',
+          'source': <String, Object?>{},
+        },
+      ];
+      base['expectedRequests'] = [
+        for (final path in ['/a', '/b', '/c', '/d', '/e'])
+          {'method': 'GET', 'path': path, 'query': <String, String>{}},
+      ];
+      base['responses'] = [
+        for (var index = 0; index < 5; index++)
+          {
+            'id': 'r${index + 1}',
+            'method': 'GET',
+            'path': ['/a', '/b', '/c', '/d', '/e'][index],
+            'status': 200,
+            'headers': <String, Object?>{},
+            'body': '',
+          },
+      ];
+      return base;
+    }
+
+    Map<String, dynamic> envelope(
+      Map<String, dynamic> corpus, {
+      required bool native,
+    }) {
+      final base = native
+          ? _syntheticEnvelope(corpus)
+          : _syntheticProduct(corpus);
+      const names = [
+        'search',
+        'bookInfo',
+        'tableOfContents',
+        'content',
+        'tableOfContents',
+      ];
+      final record = native
+          ? _clone(_case())
+          : _clone(
+              ((base['caseRecords'] as List).first as Map)
+                  .cast<String, dynamic>(),
+            );
+      record['terminal'] = 'four-stage-refresh';
+      record['operations'] = [
+        for (var index = 0; index < names.length; index++)
+          {
+            'name': names[index],
+            'outcome': 'completed',
+            'requestStart': index,
+            'requestEnd': index + 1,
+            'traceStart': index,
+            'traceEnd': index + 1,
+          },
+      ];
+      record['requests'] = [
+        for (var index = 0; index < names.length; index++)
+          _requestFooter(
+            ['/a', '/b', '/c', '/d', '/e'][index],
+            responseId: 'r${index + 1}',
+            stage: names[index],
+          ),
+      ];
+      record['titleLifecycle'] = lifecycle();
+      if (native) record['titleLifecycleProof'] = proof();
+      if (native) {
+        base['cases'] = [record];
+      } else {
+        base['caseRecords'] = [record];
+      }
+      base['requests'] = [
+        for (var index = 0; index < names.length; index++)
+          _requestFooter(
+            ['/a', '/b', '/c', '/d', '/e'][index],
+            responseId: 'r${index + 1}',
+            stage: names[index],
+          ),
+      ];
+      base['stageTrace'] = [
+        for (var index = 0; index < names.length; index++)
+          {
+            'stage': names[index],
+            'path':
+                'http://127.0.0.1:18733${['/a', '/b', '/c', '/d', '/e'][index]}',
+          },
+      ];
+      return base;
+    }
+
+    Map<String, dynamic> pair({
+      void Function(Map<String, dynamic>)? damageNative,
+      void Function(Map<String, dynamic>)? damageProduct,
+    }) {
+      final base = corpus();
+      final golden = envelope(base, native: true);
+      final product = envelope(base, native: false);
+      damageNative?.call(golden);
+      damageProduct?.call(product);
+      return _compare(golden, product, base);
+    }
+
+    Map<String, dynamic> nativeRecord(Map<String, dynamic> envelope) =>
+        ((envelope['cases'] as List).first as Map).cast<String, dynamic>();
+
+    Map<String, dynamic> productRecord(Map<String, dynamic> envelope) =>
+        ((envelope['caseRecords'] as List).first as Map)
+            .cast<String, dynamic>();
+
+    test('the shared phases pass and the product needs no native proof', () {
+      final report = pair();
+      expect(
+        report['status'],
+        'pass',
+        reason: jsonEncode(report['differences']),
+      );
+    });
+
+    test('a changed variable in any phase is a named difference', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        final report = pair(
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle'] as Map)[phase]
+                    as List;
+            (rows[0] as Map)['variable'] = 'tampered';
+          },
+        );
+        expect(report['status'], 'fail', reason: phase);
+        expect(
+          (report['differences'] as List).cast<Map>().any(
+            (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+          ),
+          isTrue,
+          reason: phase,
+        );
+      }
+    });
+
+    test('a changed title is a named difference', () {
+      final report = pair(
+        damageProduct: (envelope) {
+          final rows =
+              (productRecord(envelope)['titleLifecycle']
+                      as Map)['refreshedChapters']
+                  as List;
+          (rows[1] as Map)['title'] = 'OTHER';
+        },
+      );
+      expect(report['status'], 'fail');
+      expect(
+        (report['differences'] as List).cast<Map>().any(
+          (row) => row['field'] == 'titleLifecycle.refreshedChapters[1].title',
+        ),
+        isTrue,
+      );
+    });
+
+    test('the observation is required on both sides when declared', () {
+      expect(
+        () => pair(
+          damageProduct: (envelope) =>
+              productRecord(envelope).remove('titleLifecycle'),
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => pair(
+          damageNative: (envelope) =>
+              nativeRecord(envelope).remove('titleLifecycle'),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('a non-observing case may not carry either field', () {
+      final base = corpus(terminal: 'four-stage');
+      final golden = envelope(base, native: true);
+      final product = envelope(base, native: false);
+      final record = productRecord(product);
+      record['terminal'] = 'four-stage';
+      record['operations'] = (record['operations'] as List).take(4).toList();
+      expect(() => _compare(golden, product, base), throwsA(isA<StateError>()));
+    });
+
+    test('an undeclared shared field is refused', () {
+      expect(
+        () => pair(
+          damageProduct: (envelope) {
+            (productRecord(envelope)['titleLifecycle']
+                as Map)['writeContainment'] = {
+              'cachePath': 'x',
+            };
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('null and missing variables stay distinct', () {
+      final report = pair(
+        damageNative: (envelope) {
+          final rows =
+              (nativeRecord(envelope)['titleLifecycle'] as Map)['beforeContent']
+                  as List;
+          (rows[0] as Map)['variable'] = null;
+        },
+        damageProduct: (envelope) {
+          final rows =
+              (productRecord(envelope)['titleLifecycle']
+                      as Map)['beforeContent']
+                  as List;
+          (rows[0] as Map)['variable'] = null;
+        },
+      );
+      expect(
+        report['status'],
+        'pass',
+        reason: jsonEncode(report['differences']),
+      );
+      expect(
+        () => pair(
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle']
+                        as Map)['beforeContent']
+                    as List;
+            (rows[0] as Map).remove('variable');
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('row count, order and extra fields are refused', () {
+      expect(
+        () => pair(
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle']
+                        as Map)['beforeContent']
+                    as List;
+            rows.removeLast();
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => pair(
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle']
+                        as Map)['beforeContent']
+                    as List;
+            (rows[0] as Map)['index'] = 1;
+            (rows[1] as Map)['index'] = 0;
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => pair(
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle']
+                        as Map)['beforeContent']
+                    as List;
+            (rows[0] as Map)['wordCount'] = '1';
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('the native proof is native-only and must be closed', () {
+      expect(
+        () => pair(
+          damageNative: (envelope) =>
+              nativeRecord(envelope).remove('titleLifecycleProof'),
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => pair(
+          damageProduct: (envelope) =>
+              productRecord(envelope)['titleLifecycleProof'] = proof(),
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => pair(
+          damageNative: (envelope) {
+            final guard =
+                ((nativeRecord(envelope)['titleLifecycleProof'] as Map)['guard']
+                    as Map);
+            (guard['release'] as Map)['removedReceivers'] = 0;
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => pair(
+          damageNative: (envelope) {
+            final guard =
+                ((nativeRecord(envelope)['titleLifecycleProof'] as Map)['guard']
+                    as Map);
+            (guard['receipt'] as Map)['blockedDeliveries'] = 1;
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('the refresh span must cover all five requests', () {
+      expect(
+        () => pair(
+          damageNative: (envelope) {
+            final record = nativeRecord(envelope);
+            (record['operations'] as List).removeLast();
+          },
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
   test('chronological case ids cannot be swapped under a coherent set', () {
     final corpus = _twoCaseCorpus();
     final golden = _twoCaseGolden(corpus);
@@ -902,12 +1292,13 @@ Map<String, dynamic> _requestFooter(
   String path, {
   String responseId = 'r1',
   String method = 'GET',
+  String stage = 'search',
 }) => {
   'method': method,
   'path': path,
   'query': <String, String>{},
   'rawQuery': '',
-  'stage': 'search',
+  'stage': stage,
   'headers': <String, Object?>{},
   'body': '',
   'receipt': {

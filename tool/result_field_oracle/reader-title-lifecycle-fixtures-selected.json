@@ -27,7 +27,7 @@
       "terminal": "four-stage",
       "keyword": "probe",
       "source": {
-        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceUrl": "http://127.0.0.1:18734/source/title-error-html",
         "bookSourceName": "Title error HTML",
         "searchUrl": "/html-title-error/search?keyword={{key}}&page={{page}}",
         "ruleSearch": {
@@ -57,7 +57,7 @@
       "terminal": "four-stage",
       "keyword": "probe",
       "source": {
-        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceUrl": "http://127.0.0.1:18734/source/title-error-json",
         "bookSourceName": "Title error JSON",
         "searchUrl": "/json-title-error/search?keyword={{key}}&page={{page}}",
         "ruleSearch": {
@@ -87,7 +87,7 @@
       "terminal": "four-stage-refresh",
       "keyword": "probe",
       "source": {
-        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceUrl": "http://127.0.0.1:18734/source/title-saved-html",
         "bookSourceName": "Title saved HTML",
         "searchUrl": "/html-title-saved/search?keyword={{key}}&page={{page}}",
         "ruleSearch": {
@@ -117,7 +117,7 @@
       "terminal": "four-stage-refresh",
       "keyword": "probe",
       "source": {
-        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceUrl": "http://127.0.0.1:18734/source/title-saved-json",
         "bookSourceName": "Title saved JSON",
         "searchUrl": "/json-title-saved/search?keyword={{key}}&page={{page}}",
         "ruleSearch": {

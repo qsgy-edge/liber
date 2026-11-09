@@ -47,7 +47,7 @@ SELECTED_CHAPTER_CORPUS_SHA256 = (
 )
 SELECTED_READER_CORPUS_SHA256 = '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0'
 SELECTED_JSON_REPLACE_CORPUS_SHA256 = '0f87c6c775ff54164bc11a9a30efaa48e5155def31c37e9b7eb8e721bd776be9'
-SELECTED_TITLE_LIFECYCLE_CORPUS_SHA256 = 'c2fe9deaadffae33ac0f8b22a8ac7f1a10ed323ce056fdbc0f4c13d16089090d'
+SELECTED_TITLE_LIFECYCLE_CORPUS_SHA256 = '201223b0ce0700eef9baf34ae8ad9303d027cb329c251672e12b3acc67447625'
 SELECTED_CORPUS_SHA256S = (
     SELECTED_CORPUS_SHA256,
     *SELECTED_CHAPTER_CORPUS_SHA256,
@@ -295,6 +295,115 @@ def _check_selected_manifest(text):
         raise ValueError('selected manifest package, entry or target differs')
 
 
+# The reflected ABI the saved-content observation actually uses. Checked only
+# for a corpus that declares the lifecycle observation, against the real target
+# DEX; Java compilation cannot check a reflection contract.
+REFLECTED_ABI = {
+    'Lio/legado/app/help/book/BookHelp;': [
+        ('getCachePath', '()Ljava/lang/String;'),
+    ],
+    'Lio/legado/app/data/entities/Book;': [
+        ('getFolderName', '()Ljava/lang/String;'),
+        ('getBookUrl', '()Ljava/lang/String;'),
+    ],
+    'Lio/legado/app/data/entities/BookChapter;': [
+        ('getIndex', '()I'),
+        ('getTitle', '()Ljava/lang/String;'),
+        ('getUrl', '()Ljava/lang/String;'),
+        ('getVariable', '()Ljava/lang/String;'),
+        ('setVariable', '(Ljava/lang/String;)V'),
+    ],
+    'Lio/legado/app/data/dao/BookChapterDao;': [
+        ('insert', '([Lio/legado/app/data/entities/BookChapter;)V'),
+    ],
+    'Lio/legado/app/data/dao/BookDao;': [
+        ('insertRows', '([Lio/legado/app/data/entities/Book;)V'),
+        ('getBook', '(Ljava/lang/String;)Lio/legado/app/data/entities/Book;'),
+    ],
+    'Lio/legado/app/data/AppDatabase;': [
+        ('getBookChapterDao', '()Lio/legado/app/data/dao/BookChapterDao;'),
+        ('getBookDao', '()Lio/legado/app/data/dao/BookDao;'),
+    ],
+    'Lio/legado/app/help/config/AppConfig;': [
+        ('getTocCountWords', '()Z'),
+    ],
+    'Lsplitties/init/AppCtxKt;': [
+        ('getAppCtx', '()Landroid/content/Context;'),
+    ],
+    'Lcom/jeremyliao/liveeventbus/LiveEventBus;': [
+        ('get', '(Ljava/lang/String;Ljava/lang/Class;)Lcom/jeremyliao/liveeventbus/core/Observable;'),
+    ],
+    'Lcom/jeremyliao/liveeventbus/core/Observable;': [
+        ('observeForever', '(Landroidx/lifecycle/Observer;)V'),
+        ('removeObserver', '(Landroidx/lifecycle/Observer;)V'),
+    ],
+    'Lcom/jeremyliao/liveeventbus/utils/AppUtils;': [
+        ('getApp', '()Landroid/app/Application;'),
+    ],
+}
+
+
+def _admit_reflected_abi(target_apk, tools, run, receipts):
+    """Check the reflected classes/methods/descriptors in the real target DEX.
+
+    The dex file that defines each class is found by its descriptor bytes, so
+    only the dex files that actually carry the reached classes are disassembled.
+    """
+    with zipfile.ZipFile(target_apk) as archive:
+        names = sorted(name for name in archive.namelist()
+                       if re.fullmatch(r'classes\d*\.dex', name))
+        if not names:
+            raise ValueError('the selected target APK carries no dex file')
+        blobs = {name: archive.read(name) for name in names}
+    # A descriptor string appears in every dex that merely refers to the class,
+    # so the defining dex is the first candidate whose class table declares it.
+    # Each candidate is disassembled at most once and the dumps are reused.
+    dumps = {}
+
+    def dump_of(dex_name):
+        if dex_name not in dumps:
+            with tempfile.TemporaryDirectory(prefix='fields-target-dex-') as temporary:
+                path = Path(temporary) / dex_name
+                path.write_bytes(blobs[dex_name])
+                dumps[dex_name] = run('target-abi-' + dex_name,
+                                      [tools / 'dexdump.exe', path],
+                                      errors='replace')
+        return dumps[dex_name]
+
+    located = {}
+    for descriptor in REFLECTED_ABI:
+        encoded = descriptor.encode('utf-8')
+        holders = [name for name in names if encoded in blobs[name]]
+        if not holders:
+            raise ValueError('reflected class is absent from the target APK: ' + descriptor)
+        found = None
+        for dex_name in holders:
+            if "Class descriptor  : '" + descriptor + "'" in dump_of(dex_name):
+                found = dex_name
+                break
+        if found is None:
+            raise ValueError('reflected class definition is absent: ' + descriptor)
+        located[descriptor] = found
+    checked = []
+    for descriptor, methods in sorted(REFLECTED_ABI.items()):
+        dump = dumps[located[descriptor]]
+        parts = [part for part in re.split(r'(?=Class #\d+\s+-)', dump)
+                 if "Class descriptor  : '" + descriptor + "'" in part]
+        if len(parts) != 1:
+            raise ValueError('reflected class definition differs: ' + descriptor)
+        for method, signature in methods:
+            pattern = (r"name\s+: '" + re.escape(method) + r"'\s+type\s+: '"
+                       + re.escape(signature) + r"'")
+            if len(re.findall(pattern, parts[0])) != 1:
+                raise ValueError('reflected ABI differs: ' + descriptor + '->' + method
+                                 + ' ' + signature)
+            checked.append({'class': descriptor, 'method': method,
+                            'descriptor': signature, 'dex': located[descriptor]})
+    receipts.append({'name': 'reflected-abi', 'dexFiles': sorted(dumps),
+                     'checked': checked, 'status': 'verified'})
+    return {'dexFiles': sorted(dumps), 'checked': checked}
+
+
 def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidence=None):
     """Inspect the selected artifact without contacting any device."""
     if not target_apk.is_file() or sha256(target_apk) != SELECTED_TARGET['apkSha256']:
@@ -307,7 +416,7 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
     if fixture.get('baselineCommit') != SELECTED_BASELINE:
         raise ValueError('selected baseline differs')
     receipts = []
-    def run(name, command, stderr=False):
+    def run(name, command, stderr=False, errors='strict'):
         command = [str(value) for value in command]
         try:
             result = subprocess.run(command, capture_output=True, timeout=120)
@@ -344,7 +453,7 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
             error = ValueError(name + ' command failed: ' + result.stderr.decode(errors='replace'))
             error.fields_preflight_failure = (receipts[-1], result.stdout, result.stderr)
             raise error
-        return (result.stderr if stderr else result.stdout).decode(errors='strict')
+        return (result.stderr if stderr else result.stdout).decode(errors=errors)
     if 'Temurin-17.0.20+8' not in run('java-version', [java / 'bin' / 'java.exe', '-version'], stderr=True):
         raise ValueError('selected JDK version differs')
     if run('javac-version', [java / 'bin' / 'javac.exe', '-version']).strip() != 'javac 17.0.20':
@@ -409,6 +518,9 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
                  'Lio/liber/oracle/nested/GuardedReaderApplication;'):
         if dump.count("Class descriptor  : '" + name + "'") != 1:
             raise ValueError('selected DEX entry differs: ' + name)
+    reflected_abi = None
+    if isinstance(fixture.get('titleLifecycle'), dict):
+        reflected_abi = _admit_reflected_abi(target_apk, tools, run, receipts)
     return {'artifact': artifact, 'targetApkSha256': sha256(target_apk),
             'dexSha256': sha256_bytes(dex), 'referenceDexSha256': sha256_bytes(reference_dex),
             'inputs': {'harnessApk': str(apk), 'targetApk': str(target_apk), 'source': str(source),
@@ -416,7 +528,8 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
                        'referenceDex': reference_dex_path, 'harnessDex': harness_dex_path},
             'referenceSources': {
                 path: {'blobSha1': blob, 'worktreeSha256': sha256(source / path)}
-                for path, blob in zip(paths, blobs)}, 'commands': receipts}
+                for path, blob in zip(paths, blobs)},
+            'reflectedAbi': reflected_abi, 'commands': receipts}
 
 
 def _retain_preflight_failure(output, error):
@@ -822,6 +935,7 @@ def _admit_native_case(case, declared, label):
         _required_string(chapter, 'title', label + '.chapter')
         _required_string(chapter, 'text', label + '.chapter')
     _admit_title_lifecycle(case, terminal, label)
+    _admit_title_lifecycle_proof(case, terminal, label)
     probes = _required_map(case, 'sourceProbes', label)
     for field in ['vipProbe', 'payProbe']:
         _nullable_string(probes, field, label + '.sourceProbes')
@@ -833,41 +947,26 @@ def _admit_native_case(case, declared, label):
 
 
 def _admit_title_lifecycle(case, terminal, label):
-    """The declared saved-name/refresh observation, present only where declared.
+    """The shared saved-name/refresh observation, present only where declared.
 
-    A case whose terminal is not the lifecycle terminal must not carry the
+    Only the four ordered phase arrays are shared with the product. Everything
+    about the native setup, storage containment, preference and event guard is
+    producer evidence and is admitted separately by
+    :func:`_admit_title_lifecycle_proof`, so a product record never has to
+    invent a native cache, database, preference or guard fact.
+
+    A case whose terminal is not the lifecycle terminal must not carry either
     field at all, so an old or non-observing case cannot smuggle one in.
     """
     if terminal != TITLE_LIFECYCLE_TERMINAL:
-        if 'titleLifecycle' in case:
-            raise ValueError(label + '.titleLifecycle is not declared by its terminal')
+        for field in ('titleLifecycle', 'titleLifecycleProof'):
+            if field in case:
+                raise ValueError(label + '.' + field + ' is not declared by its terminal')
         return
     lifecycle = _required_map(case, 'titleLifecycle', label)
-    containment = _required_map(lifecycle, 'writeContainment', label + '.titleLifecycle')
-    for field in ['appCtxClass', 'cachePath', 'scratchRoot', 'databasePath']:
-        _required_string(containment, field, label + '.titleLifecycle.writeContainment')
-    for field in ['cachePathWithinScratch', 'databasePathWithinScratch']:
-        if _required_bool(containment, field,
-                          label + '.titleLifecycle.writeContainment') is not True:
-            raise ValueError(label + '.titleLifecycle.writeContainment.' + field
-                             + ' must be true')
-    files = _required_list(lifecycle, 'contentFiles', label + '.titleLifecycle')
-    if not files:
-        raise ValueError(label + '.titleLifecycle.contentFiles must record the written file')
-    for index, name in enumerate(files):
-        if not isinstance(name, str) or not name:
-            raise ValueError(label + '.titleLifecycle.contentFiles[' + str(index)
-                             + '] must be a nonempty string')
-    preference_label = label + '.titleLifecycle.tocCountWords'
-    preference = _required_map(lifecycle, 'tocCountWords', label + '.titleLifecycle')
-    if _required_string(preference, 'name', preference_label) != 'tocCountWords':
-        raise ValueError(preference_label + '.name differs')
-    for field in ['previous', 'applied', 'observed']:
-        _required_bool(preference, field, preference_label)
-    if preference['applied'] is not True or preference['observed'] is not True:
-        raise ValueError(preference_label + ' was not enabled')
-    if _required_bool(lifecycle, 'tocCountWordsRestored', label + '.titleLifecycle') is not True:
-        raise ValueError(label + '.titleLifecycle.tocCountWords was not restored')
+    if set(lifecycle) != set(TITLE_LIFECYCLE_PHASES):
+        raise ValueError(label + '.titleLifecycle fields differ: '
+                         + repr(sorted(lifecycle)))
     for phase in TITLE_LIFECYCLE_PHASES:
         rows = _required_list(lifecycle, phase, label + '.titleLifecycle')
         if len(rows) != TITLE_LIFECYCLE_CHAPTERS:
@@ -888,6 +987,104 @@ def _admit_title_lifecycle(case, terminal, label):
             if not _required_string(row, 'title', row_label):
                 raise ValueError(row_label + '.title must not be empty')
             _nullable_string(row, 'variable', row_label)
+
+
+def _admit_title_lifecycle_proof(case, terminal, label):
+    """The native producer evidence for the saved-content observation.
+
+    Required on the native report only. It binds the actual owner/root, the
+    recorded paths and objects, the observed save event and the successful
+    cleanup, rather than free-standing true flags.
+    """
+    if terminal != TITLE_LIFECYCLE_TERMINAL:
+        return
+    proof = _required_map(case, 'titleLifecycleProof', label)
+    expected = {'bookParent', 'chapterSeed', 'saveEvent', 'contentFiles',
+                'tocCountWords', 'saveObserverRemoved', 'guard'}
+    if set(proof) - expected:
+        raise ValueError(label + '.titleLifecycleProof has undeclared fields: '
+                         + repr(sorted(set(proof) - expected)))
+    for field in ('bookParent', 'chapterSeed', 'saveEvent', 'contentFiles',
+                  'tocCountWords', 'guard'):
+        if field not in proof:
+            raise ValueError(label + '.titleLifecycleProof.' + field + ' is missing')
+
+    parent = _required_map(proof, 'bookParent', label + '.titleLifecycleProof')
+    _required_string(parent, 'bookUrl', label + '.titleLifecycleProof.bookParent')
+    for field in ('stored', 'readBack'):
+        if _required_bool(parent, field,
+                          label + '.titleLifecycleProof.bookParent') is not True:
+            raise ValueError(label + '.titleLifecycleProof.bookParent.' + field
+                             + ' must be true')
+
+    seed = _required_map(proof, 'chapterSeed', label + '.titleLifecycleProof')
+    if _require_int(seed.get('rows'), label + '.titleLifecycleProof.chapterSeed.rows') \
+            != TITLE_LIFECYCLE_CHAPTERS:
+        raise ValueError(label + '.titleLifecycleProof.chapterSeed.rows differs')
+    if _required_bool(seed, 'inserted',
+                      label + '.titleLifecycleProof.chapterSeed') is not True:
+        raise ValueError(label + '.titleLifecycleProof.chapterSeed.inserted must be true')
+
+    event = _required_map(proof, 'saveEvent', label + '.titleLifecycleProof')
+    if _required_string(event, 'tag', label + '.titleLifecycleProof.saveEvent') \
+            != 'saveContent':
+        raise ValueError(label + '.titleLifecycleProof.saveEvent.tag differs')
+    for field in ('delivered', 'correlates'):
+        if _required_bool(event, field,
+                          label + '.titleLifecycleProof.saveEvent') is not True:
+            raise ValueError(label + '.titleLifecycleProof.saveEvent.' + field
+                             + ' must be true')
+    fence = _required_map(event, 'fence', label + '.titleLifecycleProof.saveEvent')
+    if _required_bool(fence, 'completed',
+                      label + '.titleLifecycleProof.saveEvent.fence') is not True:
+        raise ValueError(label + '.titleLifecycleProof.saveEvent.fence did not complete')
+
+    files = _required_list(proof, 'contentFiles', label + '.titleLifecycleProof')
+    if not files:
+        raise ValueError(label + '.titleLifecycleProof.contentFiles must not be empty')
+    for index, name in enumerate(files):
+        if not isinstance(name, str) or not name:
+            raise ValueError(label + '.titleLifecycleProof.contentFiles[' + str(index)
+                             + '] must be a nonempty string')
+
+    preference = _required_map(proof, 'tocCountWords', label + '.titleLifecycleProof')
+    for field in ('previousPresent', 'committed', 'presentAfter', 'observedAfter',
+                  'restored'):
+        _required_bool(preference, field, label + '.titleLifecycleProof.tocCountWords')
+    if preference['restored'] is not True:
+        raise ValueError(label + '.titleLifecycleProof.tocCountWords was not restored')
+    if preference['presentAfter'] != preference['previousPresent']:
+        raise ValueError(label + '.titleLifecycleProof.tocCountWords presence differs')
+    if _required_bool(proof, 'saveObserverRemoved',
+                      label + '.titleLifecycleProof') is not True:
+        raise ValueError(label + '.titleLifecycleProof.saveObserverRemoved must be true')
+
+    guard = _required_map(proof, 'guard', label + '.titleLifecycleProof')
+    release = _required_map(guard, 'release', label + '.titleLifecycleProof.guard')
+    for field in ('ownedReceivers', 'removedReceivers', 'ownedLifecycleCallbacks',
+                  'removedLifecycleCallbacks'):
+        _require_int(release.get(field), label + '.titleLifecycleProof.guard.release.' + field)
+    if release['removedReceivers'] != release['ownedReceivers'] \
+            or release['removedLifecycleCallbacks'] != release['ownedLifecycleCallbacks']:
+        raise ValueError(label + '.titleLifecycleProof.guard did not remove every '
+                         'registration it owned')
+    guard_fence = _required_map(guard, 'fence', label + '.titleLifecycleProof.guard')
+    if _required_bool(guard_fence, 'completed',
+                      label + '.titleLifecycleProof.guard.fence') is not True:
+        raise ValueError(label + '.titleLifecycleProof.guard.fence did not complete')
+    receipt = _required_map(guard, 'receipt', label + '.titleLifecycleProof.guard')
+    if _require_int(receipt.get('blockedDeliveries'),
+                    label + '.titleLifecycleProof.guard.receipt.blockedDeliveries') != 0:
+        raise ValueError(label + '.titleLifecycleProof.guard received an external IPC attempt')
+    if _require_int(receipt.get('pendingWrappers'),
+                    label + '.titleLifecycleProof.guard.receipt.pendingWrappers') != 0:
+        raise ValueError(label + '.titleLifecycleProof.guard left a wrapper registered')
+    if _required_list(receipt, 'inboundAttempts',
+                      label + '.titleLifecycleProof.guard.receipt'):
+        raise ValueError(label + '.titleLifecycleProof.guard recorded an inbound IPC attempt')
+    if _required_list(receipt, 'failures',
+                      label + '.titleLifecycleProof.guard.receipt'):
+        raise ValueError(label + '.titleLifecycleProof.guard recorded a guard failure')
 
 
 def _admit_provenance(manifest, fixture_bytes, fixture, isolation):

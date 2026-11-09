@@ -516,104 +516,152 @@ def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source
 
 
 class TitleLifecycleAdmissionTest(unittest.TestCase):
-    """The declared saved-name/refresh observation's strict admission.
+    """The saved-name/refresh observation's strict admission.
 
-    These are mechanism vectors over the admission function, not native
-    results: no device, report or golden is involved.
+    The four phase arrays are shared with the product; the setup, containment,
+    preference and event-guard facts are native producer evidence. These are
+    mechanism vectors over the admission functions, not native results.
     """
 
     ORIGIN = 'http://127.0.0.1:18734'
 
-    def _lifecycle(self):
+    def _phases(self):
         rows = [{'index': 0, 'title': 'CHAPTER ONE', 'variable': 'toc-a'},
                 {'index': 1, 'title': 'CHAPTER TWO', 'variable': 'toc-b'}]
+        return {phase: [dict(row) for row in rows]
+                for phase in capture.TITLE_LIFECYCLE_PHASES}
+
+    def _proof(self):
         return {
-            'writeContainment': {
-                'appCtxClass': 'io.liber.oracle.nested.GuardedReaderApplication',
-                'cachePath': '/data/user/0/com.legado.app.debug/cache/liber-fields-02/'
-                             'external-files/book_cache',
-                'scratchRoot': '/data/user/0/com.legado.app.debug/cache/liber-fields-02',
-                'databasePath': '/data/user/0/com.legado.app.debug/cache/liber-fields-02/'
-                                'databases/legado.db',
-                'cachePathWithinScratch': True,
-                'databasePathWithinScratch': True,
-            },
+            'bookParent': {'bookUrl': self.ORIGIN + '/book/1',
+                           'stored': True, 'readBack': True},
+            'chapterSeed': {'rows': 2, 'inserted': True},
+            'saveEvent': {'tag': 'saveContent', 'delivered': True,
+                          'correlates': True,
+                          'fence': {'posted': True, 'completed': True,
+                                    'timeoutMillis': 5000, 'mainThread': False}},
             'contentFiles': ['00000-0123456789abcdef.nb'],
-            'tocCountWords': {'name': 'tocCountWords', 'previous': True,
-                              'applied': True, 'observed': True},
-            'tocCountWordsRestored': True,
-            'beforeContent': [dict(row) for row in rows],
-            'storedAfterContent': [dict(row) for row in rows],
-            'refreshedChapters': [dict(row) for row in rows],
-            'storedAfterRefresh': [dict(row) for row in rows],
+            'tocCountWords': {'previousPresent': True, 'committed': True,
+                              'presentAfter': True, 'observedAfter': True,
+                              'restored': True},
+            'saveObserverRemoved': True,
+            'guard': {
+                'release': {'ownedReceivers': 1, 'removedReceivers': 1,
+                            'ownedLifecycleCallbacks': 1,
+                            'removedLifecycleCallbacks': 1},
+                'fence': {'posted': True, 'completed': True,
+                          'timeoutMillis': 5000, 'mainThread': False},
+                'receipt': {'blockedDeliveries': 0, 'pendingWrappers': 0,
+                            'inboundAttempts': [], 'failures': []},
+            },
         }
 
-    def _admit(self, lifecycle, terminal=None):
-        case = {'titleLifecycle': lifecycle}
+    def _case(self):
+        return {'titleLifecycle': self._phases(),
+                'titleLifecycleProof': self._proof()}
+
+    def _admit_shared(self, case, terminal=None):
         capture._admit_title_lifecycle(
             case, terminal or capture.TITLE_LIFECYCLE_TERMINAL, 'case')
 
-    def _rejected(self, lifecycle, pattern, terminal=None):
+    def _admit_native(self, case, terminal=None):
+        capture._admit_title_lifecycle_proof(
+            case, terminal or capture.TITLE_LIFECYCLE_TERMINAL, 'case')
+
+    def _rejected(self, call, case, pattern, terminal=None):
         with self.assertRaisesRegex(ValueError, pattern):
-            self._admit(lifecycle, terminal)
+            call(case, terminal)
 
-    def test_complete_lifecycle_observation_is_admitted(self):
-        self._admit(self._lifecycle())
+    def test_a_complete_observation_is_admitted(self):
+        self._admit_shared(self._case())
+        self._admit_native(self._case())
 
-    def test_a_non_observing_terminal_must_not_carry_the_field(self):
-        self._rejected(self._lifecycle(), 'not declared by its terminal',
-                       terminal='four-stage')
-        self._rejected(self._lifecycle(), 'not declared by its terminal',
-                       terminal='search-empty')
+    def test_a_non_observing_terminal_must_not_carry_either_field(self):
+        for terminal in ('four-stage', 'search-empty'):
+            self._rejected(self._admit_shared, self._case(),
+                           'not declared by its terminal', terminal)
+            case = {'titleLifecycleProof': self._proof()}
+            self._rejected(self._admit_shared, case,
+                           'not declared by its terminal', terminal)
 
-    def test_missing_lifecycle_on_an_observing_terminal_is_refused(self):
-        with self.assertRaisesRegex(ValueError, 'titleLifecycle is missing'):
-            capture._admit_title_lifecycle({}, capture.TITLE_LIFECYCLE_TERMINAL, 'case')
+    def test_the_shared_object_is_exactly_the_four_phases(self):
+        case = self._case()
+        case['titleLifecycle']['writeContainment'] = {'cachePath': 'x'}
+        self._rejected(self._admit_shared, case, 'titleLifecycle fields differ')
+        case = self._case()
+        del case['titleLifecycle']['storedAfterRefresh']
+        self._rejected(self._admit_shared, case, 'titleLifecycle fields differ')
 
-    def test_containment_must_be_true_and_typed(self):
-        for field in ('cachePathWithinScratch', 'databasePathWithinScratch'):
-            lifecycle = self._lifecycle()
-            lifecycle['writeContainment'][field] = False
-            self._rejected(lifecycle, field + ' must be true')
-            lifecycle = self._lifecycle()
-            lifecycle['writeContainment'][field] = 'true'
-            self._rejected(lifecycle, field + ' must be boolean')
-
-    def test_a_write_file_and_an_enabled_preference_are_required(self):
-        lifecycle = self._lifecycle()
-        lifecycle['contentFiles'] = []
-        self._rejected(lifecycle, 'contentFiles must record the written file')
-        lifecycle = self._lifecycle()
-        lifecycle['tocCountWords']['applied'] = False
-        self._rejected(lifecycle, 'was not enabled')
-        lifecycle = self._lifecycle()
-        lifecycle['tocCountWordsRestored'] = False
-        self._rejected(lifecycle, 'was not restored')
-
-    def test_row_count_and_order_are_exact(self):
-        lifecycle = self._lifecycle()
-        lifecycle['refreshedChapters'] = lifecycle['refreshedChapters'][:1]
-        self._rejected(lifecycle, 'refreshedChapters row count differs')
-        lifecycle = self._lifecycle()
-        lifecycle['storedAfterRefresh'][0]['index'] = 1
-        lifecycle['storedAfterRefresh'][1]['index'] = 0
-        self._rejected(lifecycle, 'index is not its ordered position')
+    def test_each_phase_needs_two_ordered_rows(self):
+        for phase in capture.TITLE_LIFECYCLE_PHASES:
+            case = self._case()
+            case['titleLifecycle'][phase] = case['titleLifecycle'][phase][:1]
+            self._rejected(self._admit_shared, case, phase + ' row count differs')
+            case = self._case()
+            case['titleLifecycle'][phase][0]['index'] = 1
+            case['titleLifecycle'][phase][1]['index'] = 0
+            self._rejected(self._admit_shared, case,
+                           'index is not its ordered position')
 
     def test_null_and_missing_variable_stay_distinct(self):
-        lifecycle = self._lifecycle()
-        lifecycle['refreshedChapters'][0]['variable'] = None
-        self._admit(lifecycle)
-        lifecycle = self._lifecycle()
-        del lifecycle['refreshedChapters'][0]['variable']
-        self._rejected(lifecycle, 'variable is missing')
-        lifecycle = self._lifecycle()
-        lifecycle['refreshedChapters'][0]['variable'] = 7
-        self._rejected(lifecycle, 'variable must be a string or null')
+        case = self._case()
+        case['titleLifecycle']['refreshedChapters'][0]['variable'] = None
+        self._admit_shared(case)
+        case = self._case()
+        del case['titleLifecycle']['refreshedChapters'][0]['variable']
+        self._rejected(self._admit_shared, case, 'variable is missing')
+        case = self._case()
+        case['titleLifecycle']['refreshedChapters'][0]['variable'] = 7
+        self._rejected(self._admit_shared, case,
+                       'variable must be a string or null')
 
     def test_an_extra_row_field_is_refused(self):
-        lifecycle = self._lifecycle()
-        lifecycle['beforeContent'][0]['wordCount'] = '1'
-        self._rejected(lifecycle, 'fields differ')
+        case = self._case()
+        case['titleLifecycle']['beforeContent'][0]['wordCount'] = '1'
+        self._rejected(self._admit_shared, case, 'fields differ')
+
+    def test_the_native_proof_is_required_and_typed(self):
+        case = {'titleLifecycle': self._phases()}
+        self._rejected(self._admit_native, case, 'titleLifecycleProof is missing')
+        case = self._case()
+        case['titleLifecycleProof']['contentFiles'] = []
+        self._rejected(self._admit_native, case, 'contentFiles must not be empty')
+        case = self._case()
+        case['titleLifecycleProof']['bookParent']['readBack'] = False
+        self._rejected(self._admit_native, case, 'readBack must be true')
+        case = self._case()
+        del case['titleLifecycleProof']['guard']
+        self._rejected(self._admit_native, case, 'guard is missing')
+        case = self._case()
+        case['titleLifecycleProof']['undeclared'] = True
+        self._rejected(self._admit_native, case, 'undeclared fields')
+
+    def test_the_native_proof_rejects_an_unclosed_domain(self):
+        case = self._case()
+        case['titleLifecycleProof']['guard']['release']['removedReceivers'] = 0
+        self._rejected(self._admit_native, case,
+                       'did not remove every registration it owned')
+        case = self._case()
+        case['titleLifecycleProof']['guard']['receipt']['pendingWrappers'] = 1
+        self._rejected(self._admit_native, case, 'left a wrapper registered')
+        case = self._case()
+        case['titleLifecycleProof']['guard']['receipt']['blockedDeliveries'] = 1
+        self._rejected(self._admit_native, case,
+                       'received an external IPC attempt')
+        case = self._case()
+        case['titleLifecycleProof']['guard']['receipt']['failures'] = ['x']
+        self._rejected(self._admit_native, case, 'recorded a guard failure')
+        case = self._case()
+        case['titleLifecycleProof']['saveEvent']['fence']['completed'] = False
+        self._rejected(self._admit_native, case, 'fence did not complete')
+
+    def test_the_preference_restore_is_required_and_presence_aware(self):
+        case = self._case()
+        case['titleLifecycleProof']['tocCountWords']['restored'] = False
+        self._rejected(self._admit_native, case, 'was not restored')
+        case = self._case()
+        case['titleLifecycleProof']['tocCountWords']['previousPresent'] = False
+        self._rejected(self._admit_native, case, 'presence differs')
 
     def _operations_case(self, terminal, names):
         requests = []
@@ -653,6 +701,46 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'operation set differs'):
             capture._admit_native_operations([case], requests, trace,
                                              {'origin': self.ORIGIN})
+
+    def test_a_stale_or_extra_span_is_refused(self):
+        names = ['search', 'bookInfo', 'tableOfContents', 'content',
+                 'tableOfContents']
+        case, requests, trace = self._operations_case(
+            capture.TITLE_LIFECYCLE_TERMINAL, names)
+        # A sixth request/trace pair the declared operations skip: the last
+        # operation's span is internally consistent but not contiguous.
+        gap_path = '/tableOfContents/5'
+        requests.append({'method': 'GET', 'path': gap_path, 'rawQuery': '',
+                         'stage': 'tableOfContents'})
+        trace.append({'stage': 'tableOfContents', 'path': self.ORIGIN + gap_path})
+        case['operations'][4]['requestStart'] = 5
+        case['operations'][4]['requestEnd'] = 6
+        case['operations'][4]['traceStart'] = 5
+        case['operations'][4]['traceEnd'] = 6
+        case['requests'] = list(requests)
+        with self.assertRaisesRegex(ValueError, 'not contiguous'):
+            capture._admit_native_operations([case], requests, trace,
+                                             {'origin': self.ORIGIN})
+        case, requests, trace = self._operations_case(
+            capture.TITLE_LIFECYCLE_TERMINAL, names)
+        case['operations'][4]['traceEnd'] = 99
+        with self.assertRaisesRegex(ValueError, 'outside the stage trace'):
+            capture._admit_native_operations([case], requests, trace,
+                                             {'origin': self.ORIGIN})
+
+    def test_the_lifecycle_corpus_declares_distinct_source_keys(self):
+        here = Path(__file__).resolve().parent
+        corpus = json.loads(
+            (here / 'reader-title-lifecycle-fixtures-selected.json').read_text(
+                encoding='utf-8'))
+        keys = [case['source']['bookSourceUrl'] for case in corpus['cases']]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertTrue(all(key.startswith('http://127.0.0.1:18734/source/')
+                            for key in keys))
+        self.assertEqual(len(corpus['expectedRequests']), 18)
+        self.assertEqual(len(corpus['responses']), 18)
+        self.assertEqual(len(corpus['cases']), 4)
+        self.assertIn('titleLifecycle', corpus)
 
 
 class SelectedReceiptTest(unittest.TestCase):

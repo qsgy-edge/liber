@@ -30,4 +30,29 @@ public final class SelectedFieldHostBridge {
     public static int launchAttempts() {
         return GuardedReaderApplication.launchAttempts();
     }
+
+    /** Enables the bounded saved-content capture guard for this lifetime. */
+    public static void beginCapture() {
+        GuardedReaderApplication.beginCapture();
+    }
+
+    /** Disables the guard after its owned registrations were released. */
+    public static void endCapture() {
+        GuardedReaderApplication.endCapture();
+    }
+
+    /** Removes every registration the guard owns and reports the outcome. */
+    public static JSONObject releaseOwnedRegistrations() {
+        return GuardedReaderApplication.releaseOwnedRegistrations();
+    }
+
+    /** The guard's own registration/inbound/failure receipts. */
+    public static JSONObject captureReceipt() throws Exception {
+        return GuardedReaderApplication.captureReceipt();
+    }
+
+    /** Posts a marker to the main looper and waits for it. */
+    public static JSONObject fenceMainLooper(long timeoutMillis) throws Exception {
+        return GuardedReaderApplication.fenceMainLooper(timeoutMillis);
+    }
 }
