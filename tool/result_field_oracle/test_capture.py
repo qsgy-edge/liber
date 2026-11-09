@@ -1586,10 +1586,129 @@ public final class StageAFixture {
             "every preference lifetime path must behave: " + outcome);
     }
 
+    /**
+     * The actual outer/per-case lifetime algorithm, driven directly.
+     *
+     * <p>Every scenario calls the same {@code FieldOracle.runWithCleanup} the
+     * collector's run and its saved case use; only the body and cleanup
+     * callables are supplied here.
+     */
+    static void lifetimeControls(JSONObject result) throws Exception {
+        JSONObject outcome = new JSONObject();
+        // 1. A body that throws before any report exists still runs the cleanup.
+        final boolean[] cleaned = {false};
+        JSONObject bodyFails = FieldOracle.runWithCleanup(
+            () -> { throw new IllegalStateException("setup failed before report"); },
+            () -> { cleaned[0] = true; return new JSONObject().put("ran", true); });
+        outcome.put("bodyFailureStillCleans", cleaned[0])
+            .put("bodyFailureFailed", bodyFails.optBoolean("failed"))
+            .put("bodyFailureChain", bodyFails.optString("failureChain")
+                .contains("setup failed before report"));
+        // 2. A cleanup failure alone fails the run.
+        JSONObject cleanupFails = FieldOracle.runWithCleanup(
+            () -> new JSONObject().put("ok", true),
+            () -> { throw new IllegalStateException("guard close failed"); });
+        outcome.put("cleanupFailureFailed", cleanupFails.optBoolean("failed"))
+            .put("cleanupFailureChain", cleanupFails.optString("failureChain")
+                .contains("guard close failed"));
+        // 3. Both failures are retained, with the cleanup suppressed on the primary.
+        JSONObject both = FieldOracle.runWithCleanup(
+            () -> { throw new IllegalStateException("primary operation failed"); },
+            () -> { throw new IllegalStateException("database close failed"); });
+        String chain = both.optString("failureChain");
+        outcome.put("bothRetained", chain.contains("primary operation failed")
+                && chain.contains("database close failed")
+                && chain.contains("Suppressed"))
+            .put("bothFailed", both.optBoolean("failed"));
+        // 4. A clean body and clean cleanup is a success.
+        JSONObject clean = FieldOracle.runWithCleanup(
+            () -> new JSONObject().put("ok", true),
+            () -> new JSONObject().put("closed", true));
+        outcome.put("cleanSucceeds", !clean.optBoolean("failed", true));
+        // 5. A missing cleanup callable is not a failure, and a missing body is.
+        JSONObject noCleanup = FieldOracle.runWithCleanup(
+            () -> new JSONObject().put("ok", true), null);
+        JSONObject noBody = FieldOracle.runWithCleanup(null,
+            () -> new JSONObject().put("closed", true));
+        outcome.put("noCleanupSucceeds", !noCleanup.optBoolean("failed", true))
+            .put("noBodyIsNotAFailure", !noBody.optBoolean("failed", true));
+        // 6. An operation failure still restores the preference, and both errors
+        //    survive with their complete chains.
+        Preferences preferences = new Preferences();
+        JSONObject prior = TocCountWordsCapture.capture(preferences);
+        JSONObject operation = FieldOracle.runWithCleanup(
+            () -> {
+                TocCountWordsCapture.apply(preferences, true);
+                throw new IllegalStateException("content operation failed");
+            },
+            () -> TocCountWordsCapture.restore(preferences, prior));
+        String operationChain = operation.optString("failureChain");
+        outcome.put("operationFailureRestores", !preferences.contains("tocCountWords"))
+            .put("operationFailureRetained", operationChain.contains("content operation failed"))
+            .put("operationFailureFailed", operation.optBoolean("failed"));
+        // 7. An observer close and a preference restore that both fail keep both
+        //    identities, not one string.
+        Preferences second = new Preferences();
+        JSONObject secondPrior = TocCountWordsCapture.capture(second);
+        TocCountWordsCapture.apply(second, true);
+        second.refuseCommit = true;
+        JSONObject combined = FieldOracle.runWithCleanup(
+            () -> { throw new IllegalStateException("body failed"); },
+            () -> {
+                // The production cleanup attempts each owned domain and throws
+                // one aggregate carrying every failure as suppressed.
+                IllegalStateException aggregate =
+                    new IllegalStateException("cleanup recorded 2 failure(s)");
+                aggregate.addSuppressed(new IllegalStateException("observer close failed"));
+                try {
+                    TocCountWordsCapture.restore(second, secondPrior);
+                } catch (Throwable error) {
+                    aggregate.addSuppressed(error);
+                }
+                throw aggregate;
+            });
+        String combinedChain = combined.optString("failureChain");
+        outcome.put("combinedRetained", combinedChain.contains("body failed")
+                && combinedChain.contains("observer close failed")
+                && combinedChain.contains("tocCountWords was not restored"))
+            .put("combinedFailed", combined.optBoolean("failed"));
+        result.put("lifetime", outcome);
+        require(outcome.optBoolean("bodyFailureStillCleans")
+            && outcome.optBoolean("bodyFailureFailed")
+            && outcome.optBoolean("bodyFailureChain")
+            && outcome.optBoolean("cleanupFailureFailed")
+            && outcome.optBoolean("cleanupFailureChain")
+            && outcome.optBoolean("bothRetained") && outcome.optBoolean("bothFailed")
+            && outcome.optBoolean("cleanSucceeds")
+            && outcome.optBoolean("noCleanupSucceeds")
+            && outcome.optBoolean("noBodyIsNotAFailure")
+            && outcome.optBoolean("operationFailureRestores")
+            && outcome.optBoolean("operationFailureRetained")
+            && outcome.optBoolean("operationFailureFailed")
+            && outcome.optBoolean("combinedRetained") && outcome.optBoolean("combinedFailed"),
+            "every lifetime path must behave: " + outcome);
+    }
+
+    /** The actual preference lifetime, reached through the collector's own helper. */
+    static final class TocCountWordsCapture {
+        static JSONObject capture(Preferences preferences) throws Exception {
+            return FieldOracle.TocCountWordsLifetime.capture(preferences);
+        }
+
+        static JSONObject apply(Preferences preferences, boolean value) throws Exception {
+            return FieldOracle.TocCountWordsLifetime.apply(preferences, value);
+        }
+
+        static JSONObject restore(Preferences preferences, JSONObject prior) throws Exception {
+            return FieldOracle.TocCountWordsLifetime.restore(preferences, prior);
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject().put("control", args[0]);
         if (args[0].equals("replay")) replayControls(result);
         else if (args[0].equals("preference")) preferenceControls(result);
+        else if (args[0].equals("lifetime")) lifetimeControls(result);
         else throw new IllegalArgumentException("unknown control " + args[0]);
         result.put("ok", true);
         System.out.println(result.toString());
@@ -1719,7 +1838,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                  '-cp', classpath, '-d', str(classes), str(fixture)], repo)
             self.assertEqual(fixture_compiled.returncode, 0,
                              fixture_compiled.stderr.decode(errors='replace'))
-            for control in ('replay', 'preference'):
+            for control in ('replay', 'preference', 'lifetime'):
                 run = self._run(
                     [str(java / 'bin' / 'java.exe'), '-cp', classpath,
                      'io.liber.oracle.fields.StageAFixture', control], repo)

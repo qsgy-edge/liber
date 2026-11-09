@@ -40,6 +40,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -270,6 +271,87 @@ public final class FieldOracle extends Instrumentation {
 
     private void run() {
         Bundle status = new Bundle();
+        JSONObject outcome = runWithCleanup(this::runBody, this::outerCleanup);
+        try {
+            if (outcome.optBoolean("failed", true)) {
+                String chain = outcome.optString("failureChain", "harness failure");
+                if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(chain);
+                status.putString("stream", "Fields oracle harness error: " + chain + "\n");
+                log("harness error: " + chain);
+                finished.set(true);
+                finish(1, status);
+                return;
+            }
+            int recorded = newFamily ? caseRecords.length() : cases.length();
+            status.putString("stream", "Fields oracle recorded " + requests.length()
+                + " requests and " + recorded + " cases"
+                + (caseFailures.length() == 0 ? "" : ", " + caseFailures.length() + " failed")
+                + "\n");
+            finished.set(true);
+            finish(caseFailures.length() == 0 ? -1 : 1, status);
+        } catch (Throwable error) {
+            log("harness finish failed: " + describe(error));
+            finished.set(true);
+            finish(1, status);
+        }
+    }
+
+    /**
+     * One lifecycle body with unconditional cleanup.
+     *
+     * <p>The body runs first; the cleanup then runs on every path, including a
+     * body that threw before any report or output existed. The primary failure
+     * and the cleanup failure are both retained, the cleanup failure is attached
+     * to the primary as suppressed, and the complete chain is serialized through
+     * the standard {@code printStackTrace} writer. This is the one algorithm the
+     * collector's outer run and its saved case both use.
+     */
+    static JSONObject runWithCleanup(Callable<JSONObject> body, Callable<JSONObject> cleanup) {
+        JSONObject outcome = new JSONObject();
+        Throwable primary = null;
+        JSONObject result = null;
+        if (body != null) {
+            try {
+                result = body.call();
+            } catch (Throwable error) {
+                primary = error;
+            }
+        }
+        Throwable cleanupFailure = null;
+        JSONObject cleanupReceipt = null;
+        if (cleanup != null) {
+            try {
+                cleanupReceipt = cleanup.call();
+            } catch (Throwable error) {
+                cleanupFailure = error;
+            }
+        }
+        if (primary != null && cleanupFailure != null) primary.addSuppressed(cleanupFailure);
+        try {
+            outcome.put("result", result == null ? JSONObject.NULL : result)
+                .put("cleanup", cleanupReceipt == null ? JSONObject.NULL : cleanupReceipt)
+                .put("primary", primary == null ? JSONObject.NULL : describeChain(primary))
+                .put("cleanupFailure", cleanupFailure == null
+                    ? JSONObject.NULL : describeChain(cleanupFailure))
+                .put("failed", primary != null || cleanupFailure != null)
+                .put("failureChain", primary != null ? describeChain(primary)
+                    : cleanupFailure != null ? describeChain(cleanupFailure) : "");
+        } catch (Throwable ignored) {
+            // The boolean facts above are already recorded.
+        }
+        return outcome;
+    }
+
+    /** The complete throwable chain, through the standard writer. */
+    static String describeChain(Throwable error) {
+        if (error == null) return "";
+        java.io.StringWriter writer = new java.io.StringWriter();
+        error.printStackTrace(new java.io.PrintWriter(writer));
+        return writer.toString();
+    }
+
+    /** The lifecycle body: everything before the final cleanup. */
+    private JSONObject runBody() throws Exception {
         try {
             log("harness start");
             byte[] asset = readAssetBytes(ASSET);
@@ -384,55 +466,108 @@ public final class FieldOracle extends Instrumentation {
             // The report is written before the replay server is torn down: the
             // run's evidence must survive a host that freezes this process after
             // a few seconds (MIUI does; see the golden's manifest).
-            stage.set("cleanup");
+            return new JSONObject().put("recorded", newFamily
+                ? caseRecords.length() : cases.length());
+        } catch (Throwable error) {
+            throw error;
+        }
+    }
+
+    /**
+     * The unconditional outer cleanup: the report, the replay sockets, the
+     * process guard, the real database and the owned preference fences, each
+     * attempted even when another fails. Any failure is retained and rethrown
+     * with every other failure suppressed, so no normal finish can claim
+     * resource completion that was not proved.
+     */
+    private JSONObject outerCleanup() throws Exception {
+        JSONObject receipt = new JSONObject();
+        List<Throwable> failures = new ArrayList<>();
+        JSONObject report = attempt(failures, "report", () -> {
             writeReport();
             log("report written; failures=" + caseFailures.length());
+            return new JSONObject().put("written", true);
+        });
+        JSONObject replayState = attempt(failures, "replay", () -> {
+            if (replay == null) return new JSONObject().put("serverClosed", false);
             cleanup.put("openConnections", replay.openConnections());
-            try {
-                replay.close();
-                cleanup.put("serverClosed", true);
-            } catch (Throwable error) {
-                cleanup.put("serverClosed", false);
-                log("cleanup failed: " + describe(error));
+            replay.close();
+            cleanup.put("serverClosed", true);
+            return new JSONObject().put("serverClosed", true)
+                .put("openConnectionsAfterClose", replay.openConnections());
+        });
+        JSONObject guard = attempt(failures, "guard", () -> {
+            if (!newFamily || !lifecycleCorpus()) {
+                return new JSONObject().put("applicable", false);
             }
-            // R4: the one process-lifetime guard is released here, once, after
-            // every case. Its receipt lives in the report's cleanup domain.
-            if (newFamily && lifecycleCorpus()) {
-                try {
-                    cleanup.put("savedContentGuard", releaseSavedContentGuard());
-                } catch (Throwable error) {
-                    cleanup.put("savedContentGuard", new JSONObject()
-                        .put("closed", false)
-                        .put("error", String.valueOf(error)));
-                    log("saved-content guard cleanup failed: " + describe(error));
-                }
+            JSONObject released = releaseSavedContentGuard();
+            cleanup.put("savedContentGuard", released);
+            return released;
+        });
+        JSONObject database = attempt(failures, "database", () -> {
+            if (!selectedReference || selectedDatabase == null) {
+                return new JSONObject().put("applicable", false);
             }
-            if (selectedReference) {
-                cleanup.put("openConnectionsAfterClose", replay.openConnections());
-                if (!terminalProved || !cleanup.optBoolean("serverClosed") || replay.openConnections() != 0) {
-                    throw new IllegalStateException("selected terminal or replay cleanup was not proven");
-                }
-                selectedDatabase.getClass().getMethod("close").invoke(selectedDatabase);
-                cleanup.put("databaseClosed", true);
-                cleanup.put("activityLaunchAttempts", selectedLaunchAttempts());
-                if (selectedLaunchAttempts() != 0) throw new IllegalStateException("activity launch attempted");
+            selectedDatabase.getClass().getMethod("close").invoke(selectedDatabase);
+            cleanup.put("databaseClosed", true);
+            cleanup.put("activityLaunchAttempts", selectedLaunchAttempts());
+            return new JSONObject().put("closed", true)
+                .put("activityLaunchAttempts", selectedLaunchAttempts());
+        });
+        JSONObject preferences = attempt(failures, "preferences", () -> {
+            if (!newFamily) return new JSONObject().put("applicable", false);
+            finishScratchCleanup();
+            return new JSONObject().put("fenced", cleanup.optBoolean("preferencesFenced", false));
+        });
+        if (selectedReference) {
+            if (!terminalProved || !replayState.optBoolean("serverClosed", false)
+                    || replayState.optInt("openConnectionsAfterClose", -1) != 0) {
+                failures.add(new IllegalStateException(
+                    "selected terminal or replay cleanup was not proven"));
             }
-            if (newFamily) finishScratchCleanup();
-            int recorded = newFamily ? caseRecords.length() : cases.length();
+            if (database.optInt("activityLaunchAttempts", 0) != 0) {
+                failures.add(new IllegalStateException("activity launch attempted"));
+            }
+        }
+        attempt(failures, "final-report", () -> {
             writeReport();
             log("report rewritten with cleanup=" + cleanup);
-            status.putString("stream", "Fields oracle recorded " + requests.length()
-                + " requests and " + recorded + " cases"
-                + (caseFailures.length() == 0 ? "" : ", " + caseFailures.length() + " failed")
-                + "\n");
-            finished.set(true);
-            finish(caseFailures.length() == 0 ? -1 : 1, status);
+            return new JSONObject().put("written", true);
+        });
+        try {
+            receipt.put("report", report).put("replay", replayState).put("guard", guard)
+                .put("database", database).put("preferences", preferences)
+                .put("failureCount", failures.size())
+                .put("closed", failures.isEmpty());
+        } catch (Throwable ignored) {
+            // The failure list below is the authoritative fact.
+        }
+        if (!failures.isEmpty()) {
+            IllegalStateException aggregate = new IllegalStateException(
+                "outer cleanup recorded " + failures.size() + " failure(s)");
+            for (Throwable failure : failures) aggregate.addSuppressed(failure);
+            throw aggregate;
+        }
+        return receipt;
+    }
+
+    /** Runs one cleanup domain, recording its failure instead of aborting the rest. */
+    private JSONObject attempt(List<Throwable> failures, String name, Callable<JSONObject> work) {
+        try {
+            return work.call();
         } catch (Throwable error) {
-            if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(describe(error));
-            status.putString("stream", "Fields oracle harness error: " + describe(error) + "\n");
-            log("harness error: " + describe(error));
-            finished.set(true);
-            finish(1, status);
+            failures.add(error);
+            try {
+                cleanup.put(name + "Failure", describeChain(error));
+            } catch (Throwable ignored) {
+                // The failure list already records it.
+            }
+            log("cleanup domain " + name + " failed: " + describe(error));
+            try {
+                return new JSONObject().put("failed", true);
+            } catch (Throwable ignored) {
+                return new JSONObject();
+            }
         }
     }
 
@@ -584,6 +719,14 @@ public final class FieldOracle extends Instrumentation {
         boolean sameObject = appCtxValue == threadApp;
         boolean guarded = !selectedReference || "io.liber.oracle.nested.GuardedReaderApplication"
             .equals(appCtxValue.getClass().getName());
+        // The application object must have been attached to THIS bound scratch,
+        // not merely resolve equal canonical paths. This is measured before the
+        // guard is armed and before any reference initialiser can create a
+        // directory.
+        android.content.Context baseContext =
+            appCtxValue instanceof android.content.ContextWrapper
+                ? ((android.content.ContextWrapper) appCtxValue).getBaseContext() : null;
+        boolean baseContextBound = baseContext == scratch;
         File external = app.getExternalFilesDir(null);
         File externalOrFiles = external != null ? external : app.getFilesDir();
         String canonicalExternal = externalOrFiles.getCanonicalPath();
@@ -601,6 +744,9 @@ public final class FieldOracle extends Instrumentation {
                 ? JSONObject.NULL : threadApp.getClass().getName())
             .put("sameApplicationObject", sameObject)
             .put("guardedApplication", guarded)
+            .put("baseContextBound", baseContextBound)
+            .put("baseContextClass", baseContext == null
+                ? JSONObject.NULL : baseContext.getClass().getName())
             .put("externalFilesPath", canonicalExternal)
             .put("filesPath", canonicalFiles)
             .put("databasePath", canonicalDatabase)
@@ -608,7 +754,8 @@ public final class FieldOracle extends Instrumentation {
             .put("externalFilesRouted", externalRouted)
             .put("filesRouted", filesRouted)
             .put("databaseRouted", databaseRouted);
-        if (!sameObject || !guarded || !externalRouted || !filesRouted || !databaseRouted) {
+        if (!sameObject || !guarded || !baseContextBound || !externalRouted || !filesRouted
+                || !databaseRouted) {
             throw new IllegalStateException(
                 "the target application or its storage is not this bound scratch: " + containment);
         }
@@ -925,13 +1072,12 @@ public final class FieldOracle extends Instrumentation {
             .put("rows", chapters.size())
             .put("inserted", true));
 
-        // R2/R4: this case owns its own observer, registered on the main thread
-        // through the public Observable interface and acknowledged there.
-        JSONObject observation = saveObservation(loader, "begin", bookUrl, chapterUrl);
-        proof.put("saveObserver", observation);
         Throwable primaryFailure = null;
         try {
-            applyTocCountWords(loader, true);
+            // R2/R4: the observer acquisition belongs INSIDE the cleanup scope,
+            // so a partial or throwing begin is still closed below.
+            proof.put("saveObserver", saveObservation(loader, "begin", bookUrl, chapterUrl));
+            proof.put("tocCountWordsApplied", applyTocCountWords(loader, true));
 
             stage.set("content");
             log("stage content (saved)");
@@ -986,32 +1132,28 @@ public final class FieldOracle extends Instrumentation {
             primaryFailure = error;
             throw error;
         } finally {
-            Throwable cleanupFailure = null;
-            // The observer is removed on every path, including a failure before
-            // the event completed.
-            try {
+            // Both owned cleanups are attempted; each failure is retained with
+            // its complete chain, so neither one can hide the other.
+            List<Throwable> cleanupFailures = new ArrayList<>();
+            attempt(cleanupFailures, "saveObserverClose", () -> {
                 proof.put("saveObserverClose", saveObservation(loader, "close", bookUrl,
                     chapterUrl));
-            } catch (Throwable error) {
-                cleanupFailure = error;
-                proof.put("saveObserverCloseError", String.valueOf(error));
-            }
-            // R6: the prior presence and value are restored on every path.
-            try {
+                return new JSONObject().put("closed", true);
+            });
+            attempt(cleanupFailures, "tocCountWordsRestore", () -> {
                 proof.put("tocCountWords", restoreTocCountWords(loader, priorPreference));
-            } catch (Throwable error) {
-                if (cleanupFailure == null) cleanupFailure = error;
-                proof.put("tocCountWordsRestoreError", String.valueOf(error));
-            }
+                return new JSONObject().put("restored", true);
+            });
             observed.put("titleLifecycleProof", proof);
             observed.put("titleLifecycle", lifecycle);
-            if (cleanupFailure != null) {
+            if (!cleanupFailures.isEmpty()) {
+                IllegalStateException aggregate = new IllegalStateException(
+                    "title lifecycle cleanup recorded " + cleanupFailures.size() + " failure(s)");
+                for (Throwable failure : cleanupFailures) aggregate.addSuppressed(failure);
                 if (primaryFailure != null) {
-                    primaryFailure.addSuppressed(cleanupFailure);
+                    primaryFailure.addSuppressed(aggregate);
                 } else {
-                    throw cleanupFailure instanceof Exception
-                        ? (Exception) cleanupFailure
-                        : new IllegalStateException(cleanupFailure);
+                    throw aggregate;
                 }
             }
         }
