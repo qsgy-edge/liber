@@ -12,6 +12,7 @@ const _selectedCorpusHashes = {
   '98934998a2c5cc702bd24888f8ed59ce595d617870c2c5a45b79e0b947d7c7d0',
   '1e8f9517a4fb12da0ddf37c74bb2a024b35620e89a32b50f531f7bc11330ba6a',
   '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0',
+  '0f87c6c775ff54164bc11a9a30efaa48e5155def31c37e9b7eb8e721bd776be9',
 };
 
 /// Compares the frozen FIELDS-01 golden against the Liber-side observation of

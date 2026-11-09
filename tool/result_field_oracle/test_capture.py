@@ -144,6 +144,22 @@ class SelectedCorpusTest(unittest.TestCase):
                 capture.selected_preflight(Path('unused.apk'), target, altered, Path('source'), Path('sdk'), Path('java'))
             run.assert_not_called()
 
+    def test_selected_preflight_accepts_json_replace_corpus(self):
+        from unittest.mock import patch
+        target = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/controller/team-baseline-migration-01/reference-stage/artifacts/legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        here = Path(__file__).resolve().parent
+        fixture = here / 'reader-json-replace-fixtures-selected.json'
+        with patch.object(capture.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['probe'], 120)) as run:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                capture.selected_preflight(Path('unused.apk'), target, fixture, Path('source'), Path('sdk'), Path('java'))
+            self.assertEqual(run.call_count, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            altered = Path(directory) / 'altered.json'
+            altered.write_bytes(fixture.read_bytes() + b' ')
+            with patch.object(capture.subprocess, 'run') as run, self.assertRaisesRegex(ValueError, 'corpus raw bytes'):
+                capture.selected_preflight(Path('unused.apk'), target, altered, Path('source'), Path('sdk'), Path('java'))
+            run.assert_not_called()
+
     def test_selected_chapter_raw_query_uses_declared_wire_bytes(self):
         self.assertEqual(capture._canonical_raw_query({'query': {'q': '��'}, 'rawQuery': 'q=%D6%D0'}), 'q=%D6%D0')
         self.assertEqual(capture._canonical_raw_query({'query': {'q': '中'}}), 'q=%E4%B8%AD')

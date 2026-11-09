@@ -92,3 +92,4 @@ tool/result_field_oracle/chapter-lifecycle-fixtures-selected.json text eol=lf
 tool/result_field_oracle/chapter-relative-fixtures-selected.json text eol=lf
 tool/result_field_oracle/chapter-identity-fixtures-selected.json text eol=lf
 tool/result_field_oracle/reader-followthrough-fixtures-selected.json text eol=lf
+tool/result_field_oracle/reader-json-replace-fixtures-selected.json text eol=lf
