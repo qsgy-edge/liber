@@ -1286,13 +1286,23 @@ public final class StageAFixture {
     /** A bounded implementation of the real SharedPreferences ABI. */
     static final class Preferences implements android.content.SharedPreferences {
         final java.util.Map<String, Object> values = new java.util.HashMap<>();
+        /** A commit that writes the value first and then reports false. */
         boolean refuseCommit;
-        RuntimeException readFailure;
+        /** A commit that writes the value first and then throws. */
+        RuntimeException commitError;
+        /** A read that throws once, after a commit already mutated the store. */
+        RuntimeException readError;
+        boolean readArmed;
 
         @Override public boolean contains(String key) { return values.containsKey(key); }
 
         @Override public boolean getBoolean(String key, boolean defValue) {
-            if (readFailure != null) throw readFailure;
+            if (readArmed && readError != null) {
+                readArmed = false;
+                RuntimeException error = readError;
+                readError = null;
+                throw error;
+            }
             Object value = values.get(key);
             return value instanceof Boolean ? (Boolean) value : defValue;
         }
@@ -1338,9 +1348,16 @@ public final class StageAFixture {
         }
 
         @Override public boolean commit() {
-            if (target.refuseCommit) return false;
+            // The mutation happens FIRST, so a false or throwing commit is a
+            // partial effect the lifetime must still restore.
             for (String key : removed) target.values.remove(key);
             target.values.putAll(pending);
+            if (target.refuseCommit) return false;
+            if (target.commitError != null) {
+                RuntimeException error = target.commitError;
+                target.commitError = null;
+                throw error;
+            }
             return true;
         }
 
@@ -1376,12 +1393,55 @@ public final class StageAFixture {
 
     static Object create(JSONArray responses, JSONArray requests, JSONArray unmatched,
             JSONArray errors, JSONArray trace) throws Exception {
-        JSONObject corpus = new JSONObject().put("origin", "http://127.0.0.1:0")
-            .put("responses", responses);
+        return create(new JSONObject().put("origin", "http://127.0.0.1:0")
+            .put("responses", responses), requests, unmatched, errors, trace);
+    }
+
+    static Object create(JSONObject corpus, JSONArray requests, JSONArray unmatched,
+            JSONArray errors, JSONArray trace) throws Exception {
         Object server = replayCtor.newInstance(corpus, requests, unmatched, errors, trace,
             new AtomicReference<String>("stage-a-replay-control"), true);
         start.invoke(server);
         return server;
+    }
+
+    /**
+     * A bounded, deterministic schedule hook around the replay corpus input.
+     *
+     * <p>It only controls WHEN the responses array is handed back: the first
+     * real match waits, inside its own call, for a bounded opportunity for a
+     * second client. The matcher, receipts and wire bytes are the real ones.
+     */
+    static final class ScheduledCorpus extends JSONObject {
+        final java.util.concurrent.atomic.AtomicInteger matchCalls =
+            new java.util.concurrent.atomic.AtomicInteger();
+        final java.util.concurrent.CountDownLatch firstInMatch =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch secondClientCompleted =
+            new java.util.concurrent.CountDownLatch(1);
+        volatile boolean firstWaiting;
+        volatile boolean secondEnteredWhileFirstBlocked;
+
+        @Override public JSONArray optJSONArray(String key) {
+            if ("responses".equals(key)) {
+                int call = matchCalls.incrementAndGet();
+                if (call == 1) {
+                    firstWaiting = true;
+                    firstInMatch.countDown();
+                    try {
+                        secondClientCompleted.await(700, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    } finally {
+                        firstWaiting = false;
+                    }
+                } else if (call == 2) {
+                    secondEnteredWhileFirstBlocked = firstWaiting;
+                }
+            }
+            return super.optJSONArray(key);
+        }
     }
 
     static String request(Object server, String target) throws Exception {
@@ -1508,10 +1568,81 @@ public final class StageAFixture {
             }
             concurrentRounds++;
         }
+        // The committed bounded-schedule discriminator: the first real match is
+        // held while a second client gets its bounded opportunity, then the
+        // recorded order and wire bytes must still pair correctly.
+        JSONObject scheduled = scheduledAssociation();
+        result.put("scheduledHealthy", scheduled.optBoolean("healthyAssociation"))
+            .put("scheduledSecondEnteredWhileFirstBlocked",
+                scheduled.optBoolean("secondEnteredWhileFirstBlocked"))
+            .put("scheduledRows", scheduled.optJSONArray("recordedRequests"));
+        require(scheduled.optBoolean("healthyAssociation"),
+            "the controlled concurrent schedule must keep the real association: " + scheduled);
         result.put("sequentialRequests", 7).put("concurrentRounds", concurrentRounds)
             .put("queryPrecedence", true).put("duplicateOrder", true)
             .put("exhaustion", true).put("legacyRepeatedAnswer", true)
             .put("distinctRoutes", true).put("wireReceiptOrder", true);
+    }
+
+    /** One bounded controlled concurrent schedule over the real replay seam. */
+    static JSONObject scheduledAssociation() throws Exception {
+        JSONArray requests = new JSONArray();
+        JSONArray unmatched = new JSONArray();
+        JSONArray errors = new JSONArray();
+        JSONArray trace = new JSONArray();
+        ScheduledCorpus corpus = new ScheduledCorpus();
+        corpus.put("origin", "http://127.0.0.1:0");
+        corpus.put("responses", new JSONArray()
+            .put(response("first", "/same", "ONE"))
+            .put(response("second", "/same", "TWO")));
+        Object server = create(corpus, requests, unmatched, errors, trace);
+        final Map<String, String> bodies = new ConcurrentHashMap<>();
+        final List<Throwable> failures =
+            Collections.synchronizedList(new ArrayList<Throwable>());
+        Thread first = new Thread(() -> {
+            try { bodies.put("L", request(server, "/same?client=L")); }
+            catch (Throwable error) { failures.add(error); }
+        });
+        Thread second = new Thread(() -> {
+            try { bodies.put("R", request(server, "/same?client=R")); }
+            catch (Throwable error) { failures.add(error); }
+            finally { corpus.secondClientCompleted.countDown(); }
+        });
+        try {
+            first.start();
+            require(corpus.firstInMatch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS),
+                "the first client must reach the real matcher");
+            second.start();
+            first.join(4000);
+            second.join(4000);
+            require(!first.isAlive() && !second.isAlive(), "both clients must finish");
+        } finally {
+            close.invoke(server);
+        }
+        require(failures.isEmpty() && requests.length() == 2 && trace.length() == 2
+            && unmatched.length() == 0 && errors.length() == 0,
+            "the scheduled transport must close: " + failures);
+        boolean healthy = true;
+        JSONArray rows = new JSONArray();
+        for (int index = 0; index < 2; index++) {
+            JSONObject row = requests.getJSONObject(index);
+            String client = row.getJSONObject("query").getString("client");
+            String declared = row.getJSONObject("receipt").getString("responseId");
+            String expectedId = index == 0 ? "first" : "second";
+            String expectedBody = index == 0 ? "ONE" : "TWO";
+            boolean linked = declared.equals(expectedId)
+                && bodies.get(client) != null
+                && bodies.get(client).endsWith("|" + expectedBody);
+            healthy &= linked;
+            rows.put(new JSONObject().put("recordedClient", client)
+                .put("receiptResponseId", declared)
+                .put("actualWireBody", bodies.get(client))
+                .put("correctlyLinked", linked));
+        }
+        return new JSONObject().put("recordedRequests", rows)
+            .put("healthyAssociation", healthy)
+            .put("secondEnteredWhileFirstBlocked", corpus.secondEnteredWhileFirstBlocked)
+            .put("realMatchCalls", corpus.matchCalls.get());
     }
 
     static void preferenceControls(JSONObject result) throws Exception {
@@ -1561,7 +1692,8 @@ public final class StageAFixture {
         outcome.put("refusedRestoreFails", restoreFailed);
         StageAFixture.Preferences throwing = new StageAFixture.Preferences();
         JSONObject priorThrow = (JSONObject) capture.invoke(null, throwing);
-        throwing.readFailure = new IllegalStateException("readback failed");
+        throwing.readError = new IllegalStateException("readback failed");
+        throwing.readArmed = true;
         boolean readbackFailed = false;
         try {
             restore.invoke(null, throwing, priorThrow);
@@ -1589,107 +1721,234 @@ public final class StageAFixture {
     /**
      * The actual outer/per-case lifetime algorithm, driven directly.
      *
-     * <p>Every scenario calls the same {@code FieldOracle.runWithCleanup} the
-     * collector's run and its saved case use; only the body and cleanup
-     * callables are supplied here.
+     * <p>Every scenario calls the same production seams the collector uses:
+     * {@code FieldOracle.runWithCleanup} for the outer lifetime and
+     * {@code FieldOracle.TocCountWordsLifetime.run} for the saved case. Only the
+     * body/operation callbacks and the SharedPreferences implementation are
+     * controlled inputs.
      */
-    static void lifetimeControls(JSONObject result) throws Exception {
+    static void lifetimeControls(JSONObject result) throws Throwable {
         JSONObject outcome = new JSONObject();
-        // 1. A body that throws before any report exists still runs the cleanup.
+        // 1. A throwing body still runs the cleanup and the ORIGINAL error escapes.
         final boolean[] cleaned = {false};
-        JSONObject bodyFails = FieldOracle.runWithCleanup(
-            () -> { throw new IllegalStateException("setup failed before report"); },
-            () -> { cleaned[0] = true; return new JSONObject().put("ran", true); });
+        RuntimeException setupError = new IllegalStateException("setup failed before report");
+        Throwable bodyFailure = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> { throw setupError; },
+                () -> { cleaned[0] = true; return new JSONObject().put("closed", true); });
+        } catch (Throwable error) {
+            bodyFailure = error;
+        }
         outcome.put("bodyFailureStillCleans", cleaned[0])
-            .put("bodyFailureFailed", bodyFails.optBoolean("failed"))
-            .put("bodyFailureChain", bodyFails.optString("failureChain")
-                .contains("setup failed before report"));
-        // 2. A cleanup failure alone fails the run.
-        JSONObject cleanupFails = FieldOracle.runWithCleanup(
-            () -> new JSONObject().put("ok", true),
-            () -> { throw new IllegalStateException("guard close failed"); });
-        outcome.put("cleanupFailureFailed", cleanupFails.optBoolean("failed"))
-            .put("cleanupFailureChain", cleanupFails.optString("failureChain")
-                .contains("guard close failed"));
-        // 3. Both failures are retained, with the cleanup suppressed on the primary.
-        JSONObject both = FieldOracle.runWithCleanup(
-            () -> { throw new IllegalStateException("primary operation failed"); },
-            () -> { throw new IllegalStateException("database close failed"); });
-        String chain = both.optString("failureChain");
-        outcome.put("bothRetained", chain.contains("primary operation failed")
-                && chain.contains("database close failed")
-                && chain.contains("Suppressed"))
-            .put("bothFailed", both.optBoolean("failed"));
-        // 4. A clean body and clean cleanup is a success.
-        JSONObject clean = FieldOracle.runWithCleanup(
-            () -> new JSONObject().put("ok", true),
+            .put("bodyFailureIsOriginal", bodyFailure == setupError);
+        // 2. A cleanup failure alone escapes.
+        RuntimeException closeError = new IllegalStateException("guard close failed");
+        Throwable cleanupOnly = null;
+        try {
+            FieldOracle.runWithCleanup(() -> new JSONObject().put("ok", true),
+                () -> { throw closeError; });
+        } catch (Throwable error) {
+            cleanupOnly = error;
+        }
+        outcome.put("cleanupOnlyIsOriginal", cleanupOnly == closeError);
+        // 3. Both identities survive, the cleanup suppressed on the primary.
+        RuntimeException bodyId = new IllegalStateException("BODY_ID");
+        RuntimeException closeId = new IllegalStateException("CLOSE_ID");
+        Throwable both = null;
+        try {
+            FieldOracle.runWithCleanup(() -> { throw bodyId; }, () -> { throw closeId; });
+        } catch (Throwable error) {
+            both = error;
+        }
+        String bothChain = FieldOracle.describeChain(both);
+        outcome.put("bothPrimaryRetained", both == bodyId)
+            .put("bothCleanupRetained", both != null && containsThrowable(both, closeId))
+            .put("bothChainSerialized", bothChain.contains("BODY_ID")
+                && bothChain.contains("CLOSE_ID") && bothChain.contains("Suppressed"));
+        // 4. A clean body and a proved close succeed and return the body result.
+        JSONObject bodyValue = new JSONObject().put("body", true);
+        Object actual = FieldOracle.runWithCleanup(() -> bodyValue,
             () -> new JSONObject().put("closed", true));
-        outcome.put("cleanSucceeds", !clean.optBoolean("failed", true));
-        // 5. A missing cleanup callable is not a failure, and a missing body is.
-        JSONObject noCleanup = FieldOracle.runWithCleanup(
-            () -> new JSONObject().put("ok", true), null);
-        JSONObject noBody = FieldOracle.runWithCleanup(null,
-            () -> new JSONObject().put("closed", true));
-        outcome.put("noCleanupSucceeds", !noCleanup.optBoolean("failed", true))
-            .put("noBodyIsNotAFailure", !noBody.optBoolean("failed", true));
-        // 6. An operation failure still restores the preference, and both errors
-        //    survive with their complete chains.
+        outcome.put("cleanReturnsBodyResult", actual == bodyValue);
+        // 5. A false or missing closed proof is a failure, never a success.
+        boolean falseClosureFailed = false;
+        try {
+            FieldOracle.runWithCleanup(() -> new JSONObject(),
+                () -> new JSONObject().put("closed", false));
+        } catch (Throwable error) {
+            falseClosureFailed = true;
+        }
+        boolean missingClosureFailed = false;
+        try {
+            FieldOracle.runWithCleanup(() -> new JSONObject(), JSONObject::new);
+        } catch (Throwable error) {
+            missingClosureFailed = true;
+        }
+        outcome.put("falseClosureFailed", falseClosureFailed)
+            .put("missingClosureFailed", missingClosureFailed);
+        // 6. The production saved-case lifetime: prior absent, apply, operation,
+        //    close, restore, with the applied and restored receipts in proof.
         Preferences preferences = new Preferences();
-        JSONObject prior = TocCountWordsCapture.capture(preferences);
-        JSONObject operation = FieldOracle.runWithCleanup(
+        JSONObject proof = new JSONObject();
+        final int[] closes = {0};
+        FieldOracle.TocCountWordsLifetime.run(preferences,
+            () -> new JSONObject().put("registered", true),
             () -> {
-                TocCountWordsCapture.apply(preferences, true);
-                throw new IllegalStateException("content operation failed");
-            },
-            () -> TocCountWordsCapture.restore(preferences, prior));
-        String operationChain = operation.optString("failureChain");
-        outcome.put("operationFailureRestores", !preferences.contains("tocCountWords"))
-            .put("operationFailureRetained", operationChain.contains("content operation failed"))
-            .put("operationFailureFailed", operation.optBoolean("failed"));
-        // 7. An observer close and a preference restore that both fail keep both
-        //    identities, not one string.
-        Preferences second = new Preferences();
-        JSONObject secondPrior = TocCountWordsCapture.capture(second);
-        TocCountWordsCapture.apply(second, true);
-        second.refuseCommit = true;
-        JSONObject combined = FieldOracle.runWithCleanup(
-            () -> { throw new IllegalStateException("body failed"); },
-            () -> {
-                // The production cleanup attempts each owned domain and throws
-                // one aggregate carrying every failure as suppressed.
-                IllegalStateException aggregate =
-                    new IllegalStateException("cleanup recorded 2 failure(s)");
-                aggregate.addSuppressed(new IllegalStateException("observer close failed"));
-                try {
-                    TocCountWordsCapture.restore(second, secondPrior);
-                } catch (Throwable error) {
-                    aggregate.addSuppressed(error);
+                if (!preferences.getBoolean("tocCountWords", false)) {
+                    throw new IllegalStateException("the preference was not applied first");
                 }
-                throw aggregate;
-            });
-        String combinedChain = combined.optString("failureChain");
-        outcome.put("combinedRetained", combinedChain.contains("body failed")
-                && combinedChain.contains("observer close failed")
-                && combinedChain.contains("tocCountWords was not restored"))
-            .put("combinedFailed", combined.optBoolean("failed"));
+                return new JSONObject().put("operated", true);
+            },
+            () -> { closes[0]++; return new JSONObject().put("closed", true); },
+            proof);
+        outcome.put("absentRestored", !preferences.contains("tocCountWords"))
+            .put("absentAppliedProof", proof.has("tocCountWordsApplied"))
+            .put("absentRestoredProof", proof.has("tocCountWords"))
+            .put("absentClosedOnce", closes[0] == 1);
+        // 7. Prior false present restores the value.
+        Preferences priorFalse = new Preferences();
+        priorFalse.values.put("tocCountWords", Boolean.FALSE);
+        FieldOracle.TocCountWordsLifetime.run(priorFalse,
+            () -> new JSONObject().put("registered", true), JSONObject::new,
+            () -> new JSONObject().put("closed", true), new JSONObject());
+        outcome.put("priorFalseRestored", priorFalse.contains("tocCountWords")
+            && !priorFalse.getBoolean("tocCountWords", true));
+        // 8. A throwing begin still enters the owned cleanup.
+        Preferences beginPrefs = new Preferences();
+        RuntimeException beginError = new IllegalStateException("BEGIN_AFTER_EFFECT");
+        final int[] beginCloses = {0};
+        Throwable beginFailure = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(beginPrefs,
+                () -> { throw beginError; }, JSONObject::new,
+                () -> { beginCloses[0]++; return new JSONObject().put("closed", true); },
+                new JSONObject());
+        } catch (Throwable error) {
+            beginFailure = error;
+        }
+        outcome.put("beginErrorRetained", beginFailure == beginError)
+            .put("beginErrorStillCloses", beginCloses[0] == 1)
+            .put("beginErrorRestored", !beginPrefs.contains("tocCountWords"));
+        // 9. A false commit AFTER the mutation restores and skips the operation.
+        Preferences partial = new Preferences();
+        partial.refuseCommit = true;
+        final int[] operated = {0};
+        Throwable partialFailure = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(partial,
+                () -> new JSONObject().put("registered", true),
+                () -> { operated[0]++; return new JSONObject(); },
+                () -> new JSONObject().put("closed", true), new JSONObject());
+        } catch (Throwable error) {
+            partialFailure = error;
+        }
+        outcome.put("partialCommitFailed", partialFailure != null)
+            .put("partialCommitRestored", !partial.contains("tocCountWords"))
+            .put("partialCommitSkippedOperation", operated[0] == 0);
+        // 10. An apply readback throw AFTER the mutation preserves the error and
+        //     still restores.
+        Preferences readback = new Preferences();
+        RuntimeException readError = new IllegalStateException("READ_AFTER_MUTATION");
+        readback.readError = readError;
+        readback.readArmed = true;
+        Throwable readbackFailure = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(readback,
+                () -> new JSONObject().put("registered", true), JSONObject::new,
+                () -> new JSONObject().put("closed", true), new JSONObject());
+        } catch (Throwable error) {
+            readbackFailure = error;
+        }
+        outcome.put("readbackErrorRetained", readbackFailure == readError)
+            .put("readbackErrorRestored", !readback.contains("tocCountWords"));
+        // 11. An operation failure restores in the production lifetime.
+        Preferences operation = new Preferences();
+        RuntimeException operationError = new IllegalStateException("OPERATION");
+        Throwable operationFailure = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(operation,
+                () -> new JSONObject().put("registered", true),
+                () -> { throw operationError; },
+                () -> new JSONObject().put("closed", true), new JSONObject());
+        } catch (Throwable error) {
+            operationFailure = error;
+        }
+        outcome.put("operationErrorRetained", operationFailure == operationError)
+            .put("operationErrorRestored", !operation.contains("tocCountWords"));
+        // 12. Body, observer-close and restore errors all survive the REAL
+        //     shared cleanup, with the complete chain serialized.
+        Preferences combined = new Preferences();
+        RuntimeException combinedBody = new IllegalStateException("BODY_ID");
+        RuntimeException combinedClose = new IllegalStateException("OBSERVER_ID");
+        RuntimeException combinedRestore = new IllegalStateException("RESTORE_ID");
+        Throwable combinedFailure = null;
+        try {
+            FieldOracle.TocCountWordsLifetime.run(combined,
+                () -> new JSONObject().put("registered", true),
+                () -> { throw combinedBody; },
+                () -> { combined.commitError = combinedRestore; throw combinedClose; },
+                new JSONObject());
+        } catch (Throwable error) {
+            combinedFailure = error;
+        }
+        String combinedChain = FieldOracle.describeChain(combinedFailure);
+        outcome.put("combinedPrimaryRetained", combinedFailure == combinedBody)
+            .put("combinedObserverRetained",
+                combinedFailure != null && containsThrowable(combinedFailure, combinedClose))
+            .put("combinedRestoreRetained",
+                combinedFailure != null && containsThrowable(combinedFailure, combinedRestore))
+            .put("combinedChainSerialized", combinedChain.contains("BODY_ID")
+                && combinedChain.contains("OBSERVER_ID")
+                && combinedChain.contains("RESTORE_ID"));
         result.put("lifetime", outcome);
         require(outcome.optBoolean("bodyFailureStillCleans")
-            && outcome.optBoolean("bodyFailureFailed")
-            && outcome.optBoolean("bodyFailureChain")
-            && outcome.optBoolean("cleanupFailureFailed")
-            && outcome.optBoolean("cleanupFailureChain")
-            && outcome.optBoolean("bothRetained") && outcome.optBoolean("bothFailed")
-            && outcome.optBoolean("cleanSucceeds")
-            && outcome.optBoolean("noCleanupSucceeds")
-            && outcome.optBoolean("noBodyIsNotAFailure")
-            && outcome.optBoolean("operationFailureRestores")
-            && outcome.optBoolean("operationFailureRetained")
-            && outcome.optBoolean("operationFailureFailed")
-            && outcome.optBoolean("combinedRetained") && outcome.optBoolean("combinedFailed"),
+            && outcome.optBoolean("bodyFailureIsOriginal")
+            && outcome.optBoolean("cleanupOnlyIsOriginal")
+            && outcome.optBoolean("bothPrimaryRetained")
+            && outcome.optBoolean("bothCleanupRetained")
+            && outcome.optBoolean("bothChainSerialized")
+            && outcome.optBoolean("cleanReturnsBodyResult")
+            && outcome.optBoolean("falseClosureFailed")
+            && outcome.optBoolean("missingClosureFailed")
+            && outcome.optBoolean("absentRestored")
+            && outcome.optBoolean("absentAppliedProof")
+            && outcome.optBoolean("absentRestoredProof")
+            && outcome.optBoolean("absentClosedOnce")
+            && outcome.optBoolean("priorFalseRestored")
+            && outcome.optBoolean("beginErrorRetained")
+            && outcome.optBoolean("beginErrorStillCloses")
+            && outcome.optBoolean("beginErrorRestored")
+            && outcome.optBoolean("partialCommitFailed")
+            && outcome.optBoolean("partialCommitRestored")
+            && outcome.optBoolean("partialCommitSkippedOperation")
+            && outcome.optBoolean("readbackErrorRetained")
+            && outcome.optBoolean("readbackErrorRestored")
+            && outcome.optBoolean("operationErrorRetained")
+            && outcome.optBoolean("operationErrorRestored")
+            && outcome.optBoolean("combinedPrimaryRetained")
+            && outcome.optBoolean("combinedObserverRetained")
+            && outcome.optBoolean("combinedRestoreRetained")
+            && outcome.optBoolean("combinedChainSerialized"),
             "every lifetime path must behave: " + outcome);
     }
 
-    /** The actual preference lifetime, reached through the collector's own helper. */
+    /** Whether a throwable identity survives anywhere in a cause/suppressed chain. */
+    static boolean containsThrowable(Throwable root, Throwable wanted) {
+        java.util.Set<Throwable> seen =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Throwable, Boolean>());
+        java.util.ArrayDeque<Throwable> queue = new java.util.ArrayDeque<>();
+        if (root != null) queue.add(root);
+        while (!queue.isEmpty()) {
+            Throwable current = queue.remove();
+            if (current == wanted) return true;
+            if (!seen.add(current)) continue;
+            if (current.getCause() != null) queue.add(current.getCause());
+            for (Throwable suppressed : current.getSuppressed()) queue.add(suppressed);
+        }
+        return false;
+    }
+
     static final class TocCountWordsCapture {
         static JSONObject capture(Preferences preferences) throws Exception {
             return FieldOracle.TocCountWordsLifetime.capture(preferences);
@@ -1708,7 +1967,14 @@ public final class StageAFixture {
         JSONObject result = new JSONObject().put("control", args[0]);
         if (args[0].equals("replay")) replayControls(result);
         else if (args[0].equals("preference")) preferenceControls(result);
-        else if (args[0].equals("lifetime")) lifetimeControls(result);
+        else if (args[0].equals("lifetime")) {
+            try {
+                lifetimeControls(result);
+            } catch (Throwable error) {
+                throw error instanceof Exception ? (Exception) error
+                    : new IllegalStateException(error);
+            }
+        }
         else throw new IllegalArgumentException("unknown control " + args[0]);
         result.put("ok", true);
         System.out.println(result.toString());
