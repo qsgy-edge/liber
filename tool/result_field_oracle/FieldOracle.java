@@ -353,25 +353,9 @@ public final class FieldOracle extends Instrumentation {
         if (primary != null && finishError != null && finishError != primary) {
             primary.addSuppressed(finishError);
         }
-        Throwable reportError = null;
-        if (report != null) {
-            try {
-                report.call();
-            } catch (Throwable error) {
-                reportError = error;
-            }
-        }
-        if (reportError != null) root.addSuppressed(reportError);
-        Throwable persistenceError = null;
-        if (persist != null) {
-            try {
-                persist.call();
-            } catch (Throwable error) {
-                persistenceError = error;
-            }
-        }
-        if (persistenceError != null) root.addSuppressed(persistenceError);
-        return describeChain(root);
+        // The same report -> persist -> serialize sequence the normal failure
+        // path runs; only the root selection differs.
+        return reportFailure(root, persist, report);
     }
 
     /**
@@ -384,7 +368,7 @@ public final class FieldOracle extends Instrumentation {
      * runs; the host controls drive the same method with supplied steps.
      */
     static String reportFailure(Throwable failure, Callable<JSONObject> persist,
-            Callable<JSONObject> report) throws Exception {
+            Callable<JSONObject> report) {
         Throwable reportError = null;
         if (report != null) {
             try {
@@ -430,27 +414,49 @@ public final class FieldOracle extends Instrumentation {
      * returned so the caller can attach it to the original failure.
      */
     private Throwable persistFailureReport(Throwable failure) {
+        return persistFailureReport(scratch != null && scratch.isBound(), output,
+            scratch == null ? null : scratch.root, report, caseFailures, corpus, failure);
+    }
+
+    /**
+     * The actual failure-persistence choice and write.
+     *
+     * <p>This is the one algorithm the collector's failure path runs: a bound
+     * owned scratch preserves an initialized full report and sets its
+     * {@code analysisFailure}; a bound run whose report was never initialized
+     * writes the minimal failure-only JSON to the explicit output or the owned
+     * default path; an unbound scratch writes nothing and mutates nothing. The
+     * real write error is returned so the caller can attach it.
+     */
+    static Throwable persistFailureReport(boolean bound, File explicitOutput, File ownedRoot,
+            JSONObject report, JSONObject caseFailures, JSONObject corpus, Throwable failure) {
         try {
-            if (scratch == null || !scratch.isBound()) return null;
+            if (!bound) return null;
             String chain = describeChain(failure);
             if (report != null) {
                 report.put("analysisFailure", chain);
-                writeReport();
+                writeReportFile(explicitOutput, report);
                 return null;
             }
-            File target = output != null ? output : new File(scratch.root, REPORT);
+            File target = explicitOutput != null ? explicitOutput : new File(ownedRoot, REPORT);
             JSONObject minimal = new JSONObject()
                 .put("fixtureId", corpus == null ? "unknown" : corpus.optString("fixtureId", ""))
                 .put("failureOnly", true)
                 .put("analysisFailure", chain)
                 .put("caseFailures", caseFailures)
                 .put("recordedAt", timestamp());
-            try (FileOutputStream stream = new FileOutputStream(target)) {
-                stream.write(minimal.toString(2).getBytes(StandardCharsets.UTF_8));
-            }
+            writeReportFile(target, minimal);
             return null;
         } catch (Throwable error) {
             return error;
+        }
+    }
+
+    /** Writes one report file as UTF-8 JSON; the only report-writing IO. */
+    private static void writeReportFile(File target, JSONObject content)
+            throws IOException, JSONException {
+        try (FileOutputStream stream = new FileOutputStream(target)) {
+            stream.write(content.toString(2).getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -2190,9 +2196,7 @@ public final class FieldOracle extends Instrumentation {
 
     /** Writes the report; called after every case so a freeze keeps evidence. */
     private void writeReport() throws IOException, JSONException {
-        try (FileOutputStream stream = new FileOutputStream(output)) {
-            stream.write(report.toString(2).getBytes(StandardCharsets.UTF_8));
-        }
+        writeReportFile(output, report);
     }
 
     private static String timestamp() {

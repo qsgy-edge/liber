@@ -1268,6 +1268,7 @@ REPLAY_FIXTURE = r'''
 package io.liber.oracle.fields;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
@@ -1276,6 +1277,8 @@ import java.lang.reflect.Method;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -2641,7 +2644,301 @@ public final class StageAFixture {
             "a tolerated replay close must not tolerate its own logger failure: " + outcome);
     }
 
-    public static void main(String[] args) throws Exception {
+    /** Reads one real file back as UTF-8 text. */
+static String readText(File file) throws Exception {
+    byte[] bytes = Files.readAllBytes(file.toPath());
+    return new String(bytes, StandardCharsets.UTF_8);
+}
+
+/** The SHA-256 of one real file's bytes. */
+static String fileSha(File file) throws Exception {
+    MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    byte[] hash = digest.digest(Files.readAllBytes(file.toPath()));
+    StringBuilder text = new StringBuilder();
+    for (byte value : hash) text.append(String.format("%02x", value));
+    return text.toString();
+}
+
+/** Removes an owned temporary tree. */
+static void deleteTree(File file) {
+    File[] children = file.listFiles();
+    if (children != null) for (File child : children) deleteTree(child);
+    file.delete();
+}
+
+/**
+ * The exact production finish-failure reporting: root selection, suppressed
+ * identities, report -> persist order and the returned full chain.
+ */
+static void finishControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    // (a) primary present, clean logger and persistence.
+    Throwable primary = new IllegalStateException("ORIGINAL_PRIMARY");
+    Throwable finish = new IllegalArgumentException("FINISH_ERROR");
+    List<String> order = new ArrayList<>();
+    String chain = FieldOracle.reportFinishFailure(finish, primary,
+        () -> { order.add("persist"); return new JSONObject().put("persisted", true); },
+        () -> { order.add("report"); return new JSONObject().put("logged", true); });
+    outcome.put("rootIsPrimary", primary.getSuppressed().length == 1
+        && primary.getSuppressed()[0] == finish);
+    outcome.put("reportBeforePersist",
+            order.equals(java.util.Arrays.asList("report", "persist")));
+    outcome.put("chainHasBoth", chain.contains("ORIGINAL_PRIMARY")
+        && chain.contains("FINISH_ERROR"));
+    // (b) no primary: the finish error is the root.
+    Throwable finishOnly = new IllegalStateException("FINISH_ONLY");
+    String finishOnlyChain = FieldOracle.reportFinishFailure(finishOnly, null,
+        () -> new JSONObject().put("persisted", true),
+        () -> new JSONObject().put("logged", true));
+    outcome.put("finishOnlyRoot", finishOnly.getSuppressed().length == 0
+        && finishOnlyChain.contains("FINISH_ONLY"));
+    // (c) logger failure: attached, persistence still runs after it.
+    Throwable loggerPrimary = new IllegalStateException("PRIMARY_WITH_LOGGER");
+    RuntimeException loggerError = new IllegalStateException("LOGGER_FAILURE");
+    boolean[] persistedAfterLogger = {false};
+    String loggerChain = FieldOracle.reportFinishFailure(
+        new IllegalStateException("FINISH_WITH_LOGGER"), loggerPrimary,
+        () -> { persistedAfterLogger[0] = true; return new JSONObject().put("persisted", true); },
+        () -> { throw loggerError; });
+    outcome.put("loggerAttached",
+        java.util.Arrays.asList(loggerPrimary.getSuppressed()).contains(loggerError));
+    outcome.put("persistAfterLogger", persistedAfterLogger[0]);
+    outcome.put("loggerChainHasAll", loggerChain.contains("PRIMARY_WITH_LOGGER")
+        && loggerChain.contains("FINISH_WITH_LOGGER")
+        && loggerChain.contains("LOGGER_FAILURE"));
+    // (d) persistence failure: attached and in the returned chain.
+    Throwable persistPrimary = new IllegalStateException("PRIMARY_WITH_PERSIST");
+    java.io.IOException persistError = new java.io.IOException("PERSIST_FAILURE");
+    String persistChain = FieldOracle.reportFinishFailure(
+        new IllegalStateException("FINISH_WITH_PERSIST"), persistPrimary,
+        () -> { throw persistError; },
+        () -> new JSONObject().put("logged", true));
+    outcome.put("persistAttached",
+        java.util.Arrays.asList(persistPrimary.getSuppressed()).contains(persistError));
+    outcome.put("persistChainHasAll", persistChain.contains("PERSIST_FAILURE")
+        && persistChain.contains("PRIMARY_WITH_PERSIST")
+        && persistChain.contains("FINISH_WITH_PERSIST"));
+    // (e) both failures: finish, then logger, then persistence.
+    Throwable bothPrimary = new IllegalStateException("PRIMARY_BOTH");
+    RuntimeException bothLog = new IllegalStateException("LOGGER_BOTH");
+    java.io.IOException bothPersist = new java.io.IOException("PERSIST_BOTH");
+    String bothChain = FieldOracle.reportFinishFailure(
+        new IllegalStateException("FINISH_BOTH"), bothPrimary,
+        () -> { throw bothPersist; }, () -> { throw bothLog; });
+    Throwable[] bothSuppressed = bothPrimary.getSuppressed();
+    outcome.put("bothAttached", bothSuppressed.length == 3
+        && bothSuppressed[1] == bothLog && bothSuppressed[2] == bothPersist);
+    outcome.put("bothChainHasAll", bothChain.contains("LOGGER_BOTH")
+        && bothChain.contains("PERSIST_BOTH") && bothChain.contains("FINISH_BOTH"));
+    // (f) the durable snapshot the persistence step sees already carries the
+    // finish and logger failures known when it executes; the returned chain
+    // is the final one.
+    Throwable snapPrimary = new IllegalStateException("PRIMARY_SNAPSHOT");
+    RuntimeException snapLog = new IllegalStateException("LOGGER_SNAPSHOT");
+    String[] snapshot = {null};
+    String snapChain = FieldOracle.reportFinishFailure(
+        new IllegalStateException("FINISH_SNAPSHOT"), snapPrimary,
+        () -> { snapshot[0] = FieldOracle.describeChain(snapPrimary); return new JSONObject(); },
+        () -> { throw snapLog; });
+    outcome.put("durableSnapshotHasKnown", snapshot[0] != null
+        && snapshot[0].contains("PRIMARY_SNAPSHOT")
+        && snapshot[0].contains("FINISH_SNAPSHOT")
+        && snapshot[0].contains("LOGGER_SNAPSHOT"));
+    outcome.put("finalChainHasLogger", snapChain.contains("LOGGER_SNAPSHOT"));
+    result.put("finish", outcome);
+    require(outcome.optBoolean("rootIsPrimary")
+        && outcome.optBoolean("reportBeforePersist")
+        && outcome.optBoolean("chainHasBoth")
+        && outcome.optBoolean("finishOnlyRoot")
+        && outcome.optBoolean("loggerAttached")
+        && outcome.optBoolean("persistAfterLogger")
+        && outcome.optBoolean("loggerChainHasAll")
+        && outcome.optBoolean("persistAttached")
+        && outcome.optBoolean("persistChainHasAll")
+        && outcome.optBoolean("bothAttached")
+        && outcome.optBoolean("bothChainHasAll")
+        && outcome.optBoolean("durableSnapshotHasKnown")
+        && outcome.optBoolean("finalChainHasLogger"),
+        "the actual finish reporting must retain every identity and order: " + outcome);
+}
+
+/**
+ * The actual failure-file persistence: real files, real bytes, the real
+ * selection between a preserved full report and the minimal failure-only
+ * JSON, and the real write error.
+ */
+static void persistenceControls(JSONObject result) throws Exception {
+    JSONObject outcome = new JSONObject();
+    File root = Files.createTempDirectory("l138-failure-persist-").toFile();
+    try {
+        Throwable early = new IllegalStateException("EARLY_FAILURE");
+        early.addSuppressed(new IllegalStateException("SUPPRESSED_EARLY"));
+        JSONObject caseFailures = new JSONObject()
+            .put("case-1", FieldOracle.describeChain(early));
+        JSONObject corpus = new JSONObject().put("fixtureId", "fixture-early");
+        // (1) bound early failure with no initialized report.
+        File minimalTarget = new File(root, "early-minimal.json");
+        Throwable earlyError = FieldOracle.persistFailureReport(true, minimalTarget, root,
+            null, caseFailures, corpus, early);
+        JSONObject minimal = new JSONObject(readText(minimalTarget));
+        outcome.put("minimalNoError", earlyError == null);
+        outcome.put("minimalFailureOnly", minimal.optBoolean("failureOnly"));
+        outcome.put("minimalFixtureId", "fixture-early".equals(minimal.optString("fixtureId")));
+        outcome.put("minimalChain", minimal.optString("analysisFailure").contains("EARLY_FAILURE")
+            && minimal.optString("analysisFailure").contains("SUPPRESSED_EARLY"));
+        outcome.put("minimalCaseFailures", minimal.getJSONObject("caseFailures").has("case-1"));
+        outcome.put("minimalNoInventedSuccess",
+            !minimal.has("cases") && !minimal.has("requests"));
+        outcome.put("minimalPath", minimalTarget.getAbsolutePath());
+        outcome.put("minimalSha256", fileSha(minimalTarget));
+        outcome.put("minimalText", readText(minimalTarget));
+        File unknownTarget = new File(root, "early-unknown.json");
+        FieldOracle.persistFailureReport(true, unknownTarget, root, null,
+            new JSONObject(), null, early);
+        outcome.put("unknownFixtureId",
+            "unknown".equals(new JSONObject(readText(unknownTarget)).optString("fixtureId")));
+        // (2) an initialized full report is retained, not overwritten minimally.
+        File fullTarget = new File(root, "full-report.json");
+        JSONObject full = new JSONObject()
+            .put("fixtureId", "fixture-full")
+            .put("observations", new JSONArray().put(new JSONObject()
+                .put("name", "first").put("values", new JSONArray().put(3))))
+            .put("cleanup", new JSONObject().put("closed", true))
+            .put("extra", new JSONObject().put("kept", true))
+            .put("caseFailures", new JSONObject().put("case-2", "partial saved-case proof"));
+        Throwable fullFailure = new IllegalStateException("FULL_FAILURE");
+        Throwable fullError = FieldOracle.persistFailureReport(true, fullTarget, root,
+            full, caseFailures, corpus, fullFailure);
+        JSONObject readBack = new JSONObject(readText(fullTarget));
+        outcome.put("fullNoError", fullError == null);
+        outcome.put("fullRetained", "fixture-full".equals(readBack.optString("fixtureId"))
+            && readBack.getJSONArray("observations").length() == 1
+            && readBack.getJSONArray("observations").getJSONObject(0)
+                .getJSONArray("values").getInt(0) == 3
+            && readBack.getJSONObject("cleanup").optBoolean("closed")
+            && readBack.getJSONObject("extra").optBoolean("kept")
+            && readBack.getJSONObject("caseFailures").has("case-2"));
+        outcome.put("fullAnalysisFailure",
+            readBack.optString("analysisFailure").contains("FULL_FAILURE"));
+        outcome.put("fullNoMinimalOverwrite", !readBack.has("failureOnly"));
+        outcome.put("fullCallerObject", full.optString("analysisFailure")
+            .contains("FULL_FAILURE"));
+        outcome.put("fullPath", fullTarget.getAbsolutePath());
+        outcome.put("fullSha256", fileSha(fullTarget));
+        outcome.put("fullText", readText(fullTarget));
+        // (3) an unbound scratch writes nothing, creates nothing, mutates nothing.
+        File unboundDir = new File(root, "unbound");
+        File unboundTarget = new File(unboundDir, "must-not-exist.json");
+        JSONObject unboundReport = new JSONObject().put("fixtureId", "fixture-unbound");
+        Throwable unboundError = FieldOracle.persistFailureReport(false, unboundTarget,
+            unboundDir, unboundReport, caseFailures, corpus, fullFailure);
+        outcome.put("unboundNoError", unboundError == null);
+        outcome.put("unboundNoFile", !unboundTarget.exists());
+        outcome.put("unboundNoDir", !unboundDir.exists());
+        outcome.put("unboundNoMutation", !unboundReport.has("analysisFailure"));
+        Throwable unboundMinimalError = FieldOracle.persistFailureReport(false,
+            unboundTarget, unboundDir, null, caseFailures, corpus, fullFailure);
+        outcome.put("unboundMinimalNoFile", unboundMinimalError == null
+            && !unboundTarget.exists() && !unboundDir.exists());
+        // (4) a genuine OS write failure returns the real error.
+        File directoryTarget = new File(root, "is-a-directory");
+        directoryTarget.mkdirs();
+        Throwable writeError = FieldOracle.persistFailureReport(true, directoryTarget,
+            root, null, caseFailures, corpus, early);
+        outcome.put("writeErrorReal", writeError instanceof java.io.IOException);
+        outcome.put("writeErrorPreservesOriginal", early.getSuppressed().length == 1);
+        outcome.put("writeErrorType", writeError == null ? "none"
+            : writeError.getClass().getName());
+        // (5) the actual finish reporting composed with this same persister.
+        File composedTarget = new File(root, "composed.json");
+        Throwable composedPrimary = new IllegalStateException("COMPOSED_PRIMARY");
+        RuntimeException composedLog = new IllegalStateException("COMPOSED_LOGGER");
+        String composedChain = FieldOracle.reportFinishFailure(
+            new IllegalStateException("COMPOSED_FINISH"), composedPrimary,
+            () -> {
+                Throwable error = FieldOracle.persistFailureReport(true, composedTarget,
+                    root, null, caseFailures, corpus, composedPrimary);
+                if (error != null) {
+                    throw error instanceof Exception ? (Exception) error
+                        : new IllegalStateException(error);
+                }
+                return new JSONObject().put("persisted", true);
+            },
+            () -> { throw composedLog; });
+        String composedText = readText(composedTarget);
+        outcome.put("composedPersisted", composedText.contains("COMPOSED_PRIMARY")
+            && composedText.contains("COMPOSED_FINISH")
+            && composedText.contains("COMPOSED_LOGGER"));
+        outcome.put("composedChain", composedChain.contains("COMPOSED_LOGGER"));
+        outcome.put("composedPath", composedTarget.getAbsolutePath());
+        outcome.put("composedSha256", fileSha(composedTarget));
+        // (6) a real write failure is attached to the original and reaches the
+        // final chain while the logger step still ran.
+        Throwable failingPrimary = new IllegalStateException("FAILING_PRIMARY");
+        File failingTarget = new File(root, "failing-target");
+        failingTarget.mkdirs();
+        boolean[] loggedAfterWriteFailure = {false};
+        String failingChain = FieldOracle.reportFinishFailure(
+            new IllegalStateException("FAILING_FINISH"), failingPrimary,
+            () -> {
+                Throwable error = FieldOracle.persistFailureReport(true, failingTarget,
+                    root, null, caseFailures, corpus, failingPrimary);
+                if (error != null) {
+                    throw error instanceof Exception ? (Exception) error
+                        : new IllegalStateException(error);
+                }
+                return new JSONObject();
+            },
+            () -> { loggedAfterWriteFailure[0] = true; return new JSONObject(); });
+        boolean attached = false;
+        for (Throwable suppressed : failingPrimary.getSuppressed()) {
+            if (suppressed instanceof java.io.IOException) attached = true;
+        }
+        outcome.put("failingAttached", attached);
+        outcome.put("failingChain", failingChain.contains("FAILING_PRIMARY")
+            && failingChain.contains("FAILING_FINISH")
+            && failingChain.contains("failing-target"));
+        outcome.put("failingLoggedAfter", loggedAfterWriteFailure[0]);
+        // (7) the explicit output path and the bound default path stay distinct.
+        File defaultRoot = new File(root, "default-root");
+        defaultRoot.mkdirs();
+        FieldOracle.persistFailureReport(true, null, defaultRoot, null,
+            caseFailures, corpus, early);
+        outcome.put("defaultRouting", new File(defaultRoot, "field-oracle.json").isFile());
+        outcome.put("defaultRoot", defaultRoot.getAbsolutePath());
+    } finally {
+        deleteTree(root);
+    }
+    result.put("persistence", outcome);
+    require(outcome.optBoolean("minimalNoError")
+        && outcome.optBoolean("minimalFailureOnly")
+        && outcome.optBoolean("minimalFixtureId")
+        && outcome.optBoolean("minimalChain")
+        && outcome.optBoolean("minimalCaseFailures")
+        && outcome.optBoolean("minimalNoInventedSuccess")
+        && outcome.optBoolean("unknownFixtureId")
+        && outcome.optBoolean("fullNoError")
+        && outcome.optBoolean("fullRetained")
+        && outcome.optBoolean("fullAnalysisFailure")
+        && outcome.optBoolean("fullNoMinimalOverwrite")
+        && outcome.optBoolean("fullCallerObject")
+        && outcome.optBoolean("unboundNoError")
+        && outcome.optBoolean("unboundNoFile")
+        && outcome.optBoolean("unboundNoDir")
+        && outcome.optBoolean("unboundNoMutation")
+        && outcome.optBoolean("unboundMinimalNoFile")
+        && outcome.optBoolean("writeErrorReal")
+        && outcome.optBoolean("writeErrorPreservesOriginal")
+        && outcome.optBoolean("composedPersisted")
+        && outcome.optBoolean("composedChain")
+        && outcome.optBoolean("failingAttached")
+        && outcome.optBoolean("failingChain")
+        && outcome.optBoolean("failingLoggedAfter")
+        && outcome.optBoolean("defaultRouting"),
+        "the actual failure persistence must keep its real choice and errors: " + outcome);
+}
+
+public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject().put("control", args[0]);
         if (args[0].equals("replay")) replayControls(result);
         else if (args[0].equals("preference")) preferenceControls(result);
@@ -2649,6 +2946,8 @@ public final class StageAFixture {
         else if (args[0].equals("caller")) callerControls(result);
         else if (args[0].equals("reporting")) reportingControls(result);
         else if (args[0].equals("logger")) loggerControls(result);
+        else if (args[0].equals("finish")) finishControls(result);
+        else if (args[0].equals("persistence")) persistenceControls(result);
         else if (args[0].equals("adapter")) {
             try {
                 adapterControls(result);
@@ -2763,40 +3062,45 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 outcomes[control] = json.loads(stdout.splitlines()[-1])
             self.assertEqual(len(outcomes), len(self.GUARD_CONTROLS))
 
+    def _stage_a_fixture_classpath(self, repo, java, android, jar, root):
+        """Compiles the six actual SDK sources and the bounded Stage A fixture."""
+        classes = root / 'actual-classes'
+        classes.mkdir()
+        sources = [
+            repo / 'tool/nested_oracle/StateSessionOracle.java',
+            repo / 'tool/nested_oracle/HostRuntimeInit.java',
+            repo / 'tool/nested_oracle/ShortcutStartupGuard.java',
+            repo / 'tool/result_field_oracle/FieldOracle.java',
+            repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java',
+            repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java',
+        ]
+        compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(classes)]
+            + [str(path) for path in sources], repo)
+        self.assertEqual(compiled.returncode, 0,
+                         compiled.stderr.decode(errors='replace'))
+        fixture = root / 'StageAFixture.java'
+        fixture.write_text(REPLAY_FIXTURE, encoding='utf-8')
+        log = root / 'fakes' / 'android' / 'util' / 'Log.java'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(LOG_STUB, encoding='utf-8')
+        classpath = os.pathsep.join([str(classes), str(jar), str(android)])
+        fixture_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-cp', classpath, '-d', str(classes), str(fixture), str(log)], repo)
+        self.assertEqual(fixture_compiled.returncode, 0,
+                         fixture_compiled.stderr.decode(errors='replace'))
+        return classpath
+
     def test_the_actual_replay_and_preference_controls_pass(self):
         java = self._java_home()
         android = self._android_jar()
         jar = self._json_jar()
         repo = self._repo()
         with tempfile.TemporaryDirectory(prefix='r2afix-sdk-') as directory:
-            root = Path(directory)
-            classes = root / 'actual-classes'
-            classes.mkdir()
-            sources = [
-                repo / 'tool/nested_oracle/StateSessionOracle.java',
-                repo / 'tool/nested_oracle/HostRuntimeInit.java',
-                repo / 'tool/nested_oracle/ShortcutStartupGuard.java',
-                repo / 'tool/result_field_oracle/FieldOracle.java',
-                repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java',
-                repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java',
-            ]
-            compiled = self._run(
-                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
-                 '-encoding', 'UTF-8', '-cp', str(android), '-d', str(classes)]
-                + [str(path) for path in sources], repo)
-            self.assertEqual(compiled.returncode, 0,
-                             compiled.stderr.decode(errors='replace'))
-            fixture = root / 'StageAFixture.java'
-            fixture.write_text(REPLAY_FIXTURE, encoding='utf-8')
-            log = root / 'fakes' / 'android' / 'util' / 'Log.java'
-            log.parent.mkdir(parents=True, exist_ok=True)
-            log.write_text(LOG_STUB, encoding='utf-8')
-            classpath = os.pathsep.join([str(classes), str(jar), str(android)])
-            fixture_compiled = self._run(
-                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
-                 '-cp', classpath, '-d', str(classes), str(fixture), str(log)], repo)
-            self.assertEqual(fixture_compiled.returncode, 0,
-                             fixture_compiled.stderr.decode(errors='replace'))
+            classpath = self._stage_a_fixture_classpath(
+                repo, java, android, jar, Path(directory))
             for control in ('replay', 'preference', 'lifetime', 'outer', 'adapter',
                             'caller', 'reporting', 'logger'):
                 run = self._run(
@@ -2807,6 +3111,86 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                     run.returncode, 0,
                     control + ': ' + stdout + run.stderr.decode(errors='replace'))
                 self.assertTrue(json.loads(stdout.splitlines()[-1])['ok'], control)
+
+    def test_the_actual_failure_persistence_controls_pass(self):
+        """The actual finish reporting and the actual failure-file persistence."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-failure-persist-') as directory:
+            classpath = self._stage_a_fixture_classpath(
+                repo, java, android, jar, Path(directory))
+            outcomes = {}
+            for control in ('finish', 'persistence'):
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', classpath,
+                     'io.liber.oracle.fields.StageAFixture', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+                self.assertTrue(outcomes[control]['ok'], control)
+            finish = outcomes['finish']['finish']
+            persistence = outcomes['persistence']['persistence']
+            # The exact production finish reporting: identities, root, order, chain.
+            self.assertTrue(finish['rootIsPrimary'])
+            self.assertTrue(finish['reportBeforePersist'])
+            self.assertTrue(finish['chainHasBoth'])
+            self.assertTrue(finish['finishOnlyRoot'])
+            self.assertTrue(finish['loggerAttached'])
+            self.assertTrue(finish['persistAfterLogger'])
+            self.assertTrue(finish['loggerChainHasAll'])
+            self.assertTrue(finish['persistAttached'])
+            self.assertTrue(finish['persistChainHasAll'])
+            self.assertTrue(finish['bothAttached'])
+            self.assertTrue(finish['bothChainHasAll'])
+            self.assertTrue(finish['durableSnapshotHasKnown'])
+            self.assertTrue(finish['finalChainHasLogger'])
+            # The actual persister: minimal early JSON, preserved full report, no
+            # unbound write, real write error, and the real branch routing.
+            self.assertTrue(persistence['minimalFailureOnly'])
+            self.assertEqual(persistence['minimalFixtureId'], True)
+            self.assertTrue(persistence['minimalChain'])
+            self.assertTrue(persistence['minimalCaseFailures'])
+            self.assertTrue(persistence['minimalNoInventedSuccess'])
+            self.assertTrue(persistence['unknownFixtureId'])
+            self.assertTrue(persistence['fullRetained'])
+            self.assertTrue(persistence['fullAnalysisFailure'])
+            self.assertTrue(persistence['fullNoMinimalOverwrite'])
+            self.assertTrue(persistence['fullCallerObject'])
+            self.assertTrue(persistence['unboundNoFile'])
+            self.assertTrue(persistence['unboundNoDir'])
+            self.assertTrue(persistence['unboundNoMutation'])
+            self.assertTrue(persistence['unboundMinimalNoFile'])
+            self.assertTrue(persistence['writeErrorReal'])
+            self.assertTrue(persistence['writeErrorPreservesOriginal'])
+            self.assertTrue(persistence['composedPersisted'])
+            self.assertTrue(persistence['composedChain'])
+            self.assertTrue(persistence['failingAttached'])
+            self.assertTrue(persistence['failingChain'])
+            self.assertTrue(persistence['failingLoggedAfter'])
+            self.assertTrue(persistence['defaultRouting'])
+            # Real bytes were read back from the written files.
+            self.assertEqual(len(persistence['minimalSha256']), 64)
+            self.assertEqual(len(persistence['fullSha256']), 64)
+            self.assertEqual(len(persistence['composedSha256']), 64)
+            self.assertIn('EARLY_FAILURE', persistence['minimalText'])
+            self.assertIn('fixture-full', persistence['fullText'])
+            # The real instance caller delegates to this same algorithm and keeps
+            # the measured bound flag and the explicit/default target choice.
+            source = (repo / 'tool/result_field_oracle/FieldOracle.java').read_text(
+                encoding='utf-8')
+            self.assertIn(
+                'return persistFailureReport(scratch != null && scratch.isBound(), output,',
+                source)
+            self.assertIn(
+                'scratch == null ? null : scratch.root, report, caseFailures, corpus, failure);',
+                source)
+            self.assertIn('writeReportFile(explicitOutput, report);', source)
+            self.assertIn('writeReportFile(target, minimal);', source)
+            self.assertIn('writeReportFile(output, report);', source)
 
 
 class SelectedReceiptTest(unittest.TestCase):
