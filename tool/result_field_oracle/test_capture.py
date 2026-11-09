@@ -1731,6 +1731,242 @@ public final class StageAFixture {
     }
 
     /**
+     * C1: the actual caller composition, {@code runWithCleanup} around the real
+     * {@code runOuterSequence}.
+     *
+     * <p>The permitted legacy replay-close failure must be accepted by the
+     * caller while the resource facts stay truthful; every other failure family
+     * stays fatal.
+     */
+    static void callerControls(JSONObject result) throws Exception {
+        JSONObject outcome = new JSONObject();
+        JSONObject closed = new JSONObject().put("closed", true);
+        JSONObject okReplay = new JSONObject().put("serverClosed", true)
+            .put("openConnectionsAfterClose", 0);
+        JSONObject okTerminal = new JSONObject().put("closed", true).put("proved", true)
+            .put("activityLaunchAttempts", 0);
+        JSONObject notApplicable = new JSONObject().put("applicable", false);
+        JSONObject ownerDone = new JSONObject().put("closed", true)
+            .put("ownerComplete", true);
+
+        // 1. A healthy non-selected legacy run succeeds through the caller.
+        boolean healthy = true;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("body", true),
+                () -> FieldOracle.runOuterSequence(
+                    () -> closed, () -> okReplay, () -> notApplicable, () -> notApplicable,
+                    () -> notApplicable, () -> notApplicable,
+                    proved -> new JSONObject().put("applicable", false),
+                    () -> closed, false, false, new JSONObject()));
+        } catch (Throwable error) {
+            healthy = false;
+        }
+        outcome.put("healthyLegacySucceeds", healthy);
+
+        // 2. The permitted non-selected replay-close failure is accepted by the
+        //    actual caller, and the resource fact stays false.
+        JSONObject toleratedReceipt = null;
+        Throwable toleratedFailure = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("body", true),
+                () -> FieldOracle.runOuterSequence(
+                    () -> closed,
+                    () -> { throw new IllegalStateException("LEGACY_REPLAY"); },
+                    () -> notApplicable, () -> notApplicable, () -> notApplicable,
+                    () -> notApplicable,
+                    proved -> new JSONObject().put("applicable", false),
+                    () -> closed, false, false, new JSONObject()));
+        } catch (Throwable error) {
+            toleratedFailure = error;
+        }
+        // Re-run to capture the receipt the caller accepted.
+        toleratedReceipt = FieldOracle.runOuterSequence(
+            () -> closed,
+            () -> { throw new IllegalStateException("LEGACY_REPLAY"); },
+            () -> notApplicable, () -> notApplicable, () -> notApplicable,
+            () -> notApplicable,
+            proved -> new JSONObject().put("applicable", false),
+            () -> closed, false, false, new JSONObject());
+        outcome.put("toleratedReplayAccepted", toleratedFailure == null)
+            .put("toleratedClosureStaysFalse",
+                !toleratedReceipt.optBoolean("closureProved", true))
+            .put("toleratedAcceptedFlag", toleratedReceipt.optBoolean("accepted"))
+            .put("toleratedOwnerNotPublished",
+                !toleratedReceipt.optJSONObject("owner").optBoolean("ownerComplete", false));
+
+        // 3. A legacy report failure stays fatal through the caller.
+        boolean reportFatal = false;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("body", true),
+                () -> FieldOracle.runOuterSequence(
+                    () -> { throw new IllegalStateException("LEGACY_REPORT"); },
+                    () -> okReplay, () -> notApplicable, () -> notApplicable,
+                    () -> notApplicable, () -> notApplicable,
+                    proved -> new JSONObject().put("applicable", false),
+                    () -> closed, false, false, new JSONObject()));
+        } catch (Throwable error) {
+            reportFatal = true;
+        }
+        outcome.put("legacyReportFatal", reportFatal);
+
+        // 4. A selected replay failure stays fatal through the caller.
+        boolean selectedReplayFatal = false;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("body", true),
+                () -> FieldOracle.runOuterSequence(
+                    () -> closed,
+                    () -> { throw new IllegalStateException("SELECTED_REPLAY"); },
+                    () -> notApplicable, () -> notApplicable, () -> okTerminal,
+                    () -> notApplicable, proved -> ownerDone, () -> closed,
+                    false, true, new JSONObject()));
+        } catch (Throwable error) {
+            selectedReplayFatal = true;
+        }
+        outcome.put("selectedReplayFatal", selectedReplayFatal);
+
+        // 5. A lifecycle body failure stays fatal even when the cleanup is
+        //    otherwise acceptable.
+        RuntimeException bodyError = new IllegalStateException("BODY");
+        Throwable bodyFailure = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> { throw bodyError; },
+                () -> FieldOracle.runOuterSequence(
+                    () -> closed, () -> okReplay, () -> notApplicable, () -> notApplicable,
+                    () -> okTerminal, () -> notApplicable, proved -> ownerDone,
+                    () -> closed, true, false, new JSONObject()));
+        } catch (Throwable error) {
+            bodyFailure = error;
+        }
+        outcome.put("bodyFailureStillFatal", bodyFailure == bodyError);
+
+        // 6. A lifecycle run whose resources did not close is rejected by the
+        //    caller even with no domain exception.
+        boolean unprovedRejected = false;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("body", true),
+                () -> FieldOracle.runOuterSequence(
+                    () -> closed,
+                    () -> new JSONObject().put("serverClosed", false),
+                    () -> notApplicable, () -> notApplicable, () -> okTerminal,
+                    () -> notApplicable, proved -> ownerDone, () -> closed,
+                    true, false, new JSONObject()));
+        } catch (Throwable error) {
+            unprovedRejected = true;
+        }
+        outcome.put("unprovedLifecycleClosureRejected", unprovedRejected);
+
+        // 7. The generic contract still rejects a bare false or missing proof.
+        boolean bareFalseRejected = false;
+        try {
+            FieldOracle.runWithCleanup(() -> new JSONObject(),
+                () -> new JSONObject().put("closed", false));
+        } catch (Throwable error) {
+            bareFalseRejected = true;
+        }
+        boolean missingRejected = false;
+        try {
+            FieldOracle.runWithCleanup(() -> new JSONObject(), JSONObject::new);
+        } catch (Throwable error) {
+            missingRejected = true;
+        }
+        outcome.put("bareFalseStillRejected", bareFalseRejected)
+            .put("missingProofStillRejected", missingRejected);
+
+        result.put("caller", outcome);
+        require(outcome.optBoolean("healthyLegacySucceeds")
+            && outcome.optBoolean("toleratedReplayAccepted")
+            && outcome.optBoolean("toleratedClosureStaysFalse")
+            && outcome.optBoolean("toleratedAcceptedFlag")
+            && outcome.optBoolean("toleratedOwnerNotPublished")
+            && outcome.optBoolean("legacyReportFatal")
+            && outcome.optBoolean("selectedReplayFatal")
+            && outcome.optBoolean("bodyFailureStillFatal")
+            && outcome.optBoolean("unprovedLifecycleClosureRejected")
+            && outcome.optBoolean("bareFalseStillRejected")
+            && outcome.optBoolean("missingProofStillRejected"),
+            "every caller composition path must behave: " + outcome);
+    }
+
+    /**
+     * C2: the actual final failure reporting, {@code reportFailure}.
+     *
+     * <p>Both steps are attempted, each failure is attached to the original as
+     * suppressed, and the returned chain is the updated one.
+     */
+    static void reportingControls(JSONObject result) throws Exception {
+        JSONObject outcome = new JSONObject();
+        final java.util.List<String> order = new java.util.ArrayList<>();
+
+        // 1. A clean report and persist adds nothing.
+        RuntimeException cleanPrimary = new IllegalStateException("PRIMARY");
+        String cleanChain = FieldOracle.reportFailure(cleanPrimary,
+            () -> { order.add("persist"); return new JSONObject(); },
+            () -> { order.add("report"); return new JSONObject(); });
+        outcome.put("cleanOrder", order.equals(java.util.Arrays.asList("report", "persist")))
+            .put("cleanNoExtra", cleanPrimary.getSuppressed().length == 0)
+            .put("cleanChainHasPrimary", cleanChain.contains("PRIMARY"));
+
+        // 2. A reporting (logger) failure is retained and the persist still runs.
+        order.clear();
+        RuntimeException reportPrimary = new IllegalStateException("PRIMARY");
+        RuntimeException reportError = new IllegalStateException("REPORT_LOG");
+        String reportChain = FieldOracle.reportFailure(reportPrimary,
+            () -> { order.add("persist"); return new JSONObject(); },
+            () -> { order.add("report"); throw reportError; });
+        outcome.put("reportFailureRetained",
+                containsThrowable(reportPrimary, reportError))
+            .put("reportFailureStillPersists",
+                order.equals(java.util.Arrays.asList("report", "persist")))
+            .put("reportChainSerialized", reportChain.contains("REPORT_LOG")
+                && reportChain.contains("PRIMARY"));
+
+        // 3. A persistence failure is retained alongside a reporting failure.
+        order.clear();
+        RuntimeException bothPrimary = new IllegalStateException("PRIMARY");
+        RuntimeException bothReport = new IllegalStateException("REPORT_LOG");
+        RuntimeException bothPersist = new IllegalStateException("PERSIST");
+        String bothChain = FieldOracle.reportFailure(bothPrimary,
+            () -> { order.add("persist"); throw bothPersist; },
+            () -> { order.add("report"); throw bothReport; });
+        outcome.put("bothRetained",
+                containsThrowable(bothPrimary, bothReport)
+                    && containsThrowable(bothPrimary, bothPersist))
+            .put("bothOrder", order.equals(java.util.Arrays.asList("report", "persist")))
+            .put("bothChainSerialized", bothChain.contains("REPORT_LOG")
+                && bothChain.contains("PERSIST") && bothChain.contains("PRIMARY"));
+
+        // 4. A persistence failure alone is retained and does not replace the
+        //    original.
+        RuntimeException persistPrimary = new IllegalStateException("PRIMARY");
+        RuntimeException persistError = new IllegalStateException("PERSIST");
+        FieldOracle.reportFailure(persistPrimary,
+            () -> { throw persistError; },
+            () -> new JSONObject());
+        outcome.put("persistAloneRetained",
+                containsThrowable(persistPrimary, persistError)
+                    && persistPrimary.getMessage().equals("PRIMARY"));
+
+        result.put("reporting", outcome);
+        require(outcome.optBoolean("cleanOrder")
+            && outcome.optBoolean("cleanNoExtra")
+            && outcome.optBoolean("cleanChainHasPrimary")
+            && outcome.optBoolean("reportFailureRetained")
+            && outcome.optBoolean("reportFailureStillPersists")
+            && outcome.optBoolean("reportChainSerialized")
+            && outcome.optBoolean("bothRetained")
+            && outcome.optBoolean("bothOrder")
+            && outcome.optBoolean("bothChainSerialized")
+            && outcome.optBoolean("persistAloneRetained"),
+            "every reporting path must behave: " + outcome);
+    }
+
+    /**
      * The actual outer cleanup sequence, driven with controlled domain inputs.
      *
      * <p>Every scenario calls the same {@code FieldOracle.runOuterSequence} the
@@ -2323,6 +2559,8 @@ public final class StageAFixture {
         if (args[0].equals("replay")) replayControls(result);
         else if (args[0].equals("preference")) preferenceControls(result);
         else if (args[0].equals("outer")) outerControls(result);
+        else if (args[0].equals("caller")) callerControls(result);
+        else if (args[0].equals("reporting")) reportingControls(result);
         else if (args[0].equals("adapter")) {
             try {
                 adapterControls(result);
@@ -2468,7 +2706,8 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                  '-cp', classpath, '-d', str(classes), str(fixture)], repo)
             self.assertEqual(fixture_compiled.returncode, 0,
                              fixture_compiled.stderr.decode(errors='replace'))
-            for control in ('replay', 'preference', 'lifetime', 'outer', 'adapter'):
+            for control in ('replay', 'preference', 'lifetime', 'outer', 'adapter',
+                            'caller', 'reporting'):
                 run = self._run(
                     [str(java / 'bin' / 'java.exe'), '-cp', classpath,
                      'io.liber.oracle.fields.StageAFixture', control], repo)

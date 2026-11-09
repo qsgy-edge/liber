@@ -279,13 +279,30 @@ public final class FieldOracle extends Instrumentation {
         }
         try {
             if (failure != null) {
-                Throwable persistenceError = persistFailureReport(failure);
-                if (persistenceError != null) failure.addSuppressed(persistenceError);
-                // Recompute AFTER persistence so the reported chain includes it.
-                String chain = describeChain(failure);
+                // The actual final reporting: log, persist, then serialize the
+                // updated chain at the status boundary.
+                final Throwable primaryFailure = failure;
+                String chain = reportFailure(primaryFailure,
+                    () -> {
+                        Throwable persistenceError = persistFailureReport(primaryFailure);
+                        if (persistenceError != null) {
+                            throw persistenceError instanceof Exception
+                                ? (Exception) persistenceError
+                                : new IllegalStateException(persistenceError);
+                        }
+                        return new JSONObject().put("persisted", true);
+                    },
+                    () -> {
+                        Throwable logError = safeLog("harness error: " + describeChain(primaryFailure));
+                        if (logError != null) {
+                            throw logError instanceof Exception
+                                ? (Exception) logError
+                                : new IllegalStateException(logError);
+                        }
+                        return new JSONObject().put("logged", true);
+                    });
                 if (scratch != null && !scratch.isBound()) scratch.refuseWaiters(chain);
                 status.putString("stream", "Fields oracle harness error: " + chain + "\n");
-                safeLog("harness error: " + chain);
                 finished.set(true);
                 finish(1, status);
                 return;
@@ -298,10 +315,43 @@ public final class FieldOracle extends Instrumentation {
             finished.set(true);
             finish(caseFailures.length() == 0 ? -1 : 1, status);
         } catch (Throwable error) {
-            safeLog("harness finish failed: " + describe(error));
+            Throwable finishLogError = safeLog("harness finish failed: " + describe(error));
+            if (finishLogError != null) error.addSuppressed(finishLogError);
             finished.set(true);
             finish(1, status);
         }
+    }
+
+    /**
+     * The actual final failure reporting: report, persist, then serialize the
+     * updated chain.
+     *
+     * <p>Both reporting steps are attempted even when one fails, each failure is
+     * attached to the original as suppressed, and the returned chain is the one
+     * the status boundary carries. This is the sequence the harness failure path
+     * runs; the host controls drive the same method with supplied steps.
+     */
+    static String reportFailure(Throwable failure, Callable<JSONObject> persist,
+            Callable<JSONObject> report) throws Exception {
+        Throwable reportError = null;
+        if (report != null) {
+            try {
+                report.call();
+            } catch (Throwable error) {
+                reportError = error;
+            }
+        }
+        if (reportError != null) failure.addSuppressed(reportError);
+        Throwable persistenceError = null;
+        if (persist != null) {
+            try {
+                persist.call();
+            } catch (Throwable error) {
+                persistenceError = error;
+            }
+        }
+        if (persistenceError != null) failure.addSuppressed(persistenceError);
+        return describeChain(failure);
     }
 
     /**
@@ -382,10 +432,12 @@ public final class FieldOracle extends Instrumentation {
                 cleanupFailure = error;
             }
         }
-        // A close that ran must prove the domain is actually closed. A false or
-        // missing proof is a failure, never a success.
+        // A close that ran must prove the domain is actually closed, or state
+        // that the caller explicitly accepted a tolerated failure. A bare false
+        // or missing proof is a failure, never a success.
         if (cleanupFailure == null && close != null
-                && (closedProof == null || !closedProof.optBoolean("closed", false))) {
+                && (closedProof == null || (!closedProof.optBoolean("closed", false)
+                    && !closedProof.optBoolean("accepted", false)))) {
             cleanupFailure = new IllegalStateException(
                 "the cleanup did not prove a closed domain");
         }
@@ -492,8 +544,10 @@ public final class FieldOracle extends Instrumentation {
                     else driveCase(entry, id);
                     log("case " + id + " done");
                 } catch (Throwable error) {
-                    // F4: the complete original/suppressed chain reaches the
-                    // report, not a cause-only summary.
+                    // The case reporting logger runs BEFORE the chain is
+                    // serialized, so its own failure is part of the saved chain.
+                    Throwable caseLogError = safeLog("case " + id + " failed: " + describe(error));
+                    if (caseLogError != null) error.addSuppressed(caseLogError);
                     String chain = describeChain(error);
                     caseFailures.put(id, chain);
                     if (newFamily && fields02Observation != null) {
@@ -505,8 +559,6 @@ public final class FieldOracle extends Instrumentation {
                             // The failure is still recorded; do not fabricate a record.
                         }
                     }
-                    Throwable caseLogError = safeLog("case " + id + " failed: " + chain);
-                    if (caseLogError != null) error.addSuppressed(caseLogError);
                     // F1: for the lifecycle corpus any case failure escapes to the
                     // unconditional outer cleanup; no later case runs in unknown
                     // state. Ordinary corpora keep their existing disposition.
@@ -612,6 +664,10 @@ public final class FieldOracle extends Instrumentation {
                 .put("closureProved", closureProved)
                 .put("failureCount", failures.size())
                 .put("fatalCount", fatal.size())
+                .put("toleratedFailures", failures.size() - fatal.size())
+                // The resource facts stay truthful; `accepted` is the caller's
+                // own disposition for a tolerated legacy failure.
+                .put("accepted", fatal.isEmpty())
                 .put("closed", closureProved && fatal.isEmpty());
         } catch (Throwable ignored) {
             // The failure lists below are the authoritative facts.
