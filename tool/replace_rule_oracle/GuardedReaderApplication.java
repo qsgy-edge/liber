@@ -30,13 +30,14 @@ import org.json.JSONObject;
  * for this process lifetime, so every other consumer keeps exactly the previous
  * behaviour: two activity-launch refusals and nothing else.
  *
- * <p>While armed, the guard is the single owner of the resources the selected
- * saved-content route creates: the exported {@code ACTION_LEB_IPC} receiver the
- * LiveEventBus singleton registers, the application lifecycle callback
- * {@code AppUtils} registers, and the per-case save-event observer. It accepts
- * only the exact registrations the inspected target actually performs, refuses
- * everything else before any platform effect, and records attempted versus
- * successful work so a failed or uncertain handle stays visible.
+ * <p>The guard is the single owner of the resources the selected saved-content
+ * route creates: the exported {@code ACTION_LEB_IPC} receiver the LiveEventBus
+ * singleton registers, the application lifecycle callback {@code AppUtils}
+ * registers, and the per-case save-event observer. It accepts only the exact
+ * registrations the inspected target actually performs, refuses everything else
+ * before any platform effect, keeps a failed or uncertain handle visible until a
+ * removal is proven, and never reports a closed domain while owned work can
+ * still attach.
  */
 public final class GuardedReaderApplication extends Application {
     private static final AtomicInteger attempts = new AtomicInteger();
@@ -78,26 +79,81 @@ public final class GuardedReaderApplication extends Application {
     private static volatile String expectBookUrl;
     private static volatile String expectChapterUrl;
     private static volatile boolean observing;
+    private static volatile boolean observerClosed;
+    private static volatile boolean captureFailed;
+    private static volatile JSONObject lastEvent = new JSONObject();
     private static final AtomicInteger saveEvents = new AtomicInteger();
     private static final AtomicInteger foreignEvents = new AtomicInteger();
     private static final AtomicInteger callbackErrors = new AtomicInteger();
-    private static volatile JSONObject lastEvent = new JSONObject();
 
-    public GuardedReaderApplication() {
-        owner = this;
+    /** Main-thread work this guard owns and has not yet seen finish. */
+    private static final Map<Long, OwnedWork> pendingWork = new IdentityHashMap<>();
+    private static final AtomicInteger workSequence = new AtomicInteger();
+
+    /**
+     * One queued main-thread work item. {@link #abandon()} makes a queued item
+     * inert, so work the caller gave up on can never attach after closure.
+     */
+    private static final class OwnedWork {
+        private final long id;
+        private final Callable<JSONObject> body;
+        private volatile boolean abandoned;
+        private volatile boolean started;
+        private volatile boolean finished;
+        private volatile JSONObject result;
+        private volatile Throwable failure;
+        private final CountDownLatch done = new CountDownLatch(1);
+
+        OwnedWork(long id, Callable<JSONObject> body) {
+            this.id = id;
+            this.body = body;
+        }
+
+        void abandon() { abandoned = true; }
+
+        void run() {
+            if (abandoned) {
+                finished = true;
+                done.countDown();
+                return;
+            }
+            started = true;
+            try {
+                result = body.call();
+            } catch (Throwable error) {
+                failure = error;
+            } finally {
+                finished = true;
+                done.countDown();
+            }
+        }
     }
+
+    /** Constructing an instance never mutates an armed owner. */
+    public GuardedReaderApplication() {}
 
     static int launchAttempts() { return attempts.get(); }
 
     /**
      * Arms the guard for this process lifetime with the exact owner and target
-     * classloader the capture already proved. Called once, before any reference
-     * class can reach the saved-content route.
+     * classloader the capture already proved. A second arm with a different
+     * owner, a null owner or a null loader is refused.
      */
     public static void arm(Application application, ClassLoader loader) {
+        if (!(application instanceof GuardedReaderApplication)) {
+            throw new SecurityException("the capture guard needs its own application instance");
+        }
+        if (loader == null) {
+            throw new SecurityException("the capture guard needs the verified target loader");
+        }
         synchronized (lock) {
-            owner = application instanceof GuardedReaderApplication
-                ? (GuardedReaderApplication) application : null;
+            if (armed && owner != null && owner != application) {
+                throw new SecurityException("the capture guard is already armed for another owner");
+            }
+            if (armed && targetLoader != loader) {
+                throw new SecurityException("the capture guard is already armed for another loader");
+            }
+            owner = (GuardedReaderApplication) application;
             targetLoader = loader;
             armed = true;
         }
@@ -109,52 +165,98 @@ public final class GuardedReaderApplication extends Application {
         }
     }
 
+    /** Whether the capture has recorded a failure that must fail the run. */
+    public static boolean captureFailed() {
+        return captureFailed;
+    }
+
+    private static void fail(String reason) {
+        captureFailed = true;
+        try {
+            guardFailures.put(reason);
+        } catch (Throwable ignored) {
+            // The flag already records it.
+        }
+    }
+
+    /** Answers whether this instance is the exact armed owner. */
+    private boolean isOwner() {
+        synchronized (lock) {
+            return armed && owner == this;
+        }
+    }
+
     /**
-     * Removes every process-owned registration once, at the end of the whole
-     * lifetime. Answers whether every owned resource is gone.
+     * Removes every process-owned resource once and answers whether the domain
+     * is genuinely closed. A handle whose removal fails stays owned, so a retry
+     * is a real retry and a failed removal is never turned into empty success.
      */
     public static JSONObject releaseProcessResources() {
+        GuardedReaderApplication exactOwner;
+        synchronized (lock) {
+            exactOwner = owner;
+        }
+        JSONArray removalFailures = new JSONArray();
+        int removedReceivers = 0;
+        int removedCallbacks = 0;
+        // The observer is a process resource too: process closure must not leave
+        // it attached.
+        JSONObject observerClose = new JSONObject();
+        if (observing) {
+            try {
+                observerClose = exactOwner == null
+                    ? new JSONObject().put("removed", false)
+                    : exactOwner.closeObserver(0L);
+            } catch (Throwable error) {
+                try {
+                    removalFailures.put("observer: " + error);
+                } catch (Throwable ignored) {
+                    // The failure is still counted below.
+                }
+            }
+        }
         List<BroadcastReceiver> receivers;
         List<ActivityLifecycleCallbacks> callbacks;
-        GuardedReaderApplication exactOwner;
         synchronized (lock) {
             receivers = new ArrayList<>(ownedReceivers);
             callbacks = new ArrayList<>(ownedCallbacks);
-            ownedReceivers.clear();
-            ownedCallbacks.clear();
-            exactOwner = owner;
         }
-        int removedReceivers = 0;
-        int removedCallbacks = 0;
-        JSONArray removalFailures = new JSONArray();
         for (BroadcastReceiver wrapper : receivers) {
             try {
-                if (exactOwner == null) {
-                    throw new IllegalStateException("no exact owner to remove a receiver through");
-                }
+                if (exactOwner == null) throw new IllegalStateException("no exact owner");
                 exactOwner.superUnregisterReceiver(wrapper);
                 removedReceivers++;
+                synchronized (lock) {
+                    ownedReceivers.remove(wrapper);
+                    wrappers.values().remove(wrapper);
+                }
                 receiverUnregistrations.put(wrapper.getClass().getName());
             } catch (Throwable error) {
                 removalFailures.put("receiver: " + error);
-                guardFailures.put("receiver removal failed: " + error);
+                fail("receiver removal failed: " + error);
             }
         }
         for (ActivityLifecycleCallbacks callback : callbacks) {
             try {
-                if (exactOwner == null) {
-                    throw new IllegalStateException("no exact owner to remove a callback through");
-                }
+                if (exactOwner == null) throw new IllegalStateException("no exact owner");
                 exactOwner.superUnregisterCallbacks(callback);
                 removedCallbacks++;
+                synchronized (lock) {
+                    ownedCallbacks.remove(callback);
+                }
                 lifecycleUnregistrations.put(callback.getClass().getName());
             } catch (Throwable error) {
                 removalFailures.put("lifecycle: " + error);
-                guardFailures.put("lifecycle removal failed: " + error);
+                fail("lifecycle removal failed: " + error);
             }
         }
+        int ownedReceiverCount;
+        int ownedCallbackCount;
+        int pending;
         synchronized (lock) {
-            wrappers.clear();
+            ownedReceiverCount = ownedReceivers.size();
+            ownedCallbackCount = ownedCallbacks.size();
+            pending = pendingWork.size();
         }
         JSONObject receipt = new JSONObject();
         try {
@@ -163,9 +265,15 @@ public final class GuardedReaderApplication extends Application {
                 .put("ownedLifecycleCallbacks", callbacks.size())
                 .put("removedLifecycleCallbacks", removedCallbacks)
                 .put("removalFailures", removalFailures)
+                .put("observerClose", observerClose)
+                .put("remainingOwnedReceivers", ownedReceiverCount)
+                .put("remainingOwnedLifecycleCallbacks", ownedCallbackCount)
+                .put("pendingOwnedWork", pending)
                 .put("closed", removalFailures.length() == 0
-                    && removedReceivers == receivers.size()
-                    && removedCallbacks == callbacks.size());
+                    && ownedReceiverCount == 0
+                    && ownedCallbackCount == 0
+                    && pending == 0
+                    && !observing);
         } catch (Throwable error) {
             return receipt;
         }
@@ -189,10 +297,13 @@ public final class GuardedReaderApplication extends Application {
                 .put("blockedDeliveries", blockedDeliveries.get())
                 .put("foreignUnregistrations", foreignUnregistrations.get())
                 .put("pendingWrappers", wrappers.size())
+                .put("pendingOwnedWork", pendingWork.size())
                 .put("saveEvents", saveEvents.get())
                 .put("foreignEvents", foreignEvents.get())
                 .put("callbackErrors", callbackErrors.get())
                 .put("observing", observing)
+                .put("observerClosed", observerClosed)
+                .put("captureFailed", captureFailed)
                 .put("lastEvent", new JSONObject(lastEvent.toString()));
         }
         return receipt;
@@ -206,16 +317,22 @@ public final class GuardedReaderApplication extends Application {
      */
     public static JSONObject beginSaveObservation(String bookUrl, String chapterUrl)
             throws Exception {
-        if (!isArmed()) throw new IllegalStateException("the capture guard is not armed");
-        final ClassLoader loader = targetLoader;
+        final GuardedReaderApplication exactOwner;
+        final ClassLoader loader;
+        synchronized (lock) {
+            if (!armed || owner == null) throw new IllegalStateException("the guard is not armed");
+            exactOwner = owner;
+            loader = targetLoader;
+        }
         if (loader == null) throw new IllegalStateException("no target classloader");
         expectBookUrl = bookUrl;
         expectChapterUrl = chapterUrl;
         saveEvents.set(0);
         foreignEvents.set(0);
         callbackErrors.set(0);
+        observerClosed = false;
         lastEvent = new JSONObject();
-        return onMain(() -> {
+        return exactOwner.runOnMain(() -> {
             Class<?> observableInterface = loader.loadClass(OBSERVABLE_INTERFACE);
             Class<?> observerInterface = loader.loadClass(OBSERVER_INTERFACE);
             Class<?> pairClass = loader.loadClass("kotlin.Pair");
@@ -243,27 +360,43 @@ public final class GuardedReaderApplication extends Application {
 
     /**
      * Waits for this case's correlated save event, then removes the observer on
-     * the main thread and acknowledges that executed call.
+     * the main thread and acknowledges that executed call. A second call after a
+     * successful end is an idempotent no-op; a call after a failed or abandoned
+     * registration still closes whatever the guard owns.
      */
     public static JSONObject endSaveObservation(long timeoutMillis) throws Exception {
+        GuardedReaderApplication exactOwner;
+        synchronized (lock) {
+            exactOwner = owner;
+        }
+        if (exactOwner == null) throw new IllegalStateException("the guard is not armed");
+        return exactOwner.closeObserver(timeoutMillis);
+    }
+
+    private JSONObject closeObserver(long timeoutMillis) throws Exception {
         JSONObject result = new JSONObject();
+        if (observerClosed && !observing) {
+            // Already closed by a previous end or by process release.
+            return result.put("alreadyClosed", true).put("removed", true)
+                .put("events", saveEvents.get());
+        }
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while (saveEvents.get() == 0 && System.currentTimeMillis() < deadline) {
             Thread.sleep(5);
         }
-        result.put("events", saveEvents.get())
-            .put("foreignEvents", foreignEvents.get())
-            .put("callbackErrors", callbackErrors.get())
-            .put("lastEvent", new JSONObject(lastEvent.toString()));
-        JSONObject removal = onMain(() -> {
+        JSONObject removal = runOnMain(() -> {
             Object observable = saveObservable;
             Object observer = saveObserver;
             Method remove = removeMethod;
             if (observable == null || observer == null || remove == null) {
-                throw new IllegalStateException("no observer to remove");
+                // A registration that never completed owns nothing to remove.
+                observing = false;
+                observerClosed = true;
+                return new JSONObject().put("removed", false).put("reason", "never-registered");
             }
             remove.invoke(observable, observer);
             observing = false;
+            observerClosed = true;
             saveObservable = null;
             saveObserver = null;
             return new JSONObject()
@@ -272,7 +405,20 @@ public final class GuardedReaderApplication extends Application {
                 .put("onMain", Looper.myLooper() == Looper.getMainLooper())
                 .put("removed", true);
         });
-        result.put("removal", removal);
+        // The final actual case facts are snapshotted after the removal ack.
+        result.put("events", saveEvents.get())
+            .put("foreignEvents", foreignEvents.get())
+            .put("callbackErrors", callbackErrors.get())
+            .put("lastEvent", new JSONObject(lastEvent.toString()))
+            .put("removal", removal);
+        if (foreignEvents.get() != 0) {
+            fail("a foreign or duplicate save event reached this case's observer");
+            result.put("failed", true);
+        }
+        if (callbackErrors.get() != 0) {
+            fail("a save-event callback failed");
+            result.put("failed", true);
+        }
         return result;
     }
 
@@ -297,17 +443,15 @@ public final class GuardedReaderApplication extends Application {
                             && bookUrl.equals(expectBookUrl) && chapterUrl.equals(expectChapterUrl);
                         if (correlates) saveEvents.incrementAndGet();
                         else foreignEvents.incrementAndGet();
-                        lastEvent = new JSONObject()
-                            .put("bookUrl", bookUrl == null ? JSONObject.NULL : bookUrl)
-                            .put("chapterUrl", chapterUrl == null ? JSONObject.NULL : chapterUrl)
-                            .put("correlates", correlates);
+                        synchronized (GuardedReaderApplication.class) {
+                            lastEvent = new JSONObject()
+                                .put("bookUrl", bookUrl == null ? JSONObject.NULL : bookUrl)
+                                .put("chapterUrl", chapterUrl == null ? JSONObject.NULL : chapterUrl)
+                                .put("correlates", correlates);
+                        }
                     } catch (Throwable error) {
                         callbackErrors.incrementAndGet();
-                        try {
-                            guardFailures.put("save callback failed: " + error);
-                        } catch (Throwable ignored) {
-                            // The counter already records it.
-                        }
+                        fail("save callback failed: " + error);
                     }
                     return null;
                 case "toString":
@@ -322,30 +466,47 @@ public final class GuardedReaderApplication extends Application {
         }
     }
 
-    /** Runs one callable on the main thread and returns its actual result. */
-    static JSONObject onMain(Callable<JSONObject> work) throws Exception {
+    /**
+     * Runs one callable on the main thread and returns its actual result.
+     *
+     * <p>The queued item is owned: if the caller times out or is interrupted, the
+     * item is marked abandoned so it can never run after the caller gave up, and
+     * it stays counted as pending until the main thread has actually seen it.
+     */
+    private JSONObject runOnMain(Callable<JSONObject> work) throws Exception {
         if (Looper.myLooper() == Looper.getMainLooper()) return work.call();
-        final Object[] value = new Object[1];
-        final Throwable[] failure = new Throwable[1];
-        final CountDownLatch latch = new CountDownLatch(1);
-        boolean posted = new Handler(Looper.getMainLooper()).post(() -> {
-            try {
-                value[0] = work.call();
-            } catch (Throwable error) {
-                failure[0] = error;
-            } finally {
-                latch.countDown();
+        final long id = workSequence.incrementAndGet();
+        final OwnedWork owned = new OwnedWork(id, work);
+        synchronized (lock) {
+            pendingWork.put(id, owned);
+        }
+        boolean posted = new Handler(Looper.getMainLooper()).post(owned::run);
+        if (!posted) {
+            synchronized (lock) {
+                pendingWork.remove(id);
             }
-        });
-        if (!posted) throw new IllegalStateException("the main looper refused the work");
-        if (!latch.await(30000, TimeUnit.MILLISECONDS)) {
+            throw new IllegalStateException("the main looper refused the work");
+        }
+        boolean completed;
+        try {
+            completed = owned.done.await(30000, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            owned.abandon();
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        }
+        if (!completed) {
+            owned.abandon();
             throw new IllegalStateException("main-thread work did not complete");
         }
-        if (failure[0] != null) {
-            throw failure[0] instanceof Exception
-                ? (Exception) failure[0] : new IllegalStateException(failure[0]);
+        synchronized (lock) {
+            pendingWork.remove(id);
         }
-        return value[0] instanceof JSONObject ? (JSONObject) value[0] : new JSONObject();
+        if (owned.failure != null) {
+            throw owned.failure instanceof Exception
+                ? (Exception) owned.failure : new IllegalStateException(owned.failure);
+        }
+        return owned.result instanceof JSONObject ? owned.result : new JSONObject();
     }
 
     /** Posts a marker to the main looper and waits for it. */
@@ -377,12 +538,19 @@ public final class GuardedReaderApplication extends Application {
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
         if (!isArmed()) return super.registerReceiver(receiver, filter);
-        return guardRegister(receiver, filter, 0, "2-arg");
+        // The approved route is only the inspected three-argument flags-2 form.
+        attemptedRegistrations.incrementAndGet();
+        fail("the two-argument registerReceiver overload is not the inspected route");
+        throw new SecurityException(
+            "guarded capture refuses the two-argument registerReceiver overload");
     }
 
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
         if (!isArmed()) return super.registerReceiver(receiver, filter, flags);
+        if (!isOwner()) {
+            throw new SecurityException("this instance is not the armed capture owner");
+        }
         return guardRegister(receiver, filter, flags, "3-arg");
     }
 
@@ -409,42 +577,27 @@ public final class GuardedReaderApplication extends Application {
         attemptedRegistrations.incrementAndGet();
         String rejection = rejectionOf(receiver, filter, flags, overload);
         if (rejection != null) {
-            try {
-                guardFailures.put(rejection);
-            } catch (Throwable ignored) {
-                // The refusal below is the visible outcome.
-            }
+            fail(rejection);
             throw new SecurityException("guarded capture refused: " + rejection);
         }
-        BroadcastReceiver wrapper = new GuardedReceiver(receiver);
         synchronized (lock) {
             if (wrappers.containsKey(receiver)) {
-                try {
-                    guardFailures.put("duplicate registration of the same receiver");
-                } catch (Throwable ignored) {
-                    // The refusal below is the visible outcome.
-                }
+                fail("duplicate registration of the same receiver");
                 throw new SecurityException("guarded capture refused a duplicate registration");
             }
-            wrappers.put(receiver, wrapper);
         }
+        BroadcastReceiver wrapper = new GuardedReceiver(receiver);
         Intent sticky;
         try {
             sticky = super.registerReceiver(wrapper, filter, flags);
         } catch (Throwable error) {
-            synchronized (lock) {
-                wrappers.remove(receiver);
-            }
-            try {
-                guardFailures.put("registration failed: " + error);
-            } catch (Throwable ignored) {
-                // The rethrown failure is the visible outcome.
-            }
+            fail("registration failed: " + error);
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded registration failed: " + error, error);
         }
         successfulRegistrations.incrementAndGet();
         synchronized (lock) {
+            wrappers.put(receiver, wrapper);
             ownedReceivers.add(wrapper);
             try {
                 receiverRegistrations.put(new JSONObject()
@@ -476,19 +629,16 @@ public final class GuardedReaderApplication extends Application {
                 || filter.countCategories() != 0) {
             return "unexpected filter data or categories";
         }
-        if ("3-arg".equals(overload) && flags != 2) return "unexpected registration flags " + flags;
-        if ("2-arg".equals(overload) && flags != 0) return "unexpected registration flags " + flags;
+        if (!"3-arg".equals(overload) || flags != 2) {
+            return "unexpected registration overload or flags " + overload + "/" + flags;
+        }
         return null;
     }
 
     private Intent refuseOverload(String overload, BroadcastReceiver receiver, IntentFilter filter) {
-        try {
-            guardFailures.put("unexpected registration overload " + overload
-                + " for " + (receiver == null ? "null" : receiver.getClass().getName())
-                + " actions=" + actionsOf(filter));
-        } catch (Throwable ignored) {
-            // The refusal below is the visible outcome.
-        }
+        fail("unexpected registration overload " + overload + " for "
+            + (receiver == null ? "null" : receiver.getClass().getName())
+            + " actions=" + actionsOf(filter));
         throw new SecurityException("guarded capture refuses the " + overload
             + " registerReceiver overload");
     }
@@ -501,21 +651,19 @@ public final class GuardedReaderApplication extends Application {
         }
         BroadcastReceiver wrapper;
         synchronized (lock) {
-            wrapper = wrappers.remove(receiver);
+            wrapper = wrappers.get(receiver);
         }
         if (wrapper == null) {
+            // Refused BEFORE any delegate effect: a foreign unregistration must
+            // never reach the platform.
             foreignUnregistrations.incrementAndGet();
-            try {
-                guardFailures.put("unregister of a receiver the guard does not own: "
-                    + (receiver == null ? "null" : receiver.getClass().getName()));
-            } catch (Throwable ignored) {
-                // The platform answer below is the visible outcome.
-            }
-            super.unregisterReceiver(receiver);
-            return;
+            fail("unregister of a receiver the guard does not own: "
+                + (receiver == null ? "null" : receiver.getClass().getName()));
+            throw new SecurityException("guarded capture refuses a foreign unregistration");
         }
         super.unregisterReceiver(wrapper);
         synchronized (lock) {
+            wrappers.remove(receiver);
             ownedReceivers.remove(wrapper);
         }
         try {
@@ -531,14 +679,13 @@ public final class GuardedReaderApplication extends Application {
             super.registerActivityLifecycleCallbacks(callback);
             return;
         }
+        if (!isOwner()) {
+            throw new SecurityException("this instance is not the armed capture owner");
+        }
         attemptedRegistrations.incrementAndGet();
         if (callback == null || !LEB_LIFECYCLE.equals(callback.getClass().getName())) {
-            try {
-                guardFailures.put("unexpected lifecycle callback "
-                    + (callback == null ? "null" : callback.getClass().getName()));
-            } catch (Throwable ignored) {
-                // The refusal below is the visible outcome.
-            }
+            fail("unexpected lifecycle callback "
+                + (callback == null ? "null" : callback.getClass().getName()));
             throw new SecurityException("guarded capture refused an unexpected lifecycle callback");
         }
         super.registerActivityLifecycleCallbacks(callback);
@@ -560,16 +707,17 @@ public final class GuardedReaderApplication extends Application {
             return;
         }
         synchronized (lock) {
-            if (!ownedCallbacks.remove(callback)) {
+            if (!ownedCallbacks.contains(callback)) {
                 foreignUnregistrations.incrementAndGet();
-                try {
-                    guardFailures.put("unregister of a lifecycle callback the guard does not own");
-                } catch (Throwable ignored) {
-                    // The platform answer below is the visible outcome.
-                }
+                fail("unregister of a lifecycle callback the guard does not own");
+                throw new SecurityException(
+                    "guarded capture refuses a foreign lifecycle unregistration");
             }
         }
         super.unregisterActivityLifecycleCallbacks(callback);
+        synchronized (lock) {
+            ownedCallbacks.remove(callback);
+        }
         try {
             lifecycleUnregistrations.put(
                 callback == null ? "null" : callback.getClass().getName());
@@ -606,6 +754,7 @@ public final class GuardedReaderApplication extends Application {
 
         @Override public void onReceive(Context context, Intent intent) {
             blockedDeliveries.incrementAndGet();
+            fail("an inbound IPC attempt reached the guarded receiver");
             synchronized (lock) {
                 try {
                     inboundAttempts.put(new JSONObject()

@@ -11,7 +11,6 @@ import unittest
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(os.environ.get('R2A_HOST_FAKES', '')) or '.'))
 import capture  # noqa: E402
 
 ACTUAL_OWNER_PREFERENCES = [
@@ -744,69 +743,991 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         self.assertIn('titleLifecycle', corpus)
 
 
-class GuardedReaderApplicationHostTest(unittest.TestCase):
-    """Actual behavioural controls for the capture guard, on a plain JVM.
+GUARD_FAKES = {
+    'android/app/Application.java': '''package android.app;
 
-    The real GuardedReaderApplication runs against bounded OS/dependency
-    boundary fakes written into an owned temporary directory. This is host
-    evidence for the guard's ownership, refusal and observer behaviour; it is
-    not Android execution evidence and does not exercise the reference APK.
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Test-only Application boundary: records what the guard actually asks for. */
+public class Application extends Context {
+    public final List<String> registered = new ArrayList<>();
+    public final List<String> unregistered = new ArrayList<>();
+    public final List<String> lifecycleRegistered = new ArrayList<>();
+    public final List<String> lifecycleUnregistered = new ArrayList<>();
+    public BroadcastReceiver lastReceiver;
+    public IntentFilter lastFilter;
+    public int lastFlags = -1;
+    public RuntimeException registerFailure;
+    public RuntimeException unregisterFailure;
+
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
+        return registerReceiver(receiver, filter, 0);
+    }
+
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
+        if (registerFailure != null) throw registerFailure;
+        lastReceiver = receiver;
+        lastFilter = filter;
+        lastFlags = flags;
+        registered.add(receiver.getClass().getName() + "|" + flags);
+        return null;
+    }
+
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
+            String broadcastPermission, android.os.Handler scheduler) {
+        return registerReceiver(receiver, filter, 0);
+    }
+
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
+            String broadcastPermission, android.os.Handler scheduler, int flags) {
+        return registerReceiver(receiver, filter, flags);
+    }
+
+    public void unregisterReceiver(BroadcastReceiver receiver) {
+        if (unregisterFailure != null) throw unregisterFailure;
+        unregistered.add(receiver.getClass().getName());
+    }
+
+    public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
+        lifecycleRegistered.add(callback.getClass().getName());
+    }
+
+    public void unregisterActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
+        lifecycleUnregistered.add(callback.getClass().getName());
+    }
+
+    public void startActivity(Intent intent) {
+        throw new SecurityException("not reached in this fake");
+    }
+
+    public void startActivity(Intent intent, android.os.Bundle options) {
+        throw new SecurityException("not reached in this fake");
+    }
+
+    public interface ActivityLifecycleCallbacks {
+        void onActivityCreated(Object activity, android.os.Bundle state);
+    }
+}
+''',
+    'android/content/Context.java': '''package android.content;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
+/** Test-only Context boundary. */
+public class Context {
+    public static final int MODE_PRIVATE = 0;
+    private final File root;
+    private final Map<String, SharedPreferences> preferences = new HashMap<>();
+
+    public Context() { this(new File(System.getProperty("java.io.tmpdir"), "r2afix-context")); }
+
+    public Context(File root) { this.root = root; }
+
+    public Context getApplicationContext() { return this; }
+
+    public String getPackageName() { return "io.legado.app.debug"; }
+
+    public File getFilesDir() { return new File(root, "files"); }
+
+    public File getExternalFilesDir(String type) { return new File(root, "external-files"); }
+
+    public File getDatabasePath(String name) { return new File(new File(root, "databases"), name); }
+
+    public boolean isDeviceProtectedStorage() { return false; }
+
+    public SharedPreferences getSharedPreferences(String name, int mode) {
+        SharedPreferences existing = preferences.get(name);
+        if (existing == null) {
+            existing = new FakePreferences();
+            preferences.put(name, existing);
+        }
+        return existing;
+    }
+}
+''',
+    'android/content/SharedPreferences.java': '''package android.content;
+
+/** Test-only interface with the real Android SharedPreferences ABI. */
+public interface SharedPreferences {
+    java.util.Map<String, ?> getAll();
+    String getString(String key, String defValue);
+    java.util.Set<String> getStringSet(String key, java.util.Set<String> defValues);
+    int getInt(String key, int defValue);
+    long getLong(String key, long defValue);
+    float getFloat(String key, float defValue);
+    boolean getBoolean(String key, boolean defValue);
+    boolean contains(String key);
+    Editor edit();
+    void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener listener);
+    void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener listener);
+
+    interface OnSharedPreferenceChangeListener {
+        void onSharedPreferenceChanged(SharedPreferences preferences, String key);
+    }
+
+    interface Editor {
+        Editor putString(String key, String value);
+        Editor putStringSet(String key, java.util.Set<String> values);
+        Editor putInt(String key, int value);
+        Editor putLong(String key, long value);
+        Editor putFloat(String key, float value);
+        Editor putBoolean(String key, boolean value);
+        Editor remove(String key);
+        Editor clear();
+        boolean commit();
+        void apply();
+    }
+}
+''',
+    'android/content/FakePreferences.java': '''package android.content;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+/** Test-only implementation of the real SharedPreferences ABI. */
+public class FakePreferences implements SharedPreferences {
+    public final Map<String, Object> values = new HashMap<>();
+    public boolean refuseCommit;
+    public RuntimeException readFailure;
+
+    @Override public boolean contains(String key) { return values.containsKey(key); }
+
+    @Override public boolean getBoolean(String key, boolean defValue) {
+        if (readFailure != null) throw readFailure;
+        Object value = values.get(key);
+        return value instanceof Boolean ? (Boolean) value : defValue;
+    }
+
+    @Override public Editor edit() { return new FakeEditor(this); }
+
+    @Override public java.util.Map<String, ?> getAll() { return values; }
+
+    @Override public String getString(String key, String defValue) { return defValue; }
+
+    @Override public java.util.Set<String> getStringSet(String key,
+            java.util.Set<String> defValues) { return defValues; }
+
+    @Override public int getInt(String key, int defValue) { return defValue; }
+
+    @Override public long getLong(String key, long defValue) { return defValue; }
+
+    @Override public float getFloat(String key, float defValue) { return defValue; }
+
+    @Override public void registerOnSharedPreferenceChangeListener(
+            OnSharedPreferenceChangeListener listener) {}
+
+    @Override public void unregisterOnSharedPreferenceChangeListener(
+            OnSharedPreferenceChangeListener listener) {}
+
+    static final class FakeEditor implements Editor {
+        private final FakePreferences target;
+        private final Map<String, Object> pending = new HashMap<>();
+        private final Set<String> removed = new HashSet<>();
+
+        FakeEditor(FakePreferences target) { this.target = target; }
+
+        @Override public Editor putBoolean(String key, boolean value) {
+            pending.put(key, value);
+            return this;
+        }
+
+        @Override public Editor remove(String key) {
+            removed.add(key);
+            return this;
+        }
+
+        @Override public boolean commit() {
+            if (target.refuseCommit) return false;
+            for (String key : removed) target.values.remove(key);
+            target.values.putAll(pending);
+            return true;
+        }
+
+        @Override public void apply() { commit(); }
+
+        @Override public android.content.SharedPreferences.Editor putString(String key,
+                String value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putStringSet(String key,
+                java.util.Set<String> values) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putInt(String key,
+                int value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putLong(String key,
+                long value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putFloat(String key,
+                float value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor clear() { return this; }
+    }
+}
+''',
+    'android/content/BroadcastReceiver.java': '''package android.content;
+
+/** Test-only receiver boundary. */
+public abstract class BroadcastReceiver {
+    public abstract void onReceive(Context context, Intent intent);
+}
+''',
+    'android/content/Intent.java': '''package android.content;
+
+/** Test-only Intent boundary: extras are never read by the guard. */
+public class Intent {
+    private final String action;
+    public boolean extrasRead;
+
+    public Intent(String action) { this.action = action; }
+
+    public String getAction() { return action; }
+
+    public String getStringExtra(String name) {
+        extrasRead = true;
+        return "should-not-be-read";
+    }
+}
+''',
+    'android/content/IntentFilter.java': '''package android.content;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+/** Test-only IntentFilter boundary. */
+public class IntentFilter {
+    private final List<String> actions = new ArrayList<>();
+    private int dataTypes;
+    private int dataSchemes;
+    private int categories;
+
+    public IntentFilter() {}
+
+    public IntentFilter(String action) { actions.add(action); }
+
+    public void addAction(String action) { actions.add(action); }
+
+    public Iterator<String> actionsIterator() { return actions.iterator(); }
+
+    public int countDataTypes() { return dataTypes; }
+
+    public int countDataSchemes() { return dataSchemes; }
+
+    public int countCategories() { return categories; }
+
+    public void addCategory(String category) { categories++; }
+
+    public void addDataType(String type) { dataTypes++; }
+}
+''',
+    'android/os/Bundle.java': '''package android.os;
+
+/** Test-only Bundle boundary. */
+public class Bundle {
+    public void putString(String key, String value) {}
+}
+''',
+    # A REAL distinct main thread: only the controlled main thread reports MAIN.
+    'android/os/Looper.java': '''package android.os;
+
+/** Test-only Looper: exactly one controlled thread is the main thread. */
+public final class Looper {
+    private static final Looper MAIN = new Looper();
+    private static volatile Thread mainThread;
+
+    public static Looper getMainLooper() { return MAIN; }
+
+    public static Looper myLooper() {
+        return Thread.currentThread() == mainThread ? MAIN : null;
+    }
+
+    public static void bindMainThread() { mainThread = Thread.currentThread(); }
+}
+''',
+    'android/os/Handler.java': '''package android.os;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+/** Test-only Handler: a real single main thread with hold/flush controls. */
+public class Handler {
+    private static final ExecutorService MAIN = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(() -> {
+            Looper.bindMainThread();
+            runnable.run();
+        }, "controlled-main");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static boolean holding;
+    private static final List<Runnable> held = new ArrayList<>();
+    private static CountDownLatch queued = new CountDownLatch(1);
+
+    public Handler(Looper looper) {}
+
+    public boolean post(Runnable work) {
+        synchronized (held) {
+            if (holding) {
+                held.add(work);
+                queued.countDown();
+                return true;
+            }
+        }
+        MAIN.execute(work);
+        return true;
+    }
+
+    public static void hold() {
+        synchronized (held) {
+            holding = true;
+            queued = new CountDownLatch(1);
+        }
+    }
+
+    public static boolean awaitQueued(long millis) throws Exception {
+        return queued.await(millis, TimeUnit.MILLISECONDS);
+    }
+
+    public static void flush() {
+        List<Runnable> pending;
+        synchronized (held) {
+            holding = false;
+            pending = new ArrayList<>(held);
+            held.clear();
+        }
+        for (Runnable work : pending) MAIN.execute(work);
+    }
+
+    public static boolean awaitIdle(long millis) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        MAIN.execute(done::countDown);
+        return done.await(millis, TimeUnit.MILLISECONDS);
+    }
+}
+''',
+    'android/app/Instrumentation.java': '''package android.app;
+
+/** Test-only placeholder so the fake tree matches the real package layout. */
+public class Instrumentation {}
+''',
+    'com/jeremyliao/liveeventbus/core/Observable.java': '''package com.jeremyliao.liveeventbus.core;
+
+/** Test-only public fixture interface (mirrors the inspected AAR). */
+public interface Observable<T> {
+    void observeForever(androidx.lifecycle.Observer<T> observer);
+    void removeObserver(androidx.lifecycle.Observer<T> observer);
+}
+''',
+    'com/jeremyliao/liveeventbus/core/LiveEventImpl.java': '''package com.jeremyliao.liveeventbus.core;
+
+import androidx.lifecycle.Observer;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Test-only NON-PUBLIC implementation, as the inspected AAR's is. */
+final class LiveEventImpl implements Observable<Object> {
+    final List<Observer<Object>> observers = new ArrayList<>();
+    public int observeCalls;
+    public int removeCalls;
+
+    @Override public void observeForever(Observer<Object> observer) {
+        observeCalls++;
+        observers.add(observer);
+    }
+
+    @Override public void removeObserver(Observer<Object> observer) {
+        removeCalls++;
+        observers.remove(observer);
+    }
+
+    public void resetCounters() {
+        observeCalls = 0;
+        removeCalls = 0;
+    }
+
+    void deliver(Object value) {
+        for (Observer<Object> observer : new ArrayList<>(observers)) observer.onChanged(value);
+    }
+}
+''',
+    'com/jeremyliao/liveeventbus/LiveEventBus.java': '''package com.jeremyliao.liveeventbus;
+
+import com.jeremyliao.liveeventbus.core.Observable;
+import java.util.HashMap;
+import java.util.Map;
+
+/** Test-only facade: hands out the non-public implementation by interface. */
+public final class LiveEventBus {
+    private static final Map<String, Object> EVENTS = new HashMap<>();
+
+    public static <T> Observable<T> get(String tag, Class<T> type) {
+        Object existing = EVENTS.get(tag);
+        if (existing == null) {
+            existing = newImpl();
+            EVENTS.put(tag, existing);
+        }
+        @SuppressWarnings("unchecked")
+        Observable<T> observable = (Observable<T>) existing;
+        return observable;
+    }
+
+    private static Object newImpl() {
+        try {
+            Class<?> impl = Class.forName("com.jeremyliao.liveeventbus.core.LiveEventImpl");
+            java.lang.reflect.Constructor<?> constructor = impl.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (Exception error) {
+            throw new IllegalStateException(error);
+        }
+    }
+}
+''',
+    'com/jeremyliao/liveeventbus/ipc/receiver/LebIpcReceiver.java': '''package com.jeremyliao.liveeventbus.ipc.receiver;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+
+/** Test-only receiver with the exact inspected class name the guard accepts. */
+public class LebIpcReceiver extends BroadcastReceiver {
+    public static int delivered;
+
+    @Override public void onReceive(Context context, Intent intent) {
+        delivered++;
+        if (intent != null) intent.getStringExtra("payload");
+    }
+}
+''',
+    'com/jeremyliao/liveeventbus/utils/AppUtils.java': '''package com.jeremyliao.liveeventbus.utils;
+
+import android.app.Application;
+
+/** Test-only AppUtils with the exact nested callback class name. */
+public final class AppUtils {
+    public static final class ActivityLifecycleImpl
+            implements Application.ActivityLifecycleCallbacks {
+        @Override public void onActivityCreated(Object activity, android.os.Bundle state) {}
+    }
+}
+''',
+    'androidx/lifecycle/Observer.java': '''package androidx.lifecycle;
+
+/** Test-only Observer boundary. */
+public interface Observer<T> {
+    void onChanged(T value);
+}
+''',
+    'kotlin/Pair.java': '''package kotlin;
+
+/** Test-only Pair boundary matching the reference payload shape. */
+public class Pair {
+    private final Object first;
+    private final Object second;
+
+    public Pair(Object first, Object second) {
+        this.first = first;
+        this.second = second;
+    }
+
+    public Object getFirst() { return first; }
+
+    public Object getSecond() { return second; }
+}
+''',
+}
+
+
+REPLAY_FIXTURE = r'''
+package io.liber.oracle.fields;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * Actual replay and preference-lifetime controls.
+ *
+ * <p>Runs the real nested replay server over loopback HTTP and the real
+ * tocCountWords lifetime, both compiled from the actual SDK sources. Private
+ * reflection is used only to construct/start/close the server and reach its
+ * port; no match logic is copied and no Android framework call is executed.
+ */
+public final class StageAFixture {
+    /** A bounded implementation of the real SharedPreferences ABI. */
+    static final class Preferences implements android.content.SharedPreferences {
+        final java.util.Map<String, Object> values = new java.util.HashMap<>();
+        boolean refuseCommit;
+        RuntimeException readFailure;
+
+        @Override public boolean contains(String key) { return values.containsKey(key); }
+
+        @Override public boolean getBoolean(String key, boolean defValue) {
+            if (readFailure != null) throw readFailure;
+            Object value = values.get(key);
+            return value instanceof Boolean ? (Boolean) value : defValue;
+        }
+
+        @Override public Editor edit() { return new Edit(this); }
+
+        @Override public void registerOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) {}
+
+        @Override public void unregisterOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) {}
+
+        @Override public java.util.Map<String, ?> getAll() { return values; }
+
+        @Override public String getString(String key, String defValue) { return defValue; }
+
+        @Override public java.util.Set<String> getStringSet(String key,
+                java.util.Set<String> defValues) { return defValues; }
+
+        @Override public int getInt(String key, int defValue) { return defValue; }
+
+        @Override public long getLong(String key, long defValue) { return defValue; }
+
+        @Override public float getFloat(String key, float defValue) { return defValue; }
+    }
+
+    static final class Edit implements android.content.SharedPreferences.Editor {
+        private final Preferences target;
+        private final java.util.Map<String, Object> pending = new java.util.HashMap<>();
+        private final java.util.Set<String> removed = new java.util.HashSet<>();
+
+        Edit(Preferences target) { this.target = target; }
+
+        @Override public android.content.SharedPreferences.Editor putBoolean(String key,
+                boolean value) {
+            pending.put(key, value);
+            return this;
+        }
+
+        @Override public android.content.SharedPreferences.Editor remove(String key) {
+            removed.add(key);
+            return this;
+        }
+
+        @Override public boolean commit() {
+            if (target.refuseCommit) return false;
+            for (String key : removed) target.values.remove(key);
+            target.values.putAll(pending);
+            return true;
+        }
+
+        @Override public void apply() { commit(); }
+
+        @Override public android.content.SharedPreferences.Editor putString(String key,
+                String value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putStringSet(String key,
+                java.util.Set<String> values) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putInt(String key,
+                int value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putLong(String key,
+                long value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor putFloat(String key,
+                float value) { return this; }
+
+        @Override public android.content.SharedPreferences.Editor clear() { return this; }
+    }
+    static Class<?> replayType;
+    static Constructor<?> replayCtor;
+    static Method start;
+    static Method close;
+    static Field serverField;
+
+    static JSONObject response(String id, String path, String body) throws Exception {
+        return new JSONObject().put("id", id).put("method", "GET").put("path", path)
+            .put("body", body);
+    }
+
+    static Object create(JSONArray responses, JSONArray requests, JSONArray unmatched,
+            JSONArray errors, JSONArray trace) throws Exception {
+        JSONObject corpus = new JSONObject().put("origin", "http://127.0.0.1:0")
+            .put("responses", responses);
+        Object server = replayCtor.newInstance(corpus, requests, unmatched, errors, trace,
+            new AtomicReference<String>("stage-a-replay-control"), true);
+        start.invoke(server);
+        return server;
+    }
+
+    static String request(Object server, String target) throws Exception {
+        int port = ((ServerSocket) serverField.get(server)).getLocalPort();
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(2000);
+            OutputStream out = socket.getOutputStream();
+            out.write(("GET " + target + " HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                + "Connection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            String status = reader.readLine();
+            String line;
+            int length = 0;
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+                if (line.toLowerCase(Locale.ROOT).startsWith("content-length:")) {
+                    length = Integer.parseInt(line.substring(line.indexOf(':') + 1).trim());
+                }
+            }
+            char[] body = new char[length];
+            int count = 0;
+            while (count < length) {
+                int got = reader.read(body, count, length - count);
+                if (got < 0) throw new AssertionError("short response");
+                count += got;
+            }
+            return status + "|" + new String(body);
+        }
+    }
+
+    static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static void replayControls(JSONObject result) throws Exception {
+        replayType = Class.forName("io.liber.oracle.fields.FieldOracle$FieldReplay");
+        replayCtor = replayType.getDeclaredConstructors()[0];
+        replayCtor.setAccessible(true);
+        start = replayType.getDeclaredMethod("start");
+        start.setAccessible(true);
+        close = replayType.getDeclaredMethod("close");
+        close.setAccessible(true);
+        serverField = replayType.getDeclaredField("server");
+        serverField.setAccessible(true);
+        JSONArray requests = new JSONArray();
+        JSONArray unmatched = new JSONArray();
+        JSONArray errors = new JSONArray();
+        JSONArray trace = new JSONArray();
+        JSONArray responses = new JSONArray()
+            .put(response("d1", "/duplicate", "FIRST"))
+            .put(response("d2", "/duplicate", "SECOND"))
+            .put(response("q", "/duplicate", "QUERY")
+                .put("query", new JSONObject().put("special", "yes")))
+            .put(response("s", "/single", "SINGLE"))
+            .put(response("other", "/case-other", "OTHER"));
+        Object server = create(responses, requests, unmatched, errors, trace);
+        try {
+            require(request(server, "/duplicate?special=yes").endsWith("|QUERY"),
+                "a query-specific declaration must win");
+            require(request(server, "/duplicate?client=a").endsWith("|FIRST"),
+                "the first declared duplicate must be served first");
+            require(request(server, "/duplicate?client=b").endsWith("|SECOND"),
+                "the second declared duplicate must be served second");
+            require(request(server, "/duplicate?client=c").startsWith("HTTP/1.1 404"),
+                "a third duplicate must exhaust");
+            require(request(server, "/single").endsWith("|SINGLE")
+                && request(server, "/single").endsWith("|SINGLE"),
+                "a single response must answer repeatedly");
+            require(request(server, "/case-other").endsWith("|OTHER"),
+                "a distinct case route must answer its own response");
+        } finally {
+            close.invoke(server);
+        }
+        require(requests.length() == 7 && trace.length() == 7 && unmatched.length() == 1
+            && errors.length() == 0, "the real request/trace accounting must close");
+        require(requests.getJSONObject(1).getJSONObject("receipt").getString("responseId")
+            .equals("d1"), "the first duplicate receipt must name its declaration");
+        require(requests.getJSONObject(2).getJSONObject("receipt").getString("responseId")
+            .equals("d2"), "the second duplicate receipt must name its declaration");
+        int concurrentRounds = 0;
+        for (int round = 0; round < 10; round++) {
+            JSONArray r = new JSONArray();
+            JSONArray m = new JSONArray();
+            JSONArray e = new JSONArray();
+            JSONArray tr = new JSONArray();
+            Object concurrent = create(new JSONArray()
+                .put(response("c1", "/concurrent", "ONE"))
+                .put(response("c2", "/concurrent", "TWO")), r, m, e, tr);
+            final Map<String, String> bodies = new ConcurrentHashMap<>();
+            final CountDownLatch go = new CountDownLatch(1);
+            final List<Throwable> failures =
+                Collections.synchronizedList(new ArrayList<Throwable>());
+            List<Thread> workers = new ArrayList<>();
+            for (final String id : new String[]{"L", "R"}) {
+                Thread worker = new Thread(() -> {
+                    try {
+                        go.await();
+                        bodies.put(id, request(concurrent, "/concurrent?client=" + id));
+                    } catch (Throwable error) {
+                        failures.add(error);
+                    }
+                });
+                workers.add(worker);
+                worker.start();
+            }
+            go.countDown();
+            for (Thread worker : workers) {
+                worker.join(3000);
+                require(!worker.isAlive(), "a concurrent client must finish");
+            }
+            close.invoke(concurrent);
+            require(failures.isEmpty() && r.length() == 2 && tr.length() == 2
+                && m.length() == 0 && e.length() == 0,
+                "the concurrent accounting must close: " + failures);
+            for (int index = 0; index < 2; index++) {
+                JSONObject row = r.getJSONObject(index);
+                String id = row.getJSONObject("query").getString("client");
+                String responseId = row.getJSONObject("receipt").getString("responseId");
+                require(responseId.equals(index == 0 ? "c1" : "c2"),
+                    "the recorded order must match the declaration order");
+                require(bodies.get(id).endsWith(index == 0 ? "|ONE" : "|TWO"),
+                    "each recorded request must carry its own wire body");
+            }
+            concurrentRounds++;
+        }
+        result.put("sequentialRequests", 7).put("concurrentRounds", concurrentRounds)
+            .put("queryPrecedence", true).put("duplicateOrder", true)
+            .put("exhaustion", true).put("legacyRepeatedAnswer", true)
+            .put("distinctRoutes", true).put("wireReceiptOrder", true);
+    }
+
+    static void preferenceControls(JSONObject result) throws Exception {
+        Class<?> lifetime =
+            Class.forName("io.liber.oracle.fields.FieldOracle$TocCountWordsLifetime");
+        Method capture = lifetime.getDeclaredMethod("capture",
+            android.content.SharedPreferences.class);
+        Method apply = lifetime.getDeclaredMethod("apply",
+            android.content.SharedPreferences.class, boolean.class);
+        Method restore = lifetime.getDeclaredMethod("restore",
+            android.content.SharedPreferences.class, JSONObject.class);
+        capture.setAccessible(true);
+        apply.setAccessible(true);
+        restore.setAccessible(true);
+        JSONObject outcome = new JSONObject();
+        StageAFixture.Preferences preferences = new StageAFixture.Preferences();
+        JSONObject priorAbsent = (JSONObject) capture.invoke(null, preferences);
+        apply.invoke(null, preferences, true);
+        JSONObject restoredAbsent = (JSONObject) restore.invoke(null, preferences, priorAbsent);
+        outcome.put("absentRestored", restoredAbsent.optBoolean("restored"))
+            .put("absentKeyRemoved", !preferences.contains("tocCountWords"));
+        preferences = new StageAFixture.Preferences();
+        preferences.values.put("tocCountWords", Boolean.FALSE);
+        JSONObject priorFalse = (JSONObject) capture.invoke(null, preferences);
+        apply.invoke(null, preferences, true);
+        JSONObject restoredFalse = (JSONObject) restore.invoke(null, preferences, priorFalse);
+        outcome.put("falseRestored", restoredFalse.optBoolean("restored"))
+            .put("falseValueBack", Boolean.FALSE.equals(preferences.values.get("tocCountWords")));
+        StageAFixture.Preferences refusing = new StageAFixture.Preferences();
+        refusing.refuseCommit = true;
+        boolean applyFailed = false;
+        try {
+            apply.invoke(null, refusing, true);
+        } catch (java.lang.reflect.InvocationTargetException error) {
+            applyFailed = true;
+        }
+        outcome.put("refusedCommitFails", applyFailed);
+        StageAFixture.Preferences refusingRestore = new StageAFixture.Preferences();
+        JSONObject priorPresent = (JSONObject) capture.invoke(null, refusingRestore);
+        refusingRestore.refuseCommit = true;
+        boolean restoreFailed = false;
+        try {
+            restore.invoke(null, refusingRestore, priorPresent);
+        } catch (java.lang.reflect.InvocationTargetException error) {
+            restoreFailed = true;
+        }
+        outcome.put("refusedRestoreFails", restoreFailed);
+        StageAFixture.Preferences throwing = new StageAFixture.Preferences();
+        JSONObject priorThrow = (JSONObject) capture.invoke(null, throwing);
+        throwing.readFailure = new IllegalStateException("readback failed");
+        boolean readbackFailed = false;
+        try {
+            restore.invoke(null, throwing, priorThrow);
+        } catch (java.lang.reflect.InvocationTargetException error) {
+            readbackFailed = true;
+        }
+        outcome.put("readbackThrowFails", readbackFailed);
+        boolean missingFailed = false;
+        try {
+            restore.invoke(null, new StageAFixture.Preferences(), null);
+        } catch (java.lang.reflect.InvocationTargetException error) {
+            missingFailed = true;
+        }
+        outcome.put("missingPriorFails", missingFailed);
+        result.put("preference", outcome);
+        require(outcome.optBoolean("absentRestored") && outcome.optBoolean("absentKeyRemoved")
+            && outcome.optBoolean("falseRestored") && outcome.optBoolean("falseValueBack")
+            && outcome.optBoolean("refusedCommitFails")
+            && outcome.optBoolean("refusedRestoreFails")
+            && outcome.optBoolean("readbackThrowFails")
+            && outcome.optBoolean("missingPriorFails"),
+            "every preference lifetime path must behave: " + outcome);
+    }
+
+    public static void main(String[] args) throws Exception {
+        JSONObject result = new JSONObject().put("control", args[0]);
+        if (args[0].equals("replay")) replayControls(result);
+        else if (args[0].equals("preference")) preferenceControls(result);
+        else throw new IllegalArgumentException("unknown control " + args[0]);
+        result.put("ok", true);
+        System.out.println(result.toString());
+    }
+}
+'''
+
+
+class GuardedReaderApplicationHostTest(unittest.TestCase):
+    """Actual behavioural controls for the capture guard, replay and preference.
+
+    The fakes are emitted from this committed test module, so the suite runs from
+    a normal checkout with no PYTHONPATH and no private helper. The guard
+    controls run in a fresh JVM each; the replay and preference controls compile
+    the actual SDK sources and run over real loopback HTTP.
     """
 
+    GUARD_CONTROLS = (
+        'inactive-unchanged', 'exact-registration', 'two-arg-refused',
+        'wrong-registrations', 'ipc-not-delivered', 'registration-failure',
+        'foreign-unregister-refused', 'failed-release-retains',
+        'double-end-idempotent', 'release-closes-observer',
+        'owner-not-overwritten', 'arm-rejects', 'foreign-event-fails',
+        'abandoned-registration', 'two-saved-cases',
+    )
+
     def _java_home(self):
-        for candidate in (
-                Path('C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8'),
-                Path(os.environ.get('JAVA_HOME', '') or 'C:/nonexistent')):
+        candidates = []
+        if os.environ.get('JAVA_HOME'):
+            candidates.append(Path(os.environ['JAVA_HOME']))
+        candidates.append(Path.home() / '.cache/wayfinder/temurin-17/jdk-17.0.20+8')
+        candidates.append(Path('C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8'))
+        for candidate in candidates:
             if (candidate / 'bin' / 'javac.exe').is_file():
                 return candidate
-        raise unittest.SkipTest('the pinned JDK is unavailable')
+        raise unittest.SkipTest('no pinned JDK is discoverable')
+
+    def _android_jar(self):
+        roots = [Path(os.environ.get('ANDROID_HOME', '')),
+                 Path(os.environ.get('ANDROID_SDK_ROOT', '')),
+                 Path(os.environ.get('LOCALAPPDATA', '')) / 'Android/Sdk',
+                 Path('C:/Users/17945/AppData/Local/Android/Sdk')]
+        for root in roots:
+            jar = root / 'platforms/android-35/android.jar'
+            if jar.is_file():
+                return jar
+        raise unittest.SkipTest('no android-35 SDK platform is discoverable')
 
     def _json_jar(self):
-        root = Path('C:/Users/17945/.gradle/caches')
-        found = sorted(root.glob('**/instrumented-json-20180813.jar'))
-        if not found:
-            raise unittest.SkipTest('the installed org.json jar is unavailable')
-        return found[0]
+        for root in (Path.home() / '.gradle/caches',
+                     Path('C:/Users/17945/.gradle/caches')):
+            found = sorted(root.glob('**/instrumented-json-20180813.jar'))
+            if found:
+                return found[0]
+        raise unittest.SkipTest('no installed org.json jar is discoverable')
+
+    def _repo(self):
+        return Path(__file__).resolve().parent.parent.parent
+
+    def _run(self, argv, cwd):
+        return subprocess.run(argv, cwd=str(cwd), capture_output=True, timeout=600)
 
     def test_the_actual_guard_controls_pass(self):
-        import importlib
-        import host_fakes
-        importlib.reload(host_fakes)
         java = self._java_home()
-        here = Path(__file__).resolve().parent
-        repo = here.parent.parent
-        with tempfile.TemporaryDirectory(prefix='r2a-guard-') as directory:
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='r2afix-guard-') as directory:
             root = Path(directory)
             sources = []
-            for name, text in host_fakes.FAKES.items():
+            for name, text in GUARD_FAKES.items():
                 path = root / 'fakes' / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding='utf-8')
                 sources.append(path)
-            sources.append(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java')
+            sources.append(
+                repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java')
             sources.append(repo / 'test/GuardedReaderApplicationTest.java')
             classes = root / 'classes'
             classes.mkdir()
-            compile_result = subprocess.run(
+            compiled = self._run(
                 [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
-                 '-nowarn', '-cp', str(self._json_jar()), '-d', str(classes)]
-                + [str(path) for path in sources],
-                capture_output=True, timeout=300)
-            self.assertEqual(compile_result.returncode, 0,
-                             compile_result.stderr.decode(errors='replace'))
-            run_result = subprocess.run(
-                [str(java / 'bin' / 'java.exe'), '-cp',
-                 str(classes) + os.pathsep + str(self._json_jar()),
-                 'io.liber.oracle.nested.GuardedReaderApplicationTest'],
-                capture_output=True, timeout=300)
-            stdout = run_result.stdout.decode(errors='replace')
-            self.assertEqual(run_result.returncode, 0,
-                             stdout + run_result.stderr.decode(errors='replace'))
-            summary = [line for line in stdout.splitlines() if line.startswith('SUMMARY ')]
-            self.assertEqual(len(summary), 1, stdout)
-            print('guard host controls: ' + summary[0])
-            self.assertIn('fail=0', summary[0])
-            self.assertGreaterEqual(int(summary[0].split('pass=')[1].split()[0]), 30)
+                 '-nowarn', '-cp', str(jar), '-d', str(classes)]
+                + [str(path) for path in sources], repo)
+            self.assertEqual(compiled.returncode, 0,
+                             compiled.stderr.decode(errors='replace'))
+            outcomes = {}
+            for control in self.GUARD_CONTROLS:
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp',
+                     str(classes) + os.pathsep + str(jar),
+                     'io.liber.oracle.nested.GuardedReaderApplicationTest', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+            self.assertEqual(len(outcomes), len(self.GUARD_CONTROLS))
+
+    def test_the_actual_replay_and_preference_controls_pass(self):
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='r2afix-sdk-') as directory:
+            root = Path(directory)
+            classes = root / 'actual-classes'
+            classes.mkdir()
+            sources = [
+                repo / 'tool/nested_oracle/StateSessionOracle.java',
+                repo / 'tool/nested_oracle/HostRuntimeInit.java',
+                repo / 'tool/nested_oracle/ShortcutStartupGuard.java',
+                repo / 'tool/result_field_oracle/FieldOracle.java',
+                repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java',
+                repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java',
+            ]
+            compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-encoding', 'UTF-8', '-cp', str(android), '-d', str(classes)]
+                + [str(path) for path in sources], repo)
+            self.assertEqual(compiled.returncode, 0,
+                             compiled.stderr.decode(errors='replace'))
+            fixture = root / 'StageAFixture.java'
+            fixture.write_text(REPLAY_FIXTURE, encoding='utf-8')
+            classpath = os.pathsep.join([str(classes), str(jar), str(android)])
+            fixture_compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-cp', classpath, '-d', str(classes), str(fixture)], repo)
+            self.assertEqual(fixture_compiled.returncode, 0,
+                             fixture_compiled.stderr.decode(errors='replace'))
+            for control in ('replay', 'preference'):
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', classpath,
+                     'io.liber.oracle.fields.StageAFixture', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                self.assertTrue(json.loads(stdout.splitlines()[-1])['ok'], control)
 
 
 class SelectedReceiptTest(unittest.TestCase):

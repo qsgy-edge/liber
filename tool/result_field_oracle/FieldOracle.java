@@ -367,6 +367,10 @@ public final class FieldOracle extends Instrumentation {
                     }
                     log("case " + id + " failed: " + describe(error));
                 }
+                if (newFamily && lifecycleCorpus() && guardCaptureFailed()) {
+                    throw new IllegalStateException(
+                        "the saved-content guard recorded a capture failure in case " + id);
+                }
                 if (selectedReference) {
                     JSONObject terminal = awaitSelectedQuiescence();
                     if (fields02Observation != null) fields02Observation.put("terminalOwner", terminal);
@@ -1036,6 +1040,16 @@ public final class FieldOracle extends Instrumentation {
         return guard;
     }
 
+    /** Whether the guard recorded a capture failure that must fail this run. */
+    private boolean guardCaptureFailed() {
+        try {
+            Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+            return (Boolean) bridge.getMethod("captureFailed").invoke(null);
+        } catch (Throwable error) {
+            return true;
+        }
+    }
+
     /** One guard-owned save-observation phase: begin, end or close. */
     private JSONObject saveObservation(ClassLoader loader, String phase, String bookUrl,
             String chapterUrl) throws Exception {
@@ -1103,56 +1117,77 @@ public final class FieldOracle extends Instrumentation {
     }
 
     /**
-     * R6: the immutable prior preference state, captured BEFORE any mutation so
-     * the owning finally can restore it even when the mutation itself throws.
+     * The approved {@code tocCountWords} lifetime: capture the immutable prior
+     * presence and value, apply the value, and restore it on every path.
+     *
+     * <p>Package-internal so the host controls drive this exact code, not an
+     * imitation of it. Standard state only; no new abstraction.
      */
+    static final class TocCountWordsLifetime {
+        static final String KEY = TOC_COUNT_WORDS;
+
+        static JSONObject capture(android.content.SharedPreferences preferences)
+                throws Exception {
+            return new JSONObject()
+                .put("name", KEY)
+                .put("previousPresent", preferences.contains(KEY))
+                .put("previous", preferences.getBoolean(KEY, true));
+        }
+
+        static JSONObject apply(android.content.SharedPreferences preferences, boolean value)
+                throws Exception {
+            boolean committed = preferences.edit().putBoolean(KEY, value).commit();
+            boolean observed = preferences.getBoolean(KEY, true);
+            if (!committed || observed != value) {
+                throw new IllegalStateException("tocCountWords preference did not take effect");
+            }
+            return new JSONObject().put("name", KEY).put("applied", value)
+                .put("committed", committed).put("observed", observed);
+        }
+
+        static JSONObject restore(android.content.SharedPreferences preferences, JSONObject prior)
+                throws Exception {
+            if (prior == null) {
+                throw new IllegalStateException("the prior tocCountWords state was not captured");
+            }
+            android.content.SharedPreferences.Editor editor = preferences.edit();
+            if (prior.getBoolean("previousPresent")) {
+                editor.putBoolean(KEY, prior.getBoolean("previous"));
+            } else {
+                editor.remove(KEY);
+            }
+            boolean committed = editor.commit();
+            boolean present = preferences.contains(KEY);
+            boolean observed = preferences.getBoolean(KEY, true);
+            boolean restored = committed
+                && present == prior.getBoolean("previousPresent")
+                && observed == prior.getBoolean("previous");
+            JSONObject receipt = new JSONObject()
+                .put("previousPresent", prior.getBoolean("previousPresent"))
+                .put("committed", committed)
+                .put("presentAfter", present)
+                .put("observedAfter", observed)
+                .put("restored", restored);
+            if (!restored) {
+                throw new IllegalStateException("tocCountWords was not restored: " + receipt);
+            }
+            return receipt;
+        }
+    }
+
+    /** R6: the immutable prior preference state, captured BEFORE any mutation. */
     private JSONObject capturePriorPreference(ClassLoader loader) throws Exception {
-        android.content.SharedPreferences preferences = defaultPreferences(loader);
-        return new JSONObject()
-            .put("name", TOC_COUNT_WORDS)
-            .put("previousPresent", preferences.contains(TOC_COUNT_WORDS))
-            .put("previous", preferences.getBoolean(TOC_COUNT_WORDS, true));
+        return TocCountWordsLifetime.capture(defaultPreferences(loader));
     }
 
     /** Applies the approved value and records what was actually observed. */
     private JSONObject applyTocCountWords(ClassLoader loader, boolean value) throws Exception {
-        android.content.SharedPreferences preferences = defaultPreferences(loader);
-        boolean committed = preferences.edit().putBoolean(TOC_COUNT_WORDS, value).commit();
-        boolean observed = readTocCountWords(loader);
-        if (!committed || observed != value) {
-            throw new IllegalStateException("tocCountWords preference did not take effect");
-        }
-        return new JSONObject().put("name", TOC_COUNT_WORDS).put("applied", value)
-            .put("committed", committed).put("observed", observed);
+        return TocCountWordsLifetime.apply(defaultPreferences(loader), value);
     }
 
     private JSONObject restoreTocCountWords(ClassLoader loader, JSONObject state)
             throws Exception {
-        if (state == null) throw new IllegalStateException(
-            "the prior tocCountWords state was not captured");
-        android.content.SharedPreferences preferences = defaultPreferences(loader);
-        android.content.SharedPreferences.Editor editor = preferences.edit();
-        if (state.getBoolean("previousPresent")) {
-            editor.putBoolean(TOC_COUNT_WORDS, state.getBoolean("previous"));
-        } else {
-            editor.remove(TOC_COUNT_WORDS);
-        }
-        boolean committed = editor.commit();
-        boolean present = preferences.contains(TOC_COUNT_WORDS);
-        boolean observed = readTocCountWords(loader);
-        boolean restored = committed
-            && present == state.getBoolean("previousPresent")
-            && observed == state.getBoolean("previous");
-        JSONObject receipt = new JSONObject()
-            .put("previousPresent", state.getBoolean("previousPresent"))
-            .put("committed", committed)
-            .put("presentAfter", present)
-            .put("observedAfter", observed)
-            .put("restored", restored);
-        if (!restored) {
-            throw new IllegalStateException("tocCountWords was not restored: " + receipt);
-        }
-        return receipt;
+        return TocCountWordsLifetime.restore(defaultPreferences(loader), state);
     }
 
     private android.content.SharedPreferences defaultPreferences(ClassLoader loader)

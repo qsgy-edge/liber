@@ -37,6 +37,11 @@ public final class SelectedFieldHostBridge {
         GuardedReaderApplication.arm(application, loader);
     }
 
+    /** Whether the guard recorded a capture failure that must fail the run. */
+    public static boolean captureFailed() {
+        return GuardedReaderApplication.captureFailed();
+    }
+
     /** Whether the capture guard is armed for this lifetime. */
     public static boolean armed() {
         return GuardedReaderApplication.isArmed();
