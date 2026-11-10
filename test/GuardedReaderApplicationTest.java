@@ -82,7 +82,13 @@ public final class GuardedReaderApplicationTest {
             case "save-foreign": saveForeign(result); break;
             case "save-callback-error": saveCallbackError(result); break;
             case "save-malformed": saveMalformed(result); break;
-            case "save-wrong-inputs": saveWrongInputs(result); break;
+            case "save-null-payload": saveNullPayload(result); break;
+            case "save-null-book": saveNullBook(result); break;
+            case "save-null-chapter": saveNullChapter(result); break;
+            case "save-wrong-book": saveWrongBook(result); break;
+            case "save-wrong-chapter": saveWrongChapter(result); break;
+            case "save-receipt-copy": saveReceiptCopy(result); break;
+            case "save-stale-after-close": saveStaleAfterClose(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -604,42 +610,6 @@ public final class GuardedReaderApplicationTest {
         public String getUrl() { reads++; return "http://book/1/c1"; }
     }
 
-    private static void saveWrongInputs(JSONObject result) throws Exception {
-        arm();
-        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        ImpostorBook.executed = false;
-        DuckChapter.reads = 0;
-        deliverOnMain(pair(new ImpostorBook(),
-            new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
-        JSONObject wrongBook = GuardedReaderApplication.endSaveObservation(200);
-        arm();
-        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        deliverOnMain(pair(new io.legado.app.data.entities.Book("http://book/1"), null));
-        JSONObject nullChapter = GuardedReaderApplication.endSaveObservation(200);
-        arm();
-        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        deliverOnMain(pair(null, new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
-        JSONObject nullBook = GuardedReaderApplication.endSaveObservation(200);
-        arm();
-        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        deliverOnMain(pair(new io.legado.app.data.entities.Book("http://book/1"),
-            new DuckChapter()));
-        JSONObject wrongChapter = GuardedReaderApplication.endSaveObservation(200);
-        result.put("wrongBook", wrongBook).put("nullChapter", nullChapter)
-            .put("nullBook", nullBook).put("wrongChapter", wrongChapter)
-            .put("impostorGetterExecuted", ImpostorBook.executed)
-            .put("duckChapterReads", DuckChapter.reads);
-        require(!ImpostorBook.executed && DuckChapter.reads == 0,
-            "no arbitrary wrong getter may execute");
-        for (JSONObject row : new JSONObject[]{wrongBook, nullChapter, nullBook, wrongChapter}) {
-            require(row.optInt("malformedEvents") == 1, "the wrong input is malformed");
-            require(row.optInt("events") == 0, "no correlated event from a wrong input");
-            require(row.optBoolean("failed"), "a wrong input must fail the case");
-            require(row.getJSONObject("removal").optBoolean("removed"),
-                "the owned observer is still removed");
-        }
-    }
-
     private static void saveOffMain(JSONObject result) throws Exception {
         arm();
         GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
@@ -801,6 +771,140 @@ public final class GuardedReaderApplicationTest {
         }
     }
 
+
+    /**
+     * One owned wrong input in its own armed lifetime: the payload is malformed,
+     * no correlated event is accepted, and the owned observer is still removed.
+     */
+    private static void saveOneWrongInput(JSONObject result, String mode, Object payload)
+            throws Exception {
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliverOnMain(payload);
+        JSONObject end = GuardedReaderApplication.endSaveObservation(200);
+        result.put("mode", mode).put("end", end).put("removeCalls", removeCalls())
+            .put("impostorGetterExecuted", ImpostorBook.executed)
+            .put("duckChapterReads", DuckChapter.reads);
+        require(end.optInt("malformedEvents") == 1, mode + ": the input is malformed");
+        require(end.optInt("events") == 0, mode + ": no correlated event from a wrong input");
+        require(end.optBoolean("failed"), mode + ": a wrong input must fail the case");
+        require(end.getJSONObject("removal").optBoolean("removed"),
+            mode + ": the owned observer is still removed");
+        require(removeCalls() == 1, mode + ": exactly one removal");
+        require(!ImpostorBook.executed && DuckChapter.reads == 0,
+            mode + ": no arbitrary wrong getter may execute");
+    }
+
+    private static void saveNullPayload(JSONObject result) throws Exception {
+        ImpostorBook.executed = false;
+        DuckChapter.reads = 0;
+        saveOneWrongInput(result, "null-payload", null);
+    }
+
+    private static void saveNullBook(JSONObject result) throws Exception {
+        ImpostorBook.executed = false;
+        DuckChapter.reads = 0;
+        saveOneWrongInput(result, "null-book",
+            pair(null, new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
+    }
+
+    private static void saveNullChapter(JSONObject result) throws Exception {
+        ImpostorBook.executed = false;
+        DuckChapter.reads = 0;
+        saveOneWrongInput(result, "null-chapter",
+            pair(new io.legado.app.data.entities.Book("http://book/1"), null));
+    }
+
+    private static void saveWrongBook(JSONObject result) throws Exception {
+        ImpostorBook.executed = false;
+        DuckChapter.reads = 0;
+        saveOneWrongInput(result, "wrong-book",
+            pair(new ImpostorBook(),
+                new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
+    }
+
+    private static void saveWrongChapter(JSONObject result) throws Exception {
+        ImpostorBook.executed = false;
+        DuckChapter.reads = 0;
+        saveOneWrongInput(result, "wrong-chapter",
+            pair(new io.legado.app.data.entities.Book("http://book/1"), new DuckChapter()));
+    }
+
+    /**
+     * A caller editing the public repeat receipt must not mutate the cached
+     * first-close facts, so the next return and the real close proof stand.
+     */
+    private static void saveReceiptCopy(JSONObject result) throws Exception {
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        JSONObject first = GuardedReaderApplication.endSaveObservation(2000);
+        JSONObject repeat = GuardedReaderApplication.endSaveObservation(0);
+        String firstLast = first.getJSONObject("lastEvent").toString();
+        String firstRemoval = first.getJSONObject("removal").toString();
+        // Edit only the returned public repeat receipt, root and nested.
+        repeat.put("events", 99);
+        repeat.getJSONObject("lastEvent").put("bookUrl", "http://mutated");
+        repeat.getJSONObject("removal").put("removed", false);
+        JSONObject again = GuardedReaderApplication.endSaveObservation(0);
+        result.put("first", first).put("repeat", repeat).put("again", again)
+            .put("removeCalls", removeCalls());
+        require(again.optInt("events") == 1, "the cached event count is unchanged");
+        require(again.getJSONObject("lastEvent").toString().equals(firstLast),
+            "the cached lastEvent is unchanged by caller mutation");
+        require(again.getJSONObject("removal").toString().equals(firstRemoval),
+            "the cached removal is unchanged by caller mutation");
+        require(again.getJSONObject("removal").optBoolean("removed"),
+            "the real removal acknowledgement stands");
+        require(again.optBoolean("alreadyClosed") && again.optBoolean("removed"),
+            "the real close proof still holds");
+        require(removeCalls() == 1, "exactly one real removal");
+    }
+
+    /**
+     * Two healthy cases under one armed process; after case 2 closes, both the
+     * retained case 1 proxy and the just-closed case 2 proxy run on MAIN. Each
+     * fails the process capture, and case 2's frozen terminal facts stand.
+     */
+    private static void saveStaleAfterClose(JSONObject result) throws Exception {
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        Object case1 = staleObserver();
+        deliver("http://book/1", "http://book/1/c1");
+        JSONObject firstClose = GuardedReaderApplication.endSaveObservation(2000);
+        GuardedReaderApplication.beginSaveObservation("http://book/2", "http://book/2/c1");
+        Object case2 = staleObserver();
+        deliver("http://book/2", "http://book/2/c1");
+        JSONObject secondClose = GuardedReaderApplication.endSaveObservation(2000);
+        // Both observations are now closed; invoke each retained proxy afterwards.
+        invokeOnMain(case1, typedPair("http://book/1", "http://book/1/c1"));
+        boolean failedAfterCase1 = GuardedReaderApplication.captureFailed();
+        invokeOnMain(case2, typedPair("http://book/2", "http://book/2/c1"));
+        JSONObject repeat = GuardedReaderApplication.endSaveObservation(0);
+        result.put("firstClose", firstClose).put("secondClose", secondClose)
+            .put("repeat", repeat)
+            .put("failedAfterCase1", failedAfterCase1)
+            .put("captureFailed", GuardedReaderApplication.captureFailed())
+            .put("removeCalls", removeCalls());
+        require(failedAfterCase1, "the retained case-1 proxy must fail the capture");
+        require(GuardedReaderApplication.captureFailed(), "the capture stays failed");
+        require(secondClose.optInt("events") == 1 && !secondClose.optBoolean("failed"),
+            "case 2 closed cleanly before the stale callbacks");
+        require(secondClose.getJSONObject("lastEvent").optString("bookUrl")
+            .equals("http://book/2"), "case 2 carries its own identity");
+        // The frozen terminal facts survive both late callbacks.
+        require(repeat.optInt("events") == 1, "the frozen event count stands");
+        require(repeat.optInt("foreignEvents") == 0 && repeat.optInt("duplicates") == 0
+            && repeat.optInt("offMainEvents") == 0 && repeat.optInt("malformedEvents") == 0
+            && repeat.optInt("callbackErrors") == 0, "no invalid cause appears on the repeat");
+        require(repeat.getJSONObject("lastEvent").optString("bookUrl")
+            .equals("http://book/2"), "the frozen lastEvent is case 2's");
+        require(repeat.getJSONObject("removal").optBoolean("removed"),
+            "the genuine single removal stands");
+        require(repeat.optBoolean("alreadyClosed") && repeat.optBoolean("removed"),
+            "the real close proof still holds");
+        require(removeCalls() == 2, "each case removed its own observer exactly once");
+    }
 
     private static GuardedReaderApplication arm() {
         GuardedReaderApplication app = new GuardedReaderApplication();

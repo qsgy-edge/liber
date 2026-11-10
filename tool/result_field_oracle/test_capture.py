@@ -5594,6 +5594,9 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'save-callback-error', 'save-malformed', 'save-off-main',
                 'save-idempotent', 'save-invalid-repeat', 'save-end-before-begin',
                 'save-overlap', 'save-stale-proxy', 'save-two-cases',
+                'save-null-payload', 'save-null-book', 'save-null-chapter',
+                'save-wrong-book', 'save-wrong-chapter', 'save-receipt-copy',
+                'save-stale-after-close',
             )
             outcomes = {}
             for control in controls:

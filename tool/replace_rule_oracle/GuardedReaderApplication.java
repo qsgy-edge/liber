@@ -421,10 +421,13 @@ public final class GuardedReaderApplication extends Application {
                     .put("reason", "never-registered").put("failed", true);
             }
             result.put("alreadyClosed", true);
-            java.util.Iterator<String> names = terminal.keys();
+            // A deep copy, so a caller editing any returned root or nested object
+            // cannot mutate the cached first-close facts.
+            JSONObject copy = new JSONObject(terminal.toString());
+            java.util.Iterator<String> names = copy.keys();
             while (names.hasNext()) {
                 String name = names.next();
-                result.put(name, terminal.get(name));
+                result.put(name, copy.get(name));
             }
             // The top-level acknowledgement mirrors the actual removal that was
             // really observed on the first close, never an invented one.
