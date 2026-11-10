@@ -1265,8 +1265,9 @@ public final class Log {
 '''
 
 OWNED_OS_SUBSTITUTES = {
-    'android/content/Context.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful Context: only the members this fixture uses. */\npublic abstract class Context {\n    public abstract File getCacheDir();\n\n    public abstract SharedPreferences getSharedPreferences(String name, int mode);\n\n    public Object getSystemService(String name) {\n        return null;\n    }\n}\n',
-    'android/content/ContextWrapper.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */\npublic abstract class ContextWrapper extends Context {\n    private final Context base;\n\n    public ContextWrapper(Context base) {\n        this.base = base;\n    }\n\n    public Context getBaseContext() {\n        return base;\n    }\n\n    @Override\n    public File getCacheDir() {\n        return base.getCacheDir();\n    }\n\n    @Override\n    public SharedPreferences getSharedPreferences(String name, int mode) {\n        return base.getSharedPreferences(name, mode);\n    }\n\n    @Override\n    public Object getSystemService(String name) {\n        return base.getSystemService(name);\n    }\n}\n',
+    'android/content/pm/ApplicationInfo.java': 'package android.content.pm;\n\n/** Test-only data holder: the one field the scratch registration reads. */\npublic class ApplicationInfo {\n    public String dataDir;\n}\n',
+    'android/content/Context.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful Context: only the members this fixture uses. */\npublic abstract class Context {\n    public abstract File getCacheDir();\n\n    public abstract SharedPreferences getSharedPreferences(String name, int mode);\n\n    public android.content.pm.ApplicationInfo getApplicationInfo() {\n        android.content.pm.ApplicationInfo info = new android.content.pm.ApplicationInfo();\n        File cache = getCacheDir();\n        info.dataDir = cache == null ? null : cache.getParent();\n        return info;\n    }\n\n    public Object getSystemService(String name) {\n        return null;\n    }\n}\n',
+    'android/content/ContextWrapper.java': 'package android.content;\n\nimport java.io.File;\n\n/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */\npublic abstract class ContextWrapper extends Context {\n    private final Context base;\n\n    public ContextWrapper(Context base) {\n        this.base = base;\n    }\n\n    public Context getBaseContext() {\n        return base;\n    }\n\n    @Override\n    public File getCacheDir() {\n        return base.getCacheDir();\n    }\n\n    @Override\n    public SharedPreferences getSharedPreferences(String name, int mode) {\n        return base.getSharedPreferences(name, mode);\n    }\n\n    @Override\n    public android.content.pm.ApplicationInfo getApplicationInfo() {\n        return base.getApplicationInfo();\n    }\n\n    @Override\n    public Object getSystemService(String name) {\n        return base.getSystemService(name);\n    }\n}\n',
     'android/util/Log.java': 'package android.util;\r\n\r\n/** The only OS boundary this fixture replaces: a log call. */\r\npublic final class Log {\r\n    public static String failAt;\r\n    public static RuntimeException failure;\r\n\r\n    public static int i(String tag, String message) {\r\n        if (failure != null && failAt != null && message.startsWith(failAt)) throw failure;\r\n        return 0;\r\n    }\r\n}\r\n',
     'android/os/Process.java': 'package android.os;\n\n/** Test-only SDK-signature-faithful Process: a fixed controlled pid. */\npublic final class Process {\n    public static int myPid() {\n        return 4242;\n    }\n}\n',
 }
@@ -2591,39 +2592,69 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
 }
 
 /** The same close-before-refresh policy inside the real preference lifetime. */
+/** The actual restore receipt fields, read from the real lifetime output. */
+static boolean restoreReceiptMatches(JSONObject proof, boolean previousPresent,
+        boolean observedAfter) {
+    JSONObject receipt = proof.optJSONObject("tocCountWords");
+    // The actual receipt carries these five fields; the restored value itself is
+    // read from the real store by storedMatches.
+    return receipt != null
+        && receipt.has("previousPresent") && receipt.has("committed")
+        && receipt.has("restored") && receipt.has("presentAfter")
+        && receipt.has("observedAfter")
+        && receipt.optBoolean("previousPresent") == previousPresent
+        && receipt.optBoolean("committed")
+        && receipt.optBoolean("restored")
+        && receipt.optBoolean("presentAfter") == previousPresent
+        && receipt.optBoolean("observedAfter") == observedAfter;
+}
+
+/** The actual stored state after the lifetime finished. */
+static boolean storedMatches(MemoryPreferences preferences, boolean present, boolean value) {
+    boolean stored = preferences.values.containsKey("tocCountWords");
+    if (stored != present) return false;
+    return !present || Boolean.valueOf(value).equals(preferences.getBoolean("tocCountWords", !value));
+}
+
+/**
+ * The same close-before-refresh policy inside the real preference lifetime.
+ *
+ * <p>Every row keeps its own real preferences and proof, so the actual restore
+ * receipt and the actual stored state are asserted rather than a close flag.
+ */
 static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Throwable {
     JSONObject outcome = new JSONObject();
-    // (a) a valid nested close refreshes once and the lifetime restores.
-    MemoryPreferences preferences = new MemoryPreferences();
-    preferences.values.put("tocCountWords", Boolean.TRUE);
-    JSONObject proof = new JSONObject();
     int[] refreshes = {0};
-    JSONObject result1 = FieldOracle.TocCountWordsLifetime.run(preferences,
-        () -> new JSONObject().put("closed", true),
+
+    // (a) nested close, prior present false: refresh once, real restore receipt.
+    MemoryPreferences nestedPreferences = new MemoryPreferences();
+    nestedPreferences.values.put("tocCountWords", Boolean.FALSE);
+    JSONObject nestedProof = new JSONObject();
+    refreshes[0] = 0;
+    JSONObject nestedResult = FieldOracle.TocCountWordsLifetime.run(nestedPreferences,
+        () -> { nestedProof.put("saveObserver", new JSONObject().put("phase", "begin"));
+            return new JSONObject().put("closed", true); },
         () -> {
             FieldOracle.closeObserverThenRefresh(
-                new JSONObject().put("removal", new JSONObject().put("removed", true)), proof,
-                () -> { refreshes[0]++; return Arrays.asList("chapter-0"); });
+                new JSONObject().put("removal", new JSONObject().put("removed", true)),
+                nestedProof, () -> { refreshes[0]++; return Arrays.asList("chapter-0"); });
             return new JSONObject().put("refreshed", refreshes[0]);
         },
-        () -> new JSONObject().put("closed", true), proof);
-    // Prior true alone cannot discriminate apply-without-restore, so the receipt
-    // and the real stored value are both asserted.
-    JSONObject nestedRestore = proof.getJSONObject("tocCountWords");
-    outcome.put("nestedRestoreReceipt", nestedRestore);
-    outcome.put("nestedRefreshes", refreshes[0]);
-    outcome.put("nestedRefreshesOnce", refreshes[0] == 1 && result1 != null
-        && proof.has("saveEvent") && nestedRestore.optBoolean("previousPresent")
-        && nestedRestore.optBoolean("committed")
-        && nestedRestore.optBoolean("restored") && nestedRestore.optBoolean("presentAfter")
-        && nestedRestore.optBoolean("observedAfter")
-        && Boolean.TRUE.equals(preferences.values.get("tocCountWords")));
-    // (b) an acknowledged idempotent close also refreshes once, with its own
-    // retained preferences/proof and real restore receipt.
-    refreshes[0] = 0;
+        () -> { nestedProof.put("saveObserverClose",
+                new JSONObject().put("alreadyClosed", true).put("removed", true));
+            return FieldOracle.adaptObserverClose(
+                new JSONObject().put("alreadyClosed", true).put("removed", true)); },
+        nestedProof);
+    outcome.put("nestedRefreshesOnce", refreshes[0] == 1 && nestedResult != null
+        && nestedProof.has("saveEvent")
+        && restoreReceiptMatches(nestedProof, true, false)
+        && storedMatches(nestedPreferences, true, false));
+    outcome.put("nestedRestoreReceipt", nestedProof.optJSONObject("tocCountWords"));
+
+    // (b) acknowledged idempotent close, prior absent: refresh once, absent again.
     MemoryPreferences idempotentPreferences = new MemoryPreferences();
-    idempotentPreferences.values.put("tocCountWords", Boolean.FALSE);
     JSONObject idempotentProof = new JSONObject();
+    refreshes[0] = 0;
     FieldOracle.TocCountWordsLifetime.run(idempotentPreferences,
         () -> new JSONObject().put("closed", true),
         () -> {
@@ -2632,18 +2663,24 @@ static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Thro
                 idempotentProof, () -> { refreshes[0]++; return null; });
             return new JSONObject().put("refreshed", refreshes[0]);
         },
-        () -> new JSONObject().put("closed", true), idempotentProof);
-    JSONObject idempotentRestore = idempotentProof.getJSONObject("tocCountWords");
+        () -> FieldOracle.adaptObserverClose(
+            new JSONObject().put("alreadyClosed", true).put("removed", true)),
+        idempotentProof);
     outcome.put("idempotentRefreshesOnce", refreshes[0] == 1
-        && idempotentRestore.optBoolean("restored")
-        && !idempotentRestore.optBoolean("observedAfter")
-        && Boolean.FALSE.equals(idempotentPreferences.values.get("tocCountWords")));
-    // (c) rejected receipts never refresh, and close/restore are still attempted.
+        && restoreReceiptMatches(idempotentProof, false, true)
+        && storedMatches(idempotentPreferences, false, false));
+
+    // (c) rejected receipts never refresh, and each row restores its own prior.
     String[] reasons = {"failed", "missing", "foreign", "callbacks"};
     JSONArray rows = new JSONArray();
     boolean refusedOk = true;
     for (String reason : reasons) {
+        MemoryPreferences preferences = new MemoryPreferences();
+        preferences.values.put("tocCountWords", Boolean.FALSE);
+        JSONObject proof = new JSONObject();
         refreshes[0] = 0;
+        boolean[] closed = {false};
+        Throwable thrown = null;
         JSONObject receipt;
         if ("failed".equals(reason)) {
             receipt = new JSONObject().put("removal", new JSONObject().put("removed", true))
@@ -2657,155 +2694,257 @@ static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Thro
             receipt = new JSONObject().put("alreadyClosed", true).put("removed", true)
                 .put("callbackErrors", 2);
         }
-        boolean[] closed = {false};
-        Throwable thrown = null;
         try {
-            FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+            FieldOracle.TocCountWordsLifetime.run(preferences,
                 () -> new JSONObject().put("closed", true),
                 () -> {
-                    FieldOracle.closeObserverThenRefresh(receipt, new JSONObject(),
+                    FieldOracle.closeObserverThenRefresh(receipt, proof,
                         () -> { refreshes[0]++; return null; });
                     return new JSONObject().put("refreshed", refreshes[0]);
                 },
-                () -> { closed[0] = true; return new JSONObject().put("closed", true); },
-                new JSONObject());
+                () -> { closed[0] = true;
+                    return FieldOracle.adaptObserverClose(
+                        new JSONObject().put("alreadyClosed", true).put("removed", true)); },
+                proof);
         } catch (Throwable error) {
             thrown = error;
         }
-        boolean ok = thrown != null && refreshes[0] == 0 && closed[0];
+        boolean ok = thrown != null && refreshes[0] == 0 && closed[0]
+            && restoreReceiptMatches(proof, true, false)
+            && storedMatches(preferences, true, false);
         refusedOk &= ok;
         rows.put(new JSONObject().put("reason", reason).put("ok", ok)
-            .put("refreshes", refreshes[0]).put("closeAttempted", closed[0]));
+            .put("refreshes", refreshes[0]).put("closeAttempted", closed[0])
+            .put("restoreReceipt", proof.optJSONObject("tocCountWords")));
     }
     outcome.put("refusedNoRefresh", refusedOk);
     outcome.put("refusedRows", rows);
-    // (d) a REAL end-observation throw before the receipt is acquired.
+
+    // (d) a REAL end-acquisition throw before the receipt exists: no refresh, and
+    // the real restore still runs and reads back the prior state.
+    MemoryPreferences endPreferences = new MemoryPreferences();
+    endPreferences.values.put("tocCountWords", Boolean.FALSE);
+    JSONObject endProof = new JSONObject();
     refreshes[0] = 0;
     RuntimeException endFailure = new IllegalStateException("END_OBSERVATION_FAILURE");
-    boolean[] closedAfterEnd = {false};
     Throwable endThrown = null;
     try {
-        FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+        FieldOracle.TocCountWordsLifetime.run(endPreferences,
             () -> new JSONObject().put("closed", true),
-            () -> {
-                // The production call site obtains the end receipt here; it throws.
-                throw endFailure;
-            },
-            () -> { closedAfterEnd[0] = true; return new JSONObject().put("closed", true); },
-            new JSONObject());
+            () -> { throw endFailure; },
+            () -> FieldOracle.adaptObserverClose(
+                new JSONObject().put("alreadyClosed", true).put("removed", true)),
+            endProof);
     } catch (Throwable error) {
         endThrown = error;
     }
     outcome.put("realEndThrow", endThrown == endFailure && refreshes[0] == 0
-        && closedAfterEnd[0]);
-    // (e) a throwing refresh is retained and close/restore still run.
+        && restoreReceiptMatches(endProof, true, false)
+        && storedMatches(endPreferences, true, false));
+
+    // (e) a throwing refresh: retained instance, refresh attempted once, restore ran.
+    MemoryPreferences refreshPreferences = new MemoryPreferences();
+    JSONObject refreshProof = new JSONObject();
     refreshes[0] = 0;
     RuntimeException refreshFailure = new IllegalStateException("REFRESH_FAILURE");
-    boolean[] closedAfterRefresh = {false};
     Throwable refreshThrown = null;
     try {
-        FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+        FieldOracle.TocCountWordsLifetime.run(refreshPreferences,
             () -> new JSONObject().put("closed", true),
             () -> {
                 FieldOracle.closeObserverThenRefresh(
                     new JSONObject().put("removal", new JSONObject().put("removed", true)),
-                    new JSONObject(), () -> { refreshes[0]++; throw refreshFailure; });
+                    refreshProof, () -> { refreshes[0]++; throw refreshFailure; });
                 return new JSONObject().put("refreshed", refreshes[0]);
             },
-            () -> { closedAfterRefresh[0] = true; return new JSONObject().put("closed", true); },
-            new JSONObject());
+            () -> FieldOracle.adaptObserverClose(
+                new JSONObject().put("alreadyClosed", true).put("removed", true)),
+            refreshProof);
     } catch (Throwable error) {
         refreshThrown = error;
     }
     outcome.put("refreshThrowRetained", refreshThrown == refreshFailure
-        && refreshes[0] == 1 && closedAfterRefresh[0]);
-    // (f) a controlled close failure armed after the real apply: the same
-    // instance is retained and the real restore still runs.
-    MemoryPreferences closePreferences = new MemoryPreferences();
-    closePreferences.values.put("tocCountWords", Boolean.TRUE);
-    JSONObject closeProof = new JSONObject();
-    RuntimeException closeFailure = new IllegalStateException("CLOSE_FAILURE");
-    Throwable closeThrown = null;
+        && refreshes[0] == 1
+        && restoreReceiptMatches(refreshProof, false, true)
+        && storedMatches(refreshPreferences, false, false));
+
+    // (f) PRIMARY operation error + real CLOSE error + real RESTORE error in the
+    // same lifetime: the complete graph is retained and no successful restore is
+    // claimed.
+    MemoryPreferences combinedPreferences = new MemoryPreferences();
+    combinedPreferences.values.put("tocCountWords", Boolean.FALSE);
+    JSONObject combinedProof = new JSONObject();
+    RuntimeException combinedPrimary = new IllegalStateException("COMBINED_PRIMARY");
+    combinedPrimary.initCause(new IllegalArgumentException("COMBINED_CAUSE"));
+    combinedPrimary.addSuppressed(new IllegalStateException("COMBINED_PREEXISTING"));
+    RuntimeException combinedClose = new IllegalStateException("COMBINED_CLOSE");
+    RuntimeException combinedRestore = new IllegalStateException("COMBINED_RESTORE");
+    Throwable combinedThrown = null;
     try {
-        FieldOracle.TocCountWordsLifetime.run(closePreferences,
+        FieldOracle.TocCountWordsLifetime.run(combinedPreferences,
             () -> new JSONObject().put("closed", true),
-            () -> {
-                FieldOracle.closeObserverThenRefresh(
-                    new JSONObject().put("removal", new JSONObject().put("removed", true)),
-                    closeProof, () -> null);
-                return new JSONObject().put("refreshed", 1);
-            },
-            () -> { throw closeFailure; }, closeProof);
+            () -> { combinedPreferences.commitFailure = combinedRestore;
+                throw combinedPrimary; },
+            () -> { throw combinedClose; },
+            combinedProof);
     } catch (Throwable error) {
-        closeThrown = error;
+        combinedThrown = error;
     }
-    outcome.put("closeFailureRetained", closeThrown == closeFailure
-        && closeProof.getJSONObject("tocCountWords").optBoolean("restored")
-        && Boolean.TRUE.equals(closePreferences.values.get("tocCountWords")));
-    // (g) a controlled restore failure armed after the real apply: the same
-    // instance is retained and no restore receipt is invented.
-    MemoryPreferences restorePreferences = new MemoryPreferences();
-    restorePreferences.values.put("tocCountWords", Boolean.TRUE);
-    JSONObject restoreProof = new JSONObject();
-    RuntimeException restoreFailure = new IllegalStateException("RESTORE_FAILURE");
-    Throwable restoreThrown = null;
+    String combinedChain = combinedThrown == null ? "none"
+        : FieldOracle.describeChain(combinedThrown);
+    outcome.put("combinedGraph", combinedThrown == combinedPrimary
+        && chainHasInstance(combinedThrown, combinedClose)
+        && chainHasInstance(combinedThrown, combinedRestore)
+        && combinedChain.contains("COMBINED_CAUSE")
+        && combinedChain.contains("COMBINED_PREEXISTING")
+        && combinedChain.contains("COMBINED_CLOSE")
+        && combinedChain.contains("COMBINED_RESTORE")
+        && combinedProof.optJSONObject("tocCountWords") == null);
+    outcome.put("combinedChain", combinedChain);
+
+    // (g) PRIMARY + CLOSE with a successful restore: prior absent reads back absent.
+    MemoryPreferences closeOnlyPreferences = new MemoryPreferences();
+    JSONObject closeOnlyProof = new JSONObject();
+    RuntimeException closeOnlyPrimary = new IllegalStateException("CLOSE_ONLY_PRIMARY");
+    RuntimeException closeOnlyClose = new IllegalStateException("CLOSE_ONLY_CLOSE");
+    Throwable closeOnlyThrown = null;
     try {
-        FieldOracle.TocCountWordsLifetime.run(restorePreferences,
+        FieldOracle.TocCountWordsLifetime.run(closeOnlyPreferences,
             () -> new JSONObject().put("closed", true),
-            () -> {
-                FieldOracle.closeObserverThenRefresh(
-                    new JSONObject().put("removal", new JSONObject().put("removed", true)),
-                    restoreProof, () -> null);
-                restorePreferences.commitFailure = restoreFailure;
-                return new JSONObject().put("refreshed", 1);
-            },
-            () -> new JSONObject().put("closed", true), restoreProof);
+            () -> { throw closeOnlyPrimary; },
+            () -> { throw closeOnlyClose; },
+            closeOnlyProof);
     } catch (Throwable error) {
-        restoreThrown = error;
+        closeOnlyThrown = error;
     }
-    outcome.put("restoreFailureRetained", restoreThrown == restoreFailure
-        && !restoreProof.has("tocCountWords"));
-    // (h) the actual outer per-owned-name preference fence joined to later
-    // domains. The lifetime restores through commit; it has no Fence method.
+    outcome.put("primaryCloseRestores", closeOnlyThrown == closeOnlyPrimary
+        && chainHasInstance(closeOnlyThrown, closeOnlyClose)
+        && restoreReceiptMatches(closeOnlyProof, false, true)
+        && storedMatches(closeOnlyPreferences, false, false));
+
+    // (h) the failing saved lifetime joined through the actual dispatcher and the
+    // actual cleanup->outer sequence, with the real per-owned-name fence.
     File cacheDir = Files.createTempDirectory("l138-refresh-fence-").toFile();
     try {
         StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "refresh-fence");
-        Set<String> names = new LinkedHashSet<>(Arrays.asList("owned.alpha", "owned.beta"));
-        JSONObject fenceCleanup = new JSONObject();
+        // Each real registration republishes the owner manifest. The host cannot
+        // rename over an existing target, so the approved creation-only
+        // construction removes only this fixture's own manifest before each.
+        new File(scratch.root, OWNER).delete();
+        scratch.getSharedPreferences("alpha", 0);
+        new File(scratch.root, OWNER).delete();
+        scratch.getSharedPreferences("beta", 0);
+        // Registration republishes the manifest; clear it once more so the real
+        // owner writer below publishes through the same creation-only construction.
+        new File(scratch.root, OWNER).delete();
+        MemoryPreferences fencePreferences = new MemoryPreferences();
+        fencePreferences.values.put("tocCountWords", Boolean.FALSE);
+        JSONObject observed = new JSONObject().put("id", "case-fence");
+        FieldOracle.initializeTitleLifecycle(observed);
+        JSONObject fenceProof = observed.getJSONObject("titleLifecycleProof");
+        RuntimeException fencePrimary = new IllegalStateException("FENCE_CASE_PRIMARY");
+        JSONObject failures = new JSONObject();
+        JSONArray records = new JSONArray();
+        JSONArray requests = new JSONArray();
+        AtomicReference<JSONObject> observation = new AtomicReference<>();
+        JSONObject cleanup = new JSONObject();
+        JSONObject report = new JSONObject().put("fixtureId", "fence-fixture");
+        JSONObject corpus = new JSONObject().put("fixtureId", "fence-fixture");
         List<String> fenceOrder = new ArrayList<>();
-        FieldOracle.runOuterSequence(
-            () -> { fenceOrder.add("report"); return new JSONObject().put("closed", true); },
-            () -> { fenceOrder.add("replay");
-                return new JSONObject().put("serverClosed", true)
-                    .put("openConnectionsAfterClose", 0); },
-            () -> { fenceOrder.add("guard"); return new JSONObject().put("closed", true); },
-            () -> { fenceOrder.add("database"); return new JSONObject().put("closed", true); },
-            () -> { fenceOrder.add("terminal");
-                return new JSONObject().put("closed", true).put("proved", true); },
-            () -> { fenceOrder.add("preferences");
-                return FieldOracle.fenceOwnedPreferences(scratch, names, scratch::fence,
-                    fenceCleanup, null); },
-            proved -> { fenceOrder.add("owner");
-                return new JSONObject().put("closed", proved).put("ownerComplete", proved); },
-            () -> { fenceOrder.add("final-report");
-                return new JSONObject().put("closed", true); },
-            false, false, fenceCleanup);
-        outcome.put("outerFenceJoined", fenceCleanup.optBoolean("preferencesFenced")
-            && fenceCleanup.getJSONArray("ownedPreferences").length() == 2
-            && fenceOrder.contains("owner") && fenceOrder.contains("final-report"));
+        Throwable fenceError = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> FieldOracle.runDeclaredCases(
+                    new JSONArray().put(new JSONObject().put("id", "case-fence")),
+                    (entry, id) -> {
+                        observation.set(observed);
+                        requests.put(new JSONObject().put("url", "https://owned.invalid/fence"));
+                        try {
+                            FieldOracle.TocCountWordsLifetime.run(fencePreferences,
+                                () -> new JSONObject().put("closed", true),
+                                () -> { throw fencePrimary; },
+                                () -> FieldOracle.adaptObserverClose(new JSONObject()
+                                    .put("alreadyClosed", true).put("removed", true)),
+                                fenceProof);
+                        } catch (Throwable error) {
+                            throw error instanceof Exception ? (Exception) error
+                                : new IllegalStateException(error);
+                        }
+                    },
+                    null, failures, records, requests, observation,
+                    new AtomicReference<>("setup"), true, true),
+                () -> FieldOracle.runOuterSequence(
+                    () -> { fenceOrder.add("report"); return new JSONObject().put("closed", true); },
+                    () -> { fenceOrder.add("replay");
+                        return new JSONObject().put("serverClosed", true)
+                            .put("openConnectionsAfterClose", 0); },
+                    () -> { fenceOrder.add("guard"); return new JSONObject().put("closed", true); },
+                    () -> { fenceOrder.add("database"); return new JSONObject().put("closed", true); },
+                    () -> { fenceOrder.add("terminal");
+                        return new JSONObject().put("closed", true).put("proved", true); },
+                    () -> { fenceOrder.add("preferences");
+                        return FieldOracle.fenceOwnedPreferences(scratch,
+                            scratch.ownedPreferences(), scratch::fence, cleanup, null); },
+                    closure -> { fenceOrder.add("owner");
+                        return FieldOracle.writeOwnerCompletion(scratch, closure,
+                            isolationProven(), cleanup); },
+                    () -> { fenceOrder.add("final-report");
+                        return new JSONObject().put("closed", true); },
+                    true, false, cleanup));
+        } catch (Throwable error) {
+            fenceError = error;
+        }
+        report.put("cases", records).put("caseFailures", failures);
+        File target = new File(cacheDir, "fence-report.json");
+        Throwable fencePersist = FieldOracle.persistFailureReport(true, target, cacheDir,
+            report, failures, corpus, fenceError);
+        JSONObject readback = new JSONObject(text(target));
+        JSONArray fenceReceipt = cleanup.optJSONArray("ownedPreferences");
+        if (fenceReceipt == null) fenceReceipt = new JSONArray();
+        outcome.put("fenceFacts", new JSONObject()
+            .put("errorIdentity", fenceError == fencePrimary)
+            .put("fenced", cleanup.optBoolean("preferencesFenced"))
+            .put("names", fenceReceipt.length())
+            .put("order", new JSONArray(fenceOrder))
+            .put("ownerComplete", cleanup.optBoolean("ownerComplete"))
+            .put("restore", restoreReceiptMatches(fenceProof, true, false))
+            .put("stored", storedMatches(fencePreferences, true, false))
+            .put("persist", fencePersist == null)
+            .put("cases", readback.optJSONArray("cases") == null ? -1
+                : readback.getJSONArray("cases").length())
+            .put("chain", readback.optString("analysisFailure").contains("FENCE_CASE_PRIMARY")));
+        outcome.put("fenceJoined", fenceError == fencePrimary
+            && cleanup.optBoolean("preferencesFenced")
+            && fenceReceipt.length() == 2
+            && fenceReceipt.getString(0).equals("owned.alpha")
+            && fenceReceipt.getString(1).equals("owned.beta")
+            && fenceOrder.equals(Arrays.asList("report", "replay", "guard", "database",
+                "terminal", "preferences", "owner", "final-report"))
+            && cleanup.optBoolean("ownerComplete")
+            && restoreReceiptMatches(fenceProof, true, false)
+            && storedMatches(fencePreferences, true, false)
+            && fencePersist == null
+            && readback.getJSONArray("cases").length() == 1
+            && readback.optString("analysisFailure").contains("FENCE_CASE_PRIMARY"));
+        outcome.put("fenceOrder", new JSONArray(fenceOrder));
+        outcome.put("fenceReportPath", target.getAbsolutePath());
+        outcome.put("fenceReportSha256", sha(target));
+        outcome.put("fenceReportText", text(target));
+        outcome.put("fenceManifestText", text(new File(scratch.root, OWNER)));
     } finally {
         deleteTree(cacheDir);
     }
+
     result.put("composedRefresh", outcome);
     require(outcome.optBoolean("nestedRefreshesOnce")
         && outcome.optBoolean("idempotentRefreshesOnce")
         && outcome.optBoolean("refusedNoRefresh")
         && outcome.optBoolean("realEndThrow")
         && outcome.optBoolean("refreshThrowRetained")
-        && outcome.optBoolean("closeFailureRetained")
-        && outcome.optBoolean("restoreFailureRetained")
-        && outcome.optBoolean("outerFenceJoined"),
-        "the composed refresh lifetime must never refresh before closure: " + outcome);
+        && outcome.optBoolean("combinedGraph")
+        && outcome.optBoolean("primaryCloseRestores")
+        && outcome.optBoolean("fenceJoined"),
+        "the composed refresh lifetime must restore and retain every error: " + outcome);
     return outcome;
 }
 
