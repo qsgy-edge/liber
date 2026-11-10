@@ -1171,12 +1171,20 @@ final class LiveEventImpl implements Observable<Object> {
     public int observeCalls;
     public int removeCalls;
 
+    // The real registration and removal are main-thread operations, so this
+    // boundary refuses an off-main call and exposes an un-marshalled invocation.
     @Override public void observeForever(Observer<Object> observer) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            throw new IllegalStateException("observeForever must run on MAIN");
+        }
         observeCalls++;
         observers.add(observer);
     }
 
     @Override public void removeObserver(Observer<Object> observer) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            throw new IllegalStateException("removeObserver must run on MAIN");
+        }
         removeCalls++;
         observers.remove(observer);
     }
@@ -1269,19 +1277,30 @@ public interface Observer<T> {
 ''',
     'io/legado/app/data/entities/Book.java': '''package io.legado.app.data.entities;
 
-/** Test-only Book boundary with the inspected getter descriptor. */
-public class Book {
+/**
+ * Test-only Book boundary with the inspected getter descriptor and finality.
+ *
+ * <p>[readFailure] is an artificial test hook: when set, the getter throws that
+ * instance so the guard's reflective callback boundary can be exercised. It is
+ * not native ABI or product surface, and the selected target getter is a plain
+ * final field read.
+ */
+public final class Book {
     private final String bookUrl;
+    public RuntimeException readFailure;
 
     public Book(String bookUrl) { this.bookUrl = bookUrl; }
 
-    public String getBookUrl() { return bookUrl; }
+    public String getBookUrl() {
+        if (readFailure != null) throw readFailure;
+        return bookUrl;
+    }
 }
 ''',
     'io/legado/app/data/entities/BookChapter.java': '''package io.legado.app.data.entities;
 
 /** Test-only BookChapter boundary with the inspected getter descriptor. */
-public class BookChapter {
+public final class BookChapter {
     private final String url;
 
     public BookChapter(String url) { this.url = url; }
@@ -1292,7 +1311,7 @@ public class BookChapter {
     'kotlin/Pair.java': '''package kotlin;
 
 /** Test-only Pair boundary matching the reference payload shape. */
-public class Pair {
+public final class Pair {
     private final Object first;
     private final Object second;
 

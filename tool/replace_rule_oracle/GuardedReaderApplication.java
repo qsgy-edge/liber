@@ -112,6 +112,9 @@ public final class GuardedReaderApplication extends Application {
     /** The live observation, or null when none is pending. */
     private static volatile Observation current;
 
+    /** The frozen terminal view of the last acknowledged close, if any. */
+    private static volatile JSONObject lastTerminal;
+
     /** Main-thread work this guard owns and has not yet seen finish. */
     private static final Map<Long, OwnedWork> pendingWork = new IdentityHashMap<>();
     private static final AtomicInteger workSequence = new AtomicInteger();
@@ -409,14 +412,27 @@ public final class GuardedReaderApplication extends Application {
         JSONObject result = new JSONObject();
         final Observation observation = current;
         if (observerClosed && !observing) {
-            // Already closed by a previous end or by process release. The earlier
-            // failed/count facts are preserved, never erased by the repeat.
-            return result.put("alreadyClosed", true).put("removed", true)
-                .put("events", observation == null ? 0 : observation.events.get())
-                .put("foreignEvents", observation == null ? 0 : observation.foreign.get())
-                .put("callbackErrors",
-                    observation == null ? 0 : observation.callbackErrors.get())
-                .put("failed", observation != null && !observation.valid());
+            // A repeat returns the frozen terminal snapshot of the first close.
+            // Only an acknowledged actual removal can be an idempotent success; a
+            // never-registered close stays a failed non-removal on every repeat.
+            JSONObject terminal = lastTerminal;
+            if (terminal == null) {
+                return result.put("alreadyClosed", true).put("removed", false)
+                    .put("reason", "never-registered").put("failed", true);
+            }
+            result.put("alreadyClosed", true);
+            java.util.Iterator<String> names = terminal.keys();
+            while (names.hasNext()) {
+                String name = names.next();
+                result.put(name, terminal.get(name));
+            }
+            // The top-level acknowledgement mirrors the actual removal that was
+            // really observed on the first close, never an invented one.
+            JSONObject recorded = terminal.optJSONObject("removal");
+            boolean acknowledged = recorded != null && recorded.optBoolean("removed");
+            result.put("removed", acknowledged);
+            if (!acknowledged) result.put("failed", true);
+            return result;
         }
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while ((observation == null || observation.events.get() == 0)
@@ -428,9 +444,11 @@ public final class GuardedReaderApplication extends Application {
             Object observer = saveObserver;
             Method remove = removeMethod;
             if (observable == null || observer == null || remove == null) {
-                // A registration that never completed owns nothing to remove.
+                // A registration that never completed owns nothing to remove, so
+                // there is no acknowledgement to repeat as a success.
                 observing = false;
                 observerClosed = true;
+                lastTerminal = null;
                 return new JSONObject().put("removed", false).put("reason", "never-registered");
             }
             remove.invoke(observable, observer);
@@ -486,7 +504,20 @@ public final class GuardedReaderApplication extends Application {
             fail("the case observation did not carry exactly one correlated save event");
             result.put("failed", true);
         }
+        // Freeze the terminal view only after every fact is known, so a later
+        // stale callback or a repeat cannot change what this case reports.
+        lastTerminal = removal.optBoolean("removed")
+            ? new JSONObject(result.toString()) : null;
         return result;
+    }
+
+    /** The complete throwable graph, including the reflection target and causes. */
+    private static String stackTraceOf(Throwable error) {
+        java.io.StringWriter text = new java.io.StringWriter();
+        java.io.PrintWriter writer = new java.io.PrintWriter(text);
+        error.printStackTrace(writer);
+        writer.flush();
+        return text.toString();
     }
 
     /**
@@ -564,7 +595,9 @@ public final class GuardedReaderApplication extends Application {
                         lastEvent = event;
                     } catch (Throwable error) {
                         observation.callbackErrors.incrementAndGet();
-                        fail("save callback failed: " + error);
+                        // The reflective wrapper's toString omits its target, so
+                        // the complete throwable graph is retained instead.
+                        fail("save callback failed: " + stackTraceOf(error));
                     }
                     return null;
                 case "toString":

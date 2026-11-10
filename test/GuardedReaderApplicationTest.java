@@ -82,6 +82,7 @@ public final class GuardedReaderApplicationTest {
             case "save-foreign": saveForeign(result); break;
             case "save-callback-error": saveCallbackError(result); break;
             case "save-malformed": saveMalformed(result); break;
+            case "save-wrong-inputs": saveWrongInputs(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -471,11 +472,16 @@ public final class GuardedReaderApplicationTest {
 
     private static void saveValid(JSONObject result) throws Exception {
         arm();
-        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        JSONObject begin =
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
         deliver("http://book/1", "http://book/1/c1");
         JSONObject end = GuardedReaderApplication.endSaveObservation(2000);
-        result.put("end", end).put("removeCalls", removeCalls())
+        result.put("begin", begin).put("end", end).put("observeCalls", observeCalls())
+            .put("removeCalls", removeCalls())
             .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(begin.optBoolean("registered") && begin.optBoolean("onMain"),
+            "the begin must register on MAIN");
+        require(observeCalls() == 1, "exactly one observe call");
         require(end.optInt("events") == 1, "exactly one correlated event");
         require(end.optInt("duplicates") == 0 && end.optInt("foreignEvents") == 0
             && end.optInt("callbackErrors") == 0 && end.optInt("offMainEvents") == 0
@@ -525,25 +531,38 @@ public final class GuardedReaderApplicationTest {
         require(removeCalls() == 1, "the observer must still be removed");
     }
 
-    /** A genuine approved-type payload whose getter throws. */
-    public static final class ThrowingBook extends io.legado.app.data.entities.Book {
-        public ThrowingBook() { super("http://book/1"); }
-        @Override public String getBookUrl() {
-            throw new IllegalStateException("BOOK_GETTER_FAILURE");
-        }
-    }
-
+    /**
+     * A real approved-type Book carrying the artificial read-failure hook. The
+     * selected target getter is a plain final field read; this injected fault is
+     * a host reflection-boundary control, not native getter reachability.
+     */
     private static void saveCallbackError(JSONObject result) throws Exception {
         arm();
         GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        deliverOnMain(pair(new ThrowingBook(),
+        io.legado.app.data.entities.Book faulted =
+            new io.legado.app.data.entities.Book("http://book/1");
+        RuntimeException original = new IllegalStateException("BOOK_GETTER_FAILURE",
+            new IllegalArgumentException("BOOK_GETTER_NESTED"));
+        original.addSuppressed(new IllegalStateException("BOOK_GETTER_SUPPRESSED"));
+        faulted.readFailure = original;
+        deliverOnMain(pair(faulted,
             new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
         JSONObject end = GuardedReaderApplication.endSaveObservation(200);
-        result.put("end", end).put("removeCalls", removeCalls());
+        String failures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        result.put("end", end).put("removeCalls", removeCalls())
+            .put("failures", failures);
         require(end.optInt("callbackErrors") == 1, "the callback error is recorded");
         require(end.optInt("events") == 0, "a throwing getter yields no correlated event");
         require(end.optBoolean("failed"), "a callback error must fail the case");
         require(removeCalls() == 1, "the observer must still be removed");
+        // The original reflection target and its graph survive into the evidence.
+        require(failures.contains("BOOK_GETTER_FAILURE"),
+            "the original callback cause must be retained");
+        require(failures.contains("BOOK_GETTER_NESTED"),
+            "the nested cause must be retained");
+        require(failures.contains("BOOK_GETTER_SUPPRESSED"),
+            "the suppressed error must be retained");
     }
 
     /** A duck-typed impostor: same getter names, not the approved types. */
@@ -577,6 +596,48 @@ public final class GuardedReaderApplicationTest {
         require(end.optInt("events") == 0, "a malformed payload is not a correlated event");
         require(end.optBoolean("failed"), "a malformed payload must fail the case");
         require(removeCalls() == 1, "the observer must still be removed");
+    }
+
+    /** A genuine approved Pair carrying a wrong-typed chapter. */
+    public static final class DuckChapter {
+        static int reads;
+        public String getUrl() { reads++; return "http://book/1/c1"; }
+    }
+
+    private static void saveWrongInputs(JSONObject result) throws Exception {
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        ImpostorBook.executed = false;
+        DuckChapter.reads = 0;
+        deliverOnMain(pair(new ImpostorBook(),
+            new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
+        JSONObject wrongBook = GuardedReaderApplication.endSaveObservation(200);
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliverOnMain(pair(new io.legado.app.data.entities.Book("http://book/1"), null));
+        JSONObject nullChapter = GuardedReaderApplication.endSaveObservation(200);
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliverOnMain(pair(null, new io.legado.app.data.entities.BookChapter("http://book/1/c1")));
+        JSONObject nullBook = GuardedReaderApplication.endSaveObservation(200);
+        arm();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliverOnMain(pair(new io.legado.app.data.entities.Book("http://book/1"),
+            new DuckChapter()));
+        JSONObject wrongChapter = GuardedReaderApplication.endSaveObservation(200);
+        result.put("wrongBook", wrongBook).put("nullChapter", nullChapter)
+            .put("nullBook", nullBook).put("wrongChapter", wrongChapter)
+            .put("impostorGetterExecuted", ImpostorBook.executed)
+            .put("duckChapterReads", DuckChapter.reads);
+        require(!ImpostorBook.executed && DuckChapter.reads == 0,
+            "no arbitrary wrong getter may execute");
+        for (JSONObject row : new JSONObject[]{wrongBook, nullChapter, nullBook, wrongChapter}) {
+            require(row.optInt("malformedEvents") == 1, "the wrong input is malformed");
+            require(row.optInt("events") == 0, "no correlated event from a wrong input");
+            require(row.optBoolean("failed"), "a wrong input must fail the case");
+            require(row.getJSONObject("removal").optBoolean("removed"),
+                "the owned observer is still removed");
+        }
     }
 
     private static void saveOffMain(JSONObject result) throws Exception {
@@ -709,23 +770,35 @@ public final class GuardedReaderApplicationTest {
         return field.get(null);
     }
 
+    /**
+     * Invokes a retained observer on MAIN and acknowledges the executed call.
+     *
+     * <p>The post result and the timed await are both required, and an unexpected
+     * reflection failure is propagated rather than swallowed.
+     */
     private static void invokeOnMain(final Object observer, final Object payload)
             throws Exception {
         final java.util.concurrent.CountDownLatch done =
             new java.util.concurrent.CountDownLatch(1);
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+        final Throwable[] failure = {null};
+        boolean posted = new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             try {
                 Class<?> observerInterface =
                     Class.forName("androidx.lifecycle.Observer");
                 observerInterface.getMethod("onChanged", Object.class)
                     .invoke(observer, payload);
-            } catch (Throwable ignored) {
-                // The guard's own recording is the evidence.
+            } catch (Throwable error) {
+                failure[0] = error;
             } finally {
                 done.countDown();
             }
         });
-        done.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        if (!posted || !done.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+            throw new IllegalStateException("the retained-callback delivery was not acknowledged");
+        }
+        if (failure[0] != null) {
+            throw new IllegalStateException("the retained-callback delivery failed", failure[0]);
+        }
     }
 
 
