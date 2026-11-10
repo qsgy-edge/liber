@@ -76,15 +76,41 @@ public final class GuardedReaderApplication extends Application {
     private static volatile Object saveObserver;
     private static volatile Method observeMethod;
     private static volatile Method removeMethod;
-    private static volatile String expectBookUrl;
-    private static volatile String expectChapterUrl;
     private static volatile boolean observing;
     private static volatile boolean observerClosed;
     private static volatile boolean captureFailed;
     private static volatile JSONObject lastEvent = new JSONObject();
-    private static final AtomicInteger saveEvents = new AtomicInteger();
-    private static final AtomicInteger foreignEvents = new AtomicInteger();
-    private static final AtomicInteger callbackErrors = new AtomicInteger();
+
+    /**
+     * One owned save observation. Every proxy is bound to its own instance, so a
+     * retained callback from an earlier case can never be counted in a later one.
+     */
+    private static final class Observation {
+        final String bookUrl;
+        final String chapterUrl;
+        final AtomicInteger events = new AtomicInteger();
+        final AtomicInteger duplicates = new AtomicInteger();
+        final AtomicInteger foreign = new AtomicInteger();
+        final AtomicInteger callbackErrors = new AtomicInteger();
+        final AtomicInteger offMain = new AtomicInteger();
+        final AtomicInteger malformed = new AtomicInteger();
+        volatile JSONObject lastEvent = new JSONObject();
+        volatile boolean closed;
+
+        Observation(String bookUrl, String chapterUrl) {
+            this.bookUrl = bookUrl;
+            this.chapterUrl = chapterUrl;
+        }
+
+        /** The final validity of this observation, snapshot after real removal. */
+        boolean valid() {
+            return events.get() == 1 && duplicates.get() == 0 && foreign.get() == 0
+                && callbackErrors.get() == 0 && offMain.get() == 0 && malformed.get() == 0;
+        }
+    }
+
+    /** The live observation, or null when none is pending. */
+    private static volatile Observation current;
 
     /** Main-thread work this guard owns and has not yet seen finish. */
     private static final Map<Long, OwnedWork> pendingWork = new IdentityHashMap<>();
@@ -284,6 +310,7 @@ public final class GuardedReaderApplication extends Application {
     public static JSONObject captureReceipt() throws Exception {
         JSONObject receipt = new JSONObject();
         synchronized (lock) {
+            Observation live = current;
             receipt.put("armed", armed)
                 .put("ownerClass", owner == null ? JSONObject.NULL : owner.getClass().getName())
                 .put("attemptedRegistrations", attemptedRegistrations.get())
@@ -298,9 +325,9 @@ public final class GuardedReaderApplication extends Application {
                 .put("foreignUnregistrations", foreignUnregistrations.get())
                 .put("pendingWrappers", wrappers.size())
                 .put("pendingOwnedWork", pendingWork.size())
-                .put("saveEvents", saveEvents.get())
-                .put("foreignEvents", foreignEvents.get())
-                .put("callbackErrors", callbackErrors.get())
+                .put("saveEvents", live == null ? 0 : live.events.get())
+                .put("foreignEvents", live == null ? 0 : live.foreign.get())
+                .put("callbackErrors", live == null ? 0 : live.callbackErrors.get())
                 .put("observing", observing)
                 .put("observerClosed", observerClosed)
                 .put("captureFailed", captureFailed)
@@ -325,13 +352,18 @@ public final class GuardedReaderApplication extends Application {
             loader = targetLoader;
         }
         if (loader == null) throw new IllegalStateException("no target classloader");
-        expectBookUrl = bookUrl;
-        expectChapterUrl = chapterUrl;
-        saveEvents.set(0);
-        foreignEvents.set(0);
-        callbackErrors.set(0);
-        observerClosed = false;
-        lastEvent = new JSONObject();
+        // An overlapping or pending observation is refused BEFORE any counter,
+        // identity or live observer is reset.
+        final Observation observation;
+        synchronized (lock) {
+            if (current != null && !current.closed) {
+                throw new IllegalStateException(
+                    "a save observation is already pending for another case");
+            }
+            observation = new Observation(bookUrl, chapterUrl);
+            current = observation;
+            observerClosed = false;
+        }
         return exactOwner.runOnMain(() -> {
             Class<?> observableInterface = loader.loadClass(OBSERVABLE_INTERFACE);
             Class<?> observerInterface = loader.loadClass(OBSERVER_INTERFACE);
@@ -342,7 +374,7 @@ public final class GuardedReaderApplication extends Application {
             Method observe = observableInterface.getMethod("observeForever", observerInterface);
             Method remove = observableInterface.getMethod("removeObserver", observerInterface);
             Object observer = Proxy.newProxyInstance(loader,
-                new Class<?>[]{observerInterface}, new SaveEventHandler());
+                new Class<?>[]{observerInterface}, new SaveEventHandler(observation, loader));
             observe.invoke(observable, observer);
             saveObservable = observable;
             saveObserver = observer;
@@ -375,13 +407,20 @@ public final class GuardedReaderApplication extends Application {
 
     private JSONObject closeObserver(long timeoutMillis) throws Exception {
         JSONObject result = new JSONObject();
+        final Observation observation = current;
         if (observerClosed && !observing) {
-            // Already closed by a previous end or by process release.
+            // Already closed by a previous end or by process release. The earlier
+            // failed/count facts are preserved, never erased by the repeat.
             return result.put("alreadyClosed", true).put("removed", true)
-                .put("events", saveEvents.get());
+                .put("events", observation == null ? 0 : observation.events.get())
+                .put("foreignEvents", observation == null ? 0 : observation.foreign.get())
+                .put("callbackErrors",
+                    observation == null ? 0 : observation.callbackErrors.get())
+                .put("failed", observation != null && !observation.valid());
         }
         long deadline = System.currentTimeMillis() + timeoutMillis;
-        while (saveEvents.get() == 0 && System.currentTimeMillis() < deadline) {
+        while ((observation == null || observation.events.get() == 0)
+                && System.currentTimeMillis() < deadline) {
             Thread.sleep(5);
         }
         JSONObject removal = runOnMain(() -> {
@@ -397,6 +436,7 @@ public final class GuardedReaderApplication extends Application {
             remove.invoke(observable, observer);
             observing = false;
             observerClosed = true;
+            if (observation != null) observation.closed = true;
             saveObservable = null;
             saveObserver = null;
             return new JSONObject()
@@ -405,52 +445,125 @@ public final class GuardedReaderApplication extends Application {
                 .put("onMain", Looper.myLooper() == Looper.getMainLooper())
                 .put("removed", true);
         });
-        // The final actual case facts are snapshotted after the removal ack.
-        result.put("events", saveEvents.get())
-            .put("foreignEvents", foreignEvents.get())
-            .put("callbackErrors", callbackErrors.get())
-            .put("lastEvent", new JSONObject(lastEvent.toString()))
+        // The final actual case facts are snapshotted after the removal ack, from
+        // this observation's own counters.
+        int events = observation == null ? 0 : observation.events.get();
+        int duplicates = observation == null ? 0 : observation.duplicates.get();
+        int foreign = observation == null ? 0 : observation.foreign.get();
+        int callbackErrors = observation == null ? 0 : observation.callbackErrors.get();
+        int offMain = observation == null ? 0 : observation.offMain.get();
+        int malformed = observation == null ? 0 : observation.malformed.get();
+        result.put("events", events)
+            .put("duplicates", duplicates)
+            .put("foreignEvents", foreign)
+            .put("callbackErrors", callbackErrors)
+            .put("offMainEvents", offMain)
+            .put("malformedEvents", malformed)
+            .put("lastEvent", new JSONObject(
+                (observation == null ? lastEvent : observation.lastEvent).toString()))
             .put("removal", removal);
-        if (foreignEvents.get() != 0) {
-            fail("a foreign or duplicate save event reached this case's observer");
+        if (duplicates != 0) {
+            fail("a duplicate save event reached this case's observer");
             result.put("failed", true);
         }
-        if (callbackErrors.get() != 0) {
+        if (foreign != 0) {
+            fail("a foreign save event reached this case's observer");
+            result.put("failed", true);
+        }
+        if (callbackErrors != 0) {
             fail("a save-event callback failed");
+            result.put("failed", true);
+        }
+        if (offMain != 0) {
+            fail("a save event was delivered off the main thread");
+            result.put("failed", true);
+        }
+        if (malformed != 0) {
+            fail("a malformed save event reached this case's observer");
+            result.put("failed", true);
+        }
+        if (events != 1) {
+            fail("the case observation did not carry exactly one correlated save event");
             result.put("failed", true);
         }
         return result;
     }
 
-    /** The proxy that records what the save event actually delivered. */
+    /**
+     * The proxy that records what the save event actually delivered.
+     *
+     * <p>It is bound to its own observation, so a retained callback from an
+     * earlier case cannot be counted in a later one. The payload type identities
+     * are checked against the verified loader before any payload method runs, so
+     * a duck-typed impostor's getter is never executed.
+     */
     private static final class SaveEventHandler implements InvocationHandler {
+        private final Observation observation;
+        private final ClassLoader loader;
+
+        SaveEventHandler(Observation observation, ClassLoader loader) {
+            this.observation = observation;
+            this.loader = loader;
+        }
+
         @Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             switch (method.getName()) {
                 case "onChanged":
+                    if (Looper.myLooper() != Looper.getMainLooper()) {
+                        observation.offMain.incrementAndGet();
+                        fail("a save event was delivered off the main thread");
+                        return null;
+                    }
+                    if (observation.closed) {
+                        // A retained callback whose observation already closed is
+                        // stale: it fails the capture and is never counted.
+                        observation.foreign.incrementAndGet();
+                        fail("a stale save-event callback ran after its observation closed");
+                        return null;
+                    }
                     try {
                         Object value = args == null || args.length == 0 ? null : args[0];
-                        String bookUrl = null;
-                        String chapterUrl = null;
-                        if (value != null) {
-                            Object first = value.getClass().getMethod("getFirst").invoke(value);
-                            Object second = value.getClass().getMethod("getSecond").invoke(value);
-                            bookUrl = first == null ? null
-                                : (String) first.getClass().getMethod("getBookUrl").invoke(first);
-                            chapterUrl = second == null ? null
-                                : (String) second.getClass().getMethod("getUrl").invoke(second);
+                        Class<?> pairClass = loader.loadClass("kotlin.Pair");
+                        Class<?> bookClass = loader.loadClass(
+                            "io.legado.app.data.entities.Book");
+                        Class<?> chapterClass = loader.loadClass(
+                            "io.legado.app.data.entities.BookChapter");
+                        // Type identity first: an impostor's getters never run.
+                        if (value == null || !pairClass.isInstance(value)) {
+                            observation.malformed.incrementAndGet();
+                            fail("the save event payload is not the approved Pair type");
+                            return null;
                         }
+                        Object first = pairClass.getMethod("getFirst").invoke(value);
+                        Object second = pairClass.getMethod("getSecond").invoke(value);
+                        if (first == null || !bookClass.isInstance(first)
+                                || second == null || !chapterClass.isInstance(second)) {
+                            observation.malformed.incrementAndGet();
+                            fail("the save event pair does not carry the approved Book and"
+                                + " BookChapter types");
+                            return null;
+                        }
+                        String bookUrl = (String) bookClass.getMethod("getBookUrl").invoke(first);
+                        String chapterUrl = (String) chapterClass.getMethod("getUrl")
+                            .invoke(second);
                         boolean correlates = bookUrl != null && chapterUrl != null
-                            && bookUrl.equals(expectBookUrl) && chapterUrl.equals(expectChapterUrl);
-                        if (correlates) saveEvents.incrementAndGet();
-                        else foreignEvents.incrementAndGet();
-                        synchronized (GuardedReaderApplication.class) {
-                            lastEvent = new JSONObject()
-                                .put("bookUrl", bookUrl == null ? JSONObject.NULL : bookUrl)
-                                .put("chapterUrl", chapterUrl == null ? JSONObject.NULL : chapterUrl)
-                                .put("correlates", correlates);
+                            && bookUrl.equals(observation.bookUrl)
+                            && chapterUrl.equals(observation.chapterUrl);
+                        if (!correlates) {
+                            observation.foreign.incrementAndGet();
+                        } else if (observation.events.get() == 0) {
+                            observation.events.incrementAndGet();
+                        } else {
+                            observation.duplicates.incrementAndGet();
                         }
+                        JSONObject event = new JSONObject()
+                            .put("bookUrl", bookUrl == null ? JSONObject.NULL : bookUrl)
+                            .put("chapterUrl", chapterUrl == null ? JSONObject.NULL : chapterUrl)
+                            .put("correlates", correlates);
+                        observation.lastEvent = event;
+                        lastEvent = event;
                     } catch (Throwable error) {
-                        callbackErrors.incrementAndGet();
+                        observation.callbackErrors.incrementAndGet();
                         fail("save callback failed: " + error);
                     }
                     return null;

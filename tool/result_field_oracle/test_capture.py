@@ -1,4 +1,5 @@
 """Small stdlib regressions for the FIELDS-02 capture boundary."""
+import base64
 import hashlib
 import io
 import json
@@ -1264,6 +1265,28 @@ public final class AppUtils {
 /** Test-only Observer boundary. */
 public interface Observer<T> {
     void onChanged(T value);
+}
+''',
+    'io/legado/app/data/entities/Book.java': '''package io.legado.app.data.entities;
+
+/** Test-only Book boundary with the inspected getter descriptor. */
+public class Book {
+    private final String bookUrl;
+
+    public Book(String bookUrl) { this.bookUrl = bookUrl; }
+
+    public String getBookUrl() { return bookUrl; }
+}
+''',
+    'io/legado/app/data/entities/BookChapter.java': '''package io.legado.app.data.entities;
+
+/** Test-only BookChapter boundary with the inspected getter descriptor. */
+public class BookChapter {
+    private final String url;
+
+    public BookChapter(String url) { this.url = url; }
+
+    public String getUrl() { return url; }
 }
 ''',
     'kotlin/Pair.java': '''package kotlin;
@@ -5468,6 +5491,102 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
 
     def _run(self, argv, cwd):
         return subprocess.run(argv, cwd=str(cwd), capture_output=True, timeout=600)
+
+    def _guard_sdk_classpath(self, repo, java, android, jar, root):
+        """SDK-first: guard against real android-35, overlay separate, driver linked."""
+        root = Path(root)
+        # 1. The actual production guard, compiled against the real SDK only.
+        sdk_classes = root / 'sdk-classes'
+        sdk_classes.mkdir()
+        sdk_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-nowarn', '-encoding', 'UTF-8', '-cp', str(android), '-d', str(sdk_classes),
+             str(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java')], repo)
+        self.assertEqual(sdk_compiled.returncode, 0,
+                         sdk_compiled.stderr.decode(errors='replace'))
+        guard_class = sdk_classes / 'io/liber/oracle/nested/GuardedReaderApplication.class'
+        self.assertTrue(guard_class.is_file(), 'the SDK-compiled guard bytes must exist')
+        # 2. The minimal ABI-faithful OS/dependency overlay, compiled separately.
+        overlay_sources = []
+        for name, text in GUARD_FAKES.items():
+            path = root / 'overlay-src' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding='utf-8')
+            overlay_sources.append(path)
+        overlay_classes = root / 'overlay-classes'
+        overlay_classes.mkdir()
+        overlay_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-nowarn', '-cp', str(jar), '-d', str(overlay_classes)]
+            + [str(path) for path in overlay_sources], repo)
+        self.assertEqual(overlay_compiled.returncode, 0,
+                         overlay_compiled.stderr.decode(errors='replace'))
+        # 3. The driver, compiled against the overlay plus the SDK guard bytes.
+        driver_classes = root / 'driver-classes'
+        driver_classes.mkdir()
+        driver_cp = os.pathsep.join([str(overlay_classes), str(sdk_classes), str(jar)])
+        driver_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-nowarn', '-encoding', 'UTF-8', '-cp', driver_cp, '-d', str(driver_classes),
+             str(repo / 'test/GuardedReaderApplicationTest.java')], repo)
+        self.assertEqual(driver_compiled.returncode, 0,
+                         driver_compiled.stderr.decode(errors='replace'))
+        # 4. Execute the SDK-compiled guard bytes with the overlay first.
+        run_cp = os.pathsep.join([str(overlay_classes), str(driver_classes),
+                                  str(sdk_classes), str(jar)])
+        return run_cp, sdk_classes, guard_class
+
+    def test_the_actual_save_event_controls_pass(self):
+        """The actual save-event validity, ownership and lifetime controls."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-save-event-') as directory:
+            root = Path(directory)
+            run_cp, sdk_classes, guard_class = self._guard_sdk_classpath(
+                repo, java, android, jar, root)
+            identity_run = self._run(
+                [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                 'io.liber.oracle.nested.GuardedReaderApplicationTest',
+                 'loaded-identity'], repo)
+            identity_out = identity_run.stdout.decode(errors='replace').strip()
+            self.assertEqual(identity_run.returncode, 0,
+                             identity_out + identity_run.stderr.decode(errors='replace'))
+            identity = json.loads(identity_out.splitlines()[-1])
+            code_source = Path(identity['codeSource']).resolve()
+            self.assertEqual(code_source, sdk_classes.resolve(),
+                             'the loaded guard must come from the SDK-compiled directory')
+            guard_bytes = guard_class.read_bytes()
+            guard_sha = hashlib.sha256(guard_bytes).hexdigest()
+            self.assertEqual(identity['classSha256']['GuardedReaderApplication.class'],
+                             guard_sha)
+            self.assertGreaterEqual(identity['classCount'], 2)
+            for name, encoded in identity['classBytesBase64'].items():
+                retained = base64.b64decode(encoded)
+                self.assertEqual(hashlib.sha256(retained).hexdigest(),
+                                 identity['classSha256'][name], name)
+            self.assertEqual(
+                hashlib.sha256(base64.b64decode(
+                    identity['classBytesBase64']['GuardedReaderApplication.class']))
+                .hexdigest(), guard_sha)
+            controls = (
+                'save-valid', 'save-missing', 'save-duplicate', 'save-foreign',
+                'save-callback-error', 'save-malformed', 'save-off-main',
+                'save-idempotent', 'save-invalid-repeat', 'save-end-before-begin',
+                'save-overlap', 'save-stale-proxy', 'save-two-cases',
+            )
+            outcomes = {}
+            for control in controls:
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                     'io.liber.oracle.nested.GuardedReaderApplicationTest', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+            self.assertEqual(len(outcomes), len(controls))
 
     def test_the_actual_guard_controls_pass(self):
         """SDK-first: the guard is compiled against real android-35, then run on overlays."""
