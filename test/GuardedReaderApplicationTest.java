@@ -43,7 +43,15 @@ public final class GuardedReaderApplicationTest {
     /** A lifecycle callback the guard must refuse. */
     public static final class ForeignLifecycle
             implements Application.ActivityLifecycleCallbacks {
-        @Override public void onActivityCreated(Object activity, android.os.Bundle state) {}
+        @Override public void onActivityCreated(android.app.Activity activity,
+                android.os.Bundle state) {}
+        @Override public void onActivityStarted(android.app.Activity activity) {}
+        @Override public void onActivityResumed(android.app.Activity activity) {}
+        @Override public void onActivityPaused(android.app.Activity activity) {}
+        @Override public void onActivityStopped(android.app.Activity activity) {}
+        @Override public void onActivitySaveInstanceState(android.app.Activity activity,
+                android.os.Bundle state) {}
+        @Override public void onActivityDestroyed(android.app.Activity activity) {}
     }
 
     static final String ACTION = GuardedReaderApplication.LEB_IPC_ACTION;
@@ -67,6 +75,7 @@ public final class GuardedReaderApplicationTest {
             case "foreign-event-fails": foreignEventFails(result); break;
             case "abandoned-registration": abandonedRegistration(result); break;
             case "two-saved-cases": twoSavedCases(result); break;
+            case "wrong-loader-refused": wrongLoaderRefused(result); break;
             default: throw new IllegalArgumentException("unknown control " + control);
         }
         result.put("ok", true);
@@ -83,12 +92,21 @@ public final class GuardedReaderApplicationTest {
         result.put("nativeRegisterCalls", app.registered.size())
             .put("wrapped", app.lastReceiver != receiver)
             .put("armed", GuardedReaderApplication.isArmed());
+        // The base returns and records, so this only passes when the guard's own
+        // overrides refuse: the fake must never see the launch.
+        int before = GuardedReaderApplication.launchAttempts();
         boolean first = false;
         boolean second = false;
         try { app.startActivity(new Intent("x")); } catch (SecurityException expected) { first = true; }
         try { app.startActivity(new Intent("x"), new android.os.Bundle()); }
         catch (SecurityException expected) { second = true; }
-        result.put("bothLaunchRefusals", first && second);
+        result.put("bothLaunchRefusals", first && second)
+            .put("launchAttempts", GuardedReaderApplication.launchAttempts() - before)
+            .put("baseLaunches", app.launched.size());
+        require(app.launched.isEmpty(),
+            "the base activity launch must never be reached in any mode");
+        require(GuardedReaderApplication.launchAttempts() - before == 2,
+            "both guard activity refusals must be counted");
         require(app.registered.size() == 2, "inactive overloads must forward unchanged");
         require(app.lastReceiver == receiver,
             "an inactive registration must not be wrapped");
@@ -333,6 +351,59 @@ public final class GuardedReaderApplicationTest {
         GuardedReaderApplication.beginSaveObservation(bookUrl, chapterUrl);
         deliver(bookUrl, chapterUrl);
         return GuardedReaderApplication.endSaveObservation(2000);
+    }
+
+    /**
+     * A same-FQCN receiver from another loader is a different class and must be
+     * refused before the base registration effect, leaving the owner intact.
+     */
+    private static void wrongLoaderRefused(JSONObject result) throws Exception {
+        GuardedReaderApplication app = arm();
+        java.io.File overlay = new java.io.File(
+            com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver.class
+                .getProtectionDomain().getCodeSource().getLocation().toURI());
+        // Child-first for the receiver package, so the same FQCN really becomes a
+        // distinct class from a distinct loader.
+        java.net.URLClassLoader foreign = new java.net.URLClassLoader(
+            new java.net.URL[] {overlay.toURI().toURL()}, loader()) {
+            @Override
+            protected Class<?> loadClass(String name, boolean resolve)
+                    throws ClassNotFoundException {
+                if (name.startsWith("com.jeremyliao.liveeventbus.ipc.receiver.")) {
+                    Class<?> found = findLoadedClass(name);
+                    if (found == null) found = findClass(name);
+                    if (resolve) resolveClass(found);
+                    return found;
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+        Class<?> sameName = Class.forName(
+            "com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver", true, foreign);
+        Object receiver = sameName.getConstructor().newInstance();
+        boolean foreignClass = sameName != newReceiver().getClass();
+        boolean refused = false;
+        try {
+            app.registerReceiver((android.content.BroadcastReceiver) receiver,
+                new IntentFilter(ACTION), 2);
+        } catch (SecurityException expected) {
+            refused = true;
+        }
+        result.put("foreignClassDistinct", foreignClass)
+            .put("refused", refused)
+            .put("baseRegistrations", app.registered.size())
+            .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(foreignClass, "the foreign loader must really produce a distinct class");
+        require(refused, "a same-named receiver from another loader must be refused");
+        require(app.registered.isEmpty(),
+            "the wrong-loader registration must not reach the base effect");
+        require(GuardedReaderApplication.captureFailed(),
+            "the wrong-loader attempt must fail the capture");
+        // The exact owner is still intact after the refusal.
+        app.registerReceiver(newReceiver(), new IntentFilter(ACTION), 2);
+        require(app.registered.size() == 1,
+            "the exact owner must still register after a wrong-loader refusal");
+        foreign.close();
     }
 
     private static GuardedReaderApplication arm() {

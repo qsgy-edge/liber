@@ -1,4 +1,5 @@
 """Small stdlib regressions for the FIELDS-02 capture boundary."""
+import hashlib
 import io
 import json
 import os
@@ -759,6 +760,7 @@ public class Application extends Context {
     public final List<String> unregistered = new ArrayList<>();
     public final List<String> lifecycleRegistered = new ArrayList<>();
     public final List<String> lifecycleUnregistered = new ArrayList<>();
+    public final List<String> launched = new ArrayList<>();
     public BroadcastReceiver lastReceiver;
     public IntentFilter lastFilter;
     public int lastFlags = -1;
@@ -801,17 +803,42 @@ public class Application extends Context {
         lifecycleUnregistered.add(callback.getClass().getName());
     }
 
+    // The base returns and records, so a missing guard override is visible as a
+    // recorded launch instead of being masked by a fake exception.
     public void startActivity(Intent intent) {
-        throw new SecurityException("not reached in this fake");
+        launched.add("one-arg");
     }
 
     public void startActivity(Intent intent, android.os.Bundle options) {
-        throw new SecurityException("not reached in this fake");
+        launched.add("two-arg");
     }
 
     public interface ActivityLifecycleCallbacks {
-        void onActivityCreated(Object activity, android.os.Bundle state);
+        void onActivityCreated(Activity activity, android.os.Bundle state);
+
+        void onActivityStarted(Activity activity);
+
+        void onActivityResumed(Activity activity);
+
+        void onActivityPaused(Activity activity);
+
+        void onActivityStopped(Activity activity);
+
+        void onActivitySaveInstanceState(Activity activity, android.os.Bundle state);
+
+        void onActivityDestroyed(Activity activity);
     }
+}
+''',
+    'android/app/Activity.java': '''package android.app;
+
+/** Test-only Activity boundary: the real SDK type the lifecycle interface names. */
+public class Activity {
+    public final String name;
+
+    public Activity() { this("activity"); }
+
+    public Activity(String name) { this.name = name; }
 }
 ''',
     'android/content/Context.java': '''package android.content;
@@ -1220,7 +1247,15 @@ import android.app.Application;
 public final class AppUtils {
     public static final class ActivityLifecycleImpl
             implements Application.ActivityLifecycleCallbacks {
-        @Override public void onActivityCreated(Object activity, android.os.Bundle state) {}
+        @Override public void onActivityCreated(android.app.Activity activity,
+                android.os.Bundle state) {}
+        @Override public void onActivityStarted(android.app.Activity activity) {}
+        @Override public void onActivityResumed(android.app.Activity activity) {}
+        @Override public void onActivityPaused(android.app.Activity activity) {}
+        @Override public void onActivityStopped(android.app.Activity activity) {}
+        @Override public void onActivitySaveInstanceState(android.app.Activity activity,
+                android.os.Bundle state) {}
+        @Override public void onActivityDestroyed(android.app.Activity activity) {}
     }
 }
 ''',
@@ -5395,7 +5430,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'foreign-unregister-refused', 'failed-release-retains',
         'double-end-idempotent', 'release-closes-observer',
         'owner-not-overwritten', 'arm-rejects', 'foreign-event-fails',
-        'abandoned-registration', 'two-saved-cases',
+        'abandoned-registration', 'two-saved-cases', 'wrong-loader-refused',
     )
 
     def _java_home(self):
@@ -5435,33 +5470,57 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         return subprocess.run(argv, cwd=str(cwd), capture_output=True, timeout=600)
 
     def test_the_actual_guard_controls_pass(self):
+        """SDK-first: the guard is compiled against real android-35, then run on overlays."""
         java = self._java_home()
+        android = self._android_jar()
         jar = self._json_jar()
         repo = self._repo()
         with tempfile.TemporaryDirectory(prefix='r2afix-guard-') as directory:
             root = Path(directory)
-            sources = []
+            # 1. The actual production guard, compiled against the real SDK only.
+            sdk_classes = root / 'sdk-classes'
+            sdk_classes.mkdir()
+            sdk_compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-nowarn', '-encoding', 'UTF-8', '-cp', str(android), '-d', str(sdk_classes),
+                 str(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java')], repo)
+            self.assertEqual(sdk_compiled.returncode, 0,
+                             sdk_compiled.stderr.decode(errors='replace'))
+            guard_class = sdk_classes / 'io/liber/oracle/nested/GuardedReaderApplication.class'
+            self.assertTrue(guard_class.is_file(), 'the SDK-compiled guard bytes must exist')
+            # 2. The minimal ABI-faithful OS/dependency overlay, compiled separately.
+            overlay_sources = []
             for name, text in GUARD_FAKES.items():
-                path = root / 'fakes' / name
+                path = root / 'overlay-src' / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding='utf-8')
-                sources.append(path)
-            sources.append(
-                repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java')
-            sources.append(repo / 'test/GuardedReaderApplicationTest.java')
-            classes = root / 'classes'
-            classes.mkdir()
-            compiled = self._run(
+                overlay_sources.append(path)
+            overlay_classes = root / 'overlay-classes'
+            overlay_classes.mkdir()
+            overlay_compiled = self._run(
                 [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
-                 '-nowarn', '-cp', str(jar), '-d', str(classes)]
-                + [str(path) for path in sources], repo)
-            self.assertEqual(compiled.returncode, 0,
-                             compiled.stderr.decode(errors='replace'))
+                 '-nowarn', '-cp', str(jar), '-d', str(overlay_classes)]
+                + [str(path) for path in overlay_sources], repo)
+            self.assertEqual(overlay_compiled.returncode, 0,
+                             overlay_compiled.stderr.decode(errors='replace'))
+            # 3. The driver, compiled against the overlay plus the SDK guard bytes.
+            driver_classes = root / 'driver-classes'
+            driver_classes.mkdir()
+            driver_cp = os.pathsep.join([str(overlay_classes), str(sdk_classes), str(jar)])
+            driver_compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-nowarn', '-encoding', 'UTF-8', '-cp', driver_cp, '-d', str(driver_classes),
+                 str(repo / 'test/GuardedReaderApplicationTest.java')], repo)
+            self.assertEqual(driver_compiled.returncode, 0,
+                             driver_compiled.stderr.decode(errors='replace'))
+            # 4. Execute the SDK-compiled guard bytes with the overlay first.
+            run_cp = os.pathsep.join([str(overlay_classes), str(driver_classes),
+                                      str(sdk_classes), str(jar)])
+            guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
             outcomes = {}
             for control in self.GUARD_CONTROLS:
                 run = self._run(
-                    [str(java / 'bin' / 'java.exe'), '-cp',
-                     str(classes) + os.pathsep + str(jar),
+                    [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
                      'io.liber.oracle.nested.GuardedReaderApplicationTest', control], repo)
                 stdout = run.stdout.decode(errors='replace').strip()
                 self.assertEqual(
@@ -5469,6 +5528,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                     control + ': ' + stdout + run.stderr.decode(errors='replace'))
                 outcomes[control] = json.loads(stdout.splitlines()[-1])
             self.assertEqual(len(outcomes), len(self.GUARD_CONTROLS))
+            self.assertEqual(len(guard_sha), 64)
 
     def _stage_a_fixture_classpath(self, repo, java, android, jar, root):
         """Compiles the six actual SDK sources and the bounded Stage A fixture."""

@@ -615,10 +615,29 @@ public final class GuardedReaderApplication extends Application {
     }
 
     /** The exact registration this capture allows, or the reason it is refused. */
+    /**
+     * Whether this object is the approved class as resolved through the stored
+     * verified target loader. A same-named class from another loader is a
+     * different class and is refused.
+     */
+    private static boolean isApproved(Class<?> candidate, String name) {
+        if (candidate == null) return false;
+        ClassLoader loader;
+        synchronized (lock) {
+            loader = targetLoader;
+        }
+        if (loader == null) return false;
+        try {
+            return Class.forName(name, false, loader) == candidate;
+        } catch (Throwable error) {
+            return false;
+        }
+    }
+
     private static String rejectionOf(BroadcastReceiver receiver, IntentFilter filter,
             int flags, String overload) {
         if (receiver == null || filter == null) return "registration without a receiver or filter";
-        if (!LEB_RECEIVER.equals(receiver.getClass().getName())) {
+        if (!isApproved(receiver.getClass(), LEB_RECEIVER)) {
             return "unexpected receiver class " + receiver.getClass().getName();
         }
         JSONArray actions = actionsOf(filter);
@@ -683,7 +702,7 @@ public final class GuardedReaderApplication extends Application {
             throw new SecurityException("this instance is not the armed capture owner");
         }
         attemptedRegistrations.incrementAndGet();
-        if (callback == null || !LEB_LIFECYCLE.equals(callback.getClass().getName())) {
+        if (callback == null || !isApproved(callback.getClass(), LEB_LIFECYCLE)) {
             fail("unexpected lifecycle callback "
                 + (callback == null ? "null" : callback.getClass().getName()));
             throw new SecurityException("guarded capture refused an unexpected lifecycle callback");
