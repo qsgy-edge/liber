@@ -2286,6 +2286,8 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
     File root = Files.createTempDirectory("l138-composed-saved-").toFile();
     try {
         MemoryPreferences preferences = new MemoryPreferences();
+        // Prior state is present and false, so an omitted restore is visible.
+        preferences.values.put("tocCountWords", Boolean.FALSE);
         JSONObject observed = new JSONObject().put("id", "case-title");
         FieldOracle.initializeTitleLifecycle(observed);
         JSONObject proof = observed.getJSONObject("titleLifecycleProof");
@@ -2295,6 +2297,15 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         proof.put("bookParent", new JSONObject().put("stored", true).put("readBack", true));
         lifecycle.put("beforeContent", new JSONArray().put("chapter-0"));
         RuntimeException nativeFailure = new IllegalStateException("NATIVE_CONTENT_FAILURE");
+        RuntimeException rootCause = new IllegalArgumentException("ROOT_CAUSE");
+        RuntimeException preexisting = new IllegalStateException("PREEXISTING_SUPPRESSED");
+        nativeFailure.initCause(rootCause);
+        nativeFailure.addSuppressed(preexisting);
+        RuntimeException closeFailure = new IllegalStateException("CLOSE_OBSERVER_FAILURE");
+        RuntimeException outerFailure = new IllegalStateException("OUTER_PREFERENCES_FAILURE");
+        final JSONObject[] appliedReference = {null};
+        final String[] appliedFields = {null};
+        List<String> savedDriven = new ArrayList<>();
         JSONObject failures = new JSONObject();
         JSONArray records = new JSONArray().put(
             new JSONObject().put("id", "case-previous").put("terminal", "four-stage"));
@@ -2311,8 +2322,10 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
             FieldOracle.runWithCleanup(
                 () -> {
                     FieldOracle.runDeclaredCases(
-                        new JSONArray().put(new JSONObject().put("id", "case-title")),
+                        new JSONArray().put(new JSONObject().put("id", "case-title"))
+                            .put(new JSONObject().put("id", "case-later")),
                         (entry, id) -> {
+                            savedDriven.add(id);
                             observation.set(observed);
                             requests.put(new JSONObject().put("url",
                                 "https://owned.invalid/content"));
@@ -2322,17 +2335,20 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
                                         new JSONObject().put("phase", "begin"));
                                         return new JSONObject().put("closed", true); },
                                     () -> {
-                                        proof.put("tocCountWordsApplied",
-                                            new JSONObject().put("name", "tocCountWords")
-                                                .put("applied", true).put("committed", true)
-                                                .put("observed", true));
+                                        // The lifetime attached its own applied receipt before
+                                        // this operation ran; keep that exact object.
+                                        JSONObject applied =
+                                            proof.getJSONObject("tocCountWordsApplied");
+                                        appliedReference[0] = applied;
+                                        appliedFields[0] = applied.optString("name")
+                                            + "|" + applied.optBoolean("applied")
+                                            + "|" + applied.optBoolean("committed")
+                                            + "|" + applied.optBoolean("observed");
                                         lifecycle.put("storedAfterContent",
                                             new JSONArray().put("chapter-0"));
                                         throw nativeFailure;
                                     },
-                                    () -> { proof.put("saveObserverClose",
-                                        new JSONObject().put("removed", true));
-                                        return new JSONObject().put("closed", true); },
+                                    () -> { throw closeFailure; },
                                     proof);
                             } catch (Throwable error) {
                                 throw error instanceof Exception ? (Exception) error
@@ -2350,24 +2366,54 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
                     () -> new JSONObject().put("closed", true),
                     () -> new JSONObject().put("closed", true),
                     () -> new JSONObject().put("closed", true).put("proved", true),
-                    () -> new JSONObject().put("applicable", false),
+                    () -> { throw outerFailure; },
                     proved -> new JSONObject().put("closed", proved).put("ownerComplete", proved),
                     () -> new JSONObject().put("closed", true),
                     true, false, cleanup));
         } catch (Throwable error) {
             composedError = error;
         }
-        outcome.put("composedFails", composedError != null);
+        outcome.put("composedFails", composedError == nativeFailure);
         outcome.put("composedChain", composedError == null ? "none"
             : FieldOracle.describeChain(composedError).contains("NATIVE_CONTENT_FAILURE"));
+        // The exact primary graph: real cause, the preexisting suppressed error,
+        // the real close failure and the real outer cleanup aggregate.
+        boolean closeRetained = false;
+        boolean outerRetained = false;
+        Throwable[] suppressed = nativeFailure.getSuppressed();
+        for (Throwable entry : suppressed) {
+            if (entry == closeFailure) closeRetained = true;
+            if (entry != null && entry != closeFailure) {
+                for (Throwable inner : entry.getSuppressed()) {
+                    if (inner == outerFailure) outerRetained = true;
+                }
+            }
+        }
+        outcome.put("primaryIdentity", composedError == nativeFailure
+            && nativeFailure.getCause() == rootCause);
+        outcome.put("suppressedIdentities", closeRetained && outerRetained
+            && suppressed.length >= 2);
         outcome.put("singleCurrentRecord", records.length() == 2
             && records.getJSONObject(0).getString("id").equals("case-previous")
-            && records.getJSONObject(1).getString("id").equals("case-title"));
+            && records.getJSONObject(1).getString("id").equals("case-title")
+            && savedDriven.equals(Arrays.asList("case-title")));
         JSONObject current = records.getJSONObject(1);
+        // The applied receipt is the exact object the real lifetime produced.
+        outcome.put("appliedIsLifetimeObject", appliedReference[0] != null
+            && current.getJSONObject("titleLifecycleProof")
+                .getJSONObject("tocCountWordsApplied") == appliedReference[0]
+            && "tocCountWords|true|true|true".equals(appliedFields[0]));
+        JSONObject restored = current.getJSONObject("titleLifecycleProof")
+            .getJSONObject("tocCountWords");
+        // Prior presence/value is restored: still present, now false again.
+        outcome.put("restoreReceipt", restored.optBoolean("previousPresent")
+            && !restored.optBoolean("previous")
+            && restored.optBoolean("committed") && restored.optBoolean("restored")
+            && restored.optBoolean("presentAfter")
+            && !restored.optBoolean("observedAfter")
+            && Boolean.FALSE.equals(preferences.values.get("tocCountWords")));
         outcome.put("proofSurvives", current.getJSONObject("titleLifecycleProof")
-            .getJSONObject("tocCountWordsApplied").optBoolean("committed")
-            && current.getJSONObject("titleLifecycleProof").getJSONObject("bookParent")
-                .optBoolean("readBack")
+            .getJSONObject("bookParent").optBoolean("readBack")
             && current.getJSONObject("titleLifecycle").getJSONArray("beforeContent").length() == 1);
         outcome.put("requestSlice", current.getJSONArray("requests").length() == 1
             && current.getJSONArray("requests").getJSONObject(0).getString("url")
@@ -2379,11 +2425,19 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
             report, failures, corpus, composedError);
         JSONObject readback = new JSONObject(text(target));
         JSONObject stored = readback.getJSONArray("cases").getJSONObject(1);
+        String durableChain = readback.optString("analysisFailure");
         outcome.put("persisted", persistError == null
             && readback.getJSONArray("cases").length() == 2
             && stored.getJSONObject("titleLifecycleProof")
+                .getJSONObject("tocCountWordsApplied").optString("name")
+                    .equals("tocCountWords")
+            && stored.getJSONObject("titleLifecycleProof")
                 .getJSONObject("tocCountWordsApplied").optBoolean("committed")
-            && readback.optString("analysisFailure").contains("NATIVE_CONTENT_FAILURE"));
+            && durableChain.contains("NATIVE_CONTENT_FAILURE")
+            && durableChain.contains("ROOT_CAUSE")
+            && durableChain.contains("PREEXISTING_SUPPRESSED")
+            && durableChain.contains("CLOSE_OBSERVER_FAILURE")
+            && durableChain.contains("OUTER_PREFERENCES_FAILURE"));
         outcome.put("reportPath", target.getAbsolutePath());
         outcome.put("reportSha256", sha(target));
         outcome.put("reportText", text(target));
@@ -2392,13 +2446,17 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         Throwable afterError = null;
         List<String> afterDriven = new ArrayList<>();
         List<String> afterOrder = new ArrayList<>();
+        RuntimeException afterFailure = new IllegalStateException("AFTER_CALLBACK_FAILURE");
+        RuntimeException afterOuterFailure = new IllegalStateException("AFTER_OUTER_TERMINAL_FAILURE");
+        JSONObject afterReport = new JSONObject().put("fixtureId", "after-fixture")
+            .put("cases", new JSONArray().put(new JSONObject().put("id", "case-prior")));
         try {
             FieldOracle.runWithCleanup(
                 () -> FieldOracle.runDeclaredCases(
                     new JSONArray().put(new JSONObject().put("id", "case-a"))
                         .put(new JSONObject().put("id", "case-b")),
                     (entry, id) -> afterDriven.add(id), id -> {
-                        throw new IllegalStateException("AFTER_CALLBACK_FAILURE");
+                        throw afterFailure;
                     }, new JSONObject(), new JSONArray(), new JSONArray(),
                     new AtomicReference<>(), new AtomicReference<>("setup"), true, false),
                 () -> FieldOracle.runOuterSequence(
@@ -2408,8 +2466,7 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
                             .put("openConnectionsAfterClose", 0); },
                     () -> { afterOrder.add("guard"); return new JSONObject().put("closed", true); },
                     () -> { afterOrder.add("database"); return new JSONObject().put("closed", true); },
-                    () -> { afterOrder.add("terminal");
-                        return new JSONObject().put("closed", true).put("proved", true); },
+                    () -> { afterOrder.add("terminal"); throw afterOuterFailure; },
                     () -> { afterOrder.add("preferences");
                         return new JSONObject().put("applicable", false); },
                     proved -> { afterOrder.add("owner");
@@ -2420,15 +2477,91 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         } catch (Throwable error) {
             afterError = error;
         }
-        outcome.put("afterStopsLater", afterError != null
-            && afterDriven.equals(Arrays.asList("case-a"))
-            && FieldOracle.describeChain(afterError).contains("AFTER_CALLBACK_FAILURE"));
+        boolean afterOuterRetained = false;
+        if (afterError != null) {
+            for (Throwable entry : afterError.getSuppressed()) {
+                for (Throwable inner : entry.getSuppressed()) {
+                    if (inner == afterOuterFailure) afterOuterRetained = true;
+                }
+            }
+        }
+        outcome.put("afterStopsLater", afterError == afterFailure
+            && afterDriven.equals(Arrays.asList("case-a")));
+        outcome.put("afterOuterRetained", afterOuterRetained);
         outcome.put("outerStillRan", afterOrder.contains("report")
             && afterOrder.contains("replay") && afterOrder.contains("guard")
             && afterOrder.contains("database") && afterOrder.contains("terminal")
             && afterOrder.contains("preferences") && afterOrder.contains("owner")
             && afterOrder.contains("final-report"));
         outcome.put("outerOrder", new JSONArray(afterOrder));
+        // The combined original-plus-outer chain reaches the same persister.
+        File afterTarget = new File(root, "after-report.json");
+        Throwable afterPersist = FieldOracle.persistFailureReport(true, afterTarget, root,
+            afterReport, new JSONObject(), corpus, afterError);
+        JSONObject afterReadback = new JSONObject(text(afterTarget));
+        String afterChain = afterReadback.optString("analysisFailure");
+        outcome.put("afterDurable", afterPersist == null
+            && afterReadback.getJSONArray("cases").length() == 1
+            && afterChain.contains("AFTER_CALLBACK_FAILURE")
+            && afterChain.contains("AFTER_OUTER_TERMINAL_FAILURE"));
+        // A real before fault inside the same composition: no drive, no after,
+        // later independent outer domains still run.
+        JSONObject beforeCleanup = new JSONObject();
+        Throwable beforeError = null;
+        List<String> beforeDriven = new ArrayList<>();
+        List<String> beforeAfter = new ArrayList<>();
+        List<String> beforeOrder = new ArrayList<>();
+        RuntimeException beforeFailure = new IllegalStateException("BEFORE_SETUP_FAILURE");
+        RuntimeException beforeOuterFailure = new IllegalStateException("BEFORE_OUTER_DATABASE_FAILURE");
+        try {
+            FieldOracle.runWithCleanup(
+                () -> FieldOracle.runDeclaredCases(
+                    new JSONArray().put(new JSONObject().put("id", "case-a"))
+                        .put(new JSONObject().put("id", "case-b")),
+                    new FieldOracle.CaseStep() {
+                        @Override public void before(JSONObject entry, String id) {
+                            if ("case-a".equals(id)) throw beforeFailure;
+                        }
+                        @Override public void drive(JSONObject entry, String id) {
+                            beforeDriven.add(id);
+                        }
+                    }, id -> beforeAfter.add(id), new JSONObject(), new JSONArray(),
+                    new JSONArray(), new AtomicReference<>(), new AtomicReference<>("setup"),
+                    true, false),
+                () -> FieldOracle.runOuterSequence(
+                    () -> { beforeOrder.add("report"); return new JSONObject().put("closed", true); },
+                    () -> { beforeOrder.add("replay");
+                        return new JSONObject().put("serverClosed", true)
+                            .put("openConnectionsAfterClose", 0); },
+                    () -> { beforeOrder.add("guard"); return new JSONObject().put("closed", true); },
+                    () -> { beforeOrder.add("database"); throw beforeOuterFailure; },
+                    () -> { beforeOrder.add("terminal");
+                        return new JSONObject().put("closed", true).put("proved", true); },
+                    () -> { beforeOrder.add("preferences");
+                        return new JSONObject().put("applicable", false); },
+                    proved -> { beforeOrder.add("owner");
+                        return new JSONObject().put("closed", proved).put("ownerComplete", proved); },
+                    () -> { beforeOrder.add("final-report");
+                        return new JSONObject().put("closed", true); },
+                    true, false, beforeCleanup));
+        } catch (Throwable error) {
+            beforeError = error;
+        }
+        boolean beforeOuterRetained = false;
+        if (beforeError != null) {
+            for (Throwable entry : beforeError.getSuppressed()) {
+                for (Throwable inner : entry.getSuppressed()) {
+                    if (inner == beforeOuterFailure) beforeOuterRetained = true;
+                }
+            }
+        }
+        outcome.put("beforeComposed", beforeError == beforeFailure
+            && beforeDriven.isEmpty() && beforeAfter.isEmpty());
+        outcome.put("beforeOuterRetained", beforeOuterRetained);
+        outcome.put("beforeLaterDomains", beforeOrder.contains("terminal")
+            && beforeOrder.contains("preferences") && beforeOrder.contains("owner")
+            && beforeOrder.contains("final-report"));
+        outcome.put("beforeOrder", new JSONArray(beforeOrder));
         outcome.put("controlledNative", "TocCountWordsLifetime.run with in-memory preferences and"
             + " an injected content failure; no Android DAO/Job/save executed");
     } finally {
@@ -2438,12 +2571,21 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
     require(outcome.optBoolean("initializerAttached")
         && outcome.optBoolean("composedFails")
         && outcome.optBoolean("composedChain")
+        && outcome.optBoolean("primaryIdentity")
+        && outcome.optBoolean("suppressedIdentities")
         && outcome.optBoolean("singleCurrentRecord")
+        && outcome.optBoolean("appliedIsLifetimeObject")
+        && outcome.optBoolean("restoreReceipt")
         && outcome.optBoolean("proofSurvives")
         && outcome.optBoolean("requestSlice")
         && outcome.optBoolean("persisted")
         && outcome.optBoolean("afterStopsLater")
-        && outcome.optBoolean("outerStillRan"),
+        && outcome.optBoolean("afterOuterRetained")
+        && outcome.optBoolean("afterDurable")
+        && outcome.optBoolean("outerStillRan")
+        && outcome.optBoolean("beforeComposed")
+        && outcome.optBoolean("beforeOuterRetained")
+        && outcome.optBoolean("beforeLaterDomains"),
         "the composed saved failure must keep its proof and outer effects: " + outcome);
     return outcome;
 }
@@ -2465,20 +2607,37 @@ static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Thro
             return new JSONObject().put("refreshed", refreshes[0]);
         },
         () -> new JSONObject().put("closed", true), proof);
+    // Prior true alone cannot discriminate apply-without-restore, so the receipt
+    // and the real stored value are both asserted.
+    JSONObject nestedRestore = proof.getJSONObject("tocCountWords");
+    outcome.put("nestedRestoreReceipt", nestedRestore);
+    outcome.put("nestedRefreshes", refreshes[0]);
     outcome.put("nestedRefreshesOnce", refreshes[0] == 1 && result1 != null
-        && proof.has("saveEvent") && proof.has("tocCountWords"));
-    // (b) an acknowledged idempotent close also refreshes once.
+        && proof.has("saveEvent") && nestedRestore.optBoolean("previousPresent")
+        && nestedRestore.optBoolean("committed")
+        && nestedRestore.optBoolean("restored") && nestedRestore.optBoolean("presentAfter")
+        && nestedRestore.optBoolean("observedAfter")
+        && Boolean.TRUE.equals(preferences.values.get("tocCountWords")));
+    // (b) an acknowledged idempotent close also refreshes once, with its own
+    // retained preferences/proof and real restore receipt.
     refreshes[0] = 0;
-    FieldOracle.TocCountWordsLifetime.run(new MemoryPreferences(),
+    MemoryPreferences idempotentPreferences = new MemoryPreferences();
+    idempotentPreferences.values.put("tocCountWords", Boolean.FALSE);
+    JSONObject idempotentProof = new JSONObject();
+    FieldOracle.TocCountWordsLifetime.run(idempotentPreferences,
         () -> new JSONObject().put("closed", true),
         () -> {
             FieldOracle.closeObserverThenRefresh(
                 new JSONObject().put("alreadyClosed", true).put("removed", true),
-                new JSONObject(), () -> { refreshes[0]++; return null; });
+                idempotentProof, () -> { refreshes[0]++; return null; });
             return new JSONObject().put("refreshed", refreshes[0]);
         },
-        () -> new JSONObject().put("closed", true), new JSONObject());
-    outcome.put("idempotentRefreshesOnce", refreshes[0] == 1);
+        () -> new JSONObject().put("closed", true), idempotentProof);
+    JSONObject idempotentRestore = idempotentProof.getJSONObject("tocCountWords");
+    outcome.put("idempotentRefreshesOnce", refreshes[0] == 1
+        && idempotentRestore.optBoolean("restored")
+        && !idempotentRestore.optBoolean("observedAfter")
+        && Boolean.FALSE.equals(idempotentPreferences.values.get("tocCountWords")));
     // (c) rejected receipts never refresh, and close/restore are still attempted.
     String[] reasons = {"failed", "missing", "foreign", "callbacks"};
     JSONArray rows = new JSONArray();
@@ -2560,132 +2719,444 @@ static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Thro
     }
     outcome.put("refreshThrowRetained", refreshThrown == refreshFailure
         && refreshes[0] == 1 && closedAfterRefresh[0]);
+    // (f) a controlled close failure armed after the real apply: the same
+    // instance is retained and the real restore still runs.
+    MemoryPreferences closePreferences = new MemoryPreferences();
+    closePreferences.values.put("tocCountWords", Boolean.TRUE);
+    JSONObject closeProof = new JSONObject();
+    RuntimeException closeFailure = new IllegalStateException("CLOSE_FAILURE");
+    Throwable closeThrown = null;
+    try {
+        FieldOracle.TocCountWordsLifetime.run(closePreferences,
+            () -> new JSONObject().put("closed", true),
+            () -> {
+                FieldOracle.closeObserverThenRefresh(
+                    new JSONObject().put("removal", new JSONObject().put("removed", true)),
+                    closeProof, () -> null);
+                return new JSONObject().put("refreshed", 1);
+            },
+            () -> { throw closeFailure; }, closeProof);
+    } catch (Throwable error) {
+        closeThrown = error;
+    }
+    outcome.put("closeFailureRetained", closeThrown == closeFailure
+        && closeProof.getJSONObject("tocCountWords").optBoolean("restored")
+        && Boolean.TRUE.equals(closePreferences.values.get("tocCountWords")));
+    // (g) a controlled restore failure armed after the real apply: the same
+    // instance is retained and no restore receipt is invented.
+    MemoryPreferences restorePreferences = new MemoryPreferences();
+    restorePreferences.values.put("tocCountWords", Boolean.TRUE);
+    JSONObject restoreProof = new JSONObject();
+    RuntimeException restoreFailure = new IllegalStateException("RESTORE_FAILURE");
+    Throwable restoreThrown = null;
+    try {
+        FieldOracle.TocCountWordsLifetime.run(restorePreferences,
+            () -> new JSONObject().put("closed", true),
+            () -> {
+                FieldOracle.closeObserverThenRefresh(
+                    new JSONObject().put("removal", new JSONObject().put("removed", true)),
+                    restoreProof, () -> null);
+                restorePreferences.commitFailure = restoreFailure;
+                return new JSONObject().put("refreshed", 1);
+            },
+            () -> new JSONObject().put("closed", true), restoreProof);
+    } catch (Throwable error) {
+        restoreThrown = error;
+    }
+    outcome.put("restoreFailureRetained", restoreThrown == restoreFailure
+        && !restoreProof.has("tocCountWords"));
+    // (h) the actual outer per-owned-name preference fence joined to later
+    // domains. The lifetime restores through commit; it has no Fence method.
+    File cacheDir = Files.createTempDirectory("l138-refresh-fence-").toFile();
+    try {
+        StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "refresh-fence");
+        Set<String> names = new LinkedHashSet<>(Arrays.asList("owned.alpha", "owned.beta"));
+        JSONObject fenceCleanup = new JSONObject();
+        List<String> fenceOrder = new ArrayList<>();
+        FieldOracle.runOuterSequence(
+            () -> { fenceOrder.add("report"); return new JSONObject().put("closed", true); },
+            () -> { fenceOrder.add("replay");
+                return new JSONObject().put("serverClosed", true)
+                    .put("openConnectionsAfterClose", 0); },
+            () -> { fenceOrder.add("guard"); return new JSONObject().put("closed", true); },
+            () -> { fenceOrder.add("database"); return new JSONObject().put("closed", true); },
+            () -> { fenceOrder.add("terminal");
+                return new JSONObject().put("closed", true).put("proved", true); },
+            () -> { fenceOrder.add("preferences");
+                return FieldOracle.fenceOwnedPreferences(scratch, names, scratch::fence,
+                    fenceCleanup, null); },
+            proved -> { fenceOrder.add("owner");
+                return new JSONObject().put("closed", proved).put("ownerComplete", proved); },
+            () -> { fenceOrder.add("final-report");
+                return new JSONObject().put("closed", true); },
+            false, false, fenceCleanup);
+        outcome.put("outerFenceJoined", fenceCleanup.optBoolean("preferencesFenced")
+            && fenceCleanup.getJSONArray("ownedPreferences").length() == 2
+            && fenceOrder.contains("owner") && fenceOrder.contains("final-report"));
+    } finally {
+        deleteTree(cacheDir);
+    }
     result.put("composedRefresh", outcome);
     require(outcome.optBoolean("nestedRefreshesOnce")
         && outcome.optBoolean("idempotentRefreshesOnce")
         && outcome.optBoolean("refusedNoRefresh")
         && outcome.optBoolean("realEndThrow")
-        && outcome.optBoolean("refreshThrowRetained"),
+        && outcome.optBoolean("refreshThrowRetained")
+        && outcome.optBoolean("closeFailureRetained")
+        && outcome.optBoolean("restoreFailureRetained")
+        && outcome.optBoolean("outerFenceJoined"),
         "the composed refresh lifetime must never refresh before closure: " + outcome);
     return outcome;
 }
 
 /** The actual guard release and owner policy joined to the outer disposition. */
+/** Whether this chain (cause and suppressed) contains this exact instance. */
+static boolean chainHasInstance(Throwable root, Throwable wanted) {
+    if (root == null) return false;
+    if (root == wanted) return true;
+    if (chainHasInstance(root.getCause(), wanted)) return true;
+    for (Throwable entry : root.getSuppressed()) {
+        if (chainHasInstance(entry, wanted)) return true;
+    }
+    return false;
+}
+
+/** Whether this chain (cause and suppressed) contains this text. */
+static boolean chainHasText(Throwable root, String text) {
+    if (root == null) return false;
+    if (root.getMessage() != null && root.getMessage().contains(text)) return true;
+    if (chainHasText(root.getCause(), text)) return true;
+    for (Throwable entry : root.getSuppressed()) {
+        if (chainHasText(entry, text)) return true;
+    }
+    return false;
+}
+
+/** The production guard domain wrapper: validate first, then the caller shape. */
+static JSONObject guardDomain(FieldOracle.GuardSource source) throws Exception {
+    JSONObject released = FieldOracle.releaseGuard(source);
+    return new JSONObject().put("closed", true).put("receipt", released);
+}
+
+/** A controlled native guard source with a named refusal. */
+static FieldOracle.GuardSource guardSource(String refusal, List<String> order) {
+    return new FieldOracle.GuardSource() {
+        @Override public JSONObject released() {
+            order.add("release");
+            if ("releaseThrows".equals(refusal)) {
+                throw new IllegalStateException("RELEASE_THROWN");
+            }
+            return "released".equals(refusal)
+                ? new JSONObject().put("closed", false)
+                : new JSONObject().put("closed", true);
+        }
+
+        @Override public JSONObject fence() {
+            order.add("fence");
+            if ("fenceThrows".equals(refusal)) {
+                throw new IllegalStateException("FENCE_THROWN");
+            }
+            if ("posted".equals(refusal)) {
+                return new JSONObject().put("posted", false).put("completed", true);
+            }
+            if ("completed".equals(refusal)) {
+                return new JSONObject().put("posted", true).put("completed", false);
+            }
+            return new JSONObject().put("posted", true).put("completed", true);
+        }
+
+        @Override public JSONObject receipt() {
+            order.add("receipt");
+            if ("receiptThrows".equals(refusal)) {
+                throw new IllegalStateException("RECEIPT_THROWN");
+            }
+            return "blocked".equals(refusal)
+                ? new JSONObject().put("blockedDeliveries", 2)
+                : new JSONObject().put("blockedDeliveries", 0);
+        }
+    };
+}
+
+/**
+ * The actual guard release and owner policy joined to the outer disposition.
+ *
+ * <p>The real sequence runs in runWithCleanup's cleanup callback, the guard
+ * domain returns the production wrapper only after releaseGuard validates, and
+ * the owner action is the real writeOwnerCompletion over a real bound scratch.
+ */
 static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exception {
     JSONObject outcome = new JSONObject();
     File cacheDir = Files.createTempDirectory("l138-composed-outer-").toFile();
     try {
+        // (a) healthy: the real guard wrapper validates and the real writer
+        // publishes through the approved creation-only construction.
+        StateSessionOracle.ScratchContext healthy = boundScratch(cacheDir, "healthy-owner");
+        File healthyOwner = new File(healthy.root, OWNER);
+        String healthyInitial = text(healthyOwner);
+        String healthyInitialSha = sha(healthyOwner);
+        boolean healthyRemoved = healthyOwner.delete();
+        JSONObject healthyCleanup = new JSONObject().put("preferencesFenced", true);
+        List<String> healthyOrder = new ArrayList<>();
+        List<String> healthyNative = new ArrayList<>();
+        Throwable healthyError = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("recorded", 1),
+                () -> FieldOracle.runOuterSequence(
+                    () -> { healthyOrder.add("report"); return new JSONObject().put("closed", true); },
+                    () -> { healthyOrder.add("replay");
+                        return new JSONObject().put("serverClosed", true)
+                            .put("openConnectionsAfterClose", 0); },
+                    () -> { healthyOrder.add("guard");
+                        return guardDomain(guardSource("healthy", healthyNative)); },
+                    () -> { healthyOrder.add("database");
+                        return new JSONObject().put("closed", true); },
+                    () -> { healthyOrder.add("terminal");
+                        return new JSONObject().put("closed", true).put("proved", true); },
+                    () -> { healthyOrder.add("preferences");
+                        return new JSONObject().put("applicable", false); },
+                    proved -> { healthyOrder.add("owner");
+                        return FieldOracle.writeOwnerCompletion(healthy, proved,
+                            isolationProven(), healthyCleanup); },
+                    () -> { healthyOrder.add("final-report");
+                        return new JSONObject().put("closed", true); },
+                    true, false, healthyCleanup));
+        } catch (Throwable error) {
+            healthyError = error;
+        }
+        JSONObject healthyManifest = ownerManifest(healthy);
+        outcome.put("healthyCompletes", healthyError == null
+            && healthyCleanup.optBoolean("ownerComplete")
+            && healthyManifest != null && healthyManifest.optBoolean("complete")
+            && healthyManifest.optString("seedRunId")
+                .equals(healthyCleanup.optString("ownerRunId"))
+            && healthyManifest.optInt("seedPid") == 4242
+            && healthyOrder.equals(Arrays.asList("report", "replay", "guard", "database",
+                "terminal", "preferences", "owner", "final-report")));
+        outcome.put("healthyCreationOnly", healthyRemoved && !healthyInitial.contains("\"complete\": true"));
+        outcome.put("healthyInitialSha256", healthyInitialSha);
+        outcome.put("healthyManifestSha256", sha(healthyOwner));
+        outcome.put("healthyManifestText", text(healthyOwner));
+
+        // (b) a failed body with independently proved resources still publishes.
+        StateSessionOracle.ScratchContext proved = boundScratch(cacheDir, "proved-owner");
+        new File(proved.root, OWNER).delete();
+        JSONObject provedCleanup = new JSONObject().put("preferencesFenced", true);
+        RuntimeException bodyFailure = new IllegalStateException("BODY_FAILURE");
+        Throwable provedError = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> { throw bodyFailure; },
+                () -> FieldOracle.runOuterSequence(
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("serverClosed", true)
+                        .put("openConnectionsAfterClose", 0),
+                    () -> guardDomain(guardSource("healthy", new ArrayList<>())),
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("closed", true).put("proved", true),
+                    () -> new JSONObject().put("applicable", false),
+                    closure -> FieldOracle.writeOwnerCompletion(proved, closure,
+                        isolationProven(), provedCleanup),
+                    () -> new JSONObject().put("closed", true),
+                    true, false, provedCleanup));
+        } catch (Throwable error) {
+            provedError = error;
+        }
+        JSONObject provedManifest = ownerManifest(proved);
+        outcome.put("failedBodyStillCompletes", provedError == bodyFailure
+            && provedCleanup.optBoolean("ownerComplete")
+            && provedManifest != null && provedManifest.optBoolean("complete"));
+
+        // (c) real refusal: an unproved closure publishes nothing.
+        StateSessionOracle.ScratchContext refusedScratch = boundScratch(cacheDir, "refused-owner");
+        File refusedOwner = new File(refusedScratch.root, OWNER);
+        String refusedBefore = sha(refusedOwner);
+        JSONObject refusedCleanup = new JSONObject().put("preferencesFenced", true);
+        Throwable refusedError = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("recorded", 1),
+                () -> FieldOracle.runOuterSequence(
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("serverClosed", true)
+                        .put("openConnectionsAfterClose", 0),
+                    () -> guardDomain(guardSource("healthy", new ArrayList<>())),
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("closed", false).put("proved", false),
+                    () -> new JSONObject().put("applicable", false),
+                    closure -> FieldOracle.writeOwnerCompletion(refusedScratch, closure,
+                        isolationProven(), refusedCleanup),
+                    () -> new JSONObject().put("closed", true),
+                    true, false, refusedCleanup));
+        } catch (Throwable error) {
+            refusedError = error;
+        }
+        outcome.put("refusalNoPublication", refusedError != null
+            && !refusedCleanup.optBoolean("ownerComplete", false)
+            && !refusedCleanup.has("ownerRunId")
+            && refusedBefore.equals(sha(refusedOwner))
+            && !ownerManifest(refusedScratch).optBoolean("complete", false));
+
+        // (d) the real Windows existing-target write exception joined through the
+        // outer result: the old manifest stays incomplete and unchanged.
+        StateSessionOracle.ScratchContext existing = boundScratch(cacheDir, "existing-owner");
+        File existingOwner = new File(existing.root, OWNER);
+        String existingBefore = sha(existingOwner);
+        JSONObject existingCleanup = new JSONObject().put("preferencesFenced", true);
+        Throwable existingError = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> new JSONObject().put("recorded", 1),
+                () -> FieldOracle.runOuterSequence(
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("serverClosed", true)
+                        .put("openConnectionsAfterClose", 0),
+                    () -> guardDomain(guardSource("healthy", new ArrayList<>())),
+                    () -> new JSONObject().put("closed", true),
+                    () -> new JSONObject().put("closed", true).put("proved", true),
+                    () -> new JSONObject().put("applicable", false),
+                    closure -> FieldOracle.writeOwnerCompletion(existing, closure,
+                        isolationProven(), existingCleanup),
+                    () -> new JSONObject().put("closed", true),
+                    true, false, existingCleanup));
+        } catch (Throwable error) {
+            existingError = error;
+        }
+        boolean writeErrorJoined = chainHasText(existingError,
+            "cannot publish the owner manifest");
+        outcome.put("existingWriteErrorJoined", writeErrorJoined
+            && existingBefore.equals(sha(existingOwner))
+            && !ownerManifest(existing).optBoolean("complete", false)
+            && !existingCleanup.has("ownerRunId"));
+        outcome.put("existingManifestSha256", sha(existingOwner));
+        outcome.put("existingErrorChain", existingError == null ? "none"
+            : FieldOracle.describeChain(existingError));
+
+        // (e) the seven adapter refusals through the production wrapper.
         String[] refusals = {"released", "posted", "completed", "blocked", "releaseThrows",
             "fenceThrows", "receiptThrows"};
         JSONArray rows = new JSONArray();
         boolean refusedOk = true;
         for (String refusal : refusals) {
+            StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "guard-" + refusal);
+            JSONObject cleanup = new JSONObject().put("preferencesFenced", true);
             List<String> order = new ArrayList<>();
-            JSONObject cleanup = new JSONObject();
             Throwable thrown = null;
-            JSONObject receipt = null;
             try {
-                FieldOracle.runWithCleanup(() -> FieldOracle.runOuterSequence(
-                    () -> new JSONObject().put("closed", true),
-                    () -> new JSONObject().put("serverClosed", true)
-                        .put("openConnectionsAfterClose", 0),
-                    () -> {
-                        // The actual guard adapter, joined to the outer sequence.
-                        return FieldOracle.releaseGuard(new FieldOracle.GuardSource() {
-                            @Override public JSONObject released() {
-                                order.add("release");
-                                if ("releaseThrows".equals(refusal)) {
-                                    throw new IllegalStateException("RELEASE_THROWN");
-                                }
-                                return "released".equals(refusal)
-                                    ? new JSONObject().put("closed", false)
-                                    : new JSONObject().put("closed", true);
-                            }
-                            @Override public JSONObject fence() {
-                                order.add("fence");
-                                if ("fenceThrows".equals(refusal)) {
-                                    throw new IllegalStateException("FENCE_THROWN");
-                                }
-                                if ("posted".equals(refusal)) {
-                                    return new JSONObject().put("posted", false)
-                                        .put("completed", true);
-                                }
-                                if ("completed".equals(refusal)) {
-                                    return new JSONObject().put("posted", true)
-                                        .put("completed", false);
-                                }
-                                return new JSONObject().put("posted", true)
-                                    .put("completed", true);
-                            }
-                            @Override public JSONObject receipt() {
-                                order.add("receipt");
-                                if ("receiptThrows".equals(refusal)) {
-                                    throw new IllegalStateException("RECEIPT_THROWN");
-                                }
-                                return "blocked".equals(refusal)
-                                    ? new JSONObject().put("blockedDeliveries", 2)
-                                    : new JSONObject().put("blockedDeliveries", 0);
-                            }
-                        });
-                    },
-                    () -> { order.add("database"); return new JSONObject().put("closed", true); },
-                    () -> { order.add("terminal"); return new JSONObject().put("closed", true)
-                        .put("proved", true); },
-                    () -> { order.add("preferences"); return new JSONObject().put("applicable", false); },
-                    proved -> { order.add("owner"); return new JSONObject().put("closed", proved)
-                        .put("ownerComplete", proved); },
-                    () -> { order.add("final-report"); return new JSONObject().put("closed", true); },
-                    true, false, cleanup), () -> new JSONObject().put("closed", true));
+                FieldOracle.runWithCleanup(
+                    () -> new JSONObject().put("recorded", 1),
+                    () -> FieldOracle.runOuterSequence(
+                        () -> { order.add("report"); return new JSONObject().put("closed", true); },
+                        () -> { order.add("replay");
+                            return new JSONObject().put("serverClosed", true)
+                                .put("openConnectionsAfterClose", 0); },
+                        () -> { order.add("guard");
+                            return guardDomain(guardSource(refusal, order)); },
+                        () -> { order.add("database");
+                            return new JSONObject().put("closed", true); },
+                        () -> { order.add("terminal");
+                            return new JSONObject().put("closed", true).put("proved", true); },
+                        () -> { order.add("preferences");
+                            return new JSONObject().put("applicable", false); },
+                        closure -> { order.add("owner");
+                            return FieldOracle.writeOwnerCompletion(scratch, closure,
+                                isolationProven(), cleanup); },
+                        () -> { order.add("final-report");
+                            return new JSONObject().put("closed", true); },
+                        true, false, cleanup));
             } catch (Throwable error) {
                 thrown = error;
             }
-            boolean later = order.contains("database") && order.contains("terminal")
-                && order.contains("preferences") && order.contains("owner")
-                && order.contains("final-report");
-            // The adapter order up to the point that actually threw.
             List<String> expectedPrefix = "releaseThrows".equals(refusal)
                 ? Arrays.asList("release")
                 : "fenceThrows".equals(refusal)
                     ? Arrays.asList("release", "fence")
                     : Arrays.asList("release", "fence", "receipt");
+            boolean later = order.contains("database") && order.contains("terminal")
+                && order.contains("preferences") && order.contains("owner")
+                && order.contains("final-report");
             boolean ok = thrown != null && later
-                && order.subList(0, expectedPrefix.size()).equals(expectedPrefix)
+                && order.subList(3, 3 + expectedPrefix.size()).equals(expectedPrefix)
                 && !cleanup.optBoolean("ownerComplete", false)
-                && !cleanup.has("ownerRunId");
+                && !cleanup.has("ownerRunId")
+                && !ownerManifest(scratch).optBoolean("complete", false);
             refusedOk &= ok;
             rows.put(new JSONObject().put("refusal", refusal).put("ok", ok)
                 .put("order", new JSONArray(order)));
         }
         outcome.put("guardRefusals", refusedOk);
         outcome.put("guardRows", rows);
-        // The real owner policy and writer joined to the outer outcome.
-        StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "composed-owner");
-        JSONObject ownerCleanup = new JSONObject().put("preferencesFenced", true);
-        JSONObject refused = FieldOracle.writeOwnerCompletion(scratch, false,
-            isolationProven(), ownerCleanup);
-        outcome.put("ownerRefusedNoSuccess", !refused.optBoolean("ownerComplete", true)
-            && !ownerCleanup.has("ownerRunId"));
-        File ownerTarget = new File(scratch.root, OWNER);
-        String beforeOwner = sha(ownerTarget);
-        JSONObject errorCleanup = new JSONObject().put("preferencesFenced", true);
-        deleteTree(scratch.root);
-        JSONObject missing = FieldOracle.writeOwnerCompletion(scratch, true,
-            isolationProven(), errorCleanup);
-        outcome.put("ownerErrorNoSuccess", !missing.optBoolean("ownerComplete", true)
-            && !errorCleanup.has("ownerRunId") && !scratch.root.exists());
-        outcome.put("ownerBeforeSha256", beforeOwner);
+
+        // (f) each remaining throwing outer domain, later domains still attempted.
+        String[] domains = {"database", "terminal", "preferences", "owner", "final-report"};
+        JSONArray domainRows = new JSONArray();
+        boolean domainsOk = true;
+        for (String domain : domains) {
+            StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "domain-" + domain);
+            JSONObject cleanup = new JSONObject().put("preferencesFenced", true);
+            List<String> order = new ArrayList<>();
+            RuntimeException domainFailure =
+                new IllegalStateException("OUTER_" + domain.toUpperCase(java.util.Locale.US) + "_FAILURE");
+            Throwable thrown = null;
+            try {
+                FieldOracle.runWithCleanup(
+                    () -> new JSONObject().put("recorded", 1),
+                    () -> FieldOracle.runOuterSequence(
+                        () -> { order.add("report"); return new JSONObject().put("closed", true); },
+                        () -> { order.add("replay");
+                            return new JSONObject().put("serverClosed", true)
+                                .put("openConnectionsAfterClose", 0); },
+                        () -> { order.add("guard");
+                            return guardDomain(guardSource("healthy", order)); },
+                        () -> { order.add("database");
+                            if ("database".equals(domain)) throw domainFailure;
+                            return new JSONObject().put("closed", true); },
+                        () -> { order.add("terminal");
+                            if ("terminal".equals(domain)) throw domainFailure;
+                            return new JSONObject().put("closed", true).put("proved", true); },
+                        () -> { order.add("preferences");
+                            if ("preferences".equals(domain)) throw domainFailure;
+                            return new JSONObject().put("applicable", false); },
+                        closure -> { order.add("owner");
+                            if ("owner".equals(domain)) throw domainFailure;
+                            return FieldOracle.writeOwnerCompletion(scratch, closure,
+                                isolationProven(), cleanup); },
+                        () -> { order.add("final-report");
+                            if ("final-report".equals(domain)) throw domainFailure;
+                            return new JSONObject().put("closed", true); },
+                        true, false, cleanup));
+            } catch (Throwable error) {
+                thrown = error;
+            }
+            boolean retained = chainHasInstance(thrown, domainFailure);
+            int index = order.indexOf(domain);
+            boolean later = index >= 0
+                && (order.size() > index + 1 || "final-report".equals(domain));
+            boolean ok = thrown != null && retained && later
+                && !cleanup.optBoolean("ownerComplete", false);
+            domainsOk &= ok;
+            domainRows.put(new JSONObject().put("domain", domain).put("ok", ok)
+                .put("order", new JSONArray(order)));
+        }
+        outcome.put("throwingDomains", domainsOk);
+        outcome.put("domainRows", domainRows);
         outcome.put("controlledOs", "Context/ContextWrapper/Process/Log substituted;"
             + " pid 4242; preference commit controlled");
     } finally {
         deleteTree(cacheDir);
     }
     result.put("composedOuter", outcome);
-    require(outcome.optBoolean("guardRefusals")
-        && outcome.optBoolean("ownerRefusedNoSuccess")
-        && outcome.optBoolean("ownerErrorNoSuccess"),
-        "a failed guard or owner must never yield completion: " + outcome);
+    require(outcome.optBoolean("healthyCompletes")
+        && outcome.optBoolean("healthyCreationOnly")
+        && outcome.optBoolean("failedBodyStillCompletes")
+        && outcome.optBoolean("refusalNoPublication")
+        && outcome.optBoolean("existingWriteErrorJoined")
+        && outcome.optBoolean("guardRefusals")
+        && outcome.optBoolean("throwingDomains"),
+        "the real guard and owner joins must keep their dispositions: " + outcome);
     return outcome;
 }
+
 
     public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject().put("control", args[0]);
@@ -4989,11 +5460,27 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 repo, java, android, jar, Path(directory))
             outer = self._owned_control(repo, java, classpath, 'composedOuter')
             outer = outer['composedOuter']
+            # Healthy: the real guard wrapper validates and the real writer
+            # publishes through the approved creation-only construction.
+            self.assertTrue(outer['healthyCompletes'])
+            self.assertTrue(outer['healthyCreationOnly'])
+            self.assertEqual(len(outer['healthyInitialSha256']), 64)
+            self.assertEqual(len(outer['healthyManifestSha256']), 64)
+            self.assertIn('"complete": true', outer['healthyManifestText'])
+            # A failed body with independently proved resources still completes.
+            self.assertTrue(outer['failedBodyStillCompletes'])
+            # Real refusal publishes nothing; the real Windows existing-target
+            # write exception is joined through the outer result.
+            self.assertTrue(outer['refusalNoPublication'])
+            self.assertTrue(outer['existingWriteErrorJoined'])
+            self.assertEqual(len(outer['existingManifestSha256']), 64)
+            self.assertIn('cannot publish the owner manifest', outer['existingErrorChain'])
+            # Seven adapter refusals through the production wrapper.
             self.assertTrue(outer['guardRefusals'])
-            self.assertTrue(outer['ownerRefusedNoSuccess'])
-            self.assertTrue(outer['ownerErrorNoSuccess'])
             self.assertEqual(len(outer['guardRows']), 7)
-            self.assertEqual(len(outer['ownerBeforeSha256']), 64)
+            # Each remaining throwing outer domain, later domains still attempted.
+            self.assertTrue(outer['throwingDomains'])
+            self.assertEqual(len(outer['domainRows']), 5)
             self.assertIn('controlled', outer['controlledOs'])
 
 class SelectedReceiptTest(unittest.TestCase):
