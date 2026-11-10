@@ -596,11 +596,14 @@ public final class FieldOracle extends Instrumentation {
                     public void before(JSONObject entry, String id) throws Exception {
                         // The selected pre-case boundary: a failed precondition stops
                         // the run instead of being recorded as a native case error.
+                        // The previous case's terminal proof is invalidated before the
+                        // query, so a nonempty or unqueryable Job can never leave a
+                        // stale proof for the later owner gate.
                         if (selectedReference) {
+                            terminalProved = false;
                             if (!selectedChildren().isEmpty()) {
                                 throw new IllegalStateException("DEFAULT Job active before case");
                             }
-                            terminalProved = false;
                         }
                     }
 

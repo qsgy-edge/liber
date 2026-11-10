@@ -3386,6 +3386,268 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
 }
 '''
 
+PRECHECK_TERMINAL_FIXTURE = r'''
+package io.liber.oracle.fields;
+
+import io.liber.oracle.nested.StateSessionOracle;
+import java.io.File;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * The actual collector selected pre-case boundary and the actual outer cleanup.
+ *
+ * <p>Only native and OS inputs are controlled: the prior collector terminal flag,
+ * the Job/sequence/database reflection values, the after-case quiescence effect
+ * and a no-op Instrumentation constructor. The before hook and outer cleanup are
+ * the real ones, and the Scratch context is really constructed and bound.
+ */
+public final class PrecheckTerminalFixture {
+    static Object get(FieldOracle actor, String name) throws Exception {
+        Field field = FieldOracle.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(actor);
+    }
+
+    static void set(FieldOracle actor, String name, Object value) throws Exception {
+        Field field = FieldOracle.class.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(actor, value);
+    }
+
+    /** Controlled DEFAULT Job children with a real active/completed/children shape. */
+    public static final class Job {
+        final FieldOracle actor;
+        final String mode;
+        final Set<Object> children = new LinkedHashSet<>();
+        final RuntimeException failure = new IllegalStateException("ACTUAL_JOB_QUERY_FAILURE");
+        int queries;
+        boolean sampledProof;
+
+        Job(FieldOracle actor, String mode) {
+            this.actor = actor;
+            this.mode = mode;
+            if ("nonempty".equals(mode)) children.add(new Object());
+        }
+
+        public boolean isActive() throws Exception {
+            queries++;
+            sampledProof = (Boolean) get(actor, "terminalProved");
+            if ("query-error".equals(mode)) throw failure;
+            return true;
+        }
+
+        public boolean isCompleted() {
+            return false;
+        }
+
+        public Sequence getChildren() {
+            return new Sequence(children);
+        }
+    }
+
+    /** The controlled child sequence. */
+    public static final class Sequence {
+        final Set<Object> values;
+
+        Sequence(Set<Object> values) {
+            this.values = values;
+        }
+
+        public Iterator<Object> iterator() {
+            return values.iterator();
+        }
+    }
+
+    /** The controlled database close callback. */
+    public static final class Database {
+        boolean closed;
+
+        public void close() {
+            closed = true;
+        }
+    }
+
+    /** Discovers the real anonymous before implementation by shape, not ordinal. */
+    static FieldOracle.CaseStep actualBefore(FieldOracle actor) throws Exception {
+        File classes = new File(FieldOracle.class.getProtectionDomain()
+            .getCodeSource().getLocation().toURI());
+        File directory = new File(classes, "io/liber/oracle/fields");
+        Class<?> found = null;
+        for (File file : directory.listFiles()) {
+            String name = file.getName();
+            if (!name.startsWith("FieldOracle$") || !name.endsWith(".class")) continue;
+            Class<?> candidate = Class.forName("io.liber.oracle.fields."
+                + name.substring(0, name.length() - 6), false, FieldOracle.class.getClassLoader());
+            if (!candidate.isAnonymousClass()
+                    || !FieldOracle.CaseStep.class.isAssignableFrom(candidate)) continue;
+            try {
+                candidate.getDeclaredMethod("before", JSONObject.class, String.class);
+            } catch (NoSuchMethodException ignored) {
+                continue;
+            }
+            if (found != null) throw new AssertionError("ambiguous real before implementation");
+            found = candidate;
+        }
+        if (found == null) throw new AssertionError("real collector before implementation missing");
+        Constructor<?> constructor = found.getDeclaredConstructor(
+            FieldOracle.class, AtomicReference.class);
+        constructor.setAccessible(true);
+        return (FieldOracle.CaseStep) constructor.newInstance(actor,
+            new AtomicReference<JSONObject>());
+    }
+
+    static Throwable unwrap(InvocationTargetException error) {
+        return error.getCause() == null ? error : error.getCause();
+    }
+
+    static JSONObject run(String mode, File cacheDir) throws Exception {
+        cacheDir.mkdirs();
+        FieldOracle actor = new FieldOracle();
+        boolean selected = !"nonselected".equals(mode);
+        set(actor, "selectedReference", selected);
+        set(actor, "newFamily", true);
+        // The initial setup or a previous successful case normally establishes this.
+        set(actor, "terminalProved", true);
+        Job job = new Job(actor, mode);
+        set(actor, "rootJob", job);
+        set(actor, "jobActive", Job.class.getMethod("isActive"));
+        set(actor, "jobCompleted", Job.class.getMethod("isCompleted"));
+        set(actor, "jobChildren", Job.class.getMethod("getChildren"));
+        set(actor, "sequenceIterator", Sequence.class.getMethod("iterator"));
+        Database database = new Database();
+        set(actor, "selectedDatabase", database);
+        StateSessionOracle.ScratchContext scratch =
+            OwnedCleanupFixture.boundScratch(cacheDir, "precheck-root");
+        set(actor, "scratch", scratch);
+        JSONObject isolation = (JSONObject) get(actor, "isolation");
+        JSONObject proven = OwnedCleanupFixture.isolationProven();
+        Iterator<String> keys = proven.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            isolation.put(key, proven.get(key));
+        }
+        File owner = new File(scratch.root, OwnedCleanupFixture.OWNER);
+        String initialOwnerText = new String(Files.readAllBytes(owner.toPath()),
+            StandardCharsets.UTF_8);
+        // Approved host creation-only publication precondition, not Android replacement.
+        if (!owner.delete()) throw new AssertionError("cannot remove own initial fixture manifest");
+        JSONObject corpus = new JSONObject().put("origin", "http://127.0.0.1:0")
+            .put("cases", new JSONArray());
+        set(actor, "corpus", corpus);
+        JSONObject cleanup = (JSONObject) get(actor, "cleanup");
+        File reportFile = new File(scratch.root, "host-report.json");
+        set(actor, "output", reportFile);
+        set(actor, "report", new JSONObject().put("fixtureId", "precheck-terminal-fixture")
+            .put("cleanup", cleanup));
+        Class<?> replayClass = Class.forName("io.liber.oracle.fields.FieldOracle$FieldReplay");
+        Constructor<?> replayConstructor = replayClass.getDeclaredConstructor(JSONObject.class,
+            JSONArray.class, JSONArray.class, JSONArray.class, JSONArray.class,
+            AtomicReference.class, boolean.class);
+        replayConstructor.setAccessible(true);
+        Object replay = replayConstructor.newInstance(corpus, new JSONArray(), new JSONArray(),
+            new JSONArray(), new JSONArray(), new AtomicReference<String>("precheck"), true);
+        set(actor, "replay", replay);
+        Method start = replayClass.getDeclaredMethod("start");
+        start.setAccessible(true);
+        start.invoke(replay);
+        FieldOracle.CaseStep before = actualBefore(actor);
+        Method outer = FieldOracle.class.getDeclaredMethod("outerCleanup");
+        outer.setAccessible(true);
+        int[] driven = {0};
+        int[] after = {0};
+        boolean[] afterBefore = {true};
+        Throwable thrown = null;
+        try {
+            FieldOracle.runWithCleanup(
+                () -> FieldOracle.runDeclaredCases(
+                    new JSONArray().put(new JSONObject().put("id", "precheck-case")),
+                    new FieldOracle.CaseStep() {
+                        @Override
+                        public void before(JSONObject entry, String id) throws Exception {
+                            before.before(entry, id);
+                            afterBefore[0] = (Boolean) get(actor, "terminalProved");
+                        }
+
+                        @Override
+                        public void drive(JSONObject entry, String id) {
+                            driven[0]++;
+                        }
+                    },
+                    id -> {
+                        after[0]++;
+                        set(actor, "terminalProved", true);
+                    },
+                    new JSONObject(), new JSONArray(), new JSONArray(), new AtomicReference<>(),
+                    new AtomicReference<>("setup"), true, false),
+                () -> {
+                    try {
+                        return (JSONObject) outer.invoke(actor);
+                    } catch (InvocationTargetException error) {
+                        Throwable cause = unwrap(error);
+                        if (cause instanceof Exception) throw (Exception) cause;
+                        throw new IllegalStateException(cause);
+                    }
+                });
+        } catch (Throwable error) {
+            thrown = error;
+        }
+        JSONObject published = owner.isFile()
+            ? new JSONObject(new String(Files.readAllBytes(owner.toPath()),
+                StandardCharsets.UTF_8)) : null;
+        boolean fault = "nonempty".equals(mode) || "query-error".equals(mode);
+        boolean expectation = fault
+            ? thrown != null && driven[0] == 0 && after[0] == 0
+                && !(Boolean) get(actor, "terminalProved")
+                && !cleanup.optBoolean("ownerComplete", false)
+                && !cleanup.has("ownerRunId") && published == null
+            : thrown == null && driven[0] == 1 && after[0] == 1
+                && cleanup.optBoolean("ownerComplete")
+                && published != null && published.optBoolean("complete");
+        return new JSONObject().put("mode", mode).put("expectedBehavior", expectation)
+            .put("nativeQueryCalls", job.queries).put("proofAtQuery", job.sampledProof)
+            .put("proofAfterPrecheckOnSuccess", afterBefore[0])
+            .put("terminalProofAfterCleanup", (Boolean) get(actor, "terminalProved"))
+            .put("driven", driven[0]).put("after", after[0])
+            .put("databaseClosed", database.closed).put("cleanup", cleanup)
+            .put("initialOwnerText", initialOwnerText)
+            .put("publishedOwner", published == null ? JSONObject.NULL : published)
+            .put("reportText", reportFile.isFile()
+                ? new String(Files.readAllBytes(reportFile.toPath()), StandardCharsets.UTF_8)
+                : "absent")
+            .put("errorChain", thrown == null ? "none" : FieldOracle.describeChain(thrown));
+    }
+
+    public static void main(String[] args) throws Exception {
+        JSONArray rows = new JSONArray();
+        int failed = 0;
+        for (String mode : Arrays.asList("healthy", "nonempty", "query-error", "nonselected")) {
+            JSONObject row = run(mode, new File(args[0], mode));
+            if (!row.getBoolean("expectedBehavior")) failed++;
+            rows.put(row);
+        }
+        System.out.println(new JSONObject().put("rows", rows).put("expectationsFailed", failed)
+            .put("scope", "Actual unchanged collector CaseStep.before and actual outerCleanup/owner"
+                + " writer; controlled no-op Instrumentation constructor, native Job/DB inputs, prior"
+                + " collector flag and after-case quiescence effect. Real Scratch bind/IO, no private"
+                + " Scratch ownership mutation. Own loopback server and creation-only manifest"
+                + " publication; NOT Android/default coroutine execution."));
+        if (failed != 0) throw new AssertionError("precheck owner expectations failed: " + failed);
+    }
+}
+'''
+
 REPLAY_FIXTURE = r'''
 package io.liber.oracle.fields;
 
@@ -5708,6 +5970,93 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertTrue(outer['throwingDomains'])
             self.assertEqual(len(outer['domainRows']), 5)
             self.assertIn('controlled', outer['controlledOs'])
+
+    def test_the_actual_precheck_terminal_owner_controls_pass(self):
+        """The actual selected precheck terminal flag and the actual owner writer."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-precheck-terminal-') as directory:
+            root = Path(directory)
+            classpath = self._owned_cleanup_classpath(repo, java, android, jar, root)
+            # The SDK Instrumentation constructor is a throwing stub on the JVM;
+            # only a no-op constructor is supplied, with no lifecycle simulation.
+            overlay = root / 'overlay-classes'
+            overlay.mkdir()
+            overlay_source = root / 'overlay-src' / 'android' / 'app' / 'Instrumentation.java'
+            overlay_source.parent.mkdir(parents=True)
+            overlay_source.write_text(
+                'package android.app; public class Instrumentation {'
+                ' public Instrumentation() {} }\n', encoding='utf-8')
+            overlay_compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-encoding', 'UTF-8', '-cp', classpath, '-d', str(overlay),
+                 str(overlay_source)], repo)
+            self.assertEqual(overlay_compiled.returncode, 0,
+                             overlay_compiled.stderr.decode(errors='replace'))
+            fixture = root / 'PrecheckTerminalFixture.java'
+            fixture.write_text(PRECHECK_TERMINAL_FIXTURE, encoding='utf-8')
+            fixture_classes = root / 'fixture-classes'
+            fixture_classes.mkdir()
+            classpath = os.pathsep.join([str(overlay), classpath])
+            fixture_compiled = self._run(
+                [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                 '-encoding', 'UTF-8', '-cp', classpath, '-d', str(fixture_classes),
+                 str(fixture)], repo)
+            self.assertEqual(fixture_compiled.returncode, 0,
+                             fixture_compiled.stderr.decode(errors='replace'))
+            run = self._run(
+                [str(java / 'bin' / 'java.exe'), '-cp',
+                 os.pathsep.join([str(fixture_classes), classpath]),
+                 'io.liber.oracle.fields.PrecheckTerminalFixture',
+                 str(root / 'owned-files')], repo)
+            stdout = run.stdout.decode(errors='replace').strip()
+            self.assertEqual(run.returncode, 0,
+                             stdout + run.stderr.decode(errors='replace'))
+            result = json.loads(stdout.splitlines()[-1])
+            self.assertEqual(result['expectationsFailed'], 0)
+            rows = {row['mode']: row for row in result['rows']}
+            self.assertEqual(sorted(rows),
+                             ['healthy', 'nonempty', 'nonselected', 'query-error'])
+            # Healthy selected: the precheck passes, the case runs and the real
+            # owner writer publishes a complete manifest.
+            healthy = rows['healthy']
+            self.assertTrue(healthy['expectedBehavior'])
+            self.assertEqual(healthy['driven'], 1)
+            self.assertEqual(healthy['after'], 1)
+            self.assertTrue(healthy['cleanup']['ownerComplete'])
+            self.assertTrue(healthy['publishedOwner']['complete'])
+            self.assertIn('"complete": true', healthy['publishedOwner'] and
+                          json.dumps(healthy['publishedOwner']))
+            # Both fault rows: the original error escapes, nothing is driven or
+            # after-cased, the stale proof is cleared and no owner is published.
+            for mode in ('nonempty', 'query-error'):
+                row = rows[mode]
+                self.assertTrue(row['expectedBehavior'], mode)
+                self.assertEqual(row['driven'], 0, mode)
+                self.assertEqual(row['after'], 0, mode)
+                self.assertFalse(row['terminalProofAfterCleanup'], mode)
+                self.assertFalse(row['cleanup'].get('ownerComplete', False), mode)
+                self.assertNotIn('ownerRunId', row['cleanup'], mode)
+                self.assertIsNone(row['publishedOwner'], mode)
+                self.assertNotEqual(row['errorChain'], 'none', mode)
+            # The query samples the flag AFTER invalidation, which is the ordering
+            # this control exists to pin: the stale proof is already cleared when
+            # the real precondition query runs.
+            self.assertFalse(rows['nonempty']['proofAtQuery'])
+            self.assertFalse(rows['query-error']['proofAtQuery'])
+            self.assertIn('ACTUAL_JOB_QUERY_FAILURE', rows['query-error']['errorChain'])
+            self.assertIn('DEFAULT Job active before case', rows['nonempty']['errorChain'])
+            # The real database close and the real report still ran on the faults.
+            self.assertTrue(rows['nonempty']['databaseClosed'])
+            self.assertTrue(rows['query-error']['databaseClosed'])
+            # Nonselected never queries the selected children and completes.
+            nonselected = rows['nonselected']
+            self.assertTrue(nonselected['expectedBehavior'])
+            self.assertEqual(nonselected['nativeQueryCalls'], 0)
+            self.assertTrue(nonselected['cleanup']['ownerComplete'])
+            self.assertIn('no private', result['scope'])
 
 class SelectedReceiptTest(unittest.TestCase):
     def test_complete_selected_receipts_and_raw_report_tamper(self):
