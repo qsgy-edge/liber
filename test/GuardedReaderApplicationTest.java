@@ -103,6 +103,13 @@ public final class GuardedReaderApplicationTest {
             case "resource-lifecycle-remove-after": resourceLifecycleRemoveAfter(result); break;
             case "resource-lifecycle-early-close": resourceLifecycleEarlyClose(result); break;
             case "resource-lifecycle-foreign-owner": resourceLifecycleForeignOwner(result); break;
+            case "resource-observer-normal": resourceObserverNormal(result); break;
+            case "resource-observer-acquire-before": resourceObserverAcquireBefore(result); break;
+            case "resource-observer-acquire-after": resourceObserverAcquireAfter(result); break;
+            case "resource-observer-remove-before-retry": resourceObserverRemoveBeforeRetry(result); break;
+            case "resource-observer-remove-after": resourceObserverRemoveAfter(result); break;
+            case "resource-observer-early-close": resourceObserverEarlyClose(result); break;
+            case "resource-cleanup-errors": resourceCleanupErrors(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -1342,6 +1349,248 @@ public final class GuardedReaderApplicationTest {
             .put("unregisterEffects", owner.lifecycleUnregisterEffects);
         require(owner.nativeCallbacks.isEmpty(), "the exact owner removed the callback");
         require(owner.lifecycleUnregisterEffects == 1, "exactly one real removal effect");
+    }
+
+    // --- A3 observer and all-domain ownership -----------------------------
+
+    /** Test-only read/write of the overlay's own public fields. */
+    private static Object observableField(Object target, String name) throws Exception {
+        java.lang.reflect.Field field = target.getClass().getField(name);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    private static void setObservableField(Object target, String name, Object value)
+            throws Exception {
+        java.lang.reflect.Field field = target.getClass().getField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static Object liveObservableForTest() throws Exception {
+        return Class.forName("com.jeremyliao.liveeventbus.LiveEventBus")
+            .getMethod("get", String.class, Class.class)
+            .invoke(null, GuardedReaderApplication.SAVE_CONTENT_TAG, Class.forName("kotlin.Pair"));
+    }
+
+    private static void resourceObserverNormal(JSONObject result) throws Exception {
+        arm();
+        JSONObject begin =
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        boolean tupleExact = io.liber.oracle.nested.BoundaryInspection.observerTupleExact;
+        Object observable = liveObservableForTest();
+        int installed = (Integer) observableField(observable, "observerObserveEffects");
+        deliver("http://book/1", "http://book/1/c1");
+        JSONObject end = GuardedReaderApplication.endSaveObservation(2000);
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        int remaining = ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size();
+        result.put("begin", begin).put("tupleExact", tupleExact).put("installed", installed)
+            .put("end", end).put("release", release).put("remaining", remaining);
+        require(begin.optBoolean("registered"), "the actual begin acknowledged registration");
+        require(tupleExact, "the exact tuple was reserved during the native observe");
+        require(installed == 1, "one real native observation effect");
+        require(end.optInt("events") == 1, "the typed MAIN event was valid");
+        require(remaining == 0, "the native observer registry is empty after release");
+        require(release.optBoolean("closed"), "the resources close honestly");
+        require(!GuardedReaderApplication.captureFailed(), "a clean path must not fail");
+    }
+
+    private static void resourceObserverAcquireBefore(JSONObject result) throws Exception {
+        arm();
+        Object observable = liveObservableForTest();
+        RuntimeException fault = new IllegalStateException("OBSERVER_ACQUIRE_BEFORE",
+            new IllegalArgumentException("OBSERVER_ACQUIRE_BEFORE_NESTED"));
+        fault.addSuppressed(new IllegalStateException("OBSERVER_ACQUIRE_BEFORE_SUPPRESSED"));
+        setObservableField(observable, "observerObserveBeforeEffect", fault);
+        Throwable thrown = faulted(() ->
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1"));
+        boolean tupleExact = io.liber.oracle.nested.BoundaryInspection.observerTupleExact;
+        int effects = (Integer) observableField(observable, "observerObserveEffects");
+        result.put("thrown", thrown != null).put("tupleExact", tupleExact)
+            .put("effects", effects)
+            .put("failures", GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").toString());
+        require(thrown != null, "a before-effect fault must be rethrown");
+        require(tupleExact, "the complete tuple was reserved before the effect");
+        require(effects == 0, "no native observation effect happened");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        String failures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        require(failures.contains("OBSERVER_ACQUIRE_BEFORE"), "the original cause is retained");
+        require(failures.contains("OBSERVER_ACQUIRE_BEFORE_NESTED"), "the nested cause is retained");
+        require(failures.contains("OBSERVER_ACQUIRE_BEFORE_SUPPRESSED"),
+            "the suppressed error is retained");
+        // A second begin must refuse before overwriting the uncertain tuple.
+        setObservableField(observable, "observerObserveBeforeEffect", null);
+        int observesBefore = (Integer) observableField(observable, "observerObserveAttempts");
+        Throwable second = faulted(() ->
+            GuardedReaderApplication.beginSaveObservation("http://book/2", "http://book/2/c1"));
+        int observesAfter = (Integer) observableField(observable, "observerObserveAttempts");
+        result.put("secondRefused", second != null).put("observesBefore", observesBefore)
+            .put("observesAfter", observesAfter);
+        require(second != null, "a second begin must refuse the uncertain observation");
+        require(observesAfter == observesBefore, "the refused begin adds no observe attempt");
+        // The real final absent removal is a no-op acknowledgement.
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("release", release);
+        require(release.optBoolean("closed"),
+            "the real absent no-op acknowledgement closes the owned resource");
+        require(GuardedReaderApplication.captureFailed(),
+            "a closed resource never qualifies a failed capture");
+    }
+
+    private static void resourceObserverAcquireAfter(JSONObject result) throws Exception {
+        arm();
+        Object observable = liveObservableForTest();
+        RuntimeException fault = new IllegalStateException("OBSERVER_ACQUIRE_AFTER");
+        setObservableField(observable, "observerObserveAfterEffect", fault);
+        Throwable thrown = faulted(() ->
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1"));
+        int effects = (Integer) observableField(observable, "observerObserveEffects");
+        int installed = ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size();
+        result.put("thrown", thrown != null).put("effects", effects)
+            .put("installed", installed);
+        require(thrown != null, "an after-effect fault must be rethrown");
+        require(effects == 1, "the native observation really happened before the throw");
+        require(installed == 1, "the native observer is really installed");
+        setObservableField(observable, "observerObserveAfterEffect", null);
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        int remaining = ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size();
+        result.put("release", release).put("remaining", remaining);
+        require(remaining == 0, "the real final release removed the exact observer");
+        require(release.optBoolean("closed"), "the resources honestly close after cleanup");
+        require(GuardedReaderApplication.captureFailed(), "the capture failure stays sticky");
+    }
+
+    private static void resourceObserverRemoveBeforeRetry(JSONObject result) throws Exception {
+        arm();
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        RuntimeException fault = new IllegalStateException("OBSERVER_REMOVE_BEFORE");
+        setObservableField(observable, "observerRemoveBeforeEffect", fault);
+        Throwable thrown = faulted(() ->
+            GuardedReaderApplication.endSaveObservation(2000));
+        int remaining = ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size();
+        result.put("thrown", thrown != null).put("remaining", remaining)
+            .put("failures", GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").toString());
+        require(thrown != null, "a before-effect removal fault must be rethrown");
+        require(remaining == 1, "the native observer is still installed");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // The real final release with the fault still set also fails and retains.
+        JSONObject failedRelease = GuardedReaderApplication.releaseProcessResources();
+        result.put("failedRelease", failedRelease);
+        require(!failedRelease.optBoolean("closed"), "the failed final release is not a closure");
+        require(((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size() == 1,
+            "the native observer is retained");
+        // Clear the fault and retry through the real final release.
+        setObservableField(observable, "observerRemoveBeforeEffect", null);
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        int after = ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size();
+        result.put("retry", retry).put("after", after);
+        require(retry.optBoolean("closed"), "the real retry closes the resource");
+        require(after == 0, "the retry really removed the observer");
+    }
+
+    private static void resourceObserverRemoveAfter(JSONObject result) throws Exception {
+        arm();
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        RuntimeException fault = new IllegalStateException("OBSERVER_REMOVE_AFTER");
+        setObservableField(observable, "observerRemoveAfterEffect", fault);
+        Throwable thrown = faulted(() ->
+            GuardedReaderApplication.endSaveObservation(2000));
+        int remaining = ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size();
+        result.put("thrown", thrown != null).put("remaining", remaining);
+        require(thrown != null, "an after-effect removal fault must be rethrown");
+        require(remaining == 0, "the native observer really went away");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        setObservableField(observable, "observerRemoveAfterEffect", null);
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        int effects = (Integer) observableField(observable, "observerRemoveEffects");
+        result.put("release", release).put("effects", effects);
+        require(release.optBoolean("closed"),
+            "the real absent no-op acknowledgement closes the resource");
+        require(effects == 1, "no second native removal effect");
+    }
+
+    private static void resourceObserverEarlyClose(JSONObject result) throws Exception {
+        arm();
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        JSONObject first = GuardedReaderApplication.endSaveObservation(2000);
+        JSONObject second = GuardedReaderApplication.endSaveObservation(0);
+        int effectsAfterEarly = (Integer) observableField(observable, "observerRemoveEffects");
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        int effectsAfterRelease = (Integer) observableField(observable, "observerRemoveEffects");
+        result.put("first", first).put("second", second)
+            .put("effectsAfterEarly", effectsAfterEarly)
+            .put("effectsAfterRelease", effectsAfterRelease).put("release", release);
+        require(first.optInt("events") == 1, "the typed event was valid");
+        require(second.optBoolean("alreadyClosed"), "the repeat is an acknowledged close");
+        require(effectsAfterEarly == 1, "the early close removed exactly once");
+        require(effectsAfterRelease == 1, "the final release adds no native removal");
+        require(release.optBoolean("closed"), "the resource closes honestly");
+        require(!GuardedReaderApplication.captureFailed(), "a clean path must not fail");
+    }
+
+    private static void resourceCleanupErrors(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object observable = liveObservableForTest();
+        // Three actual owned resources: receiver, lifecycle callback, observer.
+        app.registerReceiver(newReceiver(), new IntentFilter(ACTION), 2);
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks((Application.ActivityLifecycleCallbacks) callback);
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        RuntimeException observerFault = new IllegalStateException("CLEANUP_OBSERVER",
+            new IllegalArgumentException("CLEANUP_OBSERVER_NESTED"));
+        observerFault.addSuppressed(new IllegalStateException("CLEANUP_OBSERVER_SUPPRESSED"));
+        RuntimeException receiverFault = new IllegalStateException("CLEANUP_RECEIVER");
+        RuntimeException lifecycleFault = new IllegalStateException("CLEANUP_LIFECYCLE");
+        setObservableField(observable, "observerRemoveBeforeEffect", observerFault);
+        app.receiverUnregisterBeforeEffect = receiverFault;
+        app.lifecycleUnregisterBeforeEffect = lifecycleFault;
+        JSONObject failed = GuardedReaderApplication.releaseProcessResources();
+        String failures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        result.put("failed", failed).put("failures", failures)
+            .put("observerNative", ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size())
+            .put("receiverNative", app.nativeReceivers.size())
+            .put("lifecycleNative", app.nativeCallbacks.size())
+            .put("receiverAttempts", app.receiverUnregisterAttempts)
+            .put("lifecycleAttempts", app.lifecycleUnregisterAttempts)
+            .put("observerAttempts", (Integer) observableField(observable,
+                "observerRemoveAttempts"));
+        require(!failed.optBoolean("closed"), "faulted cleanup is not a closure");
+        // Every domain was actually attempted despite each failure.
+        require(app.receiverUnregisterAttempts == 1, "the receiver domain was attempted");
+        require(app.lifecycleUnregisterAttempts == 1, "the lifecycle domain was attempted");
+        require((Integer) observableField(observable, "observerRemoveAttempts") == 1, "the observer domain was attempted");
+        require(failures.contains("CLEANUP_OBSERVER"), "the observer cause is retained");
+        require(failures.contains("CLEANUP_OBSERVER_NESTED"), "the nested cause is retained");
+        require(failures.contains("CLEANUP_OBSERVER_SUPPRESSED"),
+            "the suppressed error is retained");
+        require(failures.contains("CLEANUP_RECEIVER"), "the receiver cause is retained");
+        require(failures.contains("CLEANUP_LIFECYCLE"), "the lifecycle cause is retained");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // Clear the faults and retry: all three registries empty via real ACK.
+        setObservableField(observable, "observerRemoveBeforeEffect", null);
+        app.receiverUnregisterBeforeEffect = null;
+        app.lifecycleUnregisterBeforeEffect = null;
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        result.put("retry", retry)
+            .put("observerAfter", ((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).size())
+            .put("receiverAfter", app.nativeReceivers.size())
+            .put("lifecycleAfter", app.nativeCallbacks.size());
+        require(retry.optBoolean("closed"), "the real retry closes all three resources");
+        require(((java.util.Map<?, ?>) observableField(observable, "nativeObservers")).isEmpty(), "the observer is gone");
+        require(app.nativeReceivers.isEmpty(), "the receiver is gone");
+        require(app.nativeCallbacks.isEmpty(), "the lifecycle callback is gone");
+        require(GuardedReaderApplication.captureFailed(), "the capture failure stays sticky");
     }
 
     private static GuardedReaderApplication arm() {

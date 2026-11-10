@@ -937,6 +937,42 @@ public final class BoundaryInspection {
     /** Read-only: the exact armed owner instance, when resolvable. */
     public static volatile Object storedOwner;
 
+    /** The exact observer proxy the native boundary was invoked with. */
+    public static volatile Object invokedObserver;
+
+    /** The exact observable instance the native boundary was invoked on. */
+    public static volatile Object invokedObservable;
+
+    /** Read-only: the guard's reserved observable/proxy/remove Method tuple. */
+    public static volatile Object reservedObservable;
+    public static volatile Object reservedObserver;
+    public static volatile Object reservedRemoveMethod;
+    public static volatile boolean observerTupleExact;
+
+    public static String observerState() {
+        try {
+            Class<?> guard = Class.forName("io.liber.oracle.nested.GuardedReaderApplication");
+            Field observable = guard.getDeclaredField("saveObservable");
+            observable.setAccessible(true);
+            Field observer = guard.getDeclaredField("saveObserver");
+            observer.setAccessible(true);
+            Field remove = guard.getDeclaredField("removeMethod");
+            remove.setAccessible(true);
+            Field observing = guard.getDeclaredField("observing");
+            observing.setAccessible(true);
+            reservedObservable = observable.get(null);
+            reservedObserver = observer.get(null);
+            reservedRemoveMethod = remove.get(null);
+            observerTupleExact = reservedObservable == invokedObservable
+                && reservedObserver == invokedObserver
+                && reservedRemoveMethod != null && (Boolean) observing.get(null);
+            return "tupleExact=" + observerTupleExact
+                + ";observing=" + observing.get(null);
+        } catch (Throwable error) {
+            return "inspection-failed:" + error.getClass().getSimpleName();
+        }
+    }
+
     public static String lifecycleState() {
         try {
             Class<?> guard = Class.forName("io.liber.oracle.nested.GuardedReaderApplication");
@@ -1317,20 +1353,55 @@ final class LiveEventImpl implements Observable<Object> {
 
     // The real registration and removal are main-thread operations, so this
     // boundary refuses an off-main call and exposes an un-marshalled invocation.
+    // Real per-observable native observer registry with independent attempt,
+    // effect and acknowledgement counters, an ordered handle log and faults.
+    public final java.util.IdentityHashMap<Observer<Object>, Boolean> nativeObservers =
+        new java.util.IdentityHashMap<>();
+    public final java.util.List<String> observerEffects = new java.util.ArrayList<>();
+    public int observerObserveAttempts;
+    public int observerObserveEffects;
+    public int observerRemoveAttempts;
+    public int observerRemoveEffects;
+    public RuntimeException observerObserveBeforeEffect;
+    public RuntimeException observerObserveAfterEffect;
+    public RuntimeException observerRemoveBeforeEffect;
+    public RuntimeException observerRemoveAfterEffect;
+    public String observerDuringEffect = "";
+
     @Override public void observeForever(Observer<Object> observer) {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             throw new IllegalStateException("observeForever must run on MAIN");
         }
+        observerObserveAttempts++;
+        observerEffects.add("observe-attempt:" + System.identityHashCode(observer));
+        io.liber.oracle.nested.BoundaryInspection.invokedObserver = observer;
+        io.liber.oracle.nested.BoundaryInspection.invokedObservable = this;
+        observerDuringEffect = io.liber.oracle.nested.BoundaryInspection.observerState();
+        if (observerObserveBeforeEffect != null) throw observerObserveBeforeEffect;
         observeCalls++;
+        nativeObservers.put(observer, Boolean.TRUE);
+        observerObserveEffects++;
+        observerEffects.add("observe-effect:" + System.identityHashCode(observer));
         observers.add(observer);
+        if (observerObserveAfterEffect != null) throw observerObserveAfterEffect;
     }
 
     @Override public void removeObserver(Observer<Object> observer) {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             throw new IllegalStateException("removeObserver must run on MAIN");
         }
-        removeCalls++;
-        observers.remove(observer);
+        observerRemoveAttempts++;
+        observerEffects.add("remove-attempt:" + System.identityHashCode(observer));
+        if (observerRemoveBeforeEffect != null) throw observerRemoveBeforeEffect;
+        // The native contract returns normally for an absent member.
+        boolean present = nativeObservers.remove(observer) != null;
+        if (present) {
+            removeCalls++;
+            observerRemoveEffects++;
+            observerEffects.add("remove-effect:" + System.identityHashCode(observer));
+            observers.remove(observer);
+        }
+        if (observerRemoveAfterEffect != null) throw observerRemoveAfterEffect;
     }
 
     public void resetCounters() {
@@ -5798,6 +5869,13 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'resource-lifecycle-remove-after',
                 'resource-lifecycle-early-close',
                 'resource-lifecycle-foreign-owner',
+                'resource-observer-normal',
+                'resource-observer-acquire-before',
+                'resource-observer-acquire-after',
+                'resource-observer-remove-before-retry',
+                'resource-observer-remove-after',
+                'resource-observer-early-close',
+                'resource-cleanup-errors',
             )
             outcomes = {}
             for control in controls:

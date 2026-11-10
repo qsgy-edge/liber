@@ -238,7 +238,11 @@ public final class GuardedReaderApplication extends Application {
                     : exactOwner.closeObserver(0L);
             } catch (Throwable error) {
                 try {
-                    removalFailures.put("observer: " + error);
+                    // The complete throwable graph, and the capture failure is
+                    // marked while receiver and lifecycle cleanup still run.
+                    String chain = stackTraceOf(error);
+                    removalFailures.put("observer: " + chain);
+                    fail("observer removal failed: " + chain);
                 } catch (Throwable ignored) {
                     // The failure is still counted below.
                 }
@@ -468,7 +472,15 @@ public final class GuardedReaderApplication extends Application {
                 lastTerminal = null;
                 return new JSONObject().put("removed", false).put("reason", "never-registered");
             }
-            remove.invoke(observable, observer);
+            try {
+                remove.invoke(observable, observer);
+            } catch (Throwable error) {
+                // The tuple stays owned: without an acknowledgement the removal is
+                // uncertain, and the complete cause is retained.
+                fail("observer removal failed: " + stackTraceOf(error));
+                throw error instanceof Exception ? (Exception) error
+                    : new IllegalStateException(error);
+            }
             observing = false;
             observerClosed = true;
             if (observation != null) observation.closed = true;
