@@ -218,8 +218,10 @@ public final class GuardedReaderApplicationTest {
         require(refused, "a platform registration failure must be rethrown");
         require(receipt.optInt("successfulRegistrations") == 0,
             "a failed registration must not be counted as successful");
-        require(receipt.optInt("pendingWrappers") == 0,
-            "a failed registration must not leave a wrapper owned");
+        // The handle is reserved before the effect, so a throwing registration
+        // keeps it owned for a real removal instead of losing it.
+        require(receipt.optInt("pendingWrappers") == 1,
+            "a failed registration must retain its reserved wrapper");
     }
 
     private static void foreignUnregisterRefused(JSONObject result) throws Exception {

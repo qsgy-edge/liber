@@ -378,12 +378,20 @@ public final class GuardedReaderApplication extends Application {
             Method remove = observableInterface.getMethod("removeObserver", observerInterface);
             Object observer = Proxy.newProxyInstance(loader,
                 new Class<?>[]{observerInterface}, new SaveEventHandler(observation, loader));
-            observe.invoke(observable, observer);
+            // The complete removal tuple is reserved BEFORE the effect, so a
+            // throwing observeForever cannot lose the handle it may have installed.
             saveObservable = observable;
             saveObserver = observer;
             observeMethod = observe;
             removeMethod = remove;
             observing = true;
+            try {
+                observe.invoke(observable, observer);
+            } catch (Throwable error) {
+                fail("observer registration failed: " + stackTraceOf(error));
+                throw error instanceof Exception ? (Exception) error
+                    : new IllegalStateException(error);
+            }
             return new JSONObject()
                 .put("tag", SAVE_CONTENT_TAG)
                 .put("interface", OBSERVABLE_INTERFACE)
@@ -729,25 +737,28 @@ public final class GuardedReaderApplication extends Application {
             fail(rejection);
             throw new SecurityException("guarded capture refused: " + rejection);
         }
+        BroadcastReceiver wrapper = new GuardedReceiver(receiver);
         synchronized (lock) {
             if (wrappers.containsKey(receiver)) {
                 fail("duplicate registration of the same receiver");
                 throw new SecurityException("guarded capture refused a duplicate registration");
             }
+            // Reserve the exact native mapping and owned wrapper BEFORE the
+            // effect, so a throwing platform call cannot lose the handle.
+            wrappers.put(receiver, wrapper);
+            ownedReceivers.add(wrapper);
         }
-        BroadcastReceiver wrapper = new GuardedReceiver(receiver);
         Intent sticky;
         try {
             sticky = super.registerReceiver(wrapper, filter, flags);
         } catch (Throwable error) {
-            fail("registration failed: " + error);
+            // The handle stays owned: the platform may have registered it.
+            fail("registration failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded registration failed: " + error, error);
         }
         successfulRegistrations.incrementAndGet();
         synchronized (lock) {
-            wrappers.put(receiver, wrapper);
-            ownedReceivers.add(wrapper);
             try {
                 receiverRegistrations.put(new JSONObject()
                     .put("overload", overload)
@@ -856,10 +867,24 @@ public final class GuardedReaderApplication extends Application {
                 + (callback == null ? "null" : callback.getClass().getName()));
             throw new SecurityException("guarded capture refused an unexpected lifecycle callback");
         }
-        super.registerActivityLifecycleCallbacks(callback);
+        // Reserve the exact callback BEFORE the effect, so a throwing platform
+        // call cannot lose the handle.
+        synchronized (lock) {
+            if (ownedCallbacks.contains(callback)) {
+                fail("duplicate registration of the same lifecycle callback");
+                throw new SecurityException("guarded capture refused a duplicate lifecycle");
+            }
+            ownedCallbacks.add(callback);
+        }
+        try {
+            super.registerActivityLifecycleCallbacks(callback);
+        } catch (Throwable error) {
+            fail("lifecycle registration failed: " + stackTraceOf(error));
+            throw error instanceof SecurityException ? (SecurityException) error
+                : new SecurityException("guarded lifecycle registration failed: " + error, error);
+        }
         successfulRegistrations.incrementAndGet();
         synchronized (lock) {
-            ownedCallbacks.add(callback);
             try {
                 lifecycleRegistrations.put(callback.getClass().getName());
             } catch (Throwable ignored) {
