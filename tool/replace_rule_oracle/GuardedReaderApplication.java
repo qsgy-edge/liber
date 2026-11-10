@@ -57,6 +57,9 @@ public final class GuardedReaderApplication extends Application {
     private static volatile ClassLoader targetLoader;
     private static volatile boolean armed;
 
+    /** Set once by the first armed final release; never cleared. */
+    private static volatile boolean closing;
+
     private static final Map<BroadcastReceiver, BroadcastReceiver> wrappers =
         new IdentityHashMap<>();
     private static final List<BroadcastReceiver> ownedReceivers = new ArrayList<>();
@@ -176,6 +179,10 @@ public final class GuardedReaderApplication extends Application {
             throw new SecurityException("the capture guard needs the verified target loader");
         }
         synchronized (lock) {
+            if (closing) {
+                throw new SecurityException(
+                    "the capture guard lifetime is closed; no new arm is admitted");
+            }
             if (armed && owner != null && owner != application) {
                 throw new SecurityException("the capture guard is already armed for another owner");
             }
@@ -208,6 +215,13 @@ public final class GuardedReaderApplication extends Application {
         }
     }
 
+    /** Whether the armed lifetime has crossed its final closing boundary. */
+    private static boolean isClosing() {
+        synchronized (lock) {
+            return closing;
+        }
+    }
+
     /** Answers whether this instance is the exact armed owner. */
     private boolean isOwner() {
         synchronized (lock) {
@@ -224,6 +238,9 @@ public final class GuardedReaderApplication extends Application {
         GuardedReaderApplication exactOwner;
         synchronized (lock) {
             exactOwner = owner;
+            // The first armed release establishes final closing before any
+            // snapshot, so no new acquisition can slip in behind it.
+            if (armed) closing = true;
         }
         JSONArray removalFailures = new JSONArray();
         int removedReceivers = 0;
@@ -369,6 +386,10 @@ public final class GuardedReaderApplication extends Application {
         // identity or live observer is reset.
         final Observation observation;
         synchronized (lock) {
+            if (closing) {
+                throw new IllegalStateException(
+                    "the capture guard lifetime is closed; no new observation is admitted");
+            }
             if (current != null && !current.closed) {
                 throw new IllegalStateException(
                     "a save observation is already pending for another case");
@@ -750,6 +771,11 @@ public final class GuardedReaderApplication extends Application {
     private Intent guardRegister(BroadcastReceiver receiver, IntentFilter filter, int flags,
             String overload) {
         attemptedRegistrations.incrementAndGet();
+        if (isClosing()) {
+            fail("receiver registration after the process closing boundary");
+            throw new SecurityException(
+                "guarded capture refuses a registration after closing");
+        }
         String rejection = rejectionOf(receiver, filter, flags, overload);
         if (rejection != null) {
             fail(rejection);
@@ -818,12 +844,19 @@ public final class GuardedReaderApplication extends Application {
         if (!isApproved(receiver.getClass(), LEB_RECEIVER)) {
             return "unexpected receiver class " + receiver.getClass().getName();
         }
+        // The plain filter class is checked BEFORE any getter runs, so an
+        // unapproved subclass can never execute its own method bodies.
+        if (filter.getClass() != IntentFilter.class) {
+            return "unexpected filter class " + filter.getClass().getName();
+        }
         JSONArray actions = actionsOf(filter);
         if (actions.length() != 1 || !LEB_IPC_ACTION.equals(actions.optString(0))) {
             return "unexpected filter actions " + actions;
         }
         if (filter.countDataTypes() != 0 || filter.countDataSchemes() != 0
-                || filter.countCategories() != 0) {
+                || filter.countCategories() != 0 || filter.countDataAuthorities() != 0
+                || filter.countDataPaths() != 0
+                || filter.countDataSchemeSpecificParts() != 0) {
             return "unexpected filter data or categories";
         }
         if (!"3-arg".equals(overload) || flags != 2) {
@@ -895,6 +928,11 @@ public final class GuardedReaderApplication extends Application {
             throw new SecurityException("this instance is not the armed capture owner");
         }
         attemptedRegistrations.incrementAndGet();
+        if (isClosing()) {
+            fail("lifecycle registration after the process closing boundary");
+            throw new SecurityException(
+                "guarded capture refuses a lifecycle registration after closing");
+        }
         if (callback == null || !isApproved(callback.getClass(), LEB_LIFECYCLE)) {
             fail("unexpected lifecycle callback "
                 + (callback == null ? "null" : callback.getClass().getName()));

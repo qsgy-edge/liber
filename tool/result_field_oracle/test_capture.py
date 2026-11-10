@@ -1217,6 +1217,9 @@ public class IntentFilter {
     private int dataTypes;
     private int dataSchemes;
     private int categories;
+    private int dataAuthorities;
+    private int dataPaths;
+    private int dataSchemeSpecificParts;
 
     public IntentFilter() {}
 
@@ -1235,6 +1238,21 @@ public class IntentFilter {
     public void addCategory(String category) { categories++; }
 
     public void addDataType(String type) { dataTypes++; }
+
+    // Descriptor-verified real SDK dimensions the guard must also exclude.
+    public int countDataAuthorities() { return dataAuthorities; }
+
+    public int countDataPaths() { return dataPaths; }
+
+    public int countDataSchemeSpecificParts() { return dataSchemeSpecificParts; }
+
+    public void addDataAuthority(String host, String port) { dataAuthorities++; }
+
+    public void addDataPath(String path, int type) { dataPaths++; }
+
+    public void addDataSchemeSpecificPart(String value, int type) {
+        dataSchemeSpecificParts++;
+    }
 }
 ''',
     'android/os/Bundle.java': '''package android.os;
