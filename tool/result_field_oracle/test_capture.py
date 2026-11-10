@@ -5552,25 +5552,11 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertIn('tocCountWordsApplied', case_flow['partialFullText'])
             self.assertIn('controlled', case_flow['controlledNative'])
             # The actual end -> validate -> refresh ordering.
-            self.assertTrue(no_refresh['nestedRefreshesOnce'])
-            self.assertTrue(no_refresh['idempotentRefreshesOnce'])
+            self.assertTrue(no_refresh['nestedCloses'])
+            self.assertTrue(no_refresh['idempotentCloses'])
             self.assertTrue(no_refresh['refusedNoRefresh'])
-            self.assertTrue(no_refresh['realEndThrow'])
-            self.assertTrue(no_refresh['refreshThrowRetained'])
-            self.assertTrue(no_refresh['combinedGraph'])
-            self.assertTrue(no_refresh['primaryCloseRestores'])
-            self.assertTrue(no_refresh['fenceJoined'])
+            self.assertTrue(no_refresh['throwingRefreshRetained'])
             self.assertEqual(len(no_refresh['refusedRows']), 4)
-            for row in no_refresh['refusedRows']:
-                self.assertTrue(row['ok'], row['reason'])
-            # The real restore receipt fields are the five the SUT emits.
-            receipt = no_refresh['nestedRestoreReceipt']
-            for field in ('previousPresent', 'committed', 'restored',
-                          'presentAfter', 'observedAfter'):
-                self.assertIn(field, receipt)
-            self.assertTrue(receipt['restored'])
-            self.assertEqual(len(no_refresh['fenceReportSha256']), 64)
-            self.assertIn('FENCE_CASE_PRIMARY', no_refresh['fenceReportText'])
             # The actual process-release / main-fence adapter.
             self.assertTrue(guard['successShape'])
             self.assertTrue(guard['refusedAll'])
@@ -5673,7 +5659,20 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertTrue(refresh['refusedNoRefresh'])
             self.assertTrue(refresh['realEndThrow'])
             self.assertTrue(refresh['refreshThrowRetained'])
+            self.assertTrue(refresh['combinedGraph'])
+            self.assertTrue(refresh['primaryCloseRestores'])
+            self.assertTrue(refresh['fenceJoined'])
             self.assertEqual(len(refresh['refusedRows']), 4)
+            for row in refresh['refusedRows']:
+                self.assertTrue(row['ok'], row['reason'])
+            # The real restore receipt fields are the five the SUT emits.
+            receipt = refresh['nestedRestoreReceipt']
+            for field in ('previousPresent', 'committed', 'restored',
+                          'presentAfter', 'observedAfter'):
+                self.assertIn(field, receipt)
+            self.assertTrue(receipt['restored'])
+            self.assertEqual(len(refresh['fenceReportSha256']), 64)
+            self.assertIn('FENCE_CASE_PRIMARY', refresh['fenceReportText'])
 
     def test_the_actual_composed_outer_guard_owner_controls_pass(self):
         """The actual guard release and owner policy joined to the outer disposition."""
