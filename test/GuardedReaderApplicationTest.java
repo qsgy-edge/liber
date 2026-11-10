@@ -89,6 +89,13 @@ public final class GuardedReaderApplicationTest {
             case "save-wrong-chapter": saveWrongChapter(result); break;
             case "save-receipt-copy": saveReceiptCopy(result); break;
             case "save-stale-after-close": saveStaleAfterClose(result); break;
+            case "resource-receiver-normal": resourceReceiverNormal(result); break;
+            case "resource-receiver-acquire-before": resourceReceiverAcquireBefore(result); break;
+            case "resource-receiver-acquire-after": resourceReceiverAcquireAfter(result); break;
+            case "resource-receiver-remove-before-retry": resourceReceiverRemoveBeforeRetry(result); break;
+            case "resource-receiver-remove-after": resourceReceiverRemoveAfter(result); break;
+            case "resource-receiver-early-close": resourceReceiverEarlyClose(result); break;
+            case "resource-receiver-foreign-owner": resourceReceiverForeignOwner(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -908,6 +915,187 @@ public final class GuardedReaderApplicationTest {
         require(removeCalls() == 2, "each case removed its own observer exactly once");
     }
 
+    // --- A3 receiver resource ownership -----------------------------------
+
+    private static GuardedReaderApplication armedApp() {
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        GuardedReaderApplication.arm(app, loader());
+        return app;
+    }
+
+    private static Object storedWrapper(GuardedReaderApplication app, Object receiver)
+            throws Exception {
+        java.lang.reflect.Field field =
+            GuardedReaderApplication.class.getDeclaredField("wrappers");
+        field.setAccessible(true);
+        return ((java.util.Map<?, ?>) field.get(null)).get(receiver);
+    }
+
+    private static void resourceReceiverNormal(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("wrapperStored", wrapper != null)
+            .put("registerEffects", app.receiverRegisterEffects)
+            .put("unregisterEffects", app.receiverUnregisterEffects)
+            .put("nativeRemaining", app.nativeReceivers.size())
+            .put("release", release);
+        require(wrapper != null, "the exact wrapper must be reserved for the receiver");
+        require(app.receiverRegisterEffects == 1, "one real registration effect");
+        require(app.receiverUnregisterEffects == 1, "one real removal effect");
+        require(app.nativeReceivers.isEmpty(), "the native registry is empty after release");
+        require(release.optBoolean("closed"), "a clean receiver closes honestly");
+        require(!GuardedReaderApplication.captureFailed(), "a clean path must not fail");
+    }
+
+    private static void resourceReceiverAcquireBefore(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        RuntimeException fault = new IllegalStateException("RECEIVER_ACQUIRE_BEFORE",
+            new IllegalArgumentException("RECEIVER_ACQUIRE_BEFORE_NESTED"));
+        fault.addSuppressed(new IllegalStateException("RECEIVER_ACQUIRE_BEFORE_SUPPRESSED"));
+        app.receiverRegisterBeforeEffect = fault;
+        boolean refused = refused(() ->
+            app.registerReceiver(receiver, new IntentFilter(ACTION), 2));
+        JSONObject receipt = GuardedReaderApplication.captureReceipt();
+        result.put("refused", refused).put("during", app.receiverDuringEffect)
+            .put("registerEffects", app.receiverRegisterEffects)
+            .put("nativeRemaining", app.nativeReceivers.size())
+            .put("failures", receipt.getJSONArray("failures").toString());
+        require(refused, "a before-effect fault must be rethrown");
+        // The handle was reserved BEFORE the effect, so it is retained.
+        require(app.receiverDuringEffect.startsWith("wrappers=1"),
+            "the guard must have reserved the wrapper before the effect");
+        require(app.receiverRegisterEffects == 0, "no native registration effect happened");
+        require(app.nativeReceivers.isEmpty(), "the native registry stays empty");
+        require(storedWrapper(app, receiver) != null, "the reserved handle is retained");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        require(receipt.getJSONArray("failures").toString().contains("RECEIVER_ACQUIRE_BEFORE"),
+            "the original cause must be retained");
+        require(receipt.getJSONArray("failures").toString()
+            .contains("RECEIVER_ACQUIRE_BEFORE_NESTED"), "the nested cause must be retained");
+        require(receipt.getJSONArray("failures").toString()
+            .contains("RECEIVER_ACQUIRE_BEFORE_SUPPRESSED"), "the suppressed error is retained");
+    }
+
+    private static void resourceReceiverAcquireAfter(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        RuntimeException fault = new IllegalStateException("RECEIVER_ACQUIRE_AFTER");
+        app.receiverRegisterAfterEffect = fault;
+        boolean refused = refused(() ->
+            app.registerReceiver(receiver, new IntentFilter(ACTION), 2));
+        Object wrapper = storedWrapper(app, receiver);
+        result.put("refused", refused).put("during", app.receiverDuringEffect)
+            .put("registerEffects", app.receiverRegisterEffects)
+            .put("nativeRemaining", app.nativeReceivers.size())
+            .put("wrapperStored", wrapper != null);
+        require(refused, "an after-effect fault must be rethrown");
+        require(app.receiverRegisterEffects == 1, "the native effect really happened");
+        require(app.nativeReceivers.size() == 1, "the native handle is really installed");
+        require(wrapper != null, "the reserved handle is not lost");
+        // A later exact-owner removal really cleans it up.
+        app.receiverRegisterAfterEffect = null;
+        app.unregisterReceiver(receiver);
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("release", release).put("nativeAfter", app.nativeReceivers.size());
+        require(app.nativeReceivers.isEmpty(), "the real removal cleaned the native handle");
+        require(release.optBoolean("closed"), "the resources honestly close after cleanup");
+        require(GuardedReaderApplication.captureFailed(), "the capture failure stays sticky");
+    }
+
+    private static void resourceReceiverRemoveBeforeRetry(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        RuntimeException fault = new IllegalStateException("RECEIVER_REMOVE_BEFORE");
+        app.receiverUnregisterBeforeEffect = fault;
+        boolean refused = faulted(() -> app.unregisterReceiver(receiver)) != null;
+        Object wrapper = storedWrapper(app, receiver);
+        result.put("refused", refused).put("nativeRemaining", app.nativeReceivers.size())
+            .put("wrapperStored", wrapper != null)
+            .put("failures", GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").toString());
+        require(refused, "a before-effect removal fault must be rethrown");
+        require(app.nativeReceivers.size() == 1, "the native handle is still installed");
+        require(wrapper != null, "the guard keeps the handle");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // Clear the fault and retry the same handle.
+        app.receiverUnregisterBeforeEffect = null;
+        app.unregisterReceiver(receiver);
+        result.put("nativeAfterRetry", app.nativeReceivers.size())
+            .put("unregisterEffects", app.receiverUnregisterEffects);
+        require(app.nativeReceivers.isEmpty(), "the retry really removed the handle");
+        require(app.receiverUnregisterEffects == 1, "exactly one real removal effect");
+        require(storedWrapper(app, receiver) == null, "ownership is cleared after the ack");
+    }
+
+    private static void resourceReceiverRemoveAfter(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        RuntimeException fault = new IllegalStateException("RECEIVER_REMOVE_AFTER");
+        app.receiverUnregisterAfterEffect = fault;
+        boolean refused = faulted(() -> app.unregisterReceiver(receiver)) != null;
+        Object wrapper = storedWrapper(app, receiver);
+        result.put("refused", refused).put("nativeRemaining", app.nativeReceivers.size())
+            .put("wrapperStored", wrapper != null);
+        require(refused, "an after-effect removal fault must be rethrown");
+        require(app.nativeReceivers.isEmpty(), "the native handle really went away");
+        require(wrapper != null, "the guard retains uncertain ownership");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // A later unknown-receiver exception is not a successful acknowledgement.
+        app.receiverUnregisterAfterEffect = null;
+        boolean unknown = faulted(() -> app.unregisterReceiver(receiver)) != null;
+        result.put("unknownRejected", unknown)
+            .put("nativeAfter", app.nativeReceivers.size());
+        require(unknown, "the unknown receiver is rejected by the native contract");
+        require(storedWrapper(app, receiver) != null,
+            "uncertain ownership is not cleared by an unknown-receiver rejection");
+    }
+
+    private static void resourceReceiverEarlyClose(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        app.unregisterReceiver(receiver);
+        int afterEarly = app.receiverUnregisterEffects;
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("wrapperStored", wrapper != null).put("afterEarly", afterEarly)
+            .put("afterRelease", app.receiverUnregisterEffects).put("release", release);
+        require(wrapper != null, "the exact wrapper is stored");
+        require(afterEarly == 1, "the early close removed exactly once");
+        require(app.receiverUnregisterEffects == 1, "the final release must not remove twice");
+        require(app.nativeReceivers.isEmpty(), "the native registry is empty");
+    }
+
+    private static void resourceReceiverForeignOwner(JSONObject result) throws Exception {
+        GuardedReaderApplication owner = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        owner.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(owner, receiver);
+        GuardedReaderApplication foreign = new GuardedReaderApplication();
+        int before = owner.receiverUnregisterAttempts;
+        boolean refused = refused(() -> foreign.unregisterReceiver(receiver));
+        int afterForeign = owner.receiverUnregisterAttempts;
+        result.put("refused", refused).put("wrapperStored", wrapper != null)
+            .put("before", before).put("afterForeign", afterForeign);
+        require(wrapper != null, "the real owner stored the wrapper");
+        require(refused, "a foreign owner must be refused");
+        require(afterForeign == before,
+            "the foreign instance must not reach the native delegate");
+        // The stored exact owner still removes the correct wrapper.
+        owner.unregisterReceiver(receiver);
+        result.put("nativeAfter", owner.nativeReceivers.size())
+            .put("unregisterEffects", owner.receiverUnregisterEffects);
+        require(owner.nativeReceivers.isEmpty(),
+            "the exact owner removes the correct wrapper");
+        require(owner.receiverUnregisterEffects == 1, "exactly one real removal effect");
+    }
+
     private static GuardedReaderApplication arm() {
         GuardedReaderApplication app = new GuardedReaderApplication();
         GuardedReaderApplication.arm(app, loader());
@@ -987,6 +1175,16 @@ public final class GuardedReaderApplicationTest {
 
     private interface Refusal {
         void run() throws Exception;
+    }
+
+    /** Runs an action that must fail, and returns the actual throwable. */
+    private static Throwable faulted(Refusal action) {
+        try {
+            action.run();
+            return null;
+        } catch (Throwable error) {
+            return error;
+        }
     }
 
     private static boolean refused(Refusal action) {

@@ -828,6 +828,13 @@ public final class GuardedReaderApplication extends Application {
             super.unregisterReceiver(receiver);
             return;
         }
+        // A foreign instance must be refused before any delegate effect, even
+        // when the handle is really owned by the armed owner.
+        if (!isOwner()) {
+            foreignUnregistrations.incrementAndGet();
+            fail("unregister of a receiver by a foreign owner instance");
+            throw new SecurityException("guarded capture refuses a foreign unregistration");
+        }
         BroadcastReceiver wrapper;
         synchronized (lock) {
             wrapper = wrappers.get(receiver);
@@ -840,7 +847,15 @@ public final class GuardedReaderApplication extends Application {
                 + (receiver == null ? "null" : receiver.getClass().getName()));
             throw new SecurityException("guarded capture refuses a foreign unregistration");
         }
-        super.unregisterReceiver(wrapper);
+        try {
+            super.unregisterReceiver(wrapper);
+        } catch (Throwable error) {
+            // The handle stays owned: without an acknowledgement the removal is
+            // uncertain, and the complete cause is retained.
+            fail("receiver removal failed: " + stackTraceOf(error));
+            throw error instanceof SecurityException ? (SecurityException) error
+                : new SecurityException("guarded receiver removal failed: " + error, error);
+        }
         synchronized (lock) {
             wrappers.remove(receiver);
             ownedReceivers.remove(wrapper);

@@ -768,16 +768,41 @@ public class Application extends Context {
     public RuntimeException registerFailure;
     public RuntimeException unregisterFailure;
 
+    // The real native receiver registry for THIS instance, plus independent
+    // attempt/effect/removal counters and an ordered effect log.
+    public final java.util.IdentityHashMap<BroadcastReceiver, Boolean> nativeReceivers =
+        new java.util.IdentityHashMap<>();
+    public final List<String> receiverEffects = new ArrayList<>();
+    public int receiverRegisterAttempts;
+    public int receiverRegisterEffects;
+    public int receiverUnregisterAttempts;
+    public int receiverUnregisterEffects;
+    public RuntimeException receiverRegisterBeforeEffect;
+    public RuntimeException receiverRegisterAfterEffect;
+    public RuntimeException receiverUnregisterBeforeEffect;
+    public RuntimeException receiverUnregisterAfterEffect;
+
+    /** Test-only inspection: the guard handles seen DURING the boundary. */
+    public String receiverDuringEffect = "";
+
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
         return registerReceiver(receiver, filter, 0);
     }
 
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
+        receiverRegisterAttempts++;
+        receiverEffects.add("register-attempt:" + System.identityHashCode(receiver));
+        receiverDuringEffect = io.liber.oracle.nested.BoundaryInspection.receiverState();
         if (registerFailure != null) throw registerFailure;
+        if (receiverRegisterBeforeEffect != null) throw receiverRegisterBeforeEffect;
         lastReceiver = receiver;
         lastFilter = filter;
         lastFlags = flags;
+        nativeReceivers.put(receiver, Boolean.TRUE);
+        receiverRegisterEffects++;
+        receiverEffects.add("register-effect:" + System.identityHashCode(receiver));
         registered.add(receiver.getClass().getName() + "|" + flags);
+        if (receiverRegisterAfterEffect != null) throw receiverRegisterAfterEffect;
         return null;
     }
 
@@ -792,8 +817,19 @@ public class Application extends Context {
     }
 
     public void unregisterReceiver(BroadcastReceiver receiver) {
+        receiverUnregisterAttempts++;
+        receiverEffects.add("unregister-attempt:" + System.identityHashCode(receiver));
         if (unregisterFailure != null) throw unregisterFailure;
+        if (receiverUnregisterBeforeEffect != null) throw receiverUnregisterBeforeEffect;
+        if (!nativeReceivers.containsKey(receiver)) {
+            // The platform receiver contract: an unknown receiver is rejected.
+            throw new IllegalArgumentException("Receiver not registered: " + receiver);
+        }
+        nativeReceivers.remove(receiver);
+        receiverUnregisterEffects++;
+        receiverEffects.add("unregister-effect:" + System.identityHashCode(receiver));
         unregistered.add(receiver.getClass().getName());
+        if (receiverUnregisterAfterEffect != null) throw receiverUnregisterAfterEffect;
     }
 
     public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
@@ -828,6 +864,35 @@ public class Application extends Context {
         void onActivitySaveInstanceState(Activity activity, android.os.Bundle state);
 
         void onActivityDestroyed(Activity activity);
+    }
+}
+''',
+    'io/liber/oracle/nested/BoundaryInspection.java': '''package io.liber.oracle.nested;
+
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Test-only read-only inspection of the guard's reserved receiver handles.
+ *
+ * <p>It never resets, populates or mutates guard ownership; it only reports what
+ * the guard had already reserved when the boundary was entered.
+ */
+public final class BoundaryInspection {
+    public static String receiverState() {
+        try {
+            Class<?> guard = Class.forName("io.liber.oracle.nested.GuardedReaderApplication");
+            Field map = guard.getDeclaredField("wrappers");
+            map.setAccessible(true);
+            Field list = guard.getDeclaredField("ownedReceivers");
+            list.setAccessible(true);
+            Map<?, ?> wrappers = (Map<?, ?>) map.get(null);
+            List<?> owned = (List<?>) list.get(null);
+            return "wrappers=" + wrappers.size() + ";owned=" + owned.size();
+        } catch (Throwable error) {
+            return "inspection-failed:" + error.getClass().getSimpleName();
+        }
     }
 }
 ''',
@@ -5597,6 +5662,39 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'save-null-payload', 'save-null-book', 'save-null-chapter',
                 'save-wrong-book', 'save-wrong-chapter', 'save-receipt-copy',
                 'save-stale-after-close',
+            )
+            outcomes = {}
+            for control in controls:
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                     'io.liber.oracle.nested.GuardedReaderApplicationTest', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+            self.assertEqual(len(outcomes), len(controls))
+
+    def test_the_actual_resource_ownership_controls_pass(self):
+        """The actual receiver resource acquisition, removal and owner controls."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-resource-') as directory:
+            root = Path(directory)
+            run_cp, sdk_classes, guard_class = self._guard_sdk_classpath(
+                repo, java, android, jar, root)
+            guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
+            self.assertEqual(len(guard_sha), 64)
+            controls = (
+                'resource-receiver-normal',
+                'resource-receiver-acquire-before',
+                'resource-receiver-acquire-after',
+                'resource-receiver-remove-before-retry',
+                'resource-receiver-remove-after',
+                'resource-receiver-early-close',
+                'resource-receiver-foreign-owner',
             )
             outcomes = {}
             for control in controls:
