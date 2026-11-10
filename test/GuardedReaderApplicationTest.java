@@ -971,6 +971,19 @@ public final class GuardedReaderApplicationTest {
         require(app.receiverRegisterEffects == 0, "no native registration effect happened");
         require(app.nativeReceivers.isEmpty(), "the native registry stays empty");
         require(storedWrapper(app, receiver) != null, "the reserved handle is retained");
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 0,
+            "a before-effect throw must not be acknowledged as successful");
+        require(io.liber.oracle.nested.BoundaryInspection.invokedReceiver
+            == storedWrapper(app, receiver),
+            "the boundary saw the exact reserved wrapper as its native argument");
+        require(io.liber.oracle.nested.BoundaryInspection.invokedInstance == app,
+            "the boundary ran on the exact armed instance");
+        require(io.liber.oracle.nested.BoundaryInspection.reservedWrapper
+            == storedWrapper(app, receiver),
+            "the reserved wrapper is the exact stored wrapper");
+        require(io.liber.oracle.nested.BoundaryInspection.wrapperOwned,
+            "the exact wrapper is in the owned list during the boundary");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
         require(receipt.getJSONArray("failures").toString().contains("RECEIVER_ACQUIRE_BEFORE"),
             "the original cause must be retained");
@@ -995,10 +1008,13 @@ public final class GuardedReaderApplicationTest {
         require(refused, "an after-effect fault must be rethrown");
         require(app.receiverRegisterEffects == 1, "the native effect really happened");
         require(app.nativeReceivers.size() == 1, "the native handle is really installed");
+        // A throwing registration must never be acknowledged as successful.
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 0,
+            "a throwing registration must not be acknowledged as successful");
         require(wrapper != null, "the reserved handle is not lost");
-        // A later exact-owner removal really cleans it up.
+        // The real final release uses the saved owned list to remove the exact handle.
         app.receiverRegisterAfterEffect = null;
-        app.unregisterReceiver(receiver);
         JSONObject release = GuardedReaderApplication.releaseProcessResources();
         result.put("release", release).put("nativeAfter", app.nativeReceivers.size());
         require(app.nativeReceivers.isEmpty(), "the real removal cleaned the native handle");
@@ -1078,15 +1094,28 @@ public final class GuardedReaderApplicationTest {
         owner.registerReceiver(receiver, new IntentFilter(ACTION), 2);
         Object wrapper = storedWrapper(owner, receiver);
         GuardedReaderApplication foreign = new GuardedReaderApplication();
-        int before = owner.receiverUnregisterAttempts;
+        int ownerBefore = owner.receiverUnregisterAttempts;
+        int ownerEffectsBefore = owner.receiverUnregisterEffects;
         boolean refused = refused(() -> foreign.unregisterReceiver(receiver));
-        int afterForeign = owner.receiverUnregisterAttempts;
+        int ownerAfter = owner.receiverUnregisterAttempts;
         result.put("refused", refused).put("wrapperStored", wrapper != null)
-            .put("before", before).put("afterForeign", afterForeign);
+            .put("ownerBefore", ownerBefore).put("ownerAfter", ownerAfter)
+            .put("foreignAttempts", foreign.receiverUnregisterAttempts)
+            .put("foreignEffects", foreign.receiverUnregisterEffects)
+            .put("ownerNative", owner.nativeReceivers.size());
         require(wrapper != null, "the real owner stored the wrapper");
         require(refused, "a foreign owner must be refused");
-        require(afterForeign == before,
-            "the foreign instance must not reach the native delegate");
+        // The FOREIGN instance's own native delegate must never be touched.
+        require(foreign.receiverUnregisterAttempts == 0,
+            "the foreign instance must not attempt a native removal");
+        require(foreign.receiverUnregisterEffects == 0,
+            "the foreign instance must not effect a native removal");
+        require(ownerAfter == ownerBefore,
+            "the owner's native counters are unchanged by the refusal");
+        require(owner.receiverUnregisterEffects == ownerEffectsBefore,
+            "the owner's native effect count is unchanged by the refusal");
+        require(owner.nativeReceivers.size() == 1,
+            "the exact owner handle is still installed after the refusal");
         // The stored exact owner still removes the correct wrapper.
         owner.unregisterReceiver(receiver);
         result.put("nativeAfter", owner.nativeReceivers.size())

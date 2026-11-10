@@ -261,8 +261,11 @@ public final class GuardedReaderApplication extends Application {
                 }
                 receiverUnregistrations.put(wrapper.getClass().getName());
             } catch (Throwable error) {
-                removalFailures.put("receiver: " + error);
-                fail("receiver removal failed: " + error);
+                // The complete throwable graph, so a nested or suppressed cause
+                // in the final release is never lost.
+                String chain = stackTraceOf(error);
+                removalFailures.put("receiver: " + chain);
+                fail("receiver removal failed: " + chain);
             }
         }
         for (ActivityLifecycleCallbacks callback : callbacks) {

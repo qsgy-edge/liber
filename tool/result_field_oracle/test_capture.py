@@ -792,6 +792,8 @@ public class Application extends Context {
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
         receiverRegisterAttempts++;
         receiverEffects.add("register-attempt:" + System.identityHashCode(receiver));
+        io.liber.oracle.nested.BoundaryInspection.invokedInstance = this;
+        io.liber.oracle.nested.BoundaryInspection.invokedReceiver = receiver;
         receiverDuringEffect = io.liber.oracle.nested.BoundaryInspection.receiverState();
         if (registerFailure != null) throw registerFailure;
         if (receiverRegisterBeforeEffect != null) throw receiverRegisterBeforeEffect;
@@ -880,6 +882,18 @@ import java.util.Map;
  * the guard had already reserved when the boundary was entered.
  */
 public final class BoundaryInspection {
+    /** The exact receiver argument the boundary was invoked with. */
+    public static volatile Object invokedReceiver;
+
+    /** The exact Application instance the boundary was invoked on. */
+    public static volatile Object invokedInstance;
+
+    /** Read-only: the guard's reserved wrapper for the invoked receiver. */
+    public static volatile Object reservedWrapper;
+
+    /** Read-only: whether that exact wrapper is in the owned list. */
+    public static volatile boolean wrapperOwned;
+
     public static String receiverState() {
         try {
             Class<?> guard = Class.forName("io.liber.oracle.nested.GuardedReaderApplication");
@@ -889,7 +903,12 @@ public final class BoundaryInspection {
             list.setAccessible(true);
             Map<?, ?> wrappers = (Map<?, ?>) map.get(null);
             List<?> owned = (List<?>) list.get(null);
-            return "wrappers=" + wrappers.size() + ";owned=" + owned.size();
+            // The native argument IS the wrapper the guard reserved.
+            Object wrapper = invokedReceiver;
+            reservedWrapper = wrapper;
+            wrapperOwned = wrapper != null && owned.contains(wrapper);
+            return "wrappers=" + wrappers.size() + ";owned=" + owned.size()
+                + ";reserved=" + (wrapper != null) + ";ownedExact=" + wrapperOwned;
         } catch (Throwable error) {
             return "inspection-failed:" + error.getClass().getSimpleName();
         }
@@ -5686,7 +5705,24 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             run_cp, sdk_classes, guard_class = self._guard_sdk_classpath(
                 repo, java, android, jar, root)
             guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
-            self.assertEqual(len(guard_sha), 64)
+            # The actual loaded identity and retained SDK bytes, exactly as the
+            # event grouping does: code source, hash and base64 class readback.
+            identity_run = self._run(
+                [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                 'io.liber.oracle.nested.GuardedReaderApplicationTest',
+                 'loaded-identity'], repo)
+            identity_out = identity_run.stdout.decode(errors='replace').strip()
+            self.assertEqual(identity_run.returncode, 0,
+                             identity_out + identity_run.stderr.decode(errors='replace'))
+            identity = json.loads(identity_out.splitlines()[-1])
+            self.assertEqual(Path(identity['codeSource']).resolve(), sdk_classes.resolve(),
+                             'the loaded guard must come from the SDK-compiled directory')
+            self.assertEqual(identity['classSha256']['GuardedReaderApplication.class'],
+                             guard_sha)
+            for name, encoded in identity['classBytesBase64'].items():
+                retained = base64.b64decode(encoded)
+                self.assertEqual(hashlib.sha256(retained).hexdigest(),
+                                 identity['classSha256'][name], name)
             controls = (
                 'resource-receiver-normal',
                 'resource-receiver-acquire-before',
