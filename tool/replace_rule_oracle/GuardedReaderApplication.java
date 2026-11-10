@@ -387,7 +387,7 @@ public final class GuardedReaderApplication extends Application {
         final Observation observation;
         synchronized (lock) {
             if (closing) {
-                throw new IllegalStateException(
+                throw new SecurityException(
                     "the capture guard lifetime is closed; no new observation is admitted");
             }
             if (current != null && !current.closed) {
