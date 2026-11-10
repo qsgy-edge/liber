@@ -834,12 +834,46 @@ public class Application extends Context {
         if (receiverUnregisterAfterEffect != null) throw receiverUnregisterAfterEffect;
     }
 
+    // The real native lifecycle registry for THIS instance, with independent
+    // attempt/effect counters, an ordered handle log and explicit faults.
+    public final java.util.IdentityHashMap<ActivityLifecycleCallbacks, Boolean>
+        nativeCallbacks = new java.util.IdentityHashMap<>();
+    public final List<String> lifecycleEffects = new ArrayList<>();
+    public int lifecycleRegisterAttempts;
+    public int lifecycleRegisterEffects;
+    public int lifecycleUnregisterAttempts;
+    public int lifecycleUnregisterEffects;
+    public RuntimeException lifecycleRegisterBeforeEffect;
+    public RuntimeException lifecycleRegisterAfterEffect;
+    public RuntimeException lifecycleUnregisterBeforeEffect;
+    public RuntimeException lifecycleUnregisterAfterEffect;
+    public String lifecycleDuringEffect = "";
+
     public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
+        lifecycleRegisterAttempts++;
+        lifecycleEffects.add("register-attempt:" + System.identityHashCode(callback));
+        io.liber.oracle.nested.BoundaryInspection.invokedInstance = this;
+        io.liber.oracle.nested.BoundaryInspection.invokedCallback = callback;
+        lifecycleDuringEffect = io.liber.oracle.nested.BoundaryInspection.lifecycleState();
+        if (lifecycleRegisterBeforeEffect != null) throw lifecycleRegisterBeforeEffect;
+        nativeCallbacks.put(callback, Boolean.TRUE);
+        lifecycleRegisterEffects++;
+        lifecycleEffects.add("register-effect:" + System.identityHashCode(callback));
         lifecycleRegistered.add(callback.getClass().getName());
+        if (lifecycleRegisterAfterEffect != null) throw lifecycleRegisterAfterEffect;
     }
 
     public void unregisterActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
-        lifecycleUnregistered.add(callback.getClass().getName());
+        lifecycleUnregisterAttempts++;
+        lifecycleEffects.add("unregister-attempt:" + System.identityHashCode(callback));
+        if (lifecycleUnregisterBeforeEffect != null) throw lifecycleUnregisterBeforeEffect;
+        // The native lifecycle contract returns normally for an absent member.
+        if (nativeCallbacks.remove(callback) != null) {
+            lifecycleUnregisterEffects++;
+            lifecycleEffects.add("unregister-effect:" + System.identityHashCode(callback));
+            lifecycleUnregistered.add(callback.getClass().getName());
+        }
+        if (lifecycleUnregisterAfterEffect != null) throw lifecycleUnregisterAfterEffect;
     }
 
     // The base returns and records, so a missing guard override is visible as a
@@ -893,6 +927,32 @@ public final class BoundaryInspection {
 
     /** Read-only: whether that exact wrapper is in the owned list. */
     public static volatile boolean wrapperOwned;
+
+    /** The exact lifecycle callback the boundary was invoked with. */
+    public static volatile Object invokedCallback;
+
+    /** Read-only: whether that exact callback is in the guard's owned list. */
+    public static volatile boolean callbackOwned;
+
+    /** Read-only: the exact armed owner instance, when resolvable. */
+    public static volatile Object storedOwner;
+
+    public static String lifecycleState() {
+        try {
+            Class<?> guard = Class.forName("io.liber.oracle.nested.GuardedReaderApplication");
+            Field list = guard.getDeclaredField("ownedCallbacks");
+            list.setAccessible(true);
+            Field ownerField = guard.getDeclaredField("owner");
+            ownerField.setAccessible(true);
+            List<?> owned = (List<?>) list.get(null);
+            storedOwner = ownerField.get(null);
+            callbackOwned = invokedCallback != null && owned.contains(invokedCallback);
+            return "owned=" + owned.size() + ";ownedExact=" + callbackOwned
+                + ";ownerExact=" + (storedOwner == invokedInstance);
+        } catch (Throwable error) {
+            return "inspection-failed:" + error.getClass().getSimpleName();
+        }
+    }
 
     public static String receiverState() {
         try {
@@ -5731,6 +5791,13 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'resource-receiver-remove-after',
                 'resource-receiver-early-close',
                 'resource-receiver-foreign-owner',
+                'resource-lifecycle-normal',
+                'resource-lifecycle-acquire-before',
+                'resource-lifecycle-acquire-after',
+                'resource-lifecycle-remove-before-retry',
+                'resource-lifecycle-remove-after',
+                'resource-lifecycle-early-close',
+                'resource-lifecycle-foreign-owner',
             )
             outcomes = {}
             for control in controls:

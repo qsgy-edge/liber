@@ -96,6 +96,13 @@ public final class GuardedReaderApplicationTest {
             case "resource-receiver-remove-after": resourceReceiverRemoveAfter(result); break;
             case "resource-receiver-early-close": resourceReceiverEarlyClose(result); break;
             case "resource-receiver-foreign-owner": resourceReceiverForeignOwner(result); break;
+            case "resource-lifecycle-normal": resourceLifecycleNormal(result); break;
+            case "resource-lifecycle-acquire-before": resourceLifecycleAcquireBefore(result); break;
+            case "resource-lifecycle-acquire-after": resourceLifecycleAcquireAfter(result); break;
+            case "resource-lifecycle-remove-before-retry": resourceLifecycleRemoveBeforeRetry(result); break;
+            case "resource-lifecycle-remove-after": resourceLifecycleRemoveAfter(result); break;
+            case "resource-lifecycle-early-close": resourceLifecycleEarlyClose(result); break;
+            case "resource-lifecycle-foreign-owner": resourceLifecycleForeignOwner(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -1123,6 +1130,218 @@ public final class GuardedReaderApplicationTest {
         require(owner.nativeReceivers.isEmpty(),
             "the exact owner removes the correct wrapper");
         require(owner.receiverUnregisterEffects == 1, "exactly one real removal effect");
+    }
+
+    // --- A3 lifecycle resource ownership ----------------------------------
+
+    private static Object approvedCallback() throws Exception {
+        return Class.forName("com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl")
+            .getDeclaredConstructor().newInstance();
+    }
+
+    private static boolean ownedCallback(Object callback) throws Exception {
+        java.lang.reflect.Field field =
+            GuardedReaderApplication.class.getDeclaredField("ownedCallbacks");
+        field.setAccessible(true);
+        return ((java.util.List<?>) field.get(null)).contains(callback);
+    }
+
+    private static void resourceLifecycleNormal(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks((Application.ActivityLifecycleCallbacks) callback);
+        boolean during = io.liber.oracle.nested.BoundaryInspection.callbackOwned;
+        boolean ownerExact = io.liber.oracle.nested.BoundaryInspection.storedOwner
+            == io.liber.oracle.nested.BoundaryInspection.invokedInstance;
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("during", during).put("ownerExact", ownerExact)
+            .put("registerEffects", app.lifecycleRegisterEffects)
+            .put("unregisterEffects", app.lifecycleUnregisterEffects)
+            .put("nativeRemaining", app.nativeCallbacks.size()).put("release", release);
+        require(during, "the exact callback was reserved during the boundary");
+        require(ownerExact, "the boundary ran on the exact armed owner");
+        require(app.lifecycleRegisterEffects == 1, "one real native registration effect");
+        require(app.lifecycleUnregisterEffects == 1, "one real native removal effect");
+        require(app.nativeCallbacks.isEmpty(), "the native registry is empty after release");
+        require(release.optBoolean("closed"), "a clean lifecycle closes honestly");
+        require(!GuardedReaderApplication.captureFailed(), "a clean path must not fail");
+    }
+
+    private static void resourceLifecycleAcquireBefore(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        RuntimeException fault = new IllegalStateException("LIFECYCLE_ACQUIRE_BEFORE",
+            new IllegalArgumentException("LIFECYCLE_ACQUIRE_BEFORE_NESTED"));
+        fault.addSuppressed(new IllegalStateException("LIFECYCLE_ACQUIRE_BEFORE_SUPPRESSED"));
+        app.lifecycleRegisterBeforeEffect = fault;
+        boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback));
+        result.put("refused", refused)
+            .put("during", io.liber.oracle.nested.BoundaryInspection.callbackOwned)
+            .put("registerEffects", app.lifecycleRegisterEffects)
+            .put("nativeRemaining", app.nativeCallbacks.size())
+            .put("owned", ownedCallback(callback));
+        require(refused, "a before-effect fault must be rethrown");
+        require(io.liber.oracle.nested.BoundaryInspection.callbackOwned,
+            "the callback was reserved during the boundary");
+        require(app.lifecycleRegisterEffects == 0, "no native effect happened");
+        require(app.nativeCallbacks.isEmpty(), "the native registry stays empty");
+        require(ownedCallback(callback), "the reserved handle is retained");
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 0,
+            "a before-effect throw must not be acknowledged as successful");
+        String failures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        require(failures.contains("LIFECYCLE_ACQUIRE_BEFORE"), "the original cause is retained");
+        require(failures.contains("LIFECYCLE_ACQUIRE_BEFORE_NESTED"),
+            "the nested cause is retained");
+        require(failures.contains("LIFECYCLE_ACQUIRE_BEFORE_SUPPRESSED"),
+            "the suppressed error is retained");
+        // The real final release acknowledges an absent member as a normal no-op.
+        app.lifecycleRegisterBeforeEffect = null;
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("release", release).put("ownedAfter", ownedCallback(callback));
+        require(release.optBoolean("closed"),
+            "the real absent no-op acknowledgement closes the owned resource");
+        require(!ownedCallback(callback), "the handle is cleared after the acknowledgement");
+        require(GuardedReaderApplication.captureFailed(), "the capture failure stays sticky");
+    }
+
+    private static void resourceLifecycleAcquireAfter(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        RuntimeException fault = new IllegalStateException("LIFECYCLE_ACQUIRE_AFTER");
+        app.lifecycleRegisterAfterEffect = fault;
+        boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback));
+        result.put("refused", refused)
+            .put("registerEffects", app.lifecycleRegisterEffects)
+            .put("nativeRemaining", app.nativeCallbacks.size())
+            .put("owned", ownedCallback(callback));
+        require(refused, "an after-effect fault must be rethrown");
+        require(app.lifecycleRegisterEffects == 1, "the native effect really happened");
+        require(app.nativeCallbacks.size() == 1, "the native handle is really installed");
+        require(ownedCallback(callback), "the reserved handle is not lost");
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 0,
+            "a throwing registration must not be acknowledged as successful");
+        app.lifecycleRegisterAfterEffect = null;
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("release", release).put("nativeAfter", app.nativeCallbacks.size());
+        require(app.nativeCallbacks.isEmpty(),
+            "the real final release removed the exact callback");
+        require(release.optBoolean("closed"), "the resources honestly close after cleanup");
+        require(GuardedReaderApplication.captureFailed(), "the capture failure stays sticky");
+    }
+
+    private static void resourceLifecycleRemoveBeforeRetry(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks((Application.ActivityLifecycleCallbacks) callback);
+        RuntimeException fault = new IllegalStateException("LIFECYCLE_REMOVE_BEFORE");
+        app.lifecycleUnregisterBeforeEffect = fault;
+        boolean refused = faulted(() -> app.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback)) != null;
+        result.put("refused", refused).put("nativeRemaining", app.nativeCallbacks.size())
+            .put("owned", ownedCallback(callback));
+        require(refused, "a before-effect removal fault must be rethrown");
+        require(app.nativeCallbacks.size() == 1, "the native handle is still installed");
+        require(ownedCallback(callback), "the guard keeps the handle");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // The real final release with the fault still set also fails and retains.
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("release", release).put("nativeAfterFailedRelease", app.nativeCallbacks.size())
+            .put("ownedAfterFailedRelease", ownedCallback(callback));
+        require(!release.optBoolean("closed"), "the failed final release is not a closure");
+        require(app.nativeCallbacks.size() == 1, "the native handle is retained");
+        require(ownedCallback(callback), "the owned handle is retained");
+        // Clear the fault and retry through the real final release.
+        app.lifecycleUnregisterBeforeEffect = null;
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        result.put("retry", retry).put("nativeAfter", app.nativeCallbacks.size())
+            .put("unregisterEffects", app.lifecycleUnregisterEffects);
+        require(retry.optBoolean("closed"), "the real retry closes the resource");
+        require(app.nativeCallbacks.isEmpty(), "the retry really removed the handle");
+        require(app.lifecycleUnregisterEffects == 1, "exactly one real removal effect");
+        require(!ownedCallback(callback), "ownership is cleared after the acknowledgement");
+    }
+
+    private static void resourceLifecycleRemoveAfter(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks((Application.ActivityLifecycleCallbacks) callback);
+        RuntimeException fault = new IllegalStateException("LIFECYCLE_REMOVE_AFTER");
+        app.lifecycleUnregisterAfterEffect = fault;
+        boolean refused = faulted(() -> app.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback)) != null;
+        result.put("refused", refused).put("nativeRemaining", app.nativeCallbacks.size())
+            .put("owned", ownedCallback(callback));
+        require(refused, "an after-effect removal fault must be rethrown");
+        require(app.nativeCallbacks.isEmpty(), "the native handle really went away");
+        require(ownedCallback(callback), "the guard retains uncertain ownership");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // Clearing the fault lets the real final absent no-op acknowledge closure.
+        app.lifecycleUnregisterAfterEffect = null;
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("release", release).put("unregisterEffects", app.lifecycleUnregisterEffects)
+            .put("ownedAfter", ownedCallback(callback));
+        require(release.optBoolean("closed"),
+            "the real absent no-op acknowledgement closes the resource");
+        require(app.lifecycleUnregisterEffects == 1, "no second native removal effect");
+        require(!ownedCallback(callback), "ownership is cleared by the acknowledgement");
+    }
+
+    private static void resourceLifecycleEarlyClose(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks((Application.ActivityLifecycleCallbacks) callback);
+        app.unregisterActivityLifecycleCallbacks((Application.ActivityLifecycleCallbacks) callback);
+        int afterEarly = app.lifecycleUnregisterEffects;
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        result.put("afterEarly", afterEarly)
+            .put("afterRelease", app.lifecycleUnregisterEffects).put("release", release);
+        require(afterEarly == 1, "the early close removed exactly once");
+        require(app.lifecycleUnregisterEffects == 1,
+            "the final release must not remove a second time");
+        require(app.nativeCallbacks.isEmpty(), "the native registry is empty");
+        require(release.optBoolean("closed"), "the resource closes honestly");
+    }
+
+    private static void resourceLifecycleForeignOwner(JSONObject result) throws Exception {
+        GuardedReaderApplication owner = armedApp();
+        Object callback = approvedCallback();
+        owner.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        GuardedReaderApplication foreign = new GuardedReaderApplication();
+        int ownerBefore = owner.lifecycleUnregisterAttempts;
+        int ownerEffectsBefore = owner.lifecycleUnregisterEffects;
+        boolean refused = refused(() -> foreign.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback));
+        result.put("refused", refused)
+            .put("foreignAttempts", foreign.lifecycleUnregisterAttempts)
+            .put("foreignEffects", foreign.lifecycleUnregisterEffects)
+            .put("ownerBefore", ownerBefore).put("ownerAfter", owner.lifecycleUnregisterAttempts)
+            .put("ownerNative", owner.nativeCallbacks.size())
+            .put("owned", ownedCallback(callback));
+        require(refused, "a foreign owner must be refused");
+        require(foreign.lifecycleUnregisterAttempts == 0,
+            "the foreign instance must not attempt a native removal");
+        require(foreign.lifecycleUnregisterEffects == 0,
+            "the foreign instance must not effect a native removal");
+        require(owner.lifecycleUnregisterAttempts == ownerBefore,
+            "the owner's native counters are unchanged by the refusal");
+        require(owner.lifecycleUnregisterEffects == ownerEffectsBefore,
+            "the owner's native effect count is unchanged by the refusal");
+        require(owner.nativeCallbacks.size() == 1,
+            "the exact owner handle is still installed after the refusal");
+        require(ownedCallback(callback), "the true owner still owns the callback");
+        // The correct owner cleans the exact member.
+        owner.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        result.put("nativeAfter", owner.nativeCallbacks.size())
+            .put("unregisterEffects", owner.lifecycleUnregisterEffects);
+        require(owner.nativeCallbacks.isEmpty(), "the exact owner removed the callback");
+        require(owner.lifecycleUnregisterEffects == 1, "exactly one real removal effect");
     }
 
     private static GuardedReaderApplication arm() {

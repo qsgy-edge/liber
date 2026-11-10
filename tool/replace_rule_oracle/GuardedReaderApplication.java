@@ -278,8 +278,11 @@ public final class GuardedReaderApplication extends Application {
                 }
                 lifecycleUnregistrations.put(callback.getClass().getName());
             } catch (Throwable error) {
-                removalFailures.put("lifecycle: " + error);
-                fail("lifecycle removal failed: " + error);
+                // The complete throwable graph, so a nested or suppressed cause
+                // in the final lifecycle cleanup is never lost.
+                String chain = stackTraceOf(error);
+                removalFailures.put("lifecycle: " + chain);
+                fail("lifecycle removal failed: " + chain);
             }
         }
         int ownedReceiverCount;
@@ -917,6 +920,15 @@ public final class GuardedReaderApplication extends Application {
             super.unregisterActivityLifecycleCallbacks(callback);
             return;
         }
+        // A foreign instance must be refused before any native attempt, even when
+        // the callback is really owned: its own super would normally no-op and
+        // then wrongly clear the true owner's handle.
+        if (!isOwner()) {
+            foreignUnregistrations.incrementAndGet();
+            fail("unregister of a lifecycle callback by a foreign owner instance");
+            throw new SecurityException(
+                "guarded capture refuses a foreign lifecycle unregistration");
+        }
         synchronized (lock) {
             if (!ownedCallbacks.contains(callback)) {
                 foreignUnregistrations.incrementAndGet();
@@ -925,7 +937,15 @@ public final class GuardedReaderApplication extends Application {
                     "guarded capture refuses a foreign lifecycle unregistration");
             }
         }
-        super.unregisterActivityLifecycleCallbacks(callback);
+        try {
+            super.unregisterActivityLifecycleCallbacks(callback);
+        } catch (Throwable error) {
+            // The handle stays owned: without an acknowledgement the removal is
+            // uncertain, and the complete cause is retained.
+            fail("lifecycle removal failed: " + stackTraceOf(error));
+            throw error instanceof SecurityException ? (SecurityException) error
+                : new SecurityException("guarded lifecycle removal failed: " + error, error);
+        }
         synchronized (lock) {
             ownedCallbacks.remove(callback);
         }
