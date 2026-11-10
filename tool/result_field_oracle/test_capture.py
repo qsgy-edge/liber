@@ -1589,7 +1589,7 @@ public final class OwnedCleanupFixture {
                     && manifest != null && !manifest.optBoolean("complete", false);
                 refusalsOk &= ok;
                 refusalRows.put(new JSONObject().put("name", row[0]).put("ok", ok)
-                    .put("manifestSha256", sha(new File(scratch.root, OWNER))));
+                    .put("manifestSha256", shaOrAbsent(new File(scratch.root, OWNER))));
             }
             outcome.put("isolationRefusals", refusalsOk);
             outcome.put("isolationRows", refusalRows);
@@ -2449,8 +2449,12 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         List<String> afterOrder = new ArrayList<>();
         RuntimeException afterFailure = new IllegalStateException("AFTER_CALLBACK_FAILURE");
         RuntimeException afterOuterFailure = new IllegalStateException("AFTER_OUTER_TERMINAL_FAILURE");
+        // The same prior report and cases array the dispatcher appends to.
+        JSONArray afterCases = new JSONArray()
+            .put(new JSONObject().put("id", "case-prior"));
         JSONObject afterReport = new JSONObject().put("fixtureId", "after-fixture")
-            .put("cases", new JSONArray().put(new JSONObject().put("id", "case-prior")));
+            .put("cases", afterCases);
+        JSONObject afterFailures = new JSONObject();
         try {
             FieldOracle.runWithCleanup(
                 () -> FieldOracle.runDeclaredCases(
@@ -2458,7 +2462,7 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
                         .put(new JSONObject().put("id", "case-b")),
                     (entry, id) -> afterDriven.add(id), id -> {
                         throw afterFailure;
-                    }, new JSONObject(), new JSONArray(), new JSONArray(),
+                    }, afterFailures, afterCases, new JSONArray(),
                     new AtomicReference<>(), new AtomicReference<>("setup"), true, false),
                 () -> FieldOracle.runOuterSequence(
                     () -> { afterOrder.add("report"); return new JSONObject().put("closed", true); },
@@ -2498,7 +2502,7 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         // The combined original-plus-outer chain reaches the same persister.
         File afterTarget = new File(root, "after-report.json");
         Throwable afterPersist = FieldOracle.persistFailureReport(true, afterTarget, root,
-            afterReport, new JSONObject(), corpus, afterError);
+            afterReport, afterFailures, corpus, afterError);
         JSONObject afterReadback = new JSONObject(text(afterTarget));
         String afterChain = afterReadback.optString("analysisFailure");
         outcome.put("afterDurable", afterPersist == null
@@ -2513,7 +2517,15 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         List<String> beforeAfter = new ArrayList<>();
         List<String> beforeOrder = new ArrayList<>();
         RuntimeException beforeFailure = new IllegalStateException("BEFORE_SETUP_FAILURE");
+        beforeFailure.initCause(new IllegalArgumentException("BEFORE_CAUSE"));
+        beforeFailure.addSuppressed(new IllegalStateException("BEFORE_PREEXISTING"));
         RuntimeException beforeOuterFailure = new IllegalStateException("BEFORE_OUTER_DATABASE_FAILURE");
+        // The same prior report and cases array the dispatcher appends to.
+        JSONArray beforeCases = new JSONArray()
+            .put(new JSONObject().put("id", "case-earlier").put("terminal", "four-stage"));
+        JSONObject beforeReport = new JSONObject().put("fixtureId", "before-fixture")
+            .put("cases", beforeCases);
+        JSONObject beforeFailures = new JSONObject();
         try {
             FieldOracle.runWithCleanup(
                 () -> FieldOracle.runDeclaredCases(
@@ -2526,7 +2538,7 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
                         @Override public void drive(JSONObject entry, String id) {
                             beforeDriven.add(id);
                         }
-                    }, id -> beforeAfter.add(id), new JSONObject(), new JSONArray(),
+                    }, id -> beforeAfter.add(id), beforeFailures, beforeCases,
                     new JSONArray(), new AtomicReference<>(), new AtomicReference<>("setup"),
                     true, false),
                 () -> FieldOracle.runOuterSequence(
@@ -2548,21 +2560,35 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         } catch (Throwable error) {
             beforeError = error;
         }
-        boolean beforeOuterRetained = false;
-        if (beforeError != null) {
-            for (Throwable entry : beforeError.getSuppressed()) {
-                for (Throwable inner : entry.getSuppressed()) {
-                    if (inner == beforeOuterFailure) beforeOuterRetained = true;
-                }
-            }
-        }
+        boolean beforeOuterRetained = chainHasInstance(beforeError, beforeOuterFailure);
+        String beforeChain = beforeError == null ? "none" : FieldOracle.describeChain(beforeError);
+        // The combined before+outer failure reaches the real persister, and the
+        // prior report and its earlier case are retained unchanged.
+        File beforeTarget = new File(root, "before-report.json");
+        Throwable beforePersist = FieldOracle.persistFailureReport(true, beforeTarget, root,
+            beforeReport, beforeFailures, corpus, beforeError);
+        JSONObject beforeReadback = new JSONObject(text(beforeTarget));
+        JSONArray beforeStored = beforeReadback.getJSONArray("cases");
+        String beforeDurable = beforeReadback.optString("analysisFailure");
         outcome.put("beforeComposed", beforeError == beforeFailure
-            && beforeDriven.isEmpty() && beforeAfter.isEmpty());
+            && beforeDriven.isEmpty() && beforeAfter.isEmpty()
+            && beforeCases.length() == 1);
         outcome.put("beforeOuterRetained", beforeOuterRetained);
-        outcome.put("beforeLaterDomains", beforeOrder.contains("terminal")
-            && beforeOrder.contains("preferences") && beforeOrder.contains("owner")
-            && beforeOrder.contains("final-report"));
+        outcome.put("beforeLaterDomains", beforeOrder.equals(Arrays.asList("report", "replay",
+            "guard", "database", "terminal", "preferences", "owner", "final-report")));
         outcome.put("beforeOrder", new JSONArray(beforeOrder));
+        outcome.put("beforeDurable", beforePersist == null
+            && beforeStored.length() == 1
+            && beforeStored.getJSONObject(0).getString("id").equals("case-earlier")
+            && beforeDurable.contains("BEFORE_SETUP_FAILURE")
+            && beforeDurable.contains("BEFORE_CAUSE")
+            && beforeDurable.contains("BEFORE_PREEXISTING")
+            && beforeDurable.contains("BEFORE_OUTER_DATABASE_FAILURE")
+            && beforeChain.contains("BEFORE_CAUSE")
+            && beforeChain.contains("BEFORE_PREEXISTING"));
+        outcome.put("beforeReportPath", beforeTarget.getAbsolutePath());
+        outcome.put("beforeReportSha256", sha(beforeTarget));
+        outcome.put("beforeReportText", text(beforeTarget));
         outcome.put("controlledNative", "TocCountWordsLifetime.run with in-memory preferences and"
             + " an injected content failure; no Android DAO/Job/save executed");
     } finally {
@@ -2586,7 +2612,8 @@ static JSONObject composedSavedFailureControls(JSONObject result) throws Excepti
         && outcome.optBoolean("outerStillRan")
         && outcome.optBoolean("beforeComposed")
         && outcome.optBoolean("beforeOuterRetained")
-        && outcome.optBoolean("beforeLaterDomains"),
+        && outcome.optBoolean("beforeLaterDomains")
+        && outcome.optBoolean("beforeDurable"),
         "the composed saved failure must keep its proof and outer effects: " + outcome);
     return outcome;
 }
@@ -2949,6 +2976,11 @@ static JSONObject composedRefreshLifetimeControls(JSONObject result) throws Thro
 }
 
 /** The actual guard release and owner policy joined to the outer disposition. */
+/** The SHA-256 of an owned file, or "absent" when it is not there. */
+static String shaOrAbsent(File file) throws Exception {
+    return file.isFile() ? sha(file) : "absent";
+}
+
 /** Whether this chain (cause and suppressed) contains this exact instance. */
 static boolean chainHasInstance(Throwable root, Throwable wanted) {
     if (root == null) return false;
@@ -3073,6 +3105,8 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
             && healthyOrder.equals(Arrays.asList("report", "replay", "guard", "database",
                 "terminal", "preferences", "owner", "final-report")));
         outcome.put("healthyCreationOnly", healthyRemoved && !healthyInitial.contains("\"complete\": true"));
+        outcome.put("healthyNativeOrder",
+            healthyNative.equals(Arrays.asList("release", "fence", "receipt")));
         outcome.put("healthyInitialSha256", healthyInitialSha);
         outcome.put("healthyManifestSha256", sha(healthyOwner));
         outcome.put("healthyManifestText", text(healthyOwner));
@@ -3178,8 +3212,10 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
         boolean refusedOk = true;
         for (String refusal : refusals) {
             StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "guard-" + refusal);
+            String manifestBefore = sha(new File(scratch.root, OWNER));
             JSONObject cleanup = new JSONObject().put("preferencesFenced", true);
             List<String> order = new ArrayList<>();
+            final Throwable[] adapterThrown = {null};
             Throwable thrown = null;
             try {
                 FieldOracle.runWithCleanup(
@@ -3190,7 +3226,12 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
                             return new JSONObject().put("serverClosed", true)
                                 .put("openConnectionsAfterClose", 0); },
                         () -> { order.add("guard");
-                            return guardDomain(guardSource(refusal, order)); },
+                            try {
+                                return guardDomain(guardSource(refusal, order));
+                            } catch (Throwable error) {
+                                adapterThrown[0] = error;
+                                throw error;
+                            } },
                         () -> { order.add("database");
                             return new JSONObject().put("closed", true); },
                         () -> { order.add("terminal");
@@ -3206,22 +3247,29 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
             } catch (Throwable error) {
                 thrown = error;
             }
-            List<String> expectedPrefix = "releaseThrows".equals(refusal)
+            // The exact native step sequence up to the refusal, then the full
+            // later domain sequence.
+            List<String> expectedNative = "releaseThrows".equals(refusal)
                 ? Arrays.asList("release")
                 : "fenceThrows".equals(refusal)
                     ? Arrays.asList("release", "fence")
                     : Arrays.asList("release", "fence", "receipt");
-            boolean later = order.contains("database") && order.contains("terminal")
-                && order.contains("preferences") && order.contains("owner")
-                && order.contains("final-report");
-            boolean ok = thrown != null && later
-                && order.subList(3, 3 + expectedPrefix.size()).equals(expectedPrefix)
+            List<String> expected = new ArrayList<>(
+                Arrays.asList("report", "replay", "guard"));
+            expected.addAll(expectedNative);
+            expected.addAll(Arrays.asList("database", "terminal", "preferences", "owner",
+                "final-report"));
+            boolean ok = thrown != null
+                && order.equals(expected)
+                && adapterThrown[0] != null && chainHasInstance(thrown, adapterThrown[0])
                 && !cleanup.optBoolean("ownerComplete", false)
                 && !cleanup.has("ownerRunId")
+                && manifestBefore.equals(sha(new File(scratch.root, OWNER)))
                 && !ownerManifest(scratch).optBoolean("complete", false);
             refusedOk &= ok;
             rows.put(new JSONObject().put("refusal", refusal).put("ok", ok)
-                .put("order", new JSONArray(order)));
+                .put("order", new JSONArray(order)).put("expected", new JSONArray(expected))
+                .put("manifestSha256", shaOrAbsent(new File(scratch.root, OWNER))));
         }
         outcome.put("guardRefusals", refusedOk);
         outcome.put("guardRows", rows);
@@ -3232,6 +3280,9 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
         boolean domainsOk = true;
         for (String domain : domains) {
             StateSessionOracle.ScratchContext scratch = boundScratch(cacheDir, "domain-" + domain);
+            // Creation-only precondition so a proved owner publishes for real and
+            // no incidental Windows existing-target failure masks the disposition.
+            new File(scratch.root, OWNER).delete();
             JSONObject cleanup = new JSONObject().put("preferencesFenced", true);
             List<String> order = new ArrayList<>();
             RuntimeException domainFailure =
@@ -3268,14 +3319,26 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
                 thrown = error;
             }
             boolean retained = chainHasInstance(thrown, domainFailure);
-            int index = order.indexOf(domain);
-            boolean later = index >= 0
-                && (order.size() > index + 1 || "final-report".equals(domain));
-            boolean ok = thrown != null && retained && later
-                && !cleanup.optBoolean("ownerComplete", false);
+            // Every domain runs exactly once, in the fixed order, including the
+            // three native guard steps.
+            List<String> expected = Arrays.asList("report", "replay", "guard", "release",
+                "fence", "receipt", "database", "terminal", "preferences", "owner",
+                "final-report");
+            // A final-report throw happens AFTER real owner publication, so the
+            // truthful completion must survive; every earlier failure leaves the
+            // owner either refused (unproved resources) or thrown (owner row).
+            boolean ownerTruthful = "final-report".equals(domain)
+                ? cleanup.optBoolean("ownerComplete")
+                    && ownerManifest(scratch).optBoolean("complete")
+                : !cleanup.optBoolean("ownerComplete", false)
+                    && !cleanup.has("ownerRunId");
+            boolean ok = thrown != null && retained && order.equals(expected)
+                && ownerTruthful;
             domainsOk &= ok;
             domainRows.put(new JSONObject().put("domain", domain).put("ok", ok)
-                .put("order", new JSONArray(order)));
+                .put("order", new JSONArray(order)).put("expected", new JSONArray(expected))
+                .put("ownerComplete", cleanup.optBoolean("ownerComplete"))
+                .put("manifestSha256", shaOrAbsent(new File(scratch.root, OWNER))));
         }
         outcome.put("throwingDomains", domainsOk);
         outcome.put("domainRows", domainRows);
@@ -3287,6 +3350,7 @@ static JSONObject composedOuterGuardOwnerControls(JSONObject result) throws Exce
     result.put("composedOuter", outcome);
     require(outcome.optBoolean("healthyCompletes")
         && outcome.optBoolean("healthyCreationOnly")
+        && outcome.optBoolean("healthyNativeOrder")
         && outcome.optBoolean("failedBodyStillCompletes")
         && outcome.optBoolean("refusalNoPublication")
         && outcome.optBoolean("existingWriteErrorJoined")
@@ -5488,11 +5552,25 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertIn('tocCountWordsApplied', case_flow['partialFullText'])
             self.assertIn('controlled', case_flow['controlledNative'])
             # The actual end -> validate -> refresh ordering.
-            self.assertTrue(no_refresh['nestedCloses'])
-            self.assertTrue(no_refresh['idempotentCloses'])
+            self.assertTrue(no_refresh['nestedRefreshesOnce'])
+            self.assertTrue(no_refresh['idempotentRefreshesOnce'])
             self.assertTrue(no_refresh['refusedNoRefresh'])
-            self.assertTrue(no_refresh['throwingRefreshRetained'])
+            self.assertTrue(no_refresh['realEndThrow'])
+            self.assertTrue(no_refresh['refreshThrowRetained'])
+            self.assertTrue(no_refresh['combinedGraph'])
+            self.assertTrue(no_refresh['primaryCloseRestores'])
+            self.assertTrue(no_refresh['fenceJoined'])
             self.assertEqual(len(no_refresh['refusedRows']), 4)
+            for row in no_refresh['refusedRows']:
+                self.assertTrue(row['ok'], row['reason'])
+            # The real restore receipt fields are the five the SUT emits.
+            receipt = no_refresh['nestedRestoreReceipt']
+            for field in ('previousPresent', 'committed', 'restored',
+                          'presentAfter', 'observedAfter'):
+                self.assertIn(field, receipt)
+            self.assertTrue(receipt['restored'])
+            self.assertEqual(len(no_refresh['fenceReportSha256']), 64)
+            self.assertIn('FENCE_CASE_PRIMARY', no_refresh['fenceReportText'])
             # The actual process-release / main-fence adapter.
             self.assertTrue(guard['successShape'])
             self.assertTrue(guard['refusedAll'])
@@ -5564,7 +5642,16 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertTrue(saved['requestSlice'])
             self.assertTrue(saved['persisted'])
             self.assertTrue(saved['afterStopsLater'])
+            self.assertTrue(saved['afterOuterRetained'])
+            self.assertTrue(saved['afterDurable'])
             self.assertTrue(saved['outerStillRan'])
+            self.assertTrue(saved['beforeComposed'])
+            self.assertTrue(saved['beforeOuterRetained'])
+            self.assertTrue(saved['beforeLaterDomains'])
+            self.assertTrue(saved['beforeDurable'])
+            self.assertEqual(len(saved['beforeReportSha256']), 64)
+            self.assertIn('BEFORE_SETUP_FAILURE', saved['beforeReportText'])
+            self.assertIn('BEFORE_OUTER_DATABASE_FAILURE', saved['beforeReportText'])
             self.assertEqual(len(saved['reportSha256']), 64)
             self.assertIn('NATIVE_CONTENT_FAILURE', saved['reportText'])
             self.assertIn('tocCountWordsApplied', saved['reportText'])
@@ -5603,6 +5690,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             # publishes through the approved creation-only construction.
             self.assertTrue(outer['healthyCompletes'])
             self.assertTrue(outer['healthyCreationOnly'])
+            self.assertTrue(outer['healthyNativeOrder'])
             self.assertEqual(len(outer['healthyInitialSha256']), 64)
             self.assertEqual(len(outer['healthyManifestSha256']), 64)
             self.assertIn('"complete": true', outer['healthyManifestText'])
