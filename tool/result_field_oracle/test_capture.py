@@ -1229,7 +1229,24 @@ public class IntentFilter {
 
     public Iterator<String> actionsIterator() { return actions.iterator(); }
 
-    public int countDataTypes() { return dataTypes; }
+    // Test-only metadata hook: lets a controlled thread establish final closing
+    // while the guard is still validating, before its reservation lock.
+    public static volatile java.util.concurrent.CountDownLatch metadataReached;
+    public static volatile java.util.concurrent.CountDownLatch releaseDone;
+
+    public int countDataTypes() {
+        java.util.concurrent.CountDownLatch reached = metadataReached;
+        if (reached != null) {
+            reached.countDown();
+            try {
+                java.util.concurrent.CountDownLatch done = releaseDone;
+                if (done != null) done.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return dataTypes;
+    }
 
     public int countDataSchemes() { return dataSchemes; }
 
@@ -1238,6 +1255,8 @@ public class IntentFilter {
     public void addCategory(String category) { categories++; }
 
     public void addDataType(String type) { dataTypes++; }
+
+    public void addDataScheme(String scheme) { dataSchemes++; }
 
     // Descriptor-verified real SDK dimensions the guard must also exclude.
     public int countDataAuthorities() { return dataAuthorities; }
@@ -5830,6 +5849,59 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'save-null-payload', 'save-null-book', 'save-null-chapter',
                 'save-wrong-book', 'save-wrong-chapter', 'save-receipt-copy',
                 'save-stale-after-close',
+            )
+            outcomes = {}
+            for control in controls:
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                     'io.liber.oracle.nested.GuardedReaderApplicationTest', control], repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+            self.assertEqual(len(outcomes), len(controls))
+
+    def test_the_actual_registration_boundary_controls_pass(self):
+        """The actual filter, route and process-closing admission controls."""
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = self._repo()
+        with tempfile.TemporaryDirectory(prefix='l138-boundary-') as directory:
+            root = Path(directory)
+            run_cp, sdk_classes, guard_class = self._guard_sdk_classpath(
+                repo, java, android, jar, root)
+            guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
+            identity_run = self._run(
+                [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                 'io.liber.oracle.nested.GuardedReaderApplicationTest',
+                 'loaded-identity'], repo)
+            identity_out = identity_run.stdout.decode(errors='replace').strip()
+            self.assertEqual(identity_run.returncode, 0,
+                             identity_out + identity_run.stderr.decode(errors='replace'))
+            identity = json.loads(identity_out.splitlines()[-1])
+            self.assertEqual(Path(identity['codeSource']).resolve(), sdk_classes.resolve(),
+                             'the loaded guard must come from the SDK-compiled directory')
+            self.assertEqual(identity['classSha256']['GuardedReaderApplication.class'],
+                             guard_sha)
+            for name, encoded in identity['classBytesBase64'].items():
+                retained = base64.b64decode(encoded)
+                self.assertEqual(hashlib.sha256(retained).hexdigest(),
+                                 identity['classSha256'][name], name)
+            controls = (
+                'boundary-exact-registration',
+                'boundary-filter-empty', 'boundary-filter-action',
+                'boundary-filter-extra-action', 'boundary-filter-type',
+                'boundary-filter-scheme', 'boundary-filter-category',
+                'boundary-filter-authority', 'boundary-filter-path',
+                'boundary-filter-ssp', 'boundary-filter-subclass',
+                'boundary-flags-zero', 'boundary-flags-other',
+                'boundary-overload2', 'boundary-overload4', 'boundary-overload5',
+                'boundary-null-receiver', 'boundary-null-filter',
+                'boundary-closed-arm', 'boundary-closed-receiver',
+                'boundary-closed-lifecycle', 'boundary-closed-observer',
+                'boundary-close-before-reserve',
             )
             outcomes = {}
             for control in controls:

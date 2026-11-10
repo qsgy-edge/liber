@@ -783,6 +783,13 @@ public final class GuardedReaderApplication extends Application {
         }
         BroadcastReceiver wrapper = new GuardedReceiver(receiver);
         synchronized (lock) {
+            // The closing decision is rechecked atomically with the reservation,
+            // immediately before the owned handle is inserted.
+            if (closing) {
+                fail("receiver registration after the process closing boundary");
+                throw new SecurityException(
+                    "guarded capture refuses a registration after closing");
+            }
             if (wrappers.containsKey(receiver)) {
                 fail("duplicate registration of the same receiver");
                 throw new SecurityException("guarded capture refused a duplicate registration");
@@ -866,9 +873,10 @@ public final class GuardedReaderApplication extends Application {
     }
 
     private Intent refuseOverload(String overload, BroadcastReceiver receiver, IntentFilter filter) {
+        // The diagnostic must never invoke an unapproved filter's own methods.
         fail("unexpected registration overload " + overload + " for "
             + (receiver == null ? "null" : receiver.getClass().getName())
-            + " actions=" + actionsOf(filter));
+            + " filterClass=" + (filter == null ? "null" : filter.getClass().getName()));
         throw new SecurityException("guarded capture refuses the " + overload
             + " registerReceiver overload");
     }
@@ -941,6 +949,12 @@ public final class GuardedReaderApplication extends Application {
         // Reserve the exact callback BEFORE the effect, so a throwing platform
         // call cannot lose the handle.
         synchronized (lock) {
+            // The closing decision is rechecked atomically with the reservation.
+            if (closing) {
+                fail("lifecycle registration after the process closing boundary");
+                throw new SecurityException(
+                    "guarded capture refuses a lifecycle registration after closing");
+            }
             if (ownedCallbacks.contains(callback)) {
                 fail("duplicate registration of the same lifecycle callback");
                 throw new SecurityException("guarded capture refused a duplicate lifecycle");

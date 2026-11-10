@@ -110,6 +110,29 @@ public final class GuardedReaderApplicationTest {
             case "resource-observer-remove-after": resourceObserverRemoveAfter(result); break;
             case "resource-observer-early-close": resourceObserverEarlyClose(result); break;
             case "resource-cleanup-errors": resourceCleanupErrors(result); break;
+            case "boundary-exact-registration": boundaryExactRegistration(result); break;
+            case "boundary-filter-empty": boundaryFilter(result, "boundary-filter-empty"); break;
+            case "boundary-filter-action": boundaryFilter(result, "boundary-filter-action"); break;
+            case "boundary-filter-extra-action": boundaryFilter(result, "boundary-filter-extra-action"); break;
+            case "boundary-filter-type": boundaryFilter(result, "boundary-filter-type"); break;
+            case "boundary-filter-scheme": boundaryFilter(result, "boundary-filter-scheme"); break;
+            case "boundary-filter-category": boundaryFilter(result, "boundary-filter-category"); break;
+            case "boundary-filter-authority": boundaryFilter(result, "boundary-filter-authority"); break;
+            case "boundary-filter-path": boundaryFilter(result, "boundary-filter-path"); break;
+            case "boundary-filter-ssp": boundaryFilter(result, "boundary-filter-ssp"); break;
+            case "boundary-filter-subclass": boundaryFilter(result, "boundary-filter-subclass"); break;
+            case "boundary-flags-zero": boundaryRoute(result, "boundary-flags-zero"); break;
+            case "boundary-flags-other": boundaryRoute(result, "boundary-flags-other"); break;
+            case "boundary-overload2": boundaryRoute(result, "boundary-overload2"); break;
+            case "boundary-overload4": boundaryRoute(result, "boundary-overload4"); break;
+            case "boundary-overload5": boundaryRoute(result, "boundary-overload5"); break;
+            case "boundary-null-receiver": boundaryRoute(result, "boundary-null-receiver"); break;
+            case "boundary-null-filter": boundaryRoute(result, "boundary-null-filter"); break;
+            case "boundary-closed-arm": boundaryClosed(result, "boundary-closed-arm"); break;
+            case "boundary-closed-receiver": boundaryClosed(result, "boundary-closed-receiver"); break;
+            case "boundary-closed-lifecycle": boundaryClosed(result, "boundary-closed-lifecycle"); break;
+            case "boundary-closed-observer": boundaryClosed(result, "boundary-closed-observer"); break;
+            case "boundary-close-before-reserve": boundaryCloseBeforeReserve(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -1591,6 +1614,181 @@ public final class GuardedReaderApplicationTest {
         require(app.nativeReceivers.isEmpty(), "the receiver is gone");
         require(app.nativeCallbacks.isEmpty(), "the lifecycle callback is gone");
         require(GuardedReaderApplication.captureFailed(), "the capture failure stays sticky");
+    }
+
+    // --- A4 registration boundary (filter / route / closing) --------------
+
+    /** A filter subclass whose getters must never run. */
+    public static final class TrapFilter extends IntentFilter {
+        static int getterCalls;
+        TrapFilter() { super(ACTION); }
+        @Override public java.util.Iterator<String> actionsIterator() { getterCalls++; return super.actionsIterator(); }
+        @Override public int countDataTypes() { getterCalls++; return super.countDataTypes(); }
+        @Override public int countDataSchemes() { getterCalls++; return super.countDataSchemes(); }
+        @Override public int countCategories() { getterCalls++; return super.countCategories(); }
+        @Override public int countDataAuthorities() { getterCalls++; return super.countDataAuthorities(); }
+        @Override public int countDataPaths() { getterCalls++; return super.countDataPaths(); }
+        @Override public int countDataSchemeSpecificParts() { getterCalls++; return super.countDataSchemeSpecificParts(); }
+    }
+
+    private static IntentFilter boundaryFilter(String mode) {
+        IntentFilter filter = "boundary-filter-subclass".equals(mode)
+            ? new TrapFilter() : new IntentFilter(ACTION);
+        if ("boundary-filter-empty".equals(mode)) return new IntentFilter();
+        if ("boundary-filter-action".equals(mode)) return new IntentFilter("other.action");
+        if ("boundary-filter-extra-action".equals(mode)) {
+            filter.addAction("extra.action");
+        }
+        if ("boundary-filter-type".equals(mode)) filter.addDataType("text/plain");
+        if ("boundary-filter-scheme".equals(mode)) filter.addDataScheme("https");
+        if ("boundary-filter-category".equals(mode)) filter.addCategory("cat");
+        if ("boundary-filter-authority".equals(mode)) filter.addDataAuthority("example.test", null);
+        if ("boundary-filter-path".equals(mode)) filter.addDataPath("/private", 0);
+        if ("boundary-filter-ssp".equals(mode)) filter.addDataSchemeSpecificPart("private", 0);
+        return filter;
+    }
+
+    private static void boundaryExactRegistration(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        app.registerReceiver(newReceiver(), new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, newReceiver());
+        result.put("registerEffects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(app.receiverRegisterEffects == 1, "the approved plain filter registers once");
+        require(app.nativeReceivers.size() == 1, "the native handle is really installed");
+        require(!GuardedReaderApplication.captureFailed(), "a valid registration must not fail");
+    }
+
+    private static void boundaryFilter(JSONObject result, String mode) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        TrapFilter.getterCalls = 0;
+        boolean refused = refused(() ->
+            app.registerReceiver(newReceiver(), boundaryFilter(mode), 2));
+        result.put("mode", mode).put("refused", refused)
+            .put("getterCalls", TrapFilter.getterCalls)
+            .put("nativeAttempts", app.receiverRegisterAttempts)
+            .put("nativeEffects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(refused, mode + ": the filter must be refused");
+        require(app.receiverRegisterEffects == 0, mode + ": no native effect");
+        require(app.nativeReceivers.isEmpty(), mode + ": no native handle");
+        require(GuardedReaderApplication.captureFailed(), mode + ": the capture must fail");
+        require(TrapFilter.getterCalls == 0,
+            mode + ": an unapproved filter's getters must never run");
+    }
+
+    private static void boundaryRoute(JSONObject result, String mode) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        TrapFilter.getterCalls = 0;
+        boolean refused;
+        if ("boundary-flags-zero".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION), 0));
+        } else if ("boundary-flags-other".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION), 4));
+        } else if ("boundary-overload2".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION)));
+        } else if ("boundary-overload4".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION), null, null));
+        } else if ("boundary-overload5".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION), null, null, 2));
+        } else if ("boundary-null-receiver".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(null, new IntentFilter(ACTION), 2));
+        } else {
+            refused = refused(() -> app.registerReceiver(newReceiver(), null, 2));
+        }
+        result.put("mode", mode).put("refused", refused)
+            .put("getterCalls", TrapFilter.getterCalls)
+            .put("nativeEffects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(refused, mode + ": the route must be refused");
+        require(app.receiverRegisterEffects == 0, mode + ": no native effect");
+        require(app.nativeReceivers.isEmpty(), mode + ": no native handle");
+        require(GuardedReaderApplication.captureFailed(), mode + ": the capture must fail");
+    }
+
+    private static void boundaryClosed(JSONObject result, String mode) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        boolean refused;
+        if ("boundary-closed-arm".equals(mode)) {
+            refused = refused(() -> GuardedReaderApplication.arm(app, loader()));
+        } else if ("boundary-closed-receiver".equals(mode)) {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION), 2));
+        } else if ("boundary-closed-lifecycle".equals(mode)) {
+            refused = refused(() -> app.registerActivityLifecycleCallbacks(
+                (Application.ActivityLifecycleCallbacks) approvedCallback()));
+        } else {
+            refused = refused(() ->
+                GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1"));
+        }
+        result.put("mode", mode).put("release", release).put("refused", refused)
+            .put("receiverEffects", app.receiverRegisterEffects)
+            .put("lifecycleEffects", app.lifecycleRegisterEffects)
+            .put("nativeReceivers", app.nativeReceivers.size())
+            .put("nativeCallbacks", app.nativeCallbacks.size());
+        require(release.optBoolean("closed"), mode + ": the lifetime really closed");
+        require(refused, mode + ": admission after closing must be refused");
+        require(app.receiverRegisterEffects == 0, mode + ": no receiver native effect");
+        require(app.lifecycleRegisterEffects == 0, mode + ": no lifecycle native effect");
+        require(app.nativeReceivers.isEmpty() && app.nativeCallbacks.isEmpty(),
+            mode + ": no native handle after closing");
+    }
+
+    /**
+     * A controlled thread establishes final closing while the guard is still
+     * validating the filter, before its reservation lock. The reservation must
+     * recheck closing atomically and refuse with no native effect.
+     */
+    private static void boundaryCloseBeforeReserve(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final java.util.concurrent.CountDownLatch reached =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch done =
+            new java.util.concurrent.CountDownLatch(1);
+        final JSONObject[] release = {null};
+        final Throwable[] threadFailure = {null};
+        IntentFilter.class.getField("metadataReached").set(null, reached);
+        IntentFilter.class.getField("releaseDone").set(null, done);
+        Thread closer = new Thread(() -> {
+            try {
+                reached.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                release[0] = GuardedReaderApplication.releaseProcessResources();
+            } catch (Throwable error) {
+                threadFailure[0] = error;
+            } finally {
+                done.countDown();
+            }
+        }, "controlled-final-close");
+        closer.start();
+        boolean refused;
+        try {
+            refused = refused(() -> app.registerReceiver(newReceiver(),
+                new IntentFilter(ACTION), 2));
+        } finally {
+            closer.join(5000);
+            IntentFilter.class.getField("metadataReached").set(null, null);
+            IntentFilter.class.getField("releaseDone").set(null, null);
+        }
+        result.put("refused", refused).put("release", release[0] == null
+                ? JSONObject.NULL : release[0])
+            .put("threadFailure", threadFailure[0] == null ? "none"
+                : threadFailure[0].toString())
+            .put("nativeAttempts", app.receiverRegisterAttempts)
+            .put("nativeEffects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(threadFailure[0] == null, "the closing thread must not fail");
+        require(release[0] != null && release[0].optBoolean("closed"),
+            "the controlled thread proved the lifetime closed");
+        require(refused, "the reservation must refuse after the atomic close");
+        require(app.receiverRegisterEffects == 0,
+            "no native registration effect after the atomic close");
+        require(app.nativeReceivers.isEmpty(), "no native handle after the atomic close");
     }
 
     private static GuardedReaderApplication arm() {
