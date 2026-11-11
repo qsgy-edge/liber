@@ -1618,20 +1618,15 @@ public final class GuardedReaderApplicationTest {
 
     // --- A4 registration boundary (filter / route / closing) --------------
 
-    /** A filter subclass whose getters must never run. */
+    /**
+     * A harmless filter subclass: the real SDK declares the inspected getters
+     * final, so this class deliberately overrides none of them.
+     */
     public static final class TrapFilter extends IntentFilter {
-        static int getterCalls;
         TrapFilter() { super(ACTION); }
-        @Override public java.util.Iterator<String> actionsIterator() { getterCalls++; return super.actionsIterator(); }
-        @Override public int countDataTypes() { getterCalls++; return super.countDataTypes(); }
-        @Override public int countDataSchemes() { getterCalls++; return super.countDataSchemes(); }
-        @Override public int countCategories() { getterCalls++; return super.countCategories(); }
-        @Override public int countDataAuthorities() { getterCalls++; return super.countDataAuthorities(); }
-        @Override public int countDataPaths() { getterCalls++; return super.countDataPaths(); }
-        @Override public int countDataSchemeSpecificParts() { getterCalls++; return super.countDataSchemeSpecificParts(); }
     }
 
-    private static IntentFilter boundaryFilter(String mode) {
+    private static IntentFilter boundaryFilter(String mode) throws Exception {
         IntentFilter filter = "boundary-filter-subclass".equals(mode)
             ? new TrapFilter() : new IntentFilter(ACTION);
         if ("boundary-filter-empty".equals(mode)) return new IntentFilter();
@@ -1650,36 +1645,48 @@ public final class GuardedReaderApplicationTest {
 
     private static void boundaryExactRegistration(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
-        app.registerReceiver(newReceiver(), new IntentFilter(ACTION), 2);
-        Object wrapper = storedWrapper(app, newReceiver());
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        IntentFilter filter = new IntentFilter(ACTION);
+        app.registerReceiver(receiver, filter, 2);
+        Object wrapper = storedWrapper(app, receiver);
+        boolean nativeOwns = wrapper != null && app.nativeReceivers.containsKey(wrapper);
         result.put("registerEffects", app.receiverRegisterEffects)
+            .put("metadataReads", filter.metadataReads)
+            .put("wrapperStored", wrapper != null)
+            .put("nativeOwnsWrapper", nativeOwns)
             .put("native", app.nativeReceivers.size());
         require(app.receiverRegisterEffects == 1, "the approved plain filter registers once");
-        require(app.nativeReceivers.size() == 1, "the native handle is really installed");
+        require(filter.metadataReads > 0, "a valid plain filter is legitimately validated");
+        require(wrapper != null, "the exact wrapper is stored for this receiver");
+        require(nativeOwns, "the owner's native registry holds that exact wrapper");
         require(!GuardedReaderApplication.captureFailed(), "a valid registration must not fail");
     }
 
     private static void boundaryFilter(JSONObject result, String mode) throws Exception {
         GuardedReaderApplication app = armedApp();
-        TrapFilter.getterCalls = 0;
-        boolean refused = refused(() ->
-            app.registerReceiver(newReceiver(), boundaryFilter(mode), 2));
+        IntentFilter filter = boundaryFilter(mode);
+        boolean refused = refused(() -> app.registerReceiver(newReceiver(), filter, 2));
+        int filterReads = filter.metadataReads;
         result.put("mode", mode).put("refused", refused)
-            .put("getterCalls", TrapFilter.getterCalls)
+            .put("metadataReads", filterReads)
             .put("nativeAttempts", app.receiverRegisterAttempts)
             .put("nativeEffects", app.receiverRegisterEffects)
             .put("native", app.nativeReceivers.size());
         require(refused, mode + ": the filter must be refused");
+        require(app.receiverRegisterAttempts == 0, mode + ": no native attempt");
         require(app.receiverRegisterEffects == 0, mode + ": no native effect");
         require(app.nativeReceivers.isEmpty(), mode + ": no native handle");
         require(GuardedReaderApplication.captureFailed(), mode + ": the capture must fail");
-        require(TrapFilter.getterCalls == 0,
-            mode + ": an unapproved filter's getters must never run");
+        if ("boundary-filter-subclass".equals(mode)) {
+            require(filterReads == 0,
+                mode + ": an unapproved filter's metadata must never be read");
+        }
     }
 
     private static void boundaryRoute(JSONObject result, String mode) throws Exception {
         GuardedReaderApplication app = armedApp();
-        TrapFilter.getterCalls = 0;
+        // The forbidden 4/5 overloads carry an unapproved filter subclass.
+        IntentFilter observed = new TrapFilter();
         boolean refused;
         if ("boundary-flags-zero".equals(mode)) {
             refused = refused(() -> app.registerReceiver(newReceiver(),
@@ -1691,22 +1698,27 @@ public final class GuardedReaderApplicationTest {
             refused = refused(() -> app.registerReceiver(newReceiver(),
                 new IntentFilter(ACTION)));
         } else if ("boundary-overload4".equals(mode)) {
-            refused = refused(() -> app.registerReceiver(newReceiver(),
-                new IntentFilter(ACTION), null, null));
+            refused = refused(() -> app.registerReceiver(newReceiver(), observed, null, null));
         } else if ("boundary-overload5".equals(mode)) {
-            refused = refused(() -> app.registerReceiver(newReceiver(),
-                new IntentFilter(ACTION), null, null, 2));
+            refused = refused(() -> app.registerReceiver(newReceiver(), observed, null, null, 2));
         } else if ("boundary-null-receiver".equals(mode)) {
             refused = refused(() -> app.registerReceiver(null, new IntentFilter(ACTION), 2));
         } else {
             refused = refused(() -> app.registerReceiver(newReceiver(), null, 2));
         }
+        int observedReads = observed.metadataReads;
         result.put("mode", mode).put("refused", refused)
-            .put("getterCalls", TrapFilter.getterCalls)
+            .put("metadataReads", observedReads)
+            .put("nativeAttempts", app.receiverRegisterAttempts)
             .put("nativeEffects", app.receiverRegisterEffects)
             .put("native", app.nativeReceivers.size());
         require(refused, mode + ": the route must be refused");
+        require(app.receiverRegisterAttempts == 0, mode + ": no native attempt");
         require(app.receiverRegisterEffects == 0, mode + ": no native effect");
+        if ("boundary-overload4".equals(mode) || "boundary-overload5".equals(mode)) {
+            require(observedReads == 0,
+                mode + ": a forbidden diagnostic must not read an unapproved filter");
+        }
         require(app.nativeReceivers.isEmpty(), mode + ": no native handle");
         require(GuardedReaderApplication.captureFailed(), mode + ": the capture must fail");
     }
@@ -1738,6 +1750,8 @@ public final class GuardedReaderApplicationTest {
         require(app.lifecycleRegisterEffects == 0, mode + ": no lifecycle native effect");
         require(app.nativeReceivers.isEmpty() && app.nativeCallbacks.isEmpty(),
             mode + ": no native handle after closing");
+        require(GuardedReaderApplication.captureFailed(),
+            mode + ": the refusal must visibly fail the capture");
     }
 
     /**

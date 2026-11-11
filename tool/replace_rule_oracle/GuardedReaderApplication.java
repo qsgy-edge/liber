@@ -180,6 +180,7 @@ public final class GuardedReaderApplication extends Application {
         }
         synchronized (lock) {
             if (closing) {
+                fail("arm after the process closing boundary");
                 throw new SecurityException(
                     "the capture guard lifetime is closed; no new arm is admitted");
             }
@@ -387,6 +388,7 @@ public final class GuardedReaderApplication extends Application {
         final Observation observation;
         synchronized (lock) {
             if (closing) {
+                fail("observation after the process closing boundary");
                 throw new SecurityException(
                     "the capture guard lifetime is closed; no new observation is admitted");
             }

@@ -1221,20 +1221,32 @@ public class IntentFilter {
     private int dataPaths;
     private int dataSchemeSpecificParts;
 
+    /** The real SDK's checked exception on addDataType. */
+    public static class MalformedMimeTypeException extends Exception {
+        public MalformedMimeTypeException(String message) { super(message); }
+    }
+
+    /** Artificial host observation: reads of this filter's metadata. */
+    public int metadataReads;
+
     public IntentFilter() {}
 
     public IntentFilter(String action) { actions.add(action); }
 
-    public void addAction(String action) { actions.add(action); }
+    public final void addAction(String action) { actions.add(action); }
 
-    public Iterator<String> actionsIterator() { return actions.iterator(); }
+    public final Iterator<String> actionsIterator() {
+        metadataReads++;
+        return actions.iterator();
+    }
 
     // Test-only metadata hook: lets a controlled thread establish final closing
     // while the guard is still validating, before its reservation lock.
     public static volatile java.util.concurrent.CountDownLatch metadataReached;
     public static volatile java.util.concurrent.CountDownLatch releaseDone;
 
-    public int countDataTypes() {
+    public final int countDataTypes() {
+        metadataReads++;
         java.util.concurrent.CountDownLatch reached = metadataReached;
         if (reached != null) {
             reached.countDown();
@@ -1248,28 +1260,45 @@ public class IntentFilter {
         return dataTypes;
     }
 
-    public int countDataSchemes() { return dataSchemes; }
+    public final int countDataSchemes() {
+        metadataReads++;
+        return dataSchemes;
+    }
 
-    public int countCategories() { return categories; }
+    public final int countCategories() {
+        metadataReads++;
+        return categories;
+    }
 
-    public void addCategory(String category) { categories++; }
+    public final void addCategory(String category) { categories++; }
 
-    public void addDataType(String type) { dataTypes++; }
+    public final void addDataType(String type) throws MalformedMimeTypeException {
+        dataTypes++;
+    }
 
-    public void addDataScheme(String scheme) { dataSchemes++; }
+    public final void addDataScheme(String scheme) { dataSchemes++; }
 
     // Descriptor-verified real SDK dimensions the guard must also exclude.
-    public int countDataAuthorities() { return dataAuthorities; }
+    public final int countDataAuthorities() {
+        metadataReads++;
+        return dataAuthorities;
+    }
 
-    public int countDataPaths() { return dataPaths; }
+    public final int countDataPaths() {
+        metadataReads++;
+        return dataPaths;
+    }
 
-    public int countDataSchemeSpecificParts() { return dataSchemeSpecificParts; }
+    public final int countDataSchemeSpecificParts() {
+        metadataReads++;
+        return dataSchemeSpecificParts;
+    }
 
-    public void addDataAuthority(String host, String port) { dataAuthorities++; }
+    public final void addDataAuthority(String host, String port) { dataAuthorities++; }
 
-    public void addDataPath(String path, int type) { dataPaths++; }
+    public final void addDataPath(String path, int type) { dataPaths++; }
 
-    public void addDataSchemeSpecificPart(String value, int type) {
+    public final void addDataSchemeSpecificPart(String value, int type) {
         dataSchemeSpecificParts++;
     }
 }
