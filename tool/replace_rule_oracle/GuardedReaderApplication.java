@@ -824,6 +824,7 @@ public final class GuardedReaderApplication extends Application {
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
         if (!isArmed()) return super.registerReceiver(receiver, filter, flags);
         if (!isOwner()) {
+            fail("receiver registration by a foreign owner instance");
             throw new SecurityException("this instance is not the armed capture owner");
         }
         return guardRegister(receiver, filter, flags, "3-arg");
@@ -1012,6 +1013,7 @@ public final class GuardedReaderApplication extends Application {
             return;
         }
         if (!isOwner()) {
+            fail("lifecycle registration by a foreign owner instance");
             throw new SecurityException("this instance is not the armed capture owner");
         }
         attemptedRegistrations.incrementAndGet();

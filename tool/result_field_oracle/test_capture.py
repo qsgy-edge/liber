@@ -792,6 +792,11 @@ public class Application extends Context {
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
         receiverRegisterAttempts++;
         receiverEffects.add("register-attempt:" + System.identityHashCode(receiver));
+        java.util.concurrent.CountDownLatch heldEntered = registerEntered;
+        java.util.concurrent.CountDownLatch heldRelease = registerHeld;
+        registerEntered = null;
+        registerHeld = null;
+        holdOnce(heldEntered, heldRelease);
         io.liber.oracle.nested.BoundaryInspection.invokedInstance = this;
         io.liber.oracle.nested.BoundaryInspection.invokedReceiver = receiver;
         receiverDuringEffect = io.liber.oracle.nested.BoundaryInspection.receiverState();
@@ -849,9 +854,32 @@ public class Application extends Context {
     public RuntimeException lifecycleUnregisterAfterEffect;
     public String lifecycleDuringEffect = "";
 
+    // Test-only one-shot holds: the FIRST native call is held so a duplicate can
+    // be attempted while it is genuinely in flight.
+    public static volatile java.util.concurrent.CountDownLatch registerEntered;
+    public static volatile java.util.concurrent.CountDownLatch registerHeld;
+    public static volatile java.util.concurrent.CountDownLatch lifecycleEntered;
+    public static volatile java.util.concurrent.CountDownLatch lifecycleHeld;
+
+    private static void holdOnce(java.util.concurrent.CountDownLatch entered,
+            java.util.concurrent.CountDownLatch held) {
+        if (entered == null || held == null) return;
+        entered.countDown();
+        try {
+            held.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public void registerActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
         lifecycleRegisterAttempts++;
         lifecycleEffects.add("register-attempt:" + System.identityHashCode(callback));
+        java.util.concurrent.CountDownLatch heldLifecycleEntered = lifecycleEntered;
+        java.util.concurrent.CountDownLatch heldLifecycleRelease = lifecycleHeld;
+        lifecycleEntered = null;
+        lifecycleHeld = null;
+        holdOnce(heldLifecycleEntered, heldLifecycleRelease);
         io.liber.oracle.nested.BoundaryInspection.invokedInstance = this;
         io.liber.oracle.nested.BoundaryInspection.invokedCallback = callback;
         lifecycleDuringEffect = io.liber.oracle.nested.BoundaryInspection.lifecycleState();
@@ -5951,6 +5979,11 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'boundary-close-before-reserve',
                 'boundary-arm-invalid', 'boundary-arm-loader', 'boundary-arm-same',
                 'boundary-arm-foreign', 'boundary-arm-other-loader',
+                'boundary-receiver-class', 'boundary-lifecycle-class',
+                'boundary-receiver-loader', 'boundary-lifecycle-loader',
+                'boundary-foreign-register',
+                'boundary-duplicate-receiver', 'boundary-duplicate-lifecycle',
+                'boundary-duplicate-receiver-pending', 'boundary-duplicate-lifecycle-pending',
             )
             outcomes = {}
             for control in controls:

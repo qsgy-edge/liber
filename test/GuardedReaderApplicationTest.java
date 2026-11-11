@@ -138,6 +138,15 @@ public final class GuardedReaderApplicationTest {
             case "boundary-arm-same": boundaryArmSame(result); break;
             case "boundary-arm-foreign": boundaryArmForeign(result); break;
             case "boundary-arm-other-loader": boundaryArmOtherLoader(result); break;
+            case "boundary-receiver-class": boundaryReceiverClass(result); break;
+            case "boundary-lifecycle-class": boundaryLifecycleClass(result); break;
+            case "boundary-receiver-loader": boundaryReceiverLoader(result); break;
+            case "boundary-lifecycle-loader": boundaryLifecycleLoader(result); break;
+            case "boundary-foreign-register": boundaryForeignRegister(result); break;
+            case "boundary-duplicate-receiver": boundaryDuplicateReceiver(result); break;
+            case "boundary-duplicate-lifecycle": boundaryDuplicateLifecycle(result); break;
+            case "boundary-duplicate-receiver-pending": boundaryDuplicateReceiverPending(result); break;
+            case "boundary-duplicate-lifecycle-pending": boundaryDuplicateLifecyclePending(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -2023,6 +2032,326 @@ public final class GuardedReaderApplicationTest {
             writer.flush();
             return text.toString();
         }
+    }
+
+    // --- A4 identity and duplicate admission ------------------------------
+
+    /** A receiver of an unapproved class. */
+    public static final class WrongReceiver extends BroadcastReceiver {
+        @Override public void onReceive(Context context, Intent intent) {}
+    }
+
+    /** A lifecycle callback of an unapproved class. */
+    public static final class WrongLifecycle
+            implements Application.ActivityLifecycleCallbacks {
+        @Override public void onActivityCreated(android.app.Activity a, android.os.Bundle s) {}
+        @Override public void onActivityStarted(android.app.Activity a) {}
+        @Override public void onActivityResumed(android.app.Activity a) {}
+        @Override public void onActivityPaused(android.app.Activity a) {}
+        @Override public void onActivityStopped(android.app.Activity a) {}
+        @Override public void onActivitySaveInstanceState(android.app.Activity a,
+                android.os.Bundle s) {}
+        @Override public void onActivityDestroyed(android.app.Activity a) {}
+    }
+
+    /** Child-first for exactly one name, so the same FQCN becomes a new Class. */
+    public static final class SameNameLoader extends java.net.URLClassLoader {
+        final String name;
+        SameNameLoader(java.net.URL[] urls, ClassLoader parent, String name) {
+            super(urls, parent);
+            this.name = name;
+        }
+        @Override protected Class<?> loadClass(String target, boolean resolve)
+                throws ClassNotFoundException {
+            if (!name.equals(target)) return super.loadClass(target, resolve);
+            Class<?> found = findLoadedClass(target);
+            if (found == null) found = findClass(target);
+            if (resolve) resolveClass(found);
+            return found;
+        }
+    }
+
+    private static void boundaryReceiverClass(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        boolean refused = refused(() ->
+            app.registerReceiver(new WrongReceiver(), new IntentFilter(ACTION), 2));
+        boolean sticky = GuardedReaderApplication.captureFailed();
+        int effects = app.receiverRegisterEffects;
+        // A real valid control still works after the refusal.
+        app.registerReceiver(newReceiver(), new IntentFilter(ACTION), 2);
+        result.put("refused", refused).put("sticky", sticky).put("effects", effects)
+            .put("validAfter", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(refused, "a wrong receiver class must be refused");
+        require(effects == 0, "no native effect for the wrong class");
+        require(sticky, "the refusal must fail the capture");
+        require(app.receiverRegisterEffects == 1,
+            "a valid control still registers after the refusal");
+    }
+
+    private static void boundaryLifecycleClass(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
+            new WrongLifecycle()));
+        boolean sticky = GuardedReaderApplication.captureFailed();
+        int effects = app.lifecycleRegisterEffects;
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) approvedCallback());
+        result.put("refused", refused).put("sticky", sticky).put("effects", effects)
+            .put("validAfter", app.lifecycleRegisterEffects);
+        require(refused, "a wrong lifecycle class must be refused");
+        require(effects == 0, "no native effect for the wrong class");
+        require(sticky, "the refusal must fail the capture");
+        require(app.lifecycleRegisterEffects == 1,
+            "a valid control still registers after the refusal");
+    }
+
+    private static Object sameNameInstance(String className) throws Exception {
+        java.io.File overlay = new java.io.File(
+            Class.forName("com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver")
+                .getProtectionDomain().getCodeSource().getLocation().toURI());
+        SameNameLoader loader = new SameNameLoader(
+            new java.net.URL[] {overlay.toURI().toURL()},
+            GuardedReaderApplicationTest.class.getClassLoader(), className);
+        Class<?> foreign = Class.forName(className, true, loader);
+        return foreign.getDeclaredConstructor().newInstance();
+    }
+
+    private static void boundaryReceiverLoader(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object foreign = sameNameInstance(
+            "com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver");
+        Class<?> approved = newReceiver().getClass();
+        boolean sameName = foreign.getClass().getName().equals(approved.getName());
+        boolean differentClass = foreign.getClass() != approved;
+        boolean refused = refused(() -> app.registerReceiver(
+            (android.content.BroadcastReceiver) foreign, new IntentFilter(ACTION), 2));
+        result.put("sameName", sameName).put("differentClass", differentClass)
+            .put("refused", refused).put("effects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(sameName, "the foreign object must carry the approved FQCN");
+        require(differentClass, "the foreign object must be a different Class");
+        require(refused, "a same-name wrong-loader receiver must be refused");
+        require(app.receiverRegisterEffects == 0, "no native effect");
+        require(app.nativeReceivers.isEmpty(), "no native handle");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+    }
+
+    private static void boundaryLifecycleLoader(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object foreign = sameNameInstance(
+            "com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl");
+        Class<?> approved = approvedCallback().getClass();
+        boolean sameName = foreign.getClass().getName().equals(approved.getName());
+        boolean differentClass = foreign.getClass() != approved;
+        boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) foreign));
+        result.put("sameName", sameName).put("differentClass", differentClass)
+            .put("refused", refused).put("effects", app.lifecycleRegisterEffects)
+            .put("native", app.nativeCallbacks.size());
+        require(sameName, "the foreign object must carry the approved FQCN");
+        require(differentClass, "the foreign object must be a different Class");
+        require(refused, "a same-name wrong-loader lifecycle must be refused");
+        require(app.lifecycleRegisterEffects == 0, "no native effect");
+        require(app.nativeCallbacks.isEmpty(), "no native handle");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+    }
+
+    private static void boundaryForeignRegister(JSONObject result) throws Exception {
+        GuardedReaderApplication owner = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        owner.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(owner, receiver);
+        int ownerAttempts = owner.receiverRegisterAttempts;
+        GuardedReaderApplication foreign = new GuardedReaderApplication();
+        int failuresBefore = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").length();
+        boolean receiverRefused = refused(() -> foreign.registerReceiver(
+            newReceiver(), new IntentFilter(ACTION), 2));
+        int failuresAfterReceiver = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").length();
+        boolean lifecycleRefused = refused(() -> foreign.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) approvedCallback()));
+        int failuresAfterLifecycle = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").length();
+        String failures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        // The original owner still admits and keeps its identities.
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver later = newReceiver();
+        owner.registerReceiver(later, new IntentFilter(ACTION), 2);
+        result.put("receiverRefused", receiverRefused)
+            .put("lifecycleRefused", lifecycleRefused)
+            .put("failuresBefore", failuresBefore)
+            .put("failuresAfterReceiver", failuresAfterReceiver)
+            .put("failuresAfterLifecycle", failuresAfterLifecycle)
+            .put("failures", failures)
+            .put("foreignReceiverAttempts", foreign.receiverRegisterAttempts)
+            .put("foreignLifecycleAttempts", foreign.lifecycleRegisterAttempts)
+            .put("sameWrapper", wrapper != null && wrapper == storedWrapper(owner, receiver))
+            .put("ownerAttempts", owner.receiverRegisterAttempts)
+            .put("ownerStillWorks", storedWrapper(owner, later) != null);
+        require(receiverRefused, "the foreign receiver route must be refused");
+        require(lifecycleRefused, "the foreign lifecycle route must be refused");
+        require(failuresAfterReceiver == failuresBefore + 1,
+            "the receiver route records exactly one new failure");
+        require(failuresAfterLifecycle == failuresAfterReceiver + 1,
+            "the lifecycle route records exactly one new failure");
+        require(failures.contains("receiver registration by a foreign owner instance"),
+            "the receiver refusal reason is recorded");
+        require(failures.contains("lifecycle registration by a foreign owner instance"),
+            "the lifecycle refusal reason is recorded");
+        require(foreign.receiverRegisterAttempts == 0
+            && foreign.lifecycleRegisterAttempts == 0,
+            "the foreign instance makes no native attempt");
+        require(wrapper != null && wrapper == storedWrapper(owner, receiver),
+            "the true owner's wrapper is unchanged");
+        require(owner.receiverRegisterAttempts == ownerAttempts + 1,
+            "only the deliberate later owner registration adds an attempt");
+        require(storedWrapper(owner, later) != null,
+            "the original owner still admits after the refusals");
+        require(GuardedReaderApplication.captureFailed(), "both refusals fail the capture");
+    }
+
+    private static void boundaryDuplicateReceiver(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        int effects = app.receiverRegisterEffects;
+        int acks = GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations");
+        boolean refused = refused(() ->
+            app.registerReceiver(receiver, new IntentFilter(ACTION), 2));
+        result.put("refused", refused).put("effects", effects)
+            .put("effectsAfter", app.receiverRegisterEffects)
+            .put("acks", acks).put("native", app.nativeReceivers.size())
+            .put("sameWrapper", wrapper != null && wrapper == storedWrapper(app, receiver));
+        require(refused, "a duplicate receiver must be refused");
+        require(app.receiverRegisterEffects == effects, "no second native effect");
+        require(acks == 1, "the successful registration is acknowledged once");
+        require(app.nativeReceivers.size() == 1, "exactly one native handle");
+        require(wrapper != null && wrapper == storedWrapper(app, receiver),
+            "the first exact wrapper is retained");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+    }
+
+    private static void boundaryDuplicateLifecycle(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        int effects = app.lifecycleRegisterEffects;
+        int acks = GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations");
+        boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback));
+        result.put("refused", refused).put("effects", effects)
+            .put("effectsAfter", app.lifecycleRegisterEffects)
+            .put("acks", acks).put("native", app.nativeCallbacks.size())
+            .put("owned", ownedCallback(callback));
+        require(refused, "a duplicate lifecycle must be refused");
+        require(app.lifecycleRegisterEffects == effects, "no second native effect");
+        require(acks == 1, "the successful registration is acknowledged once");
+        require(app.nativeCallbacks.size() == 1, "exactly one native callback");
+        require(ownedCallback(callback), "the first exact callback is retained");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+    }
+
+    private static void boundaryDuplicateReceiverPending(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final java.util.concurrent.CountDownLatch entered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release =
+            new java.util.concurrent.CountDownLatch(1);
+        Application.class.getField("registerEntered").set(null, entered);
+        Application.class.getField("registerHeld").set(null, release);
+        final com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        final Throwable[] firstError = {null};
+        Thread first = new Thread(() -> {
+            try {
+                app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+            } catch (Throwable error) {
+                firstError[0] = error;
+            }
+        }, "controlled-first-register");
+        first.start();
+        boolean enteredOk;
+        try {
+            enteredOk = entered.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            boolean refused = refused(() ->
+                app.registerReceiver(receiver, new IntentFilter(ACTION), 2));
+            result.put("entered", enteredOk).put("refused", refused)
+                .put("attemptsWhileHeld", app.receiverRegisterAttempts)
+                .put("effectsWhileHeld", app.receiverRegisterEffects);
+            require(enteredOk, "the first native boundary must be entered");
+            require(refused, "the pending duplicate must be refused");
+            require(app.receiverRegisterEffects == 0,
+                "the duplicate must not add a native effect while the first is held");
+        } finally {
+            release.countDown();
+            Application.class.getField("registerEntered").set(null, null);
+            Application.class.getField("registerHeld").set(null, null);
+            first.join(5000);
+        }
+        result.put("firstError", firstError[0] == null ? "none" : firstError[0].toString())
+            .put("effects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size())
+            .put("acks", GuardedReaderApplication.captureReceipt()
+                .optInt("successfulRegistrations"));
+        require(firstError[0] == null, "the first registration must complete normally");
+        require(app.receiverRegisterEffects == 1, "exactly one native effect");
+        require(app.nativeReceivers.size() == 1, "exactly one native handle");
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 1, "one acknowledged registration");
+    }
+
+    private static void boundaryDuplicateLifecyclePending(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final java.util.concurrent.CountDownLatch entered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release =
+            new java.util.concurrent.CountDownLatch(1);
+        Application.class.getField("lifecycleEntered").set(null, entered);
+        Application.class.getField("lifecycleHeld").set(null, release);
+        final Object callback = approvedCallback();
+        final Throwable[] firstError = {null};
+        Thread first = new Thread(() -> {
+            try {
+                app.registerActivityLifecycleCallbacks(
+                    (Application.ActivityLifecycleCallbacks) callback);
+            } catch (Throwable error) {
+                firstError[0] = error;
+            }
+        }, "controlled-first-lifecycle");
+        first.start();
+        boolean enteredOk;
+        try {
+            enteredOk = entered.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
+                (Application.ActivityLifecycleCallbacks) callback));
+            result.put("entered", enteredOk).put("refused", refused)
+                .put("attemptsWhileHeld", app.lifecycleRegisterAttempts)
+                .put("effectsWhileHeld", app.lifecycleRegisterEffects);
+            require(enteredOk, "the first native boundary must be entered");
+            require(refused, "the pending lifecycle duplicate must be refused");
+            require(app.lifecycleRegisterEffects == 0,
+                "the duplicate must not add a native effect while the first is held");
+        } finally {
+            release.countDown();
+            Application.class.getField("lifecycleEntered").set(null, null);
+            Application.class.getField("lifecycleHeld").set(null, null);
+            first.join(5000);
+        }
+        result.put("firstError", firstError[0] == null ? "none" : firstError[0].toString())
+            .put("effects", app.lifecycleRegisterEffects)
+            .put("native", app.nativeCallbacks.size())
+            .put("acks", GuardedReaderApplication.captureReceipt()
+                .optInt("successfulRegistrations"));
+        require(firstError[0] == null, "the first lifecycle registration must complete");
+        require(app.lifecycleRegisterEffects == 1, "exactly one native effect");
+        require(app.nativeCallbacks.size() == 1, "exactly one native callback");
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 1, "one acknowledged registration");
     }
 
     private static GuardedReaderApplication arm() {
