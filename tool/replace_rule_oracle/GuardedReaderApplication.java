@@ -178,6 +178,9 @@ public final class GuardedReaderApplication extends Application {
         if (loader == null) {
             throw new SecurityException("the capture guard needs the verified target loader");
         }
+        // Resolve the required registration shapes through the supplied loader
+        // OUTSIDE the global lock, without initializing any class.
+        String readiness = readinessOf(loader);
         synchronized (lock) {
             if (closing) {
                 fail("arm after the process closing boundary");
@@ -185,14 +188,52 @@ public final class GuardedReaderApplication extends Application {
                     "the capture guard lifetime is closed; no new arm is admitted");
             }
             if (armed && owner != null && owner != application) {
+                fail("arm for another owner while the guard is already armed");
                 throw new SecurityException("the capture guard is already armed for another owner");
             }
             if (armed && targetLoader != loader) {
+                fail("arm with another loader while the guard is already armed");
                 throw new SecurityException("the capture guard is already armed for another loader");
+            }
+            if (readiness != null) {
+                // An initial loader that cannot resolve the required shapes must
+                // never publish an armed owner.
+                fail("arm with an unready loader: " + readiness);
+                throw new SecurityException(
+                    "the capture guard needs a loader that resolves its registration classes: "
+                        + readiness);
+            }
+            if (armed) {
+                // The same open owner and loader is idempotent: no reset.
+                return;
             }
             owner = (GuardedReaderApplication) application;
             targetLoader = loader;
             armed = true;
+        }
+    }
+
+    /**
+     * Whether the supplied loader resolves the required registration shapes.
+     *
+     * <p>Classes are resolved without initialization and no access bypass is
+     * used. A null answer means ready.
+     */
+    private static String readinessOf(ClassLoader loader) {
+        try {
+            Class<?> receiver = Class.forName(LEB_RECEIVER, false, loader);
+            if (!BroadcastReceiver.class.isAssignableFrom(receiver)) {
+                return "receiver is not a BroadcastReceiver";
+            }
+            Class<?> lifecycle = Class.forName(LEB_LIFECYCLE, false, loader);
+            if (!ActivityLifecycleCallbacks.class.isAssignableFrom(lifecycle)) {
+                return "lifecycle is not an ActivityLifecycleCallbacks";
+            }
+            Class.forName(OBSERVABLE_INTERFACE, false, loader);
+            Class.forName(OBSERVER_INTERFACE, false, loader);
+            return null;
+        } catch (Throwable error) {
+            return String.valueOf(error);
         }
     }
 
