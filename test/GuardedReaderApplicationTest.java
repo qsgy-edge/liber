@@ -1891,13 +1891,18 @@ public final class GuardedReaderApplicationTest {
             "readiness must not initialize the approved receiver class");
         require(GuardedReaderApplication.captureFailed(), "the refusal must fail the capture");
         // A compatible loader may still genuinely arm; sticky failure stays.
+        int resolvingBefore = io.liber.oracle.nested.InitLedger.receiverInitializations.get();
         GuardedReaderApplication.arm(app, loader());
+        int resolvingAfter = io.liber.oracle.nested.InitLedger.receiverInitializations.get();
         result.put("laterArmed", GuardedReaderApplication.isArmed())
-            .put("stickyAfterValid", GuardedReaderApplication.captureFailed());
+            .put("stickyAfterValid", GuardedReaderApplication.captureFailed())
+            .put("resolvingInitializations", resolvingAfter - resolvingBefore);
         require(GuardedReaderApplication.isArmed(),
             "a compatible loader may still arm after the refusal");
         require(GuardedReaderApplication.captureFailed(),
             "the earlier capture failure stays sticky");
+        require(resolvingAfter == resolvingBefore,
+            "a resolving readiness check must not initialize the approved receiver");
     }
 
     /**
