@@ -1717,7 +1717,7 @@ public final class GuardedReaderApplicationTest {
         require(app.receiverRegisterEffects == 0, mode + ": no native effect");
         if ("boundary-overload4".equals(mode) || "boundary-overload5".equals(mode)) {
             require(observedReads == 0,
-                mode + ": a forbidden diagnostic must not read an unapproved filter");
+                mode + ": a forbidden diagnostic must not read unapproved filter metadata");
         }
         require(app.nativeReceivers.isEmpty(), mode + ": no native handle");
         require(GuardedReaderApplication.captureFailed(), mode + ": the capture must fail");
