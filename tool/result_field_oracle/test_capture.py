@@ -789,7 +789,10 @@ public class Application extends Context {
     public final List<String> receiverRoutes = new ArrayList<>();
     public int receiverNativeFlags = -1;
     public String receiverNativePermission;
-    public Integer receiverNativeScheduler;
+    public android.os.Handler receiverNativeScheduler;
+
+    /** Configurable native sticky return; default null like the real platform. */
+    public Intent receiverNativeReturn;
 
     // Every public overload delegates to ONE private native routine, so a missing
     // guard override cannot be masked by a virtual back-dispatch into another
@@ -807,8 +810,7 @@ public class Application extends Context {
         receiverRoutes.add(route + ":" + System.identityHashCode(receiver));
         receiverNativeFlags = flags;
         receiverNativePermission = permission;
-        receiverNativeScheduler = scheduler == null ? null
-            : Integer.valueOf(System.identityHashCode(scheduler));
+        receiverNativeScheduler = scheduler;
         receiverRegisterAttempts++;
         receiverEffects.add("register-attempt:" + System.identityHashCode(receiver));
         java.util.concurrent.CountDownLatch heldEntered = registerEntered;
@@ -829,7 +831,7 @@ public class Application extends Context {
         receiverEffects.add("register-effect:" + System.identityHashCode(receiver));
         registered.add(receiver.getClass().getName() + "|" + flags);
         if (receiverRegisterAfterEffect != null) throw receiverRegisterAfterEffect;
-        return null;
+        return receiverNativeReturn;
     }
 
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
@@ -880,14 +882,25 @@ public class Application extends Context {
     public static volatile java.util.concurrent.CountDownLatch lifecycleEntered;
     public static volatile java.util.concurrent.CountDownLatch lifecycleHeld;
 
+    /**
+     * The bounded duplicate hold.
+     *
+     * <p>A timed-out or interrupted wait throws with the original cause and never
+     * lets the caller proceed into the native registration effect.
+     */
     private static void holdOnce(java.util.concurrent.CountDownLatch entered,
             java.util.concurrent.CountDownLatch held) {
         if (entered == null || held == null) return;
         entered.countDown();
         try {
-            held.await(5, java.util.concurrent.TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
+            if (!held.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new IllegalStateException(
+                    "the controlled native hold was not released in time");
+            }
+        } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                "the controlled native hold was interrupted", interrupted);
         }
     }
 
@@ -6014,6 +6027,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'boundary-foreign-register',
                 'boundary-duplicate-receiver', 'boundary-duplicate-lifecycle',
                 'boundary-duplicate-receiver-pending', 'boundary-duplicate-lifecycle-pending',
+                'boundary-unarmed-forwarding', 'boundary-activity-refusal',
             )
             outcomes = {}
             for control in controls:

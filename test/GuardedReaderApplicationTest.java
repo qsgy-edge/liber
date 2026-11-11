@@ -147,6 +147,8 @@ public final class GuardedReaderApplicationTest {
             case "boundary-duplicate-lifecycle": boundaryDuplicateLifecycle(result); break;
             case "boundary-duplicate-receiver-pending": boundaryDuplicateReceiverPending(result); break;
             case "boundary-duplicate-lifecycle-pending": boundaryDuplicateLifecyclePending(result); break;
+            case "boundary-unarmed-forwarding": boundaryUnarmedForwarding(result); break;
+            case "boundary-activity-refusal": boundaryActivityRefusal(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -2352,6 +2354,118 @@ public final class GuardedReaderApplicationTest {
         require(app.nativeCallbacks.size() == 1, "exactly one native callback");
         require(GuardedReaderApplication.captureReceipt()
             .optInt("successfulRegistrations") == 1, "one acknowledged registration");
+    }
+
+    // --- A4 inactive forwarding and always-on activity refusal ------------
+
+    /**
+     * While genuinely unarmed, every public overload reaches its own native route
+     * with the exact supplied objects, and lifecycle registration forwards too.
+     */
+    private static void boundaryUnarmedForwarding(JSONObject result) throws Exception {
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        require(!GuardedReaderApplication.isArmed(), "the guard must be genuinely unarmed");
+        IntentFilter filter = new IntentFilter(ACTION);
+        android.os.Handler scheduler = new android.os.Handler(android.os.Looper.getMainLooper());
+        Intent sticky = new Intent("sticky.return");
+        app.receiverNativeReturn = sticky;
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r2 = newReceiver();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r3 = newReceiver();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r4 = newReceiver();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r5 = newReceiver();
+        Intent back2 = app.registerReceiver(r2, filter);
+        String route2 = app.receiverRoutes.get(0);
+        Intent back3 = app.registerReceiver(r3, filter, 2);
+        String route3 = app.receiverRoutes.get(1);
+        Intent back4 = app.registerReceiver(r4, filter, null, scheduler);
+        String route4 = app.receiverRoutes.get(2);
+        Intent back5 = app.registerReceiver(r5, filter, "perm", scheduler, 2);
+        String route5 = app.receiverRoutes.get(3);
+        result.put("routes", new org.json.JSONArray(app.receiverRoutes))
+            .put("attempts", app.receiverRegisterAttempts)
+            .put("effects", app.receiverRegisterEffects)
+            .put("flags", app.receiverNativeFlags)
+            .put("permission", app.receiverNativePermission)
+            .put("schedulerExact", app.receiverNativeScheduler == scheduler)
+            .put("stickyExact", back2 == sticky && back3 == sticky && back4 == sticky
+                && back5 == sticky)
+            .put("nativeIsOriginal", app.nativeReceivers.containsKey(r2)
+                && app.nativeReceivers.containsKey(r3)
+                && app.nativeReceivers.containsKey(r4)
+                && app.nativeReceivers.containsKey(r5))
+            .put("armed", GuardedReaderApplication.isArmed());
+        require(route2.startsWith("2:") && route3.startsWith("3:")
+            && route4.startsWith("4:") && route5.startsWith("5:"),
+            "each overload must reach its own native route");
+        require(app.receiverRegisterAttempts == 4, "exactly four native attempts");
+        require(app.receiverRegisterEffects == 4, "exactly four native effects");
+        require(app.receiverNativeFlags == 2, "the last route carried its own flags");
+        require("perm".equals(app.receiverNativePermission),
+            "the permission argument reached the native boundary");
+        require(app.receiverNativeScheduler == scheduler,
+            "the exact scheduler object reached the native boundary");
+        require(back2 == sticky && back3 == sticky && back4 == sticky && back5 == sticky,
+            "every overload returns the native sticky intent");
+        require(app.nativeReceivers.containsKey(r2) && app.nativeReceivers.containsKey(r3)
+            && app.nativeReceivers.containsKey(r4) && app.nativeReceivers.containsKey(r5),
+            "the original receivers reach the native registry, not a guard wrapper");
+        require(!GuardedReaderApplication.isArmed(), "forwarding must not arm the guard");
+        require(!GuardedReaderApplication.captureFailed(),
+            "unarmed forwarding must not fail a capture");
+        // Lifecycle registration and removal forward with the exact callback.
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        boolean registered = app.nativeCallbacks.containsKey(callback);
+        app.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        result.put("lifecycleRegistered", registered)
+            .put("lifecycleRemoved", !app.nativeCallbacks.containsKey(callback))
+            .put("lifecycleEffects", app.lifecycleRegisterEffects)
+            .put("lifecycleRemovals", app.lifecycleUnregisterEffects);
+        require(registered, "the exact callback reaches the native registry");
+        require(!app.nativeCallbacks.containsKey(callback),
+            "the exact callback is removed natively");
+        require(app.lifecycleRegisterEffects == 1 && app.lifecycleUnregisterEffects == 1,
+            "one native lifecycle effect each way");
+        require(!GuardedReaderApplication.captureFailed(),
+            "unarmed lifecycle forwarding must not fail a capture");
+        app.receiverNativeReturn = null;
+    }
+
+    /**
+     * Both always-on activity overloads refuse before any native effect, first
+     * unarmed and then armed on the same real owner.
+     */
+    private static void boundaryActivityRefusal(JSONObject result) throws Exception {
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        require(!GuardedReaderApplication.isArmed(), "the guard must start unarmed");
+        int base = GuardedReaderApplication.launchAttempts();
+        boolean unarmedOne = refused(() -> app.startActivity(new Intent("x")));
+        int afterUnarmedOne = GuardedReaderApplication.launchAttempts();
+        boolean unarmedTwo = refused(() ->
+            app.startActivity(new Intent("x"), new android.os.Bundle()));
+        int afterUnarmedTwo = GuardedReaderApplication.launchAttempts();
+        GuardedReaderApplication.arm(app, loader());
+        boolean armedOne = refused(() -> app.startActivity(new Intent("x")));
+        int afterArmedOne = GuardedReaderApplication.launchAttempts();
+        boolean armedTwo = refused(() ->
+            app.startActivity(new Intent("x"), new android.os.Bundle()));
+        int afterArmedTwo = GuardedReaderApplication.launchAttempts();
+        result.put("unarmedOne", unarmedOne).put("unarmedTwo", unarmedTwo)
+            .put("armedOne", armedOne).put("armedTwo", armedTwo)
+            .put("deltas", new org.json.JSONArray().put(afterUnarmedOne - base)
+                .put(afterUnarmedTwo - afterUnarmedOne)
+                .put(afterArmedOne - afterUnarmedTwo)
+                .put(afterArmedTwo - afterArmedOne))
+            .put("baseLaunches", app.launched.size());
+        require(unarmedOne && unarmedTwo && armedOne && armedTwo,
+            "all four activity calls must refuse");
+        require(afterUnarmedOne - base == 1 && afterUnarmedTwo - afterUnarmedOne == 1
+            && afterArmedOne - afterUnarmedTwo == 1 && afterArmedTwo - afterArmedOne == 1,
+            "each call increments the existing activity counter exactly once");
+        require(app.launched.isEmpty(),
+            "the native base launch must never be reached");
     }
 
     private static GuardedReaderApplication arm() {
