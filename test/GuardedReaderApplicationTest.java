@@ -149,6 +149,9 @@ public final class GuardedReaderApplicationTest {
             case "boundary-duplicate-lifecycle-pending": boundaryDuplicateLifecyclePending(result); break;
             case "boundary-unarmed-forwarding": boundaryUnarmedForwarding(result); break;
             case "boundary-activity-refusal": boundaryActivityRefusal(result); break;
+            case "boundary-closing-owned-removal": boundaryClosingOwnedRemoval(result); break;
+            case "boundary-ipc-open": boundaryIpcOpen(result); break;
+            case "boundary-ipc-closing": boundaryIpcClosing(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -974,6 +977,14 @@ public final class GuardedReaderApplicationTest {
         GuardedReaderApplication app = new GuardedReaderApplication();
         GuardedReaderApplication.arm(app, loader());
         return app;
+    }
+
+    /** Read-only view of the guard's owned wrapper list. */
+    private static java.util.List<?> ownedReceiverList() throws Exception {
+        java.lang.reflect.Field field =
+            GuardedReaderApplication.class.getDeclaredField("ownedReceivers");
+        field.setAccessible(true);
+        return (java.util.List<?>) field.get(null);
     }
 
     private static Object storedWrapper(GuardedReaderApplication app, Object receiver)
@@ -1826,11 +1837,17 @@ public final class GuardedReaderApplicationTest {
         result.put("refused", refused).put("release", release[0] == null
                 ? JSONObject.NULL : release[0])
             .put("threadFailure", threadFailure[0] == null ? "none"
-                : threadFailure[0].toString())
+                : FieldOracleFreeChain.describe(threadFailure[0]))
+            .put("closerAlive", closer.isAlive())
             .put("nativeAttempts", app.receiverRegisterAttempts)
             .put("nativeEffects", app.receiverRegisterEffects)
             .put("native", app.nativeReceivers.size());
         require(threadFailure[0] == null, "the closing thread must not fail");
+        require(!closer.isAlive(), "the controlled closing thread must have terminated");
+        require(app.receiverRegisterAttempts == 0,
+            "the atomic close admits no native attempt");
+        require(app.receiverRegisterEffects == 0,
+            "the atomic close admits no native effect");
         require(release[0] != null && release[0].optBoolean("closed"),
             "the controlled thread proved the lifetime closed");
         require(refused, "the reservation must refuse after the atomic close");
@@ -2255,21 +2272,30 @@ public final class GuardedReaderApplicationTest {
         int attemptsAfter = app.receiverRegisterAttempts;
         int acksAfter = GuardedReaderApplication.captureReceipt()
             .optInt("successfulRegistrations");
+        // Snapshot the exact first identity BEFORE any cleanup.
+        boolean sameWrapperBefore = wrapper != null && wrapper == storedWrapper(app, receiver);
+        boolean nativeHeld = wrapper != null && app.nativeReceivers.containsKey(wrapper);
+        boolean ownedHeld = wrapper != null && ownedReceiverList().contains(wrapper);
         // A legitimate exact-owner cleanup empties both registries.
         app.unregisterReceiver(receiver);
         result.put("refused", refused).put("effects", effects)
             .put("effectsAfter", app.receiverRegisterEffects)
             .put("attemptsAfter", attemptsAfter)
             .put("acks", acks).put("acksAfter", acksAfter)
+            .put("sameWrapperBefore", sameWrapperBefore)
+            .put("nativeHeld", nativeHeld).put("ownedHeld", ownedHeld)
             .put("nativeAfterCleanup", app.nativeReceivers.size())
-            .put("wrapperAfterCleanup", storedWrapper(app, receiver))
-            .put("sameWrapper", wrapper != null && wrapper == storedWrapper(app, receiver));
+            .put("ownedAfterCleanup", ownedReceiverList().size())
+            .put("wrapperAfterCleanup", storedWrapper(app, receiver));
         require(refused, "a duplicate receiver must be refused");
         require(attemptsAfter == 1, "the duplicate adds no native attempt");
         require(app.receiverRegisterEffects == effects, "no second native effect");
         require(acksAfter == 1, "the acknowledgement stays one after the refusal");
-        require(wrapper != null, "the first exact wrapper was retained");
+        require(sameWrapperBefore, "the first exact wrapper was retained before cleanup");
+        require(nativeHeld, "the exact wrapper is in the native registry before cleanup");
+        require(ownedHeld, "the exact wrapper is guard-owned before cleanup");
         require(app.nativeReceivers.isEmpty(), "cleanup empties the native registry");
+        require(ownedReceiverList().isEmpty(), "cleanup empties the owned list");
         require(storedWrapper(app, receiver) == null, "cleanup clears the owned wrapper");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
     }
@@ -2287,18 +2313,23 @@ public final class GuardedReaderApplicationTest {
         int attemptsAfter = app.lifecycleRegisterAttempts;
         int acksAfter = GuardedReaderApplication.captureReceipt()
             .optInt("successfulRegistrations");
+        boolean nativeHeld = app.nativeCallbacks.containsKey(callback);
+        boolean ownedHeld = ownedCallback(callback);
         app.unregisterActivityLifecycleCallbacks(
             (Application.ActivityLifecycleCallbacks) callback);
         result.put("refused", refused).put("effects", effects)
             .put("effectsAfter", app.lifecycleRegisterEffects)
             .put("attemptsAfter", attemptsAfter)
             .put("acks", acks).put("acksAfter", acksAfter)
+            .put("nativeHeld", nativeHeld).put("ownedHeld", ownedHeld)
             .put("nativeAfterCleanup", app.nativeCallbacks.size())
             .put("ownedAfterCleanup", ownedCallback(callback));
         require(refused, "a duplicate lifecycle must be refused");
         require(attemptsAfter == 1, "the duplicate adds no native attempt");
         require(app.lifecycleRegisterEffects == effects, "no second native effect");
         require(acksAfter == 1, "the acknowledgement stays one after the refusal");
+        require(nativeHeld, "the exact callback is native before cleanup");
+        require(ownedHeld, "the exact callback is guard-owned before cleanup");
         require(app.nativeCallbacks.isEmpty(), "cleanup empties the native registry");
         require(!ownedCallback(callback), "cleanup clears the owned callback");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
@@ -2325,6 +2356,8 @@ public final class GuardedReaderApplicationTest {
         boolean enteredOk;
         try {
             enteredOk = entered.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            // The first native boundary must be genuinely entered first.
+            require(enteredOk, "the first native boundary must be entered");
             boolean refused = refused(() ->
                 app.registerReceiver(receiver, new IntentFilter(ACTION), 2));
             result.put("entered", enteredOk).put("refused", refused)
@@ -2357,8 +2390,10 @@ public final class GuardedReaderApplicationTest {
         require(GuardedReaderApplication.captureReceipt()
             .optInt("successfulRegistrations") == 1, "one acknowledged registration");
         app.unregisterReceiver(receiver);
-        result.put("nativeAfterCleanup", app.nativeReceivers.size());
+        result.put("nativeAfterCleanup", app.nativeReceivers.size())
+            .put("ownedAfterCleanup", ownedReceiverList().size());
         require(app.nativeReceivers.isEmpty(), "cleanup empties the native registry");
+        require(ownedReceiverList().isEmpty(), "cleanup empties the owned list");
         require(GuardedReaderApplication.captureFailed(), "the refusal stays sticky");
     }
 
@@ -2384,6 +2419,7 @@ public final class GuardedReaderApplicationTest {
         boolean enteredOk;
         try {
             enteredOk = entered.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            require(enteredOk, "the first native boundary must be entered");
             boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
                 (Application.ActivityLifecycleCallbacks) callback));
             result.put("entered", enteredOk).put("refused", refused)
@@ -2417,8 +2453,10 @@ public final class GuardedReaderApplicationTest {
             .optInt("successfulRegistrations") == 1, "one acknowledged registration");
         app.unregisterActivityLifecycleCallbacks(
             (Application.ActivityLifecycleCallbacks) callback);
-        result.put("nativeAfterCleanup", app.nativeCallbacks.size());
+        result.put("nativeAfterCleanup", app.nativeCallbacks.size())
+            .put("ownedAfterCleanup", ownedCallback(callback));
         require(app.nativeCallbacks.isEmpty(), "cleanup empties the native registry");
+        require(!ownedCallback(callback), "cleanup clears the owned callback");
         require(GuardedReaderApplication.captureFailed(), "the refusal stays sticky");
     }
 
@@ -2555,6 +2593,158 @@ public final class GuardedReaderApplicationTest {
             "each call increments the existing activity counter exactly once");
         require(app.launched.isEmpty(),
             "the native base launch must never be reached");
+    }
+
+    // --- A4 closing-owned removal and IPC delivery ------------------------
+
+    /** The guard's own receipt counters for the IPC rows. */
+    private static int blockedDeliveries() throws Exception {
+        java.lang.reflect.Field field =
+            GuardedReaderApplication.class.getDeclaredField("blockedDeliveries");
+        field.setAccessible(true);
+        return ((java.util.concurrent.atomic.AtomicInteger) field.get(null)).get();
+    }
+
+    private static int inboundAttempts() throws Exception {
+        java.lang.reflect.Field field =
+            GuardedReaderApplication.class.getDeclaredField("inboundAttempts");
+        field.setAccessible(true);
+        return ((org.json.JSONArray) field.get(null)).length();
+    }
+
+    private static org.json.JSONArray inboundRecords() throws Exception {
+        java.lang.reflect.Field field =
+            GuardedReaderApplication.class.getDeclaredField("inboundAttempts");
+        field.setAccessible(true);
+        return (org.json.JSONArray) field.get(null);
+    }
+
+    private static int failureCount() throws Exception {
+        return GuardedReaderApplication.captureReceipt().getJSONArray("failures").length();
+    }
+
+    /**
+     * After a real closing boundary, the exact owner can still remove its own
+     * resources, and a final retry empties both registries.
+     */
+    private static void boundaryClosingOwnedRemoval(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object observable = liveObservableForTest();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        // Real before-removal faults on all three resources.
+        app.receiverUnregisterBeforeEffect = new IllegalStateException("CLOSING_RECEIVER");
+        app.lifecycleUnregisterBeforeEffect = new IllegalStateException("CLOSING_LIFECYCLE");
+        observableField(observable, "observerRemoveBeforeEffect");
+        setObservableField(observable, "observerRemoveBeforeEffect",
+            new IllegalStateException("CLOSING_OBSERVER"));
+        JSONObject first = GuardedReaderApplication.releaseProcessResources();
+        result.put("firstClosed", first.optBoolean("closed"))
+            .put("nativeReceiversHeld", app.nativeReceivers.size())
+            .put("nativeCallbacksHeld", app.nativeCallbacks.size())
+            .put("ownedWrapperHeld", wrapper != null && storedWrapper(app, receiver) != null);
+        require(!first.optBoolean("closed"), "the faulted first release is not a closure");
+        require(app.nativeReceivers.size() == 1, "the receiver resource is retained");
+        require(app.nativeCallbacks.size() == 1, "the lifecycle resource is retained");
+        require(wrapper != null && storedWrapper(app, receiver) != null,
+            "the owned wrapper is retained");
+        require(GuardedReaderApplication.captureFailed(), "the capture must fail");
+        // Clear only the controlled native faults.
+        app.receiverUnregisterBeforeEffect = null;
+        app.lifecycleUnregisterBeforeEffect = null;
+        setObservableField(observable, "observerRemoveBeforeEffect", null);
+        // Legitimate exact-owner public removal still works after closing.
+        app.unregisterReceiver(receiver);
+        app.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        GuardedReaderApplication.endSaveObservation(0);
+        result.put("receiverAfterPublic", app.nativeReceivers.size())
+            .put("lifecycleAfterPublic", app.nativeCallbacks.size());
+        require(app.nativeReceivers.isEmpty(), "the exact-owner receiver removal works");
+        require(app.nativeCallbacks.isEmpty(), "the exact-owner lifecycle removal works");
+        // A final acknowledged retry empties everything.
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        result.put("retryClosed", retry.optBoolean("closed"))
+            .put("nativeReceivers", app.nativeReceivers.size())
+            .put("nativeCallbacks", app.nativeCallbacks.size())
+            .put("ownedWrappers", ownedReceiverList().size())
+            .put("sticky", GuardedReaderApplication.captureFailed());
+        require(retry.optBoolean("closed"), "the final retry closes the resources");
+        require(app.nativeReceivers.isEmpty() && app.nativeCallbacks.isEmpty(),
+            "the final retry empties the native registries");
+        require(ownedReceiverList().isEmpty(), "the final retry empties the owned list");
+        require(GuardedReaderApplication.captureFailed(),
+            "the capture failure stays sticky after truthful closure");
+    }
+
+    /** Invokes the exact native-installed wrapper and checks the guarded facts. */
+    private static void ipcDelivery(JSONObject result, String mode) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        require(wrapper != null, "the guard installed a wrapper");
+        require(wrapper != receiver, "the installed wrapper is distinct from the original");
+        require(app.nativeReceivers.containsKey(wrapper),
+            "the exact wrapper is the native-installed object");
+        if ("boundary-ipc-closing".equals(mode)) {
+            JSONObject release = GuardedReaderApplication.releaseProcessResources();
+            result.put("release", release);
+            require(release.optBoolean("closed"), "the real release closed the resources");
+            require(app.nativeReceivers.isEmpty(), "the native registry is empty after release");
+        }
+        int blockedBefore = blockedDeliveries();
+        int inboundBefore = inboundAttempts();
+        int failuresBefore = failureCount();
+        int deliveryBefore = com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver.delivered;
+        int effectsBefore = app.receiverRegisterEffects;
+        int removalsBefore = app.receiverUnregisterEffects;
+        Intent intent = new Intent(ACTION);
+        ((android.content.BroadcastReceiver) wrapper).onReceive(app, intent);
+        int blockedAfter = blockedDeliveries();
+        int inboundAfter = inboundAttempts();
+        int failuresAfter = failureCount();
+        result.put("mode", mode)
+            .put("originalDeliveries",
+                com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver.delivered - deliveryBefore)
+            .put("extrasReads", intent.extrasRead)
+            .put("blockedDelta", blockedAfter - blockedBefore)
+            .put("inboundDelta", inboundAfter - inboundBefore)
+            .put("failureDelta", failuresAfter - failuresBefore)
+            .put("registerEffects", app.receiverRegisterEffects - effectsBefore)
+            .put("removalEffects", app.receiverUnregisterEffects - removalsBefore);
+        require(com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver.delivered
+            == deliveryBefore, "the original receiver must not be delivered to");
+        require(intent.extrasRead == 0, "the extras getter must never be read");
+        require(blockedAfter - blockedBefore == 1, "exactly one blocked delivery");
+        require(inboundAfter - inboundBefore == 1, "exactly one inbound attempt");
+        require(failuresAfter - failuresBefore == 1, "exactly one recorded failure");
+        require(app.receiverRegisterEffects == effectsBefore,
+            "no native registration effect is invented");
+        require(app.receiverUnregisterEffects == removalsBefore,
+            "no native removal effect is invented");
+        org.json.JSONArray inbound = inboundRecords();
+        org.json.JSONObject last = inbound.getJSONObject(inbound.length() - 1);
+        result.put("inboundAction", last.optString("action"))
+            .put("inboundNativeClass", last.optString("nativeClass"));
+        require(ACTION.equals(last.optString("action")),
+            "the correct action is recorded on the inbound attempt");
+        require(last.optString("nativeClass").endsWith("LebIpcReceiver"),
+            "the original native class is recorded on the inbound attempt");
+    }
+
+    private static void boundaryIpcOpen(JSONObject result) throws Exception {
+        ipcDelivery(result, "boundary-ipc-open");
+    }
+
+    private static void boundaryIpcClosing(JSONObject result) throws Exception {
+        ipcDelivery(result, "boundary-ipc-closing");
     }
 
     private static GuardedReaderApplication arm() {

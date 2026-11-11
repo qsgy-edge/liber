@@ -6028,6 +6028,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'boundary-duplicate-receiver', 'boundary-duplicate-lifecycle',
                 'boundary-duplicate-receiver-pending', 'boundary-duplicate-lifecycle-pending',
                 'boundary-unarmed-forwarding', 'boundary-activity-refusal',
+                'boundary-closing-owned-removal', 'boundary-ipc-open', 'boundary-ipc-closing',
             )
             outcomes = {}
             for control in controls:
