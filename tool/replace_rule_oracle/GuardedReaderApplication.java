@@ -178,9 +178,8 @@ public final class GuardedReaderApplication extends Application {
         if (loader == null) {
             throw new SecurityException("the capture guard needs the verified target loader");
         }
-        // Resolve the required registration shapes through the supplied loader
-        // OUTSIDE the global lock, without initializing any class.
-        String readiness = readinessOf(loader);
+        // The cheap existing-lock rejection runs FIRST, so an already-known
+        // closed or differently-owned lifetime never consults a supplied loader.
         synchronized (lock) {
             if (closing) {
                 fail("arm after the process closing boundary");
@@ -195,16 +194,40 @@ public final class GuardedReaderApplication extends Application {
                 fail("arm with another loader while the guard is already armed");
                 throw new SecurityException("the capture guard is already armed for another loader");
             }
-            if (readiness != null) {
-                // An initial loader that cannot resolve the required shapes must
-                // never publish an armed owner.
-                fail("arm with an unready loader: " + readiness);
+            if (armed) {
+                // The same open owner and loader is idempotent: no resolver work
+                // and no reset of handles, counters or failure state.
+                return;
+            }
+        }
+        // A not-yet-armed candidate validates the required shapes OUTSIDE the
+        // global lock, without initializing any class.
+        Throwable unready = readinessOf(loader);
+        if (unready != null) {
+            fail("arm with an unready loader: " + stackTraceOf(unready));
+            throw unready instanceof SecurityException ? (SecurityException) unready
+                : new SecurityException(
+                    "the capture guard needs a loader that resolves its registration classes",
+                    unready);
+        }
+        synchronized (lock) {
+            // Recheck identity and closing immediately before publication.
+            if (closing) {
+                fail("arm after the process closing boundary");
                 throw new SecurityException(
-                    "the capture guard needs a loader that resolves its registration classes: "
-                        + readiness);
+                    "the capture guard lifetime is closed; no new arm is admitted");
             }
             if (armed) {
-                // The same open owner and loader is idempotent: no reset.
+                if (owner != application) {
+                    fail("arm for another owner while the guard is already armed");
+                    throw new SecurityException(
+                        "the capture guard is already armed for another owner");
+                }
+                if (targetLoader != loader) {
+                    fail("arm with another loader while the guard is already armed");
+                    throw new SecurityException(
+                        "the capture guard is already armed for another loader");
+                }
                 return;
             }
             owner = (GuardedReaderApplication) application;
@@ -214,26 +237,39 @@ public final class GuardedReaderApplication extends Application {
     }
 
     /**
-     * Whether the supplied loader resolves the required registration shapes.
+     * The required registration shapes, or the original failure to resolve them.
      *
      * <p>Classes are resolved without initialization and no access bypass is
-     * used. A null answer means ready.
+     * used. A null answer means ready. The returned throwable is the real
+     * expected reflection, linkage or security failure with its own cause and
+     * suppressed graph intact.
      */
-    private static String readinessOf(ClassLoader loader) {
+    private static Throwable readinessOf(ClassLoader loader) {
         try {
             Class<?> receiver = Class.forName(LEB_RECEIVER, false, loader);
             if (!BroadcastReceiver.class.isAssignableFrom(receiver)) {
-                return "receiver is not a BroadcastReceiver";
+                return new SecurityException("the receiver is not a BroadcastReceiver");
             }
             Class<?> lifecycle = Class.forName(LEB_LIFECYCLE, false, loader);
             if (!ActivityLifecycleCallbacks.class.isAssignableFrom(lifecycle)) {
-                return "lifecycle is not an ActivityLifecycleCallbacks";
+                return new SecurityException(
+                    "the lifecycle callback is not an ActivityLifecycleCallbacks");
             }
-            Class.forName(OBSERVABLE_INTERFACE, false, loader);
-            Class.forName(OBSERVER_INTERFACE, false, loader);
+            Class<?> observable = Class.forName(OBSERVABLE_INTERFACE, false, loader);
+            if (!observable.isInterface()
+                    || !java.lang.reflect.Modifier.isPublic(observable.getModifiers())) {
+                return new SecurityException(
+                    "the observable seam is not a public interface");
+            }
+            Class<?> observer = Class.forName(OBSERVER_INTERFACE, false, loader);
+            if (!observer.isInterface()
+                    || !java.lang.reflect.Modifier.isPublic(observer.getModifiers())) {
+                return new SecurityException("the observer seam is not a public interface");
+            }
             return null;
         } catch (Throwable error) {
-            return String.valueOf(error);
+            // The original instance is preserved, never flattened to a string.
+            return error;
         }
     }
 
