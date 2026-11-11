@@ -1741,6 +1741,10 @@ public final class GuardedReaderApplicationTest {
 
     private static void boundaryClosed(JSONObject result, String mode) throws Exception {
         GuardedReaderApplication app = armedApp();
+        // Baseline the actual event observable before the closing refusal.
+        Object observable = liveObservableForTest();
+        int observeBefore = (Integer) observableField(observable, "observerObserveAttempts");
+        int removeBefore = (Integer) observableField(observable, "observerRemoveAttempts");
         JSONObject release = GuardedReaderApplication.releaseProcessResources();
         boolean refused;
         if ("boundary-closed-arm".equals(mode)) {
@@ -1755,17 +1759,31 @@ public final class GuardedReaderApplicationTest {
             refused = refused(() ->
                 GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1"));
         }
+        int observeAfter = (Integer) observableField(observable, "observerObserveAttempts");
+        int removeAfter = (Integer) observableField(observable, "observerRemoveAttempts");
         result.put("mode", mode).put("release", release).put("refused", refused)
+            .put("receiverAttempts", app.receiverRegisterAttempts)
             .put("receiverEffects", app.receiverRegisterEffects)
+            .put("lifecycleAttempts", app.lifecycleRegisterAttempts)
             .put("lifecycleEffects", app.lifecycleRegisterEffects)
+            .put("observeAttempts", observeAfter - observeBefore)
+            .put("removeAttempts", removeAfter - removeBefore)
             .put("nativeReceivers", app.nativeReceivers.size())
             .put("nativeCallbacks", app.nativeCallbacks.size());
         require(release.optBoolean("closed"), mode + ": the lifetime really closed");
         require(refused, mode + ": admission after closing must be refused");
+        require(app.receiverRegisterAttempts == 0, mode + ": no receiver native attempt");
         require(app.receiverRegisterEffects == 0, mode + ": no receiver native effect");
+        require(app.lifecycleRegisterAttempts == 0, mode + ": no lifecycle native attempt");
         require(app.lifecycleRegisterEffects == 0, mode + ": no lifecycle native effect");
         require(app.nativeReceivers.isEmpty() && app.nativeCallbacks.isEmpty(),
             mode + ": no native handle after closing");
+        if ("boundary-closed-observer".equals(mode)) {
+            require(observeAfter == observeBefore,
+                mode + ": no observable observe attempt after closing");
+            require(removeAfter == removeBefore,
+                mode + ": no observable remove attempt after closing");
+        }
         require(GuardedReaderApplication.captureFailed(),
             mode + ": the refusal must visibly fail the capture");
     }
@@ -2079,12 +2097,15 @@ public final class GuardedReaderApplicationTest {
             app.registerReceiver(new WrongReceiver(), new IntentFilter(ACTION), 2));
         boolean sticky = GuardedReaderApplication.captureFailed();
         int effects = app.receiverRegisterEffects;
+        int attempts = app.receiverRegisterAttempts;
         // A real valid control still works after the refusal.
         app.registerReceiver(newReceiver(), new IntentFilter(ACTION), 2);
         result.put("refused", refused).put("sticky", sticky).put("effects", effects)
+            .put("attempts", attempts)
             .put("validAfter", app.receiverRegisterEffects)
             .put("native", app.nativeReceivers.size());
         require(refused, "a wrong receiver class must be refused");
+        require(attempts == 0, "no native attempt for the wrong class");
         require(effects == 0, "no native effect for the wrong class");
         require(sticky, "the refusal must fail the capture");
         require(app.receiverRegisterEffects == 1,
@@ -2097,11 +2118,14 @@ public final class GuardedReaderApplicationTest {
             new WrongLifecycle()));
         boolean sticky = GuardedReaderApplication.captureFailed();
         int effects = app.lifecycleRegisterEffects;
+        int attempts = app.lifecycleRegisterAttempts;
         app.registerActivityLifecycleCallbacks(
             (Application.ActivityLifecycleCallbacks) approvedCallback());
         result.put("refused", refused).put("sticky", sticky).put("effects", effects)
+            .put("attempts", attempts)
             .put("validAfter", app.lifecycleRegisterEffects);
         require(refused, "a wrong lifecycle class must be refused");
+        require(attempts == 0, "no native attempt for the wrong class");
         require(effects == 0, "no native effect for the wrong class");
         require(sticky, "the refusal must fail the capture");
         require(app.lifecycleRegisterEffects == 1,
@@ -2130,10 +2154,12 @@ public final class GuardedReaderApplicationTest {
             (android.content.BroadcastReceiver) foreign, new IntentFilter(ACTION), 2));
         result.put("sameName", sameName).put("differentClass", differentClass)
             .put("refused", refused).put("effects", app.receiverRegisterEffects)
+            .put("attempts", app.receiverRegisterAttempts)
             .put("native", app.nativeReceivers.size());
         require(sameName, "the foreign object must carry the approved FQCN");
         require(differentClass, "the foreign object must be a different Class");
         require(refused, "a same-name wrong-loader receiver must be refused");
+        require(app.receiverRegisterAttempts == 0, "no native attempt");
         require(app.receiverRegisterEffects == 0, "no native effect");
         require(app.nativeReceivers.isEmpty(), "no native handle");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
@@ -2150,10 +2176,12 @@ public final class GuardedReaderApplicationTest {
             (Application.ActivityLifecycleCallbacks) foreign));
         result.put("sameName", sameName).put("differentClass", differentClass)
             .put("refused", refused).put("effects", app.lifecycleRegisterEffects)
+            .put("attempts", app.lifecycleRegisterAttempts)
             .put("native", app.nativeCallbacks.size());
         require(sameName, "the foreign object must carry the approved FQCN");
         require(differentClass, "the foreign object must be a different Class");
         require(refused, "a same-name wrong-loader lifecycle must be refused");
+        require(app.lifecycleRegisterAttempts == 0, "no native attempt");
         require(app.lifecycleRegisterEffects == 0, "no native effect");
         require(app.nativeCallbacks.isEmpty(), "no native handle");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
@@ -2224,16 +2252,25 @@ public final class GuardedReaderApplicationTest {
             .optInt("successfulRegistrations");
         boolean refused = refused(() ->
             app.registerReceiver(receiver, new IntentFilter(ACTION), 2));
+        int attemptsAfter = app.receiverRegisterAttempts;
+        int acksAfter = GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations");
+        // A legitimate exact-owner cleanup empties both registries.
+        app.unregisterReceiver(receiver);
         result.put("refused", refused).put("effects", effects)
             .put("effectsAfter", app.receiverRegisterEffects)
-            .put("acks", acks).put("native", app.nativeReceivers.size())
+            .put("attemptsAfter", attemptsAfter)
+            .put("acks", acks).put("acksAfter", acksAfter)
+            .put("nativeAfterCleanup", app.nativeReceivers.size())
+            .put("wrapperAfterCleanup", storedWrapper(app, receiver))
             .put("sameWrapper", wrapper != null && wrapper == storedWrapper(app, receiver));
         require(refused, "a duplicate receiver must be refused");
+        require(attemptsAfter == 1, "the duplicate adds no native attempt");
         require(app.receiverRegisterEffects == effects, "no second native effect");
-        require(acks == 1, "the successful registration is acknowledged once");
-        require(app.nativeReceivers.size() == 1, "exactly one native handle");
-        require(wrapper != null && wrapper == storedWrapper(app, receiver),
-            "the first exact wrapper is retained");
+        require(acksAfter == 1, "the acknowledgement stays one after the refusal");
+        require(wrapper != null, "the first exact wrapper was retained");
+        require(app.nativeReceivers.isEmpty(), "cleanup empties the native registry");
+        require(storedWrapper(app, receiver) == null, "cleanup clears the owned wrapper");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
     }
 
@@ -2247,15 +2284,23 @@ public final class GuardedReaderApplicationTest {
             .optInt("successfulRegistrations");
         boolean refused = refused(() -> app.registerActivityLifecycleCallbacks(
             (Application.ActivityLifecycleCallbacks) callback));
+        int attemptsAfter = app.lifecycleRegisterAttempts;
+        int acksAfter = GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations");
+        app.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
         result.put("refused", refused).put("effects", effects)
             .put("effectsAfter", app.lifecycleRegisterEffects)
-            .put("acks", acks).put("native", app.nativeCallbacks.size())
-            .put("owned", ownedCallback(callback));
+            .put("attemptsAfter", attemptsAfter)
+            .put("acks", acks).put("acksAfter", acksAfter)
+            .put("nativeAfterCleanup", app.nativeCallbacks.size())
+            .put("ownedAfterCleanup", ownedCallback(callback));
         require(refused, "a duplicate lifecycle must be refused");
+        require(attemptsAfter == 1, "the duplicate adds no native attempt");
         require(app.lifecycleRegisterEffects == effects, "no second native effect");
-        require(acks == 1, "the successful registration is acknowledged once");
-        require(app.nativeCallbacks.size() == 1, "exactly one native callback");
-        require(ownedCallback(callback), "the first exact callback is retained");
+        require(acksAfter == 1, "the acknowledgement stays one after the refusal");
+        require(app.nativeCallbacks.isEmpty(), "cleanup empties the native registry");
+        require(!ownedCallback(callback), "cleanup clears the owned callback");
         require(GuardedReaderApplication.captureFailed(), "the capture must fail");
     }
 
@@ -2295,16 +2340,26 @@ public final class GuardedReaderApplicationTest {
             Application.class.getField("registerHeld").set(null, null);
             first.join(5000);
         }
-        result.put("firstError", firstError[0] == null ? "none" : firstError[0].toString())
+        result.put("firstError", firstError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(firstError[0]))
+            .put("firstAlive", first.isAlive())
+            .put("attempts", app.receiverRegisterAttempts)
             .put("effects", app.receiverRegisterEffects)
             .put("native", app.nativeReceivers.size())
             .put("acks", GuardedReaderApplication.captureReceipt()
                 .optInt("successfulRegistrations"));
         require(firstError[0] == null, "the first registration must complete normally");
+        require(!first.isAlive(), "the first registration thread must have terminated");
+        require(app.receiverRegisterAttempts == 1,
+            "only the held first call reaches the native boundary");
         require(app.receiverRegisterEffects == 1, "exactly one native effect");
         require(app.nativeReceivers.size() == 1, "exactly one native handle");
         require(GuardedReaderApplication.captureReceipt()
             .optInt("successfulRegistrations") == 1, "one acknowledged registration");
+        app.unregisterReceiver(receiver);
+        result.put("nativeAfterCleanup", app.nativeReceivers.size());
+        require(app.nativeReceivers.isEmpty(), "cleanup empties the native registry");
+        require(GuardedReaderApplication.captureFailed(), "the refusal stays sticky");
     }
 
     private static void boundaryDuplicateLifecyclePending(JSONObject result) throws Exception {
@@ -2344,16 +2399,27 @@ public final class GuardedReaderApplicationTest {
             Application.class.getField("lifecycleHeld").set(null, null);
             first.join(5000);
         }
-        result.put("firstError", firstError[0] == null ? "none" : firstError[0].toString())
+        result.put("firstError", firstError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(firstError[0]))
+            .put("firstAlive", first.isAlive())
+            .put("attempts", app.lifecycleRegisterAttempts)
             .put("effects", app.lifecycleRegisterEffects)
             .put("native", app.nativeCallbacks.size())
             .put("acks", GuardedReaderApplication.captureReceipt()
                 .optInt("successfulRegistrations"));
         require(firstError[0] == null, "the first lifecycle registration must complete");
+        require(!first.isAlive(), "the first lifecycle thread must have terminated");
+        require(app.lifecycleRegisterAttempts == 1,
+            "only the held first call reaches the native boundary");
         require(app.lifecycleRegisterEffects == 1, "exactly one native effect");
         require(app.nativeCallbacks.size() == 1, "exactly one native callback");
         require(GuardedReaderApplication.captureReceipt()
             .optInt("successfulRegistrations") == 1, "one acknowledged registration");
+        app.unregisterActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        result.put("nativeAfterCleanup", app.nativeCallbacks.size());
+        require(app.nativeCallbacks.isEmpty(), "cleanup empties the native registry");
+        require(GuardedReaderApplication.captureFailed(), "the refusal stays sticky");
     }
 
     // --- A4 inactive forwarding and always-on activity refusal ------------
@@ -2362,56 +2428,72 @@ public final class GuardedReaderApplicationTest {
      * While genuinely unarmed, every public overload reaches its own native route
      * with the exact supplied objects, and lifecycle registration forwards too.
      */
+    /**
+     * One actual native observation captured immediately after a public call.
+     */
+    private static void requireRoute(GuardedReaderApplication app, String route,
+            Object receiver, Object filter, int flags, String permission,
+            android.os.Handler scheduler, Object sticky, Object back,
+            int attempts, int effects, String label) {
+        require(app.receiverRoutes.size() == attempts,
+            label + ": exactly one native route per call");
+        require(app.receiverRoutes.get(attempts - 1).startsWith(route + ":"),
+            label + ": the call reached its own native route");
+        require(app.lastReceiver == receiver, label + ": the exact receiver reached native");
+        require(app.lastFilter == filter, label + ": the exact filter reached native");
+        require(app.receiverNativeFlags == flags, label + ": the supplied flags reached native");
+        require(app.receiverNativePermission == permission,
+            label + ": the exact permission object reached native");
+        require(app.receiverNativeScheduler == scheduler,
+            label + ": the exact scheduler object reached native");
+        require(back == sticky, label + ": the exact sticky intent was returned");
+        require(app.receiverRegisterAttempts == attempts, label + ": one native attempt");
+        require(app.receiverRegisterEffects == effects, label + ": one native effect");
+        require(app.nativeReceivers.containsKey(receiver),
+            label + ": the original receiver is in the native registry");
+    }
+
     private static void boundaryUnarmedForwarding(JSONObject result) throws Exception {
         GuardedReaderApplication app = new GuardedReaderApplication();
         require(!GuardedReaderApplication.isArmed(), "the guard must be genuinely unarmed");
-        IntentFilter filter = new IntentFilter(ACTION);
-        android.os.Handler scheduler = new android.os.Handler(android.os.Looper.getMainLooper());
-        Intent sticky = new Intent("sticky.return");
-        app.receiverNativeReturn = sticky;
+        IntentFilter filter2 = new IntentFilter(ACTION);
+        IntentFilter filter3 = new IntentFilter(ACTION);
+        IntentFilter filter4 = new IntentFilter(ACTION);
+        IntentFilter filter5 = new IntentFilter(ACTION);
+        android.os.Handler s4 = new android.os.Handler(android.os.Looper.getMainLooper());
+        android.os.Handler s5 = new android.os.Handler(android.os.Looper.getMainLooper());
+        String permission4 = new String("perm-4");
+        String permission5 = new String("perm-5");
+        Intent sticky2 = new Intent("sticky.2");
+        Intent sticky3 = new Intent("sticky.3");
+        Intent sticky4 = new Intent("sticky.4");
+        Intent sticky5 = new Intent("sticky.5");
         com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r2 = newReceiver();
         com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r3 = newReceiver();
         com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r4 = newReceiver();
         com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver r5 = newReceiver();
-        Intent back2 = app.registerReceiver(r2, filter);
-        String route2 = app.receiverRoutes.get(0);
-        Intent back3 = app.registerReceiver(r3, filter, 2);
-        String route3 = app.receiverRoutes.get(1);
-        Intent back4 = app.registerReceiver(r4, filter, null, scheduler);
-        String route4 = app.receiverRoutes.get(2);
-        Intent back5 = app.registerReceiver(r5, filter, "perm", scheduler, 2);
-        String route5 = app.receiverRoutes.get(3);
+        app.receiverNativeReturn = sticky2;
+        Intent back2 = app.registerReceiver(r2, filter2);
+        requireRoute(app, "2", r2, filter2, 0, null, null, sticky2, back2, 1, 1, "route2");
+        app.receiverNativeReturn = sticky3;
+        Intent back3 = app.registerReceiver(r3, filter3, 2);
+        requireRoute(app, "3", r3, filter3, 2, null, null, sticky3, back3, 2, 2, "route3");
+        app.receiverNativeReturn = sticky4;
+        Intent back4 = app.registerReceiver(r4, filter4, permission4, s4);
+        requireRoute(app, "4", r4, filter4, 0, permission4, s4, sticky4, back4, 3, 3, "route4");
+        app.receiverNativeReturn = sticky5;
+        Intent back5 = app.registerReceiver(r5, filter5, permission5, s5, 4);
+        requireRoute(app, "5", r5, filter5, 4, permission5, s5, sticky5, back5, 4, 4, "route5");
         result.put("routes", new org.json.JSONArray(app.receiverRoutes))
             .put("attempts", app.receiverRegisterAttempts)
             .put("effects", app.receiverRegisterEffects)
-            .put("flags", app.receiverNativeFlags)
-            .put("permission", app.receiverNativePermission)
-            .put("schedulerExact", app.receiverNativeScheduler == scheduler)
-            .put("stickyExact", back2 == sticky && back3 == sticky && back4 == sticky
-                && back5 == sticky)
-            .put("nativeIsOriginal", app.nativeReceivers.containsKey(r2)
-                && app.nativeReceivers.containsKey(r3)
-                && app.nativeReceivers.containsKey(r4)
-                && app.nativeReceivers.containsKey(r5))
             .put("armed", GuardedReaderApplication.isArmed());
-        require(route2.startsWith("2:") && route3.startsWith("3:")
-            && route4.startsWith("4:") && route5.startsWith("5:"),
-            "each overload must reach its own native route");
-        require(app.receiverRegisterAttempts == 4, "exactly four native attempts");
-        require(app.receiverRegisterEffects == 4, "exactly four native effects");
-        require(app.receiverNativeFlags == 2, "the last route carried its own flags");
-        require("perm".equals(app.receiverNativePermission),
-            "the permission argument reached the native boundary");
-        require(app.receiverNativeScheduler == scheduler,
-            "the exact scheduler object reached the native boundary");
-        require(back2 == sticky && back3 == sticky && back4 == sticky && back5 == sticky,
-            "every overload returns the native sticky intent");
-        require(app.nativeReceivers.containsKey(r2) && app.nativeReceivers.containsKey(r3)
-            && app.nativeReceivers.containsKey(r4) && app.nativeReceivers.containsKey(r5),
-            "the original receivers reach the native registry, not a guard wrapper");
         require(!GuardedReaderApplication.isArmed(), "forwarding must not arm the guard");
         require(!GuardedReaderApplication.captureFailed(),
             "unarmed forwarding must not fail a capture");
+        require(GuardedReaderApplication.captureReceipt()
+            .optInt("successfulRegistrations") == 0,
+            "unarmed forwarding must not invent a guard acknowledgement");
         // Lifecycle registration and removal forward with the exact callback.
         Object callback = approvedCallback();
         app.registerActivityLifecycleCallbacks(
@@ -2430,6 +2512,13 @@ public final class GuardedReaderApplicationTest {
             "one native lifecycle effect each way");
         require(!GuardedReaderApplication.captureFailed(),
             "unarmed lifecycle forwarding must not fail a capture");
+        // Remove the four actual native handles, leaving nothing live.
+        app.unregisterReceiver(r2);
+        app.unregisterReceiver(r3);
+        app.unregisterReceiver(r4);
+        app.unregisterReceiver(r5);
+        result.put("nativeAfter", app.nativeReceivers.size());
+        require(app.nativeReceivers.isEmpty(), "no test-owned native handle stays live");
         app.receiverNativeReturn = null;
     }
 
