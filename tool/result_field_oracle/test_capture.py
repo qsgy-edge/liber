@@ -903,6 +903,20 @@ public class Application extends Context {
     }
 }
 ''',
+    'io/liber/oracle/nested/InitLedger.java': '''package io.liber.oracle.nested;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Independent test-only ledger of approved-class static initialization.
+ *
+ * <p>It lives outside the observed class, so reading it never triggers that
+ * class's initializer.
+ */
+public final class InitLedger {
+    public static final AtomicInteger receiverInitializations = new AtomicInteger();
+}
+''',
     'io/liber/oracle/nested/BoundaryInspection.java': '''package io.liber.oracle.nested;
 
 import java.lang.reflect.Field;
@@ -1522,6 +1536,10 @@ import android.content.Intent;
 /** Test-only receiver with the exact inspected class name the guard accepts. */
 public class LebIpcReceiver extends BroadcastReceiver {
     public static int delivered;
+
+    static {
+        io.liber.oracle.nested.InitLedger.receiverInitializations.incrementAndGet();
+    }
 
     @Override public void onReceive(Context context, Intent intent) {
         delivered++;

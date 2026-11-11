@@ -1823,6 +1823,23 @@ public final class GuardedReaderApplicationTest {
         }
     }
 
+    /** A loader that refuses the approved receiver with a rich cause graph. */
+    public static final class UnresolvingLoader extends ClassLoader {
+        final ClassNotFoundException failure;
+        UnresolvingLoader(ClassLoader parent) {
+            super(parent);
+            failure = new ClassNotFoundException("PARENT_UNRESOLVING_APPROVED_RECEIVER",
+                new IllegalStateException("PARENT_LOADER_NESTED_CAUSE"));
+            failure.addSuppressed(
+                new IllegalArgumentException("PARENT_LOADER_SUPPRESSED_CAUSE"));
+        }
+        @Override protected Class<?> loadClass(String name, boolean resolve)
+                throws ClassNotFoundException {
+            if (name.startsWith("com.jeremyliao")) throw failure;
+            return super.loadClass(name, resolve);
+        }
+    }
+
     private static void boundaryArmInvalid(JSONObject result) throws Exception {
         boolean nullApp = refused(() -> GuardedReaderApplication.arm(null, loader()));
         boolean wrongType = refused(() ->
@@ -1838,79 +1855,169 @@ public final class GuardedReaderApplicationTest {
         require(!GuardedReaderApplication.isArmed(), "no armed owner may be published");
     }
 
+    /**
+     * The first candidate uses a real unresolving loader, so the actual arm call
+     * must refuse without publishing an owner and must keep the whole cause
+     * graph. A later compatible loader may still genuinely arm.
+     */
     private static void boundaryArmLoader(JSONObject result) throws Exception {
         GuardedReaderApplication app = new GuardedReaderApplication();
+        int before = io.liber.oracle.nested.InitLedger.receiverInitializations.get();
+        UnresolvingLoader unresolving = new UnresolvingLoader(loader());
+        Throwable thrown = faulted(() -> GuardedReaderApplication.arm(app, unresolving));
+        int after = io.liber.oracle.nested.InitLedger.receiverInitializations.get();
+        JSONObject capture = GuardedReaderApplication.captureReceipt();
+        String failures = capture.getJSONArray("failures").toString();
+        String chain = thrown == null ? "none" : FieldOracleFreeChain.describe(thrown);
+        result.put("thrown", thrown != null).put("armed", GuardedReaderApplication.isArmed())
+            .put("receiverInitializations", after - before)
+            .put("causeIdentity", thrown != null
+                && FieldOracleFreeChain.hasCause(thrown, unresolving.failure))
+            .put("failures", failures).put("chain", chain);
+        require(thrown != null, "an unresolving first candidate must be refused");
+        require(!GuardedReaderApplication.isArmed(),
+            "an unresolving first candidate must not publish an owner");
+        require(FieldOracleFreeChain.hasCause(thrown, unresolving.failure),
+            "the original loader failure must be the cause");
+        require(chain.contains("PARENT_UNRESOLVING_APPROVED_RECEIVER")
+            && chain.contains("PARENT_LOADER_NESTED_CAUSE")
+            && chain.contains("PARENT_LOADER_SUPPRESSED_CAUSE"),
+            "the thrown graph keeps the primary, nested and suppressed causes");
+        require(failures.contains("PARENT_UNRESOLVING_APPROVED_RECEIVER")
+            && failures.contains("PARENT_LOADER_NESTED_CAUSE")
+            && failures.contains("PARENT_LOADER_SUPPRESSED_CAUSE"),
+            "the capture evidence keeps the whole cause graph");
+        require(after == before,
+            "readiness must not initialize the approved receiver class");
+        require(GuardedReaderApplication.captureFailed(), "the refusal must fail the capture");
+        // A compatible loader may still genuinely arm; sticky failure stays.
         GuardedReaderApplication.arm(app, loader());
-        boolean armedOk = GuardedReaderApplication.isArmed();
-        // A fresh lifetime for the unresolving initial loader.
-        GuardedReaderApplication second = new GuardedReaderApplication();
-        ClassLoader unresolving = new ClassLoader(loader()) {
-            @Override protected Class<?> loadClass(String name, boolean resolve)
-                    throws ClassNotFoundException {
-                if (name.startsWith("com.jeremyliao")) {
-                    ClassNotFoundException failure = new ClassNotFoundException(
-                        "PARENT_UNRESOLVING_APPROVED_RECEIVER",
-                        new IllegalStateException("PARENT_LOADER_NESTED_CAUSE"));
-                    failure.addSuppressed(
-                        new IllegalArgumentException("PARENT_LOADER_SUPPRESSED_CAUSE"));
-                    throw failure;
-                }
-                return super.loadClass(name, resolve);
-            }
-        };
-        result.put("armedOk", armedOk);
-        require(armedOk, "a valid default loader arms the guard");
-        // The unresolving loader is exercised in its own fresh JVM by the
-        // immutable probe; here the compatible delegating loader is the positive.
-        GuardedReaderApplicationTest.class.getName();
-        require(new SpyLoader(loader()) != null, "the spy loader is constructible");
+        result.put("laterArmed", GuardedReaderApplication.isArmed())
+            .put("stickyAfterValid", GuardedReaderApplication.captureFailed());
+        require(GuardedReaderApplication.isArmed(),
+            "a compatible loader may still arm after the refusal");
+        require(GuardedReaderApplication.captureFailed(),
+            "the earlier capture failure stays sticky");
     }
 
+    /**
+     * The identical open re-arm must preserve every owned identity and counter
+     * and must not clear the sticky capture failure.
+     */
     private static void boundaryArmSame(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
+        ClassLoader controlled = loader();
         com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
         app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
         Object wrapper = storedWrapper(app, receiver);
         int attempts = app.receiverRegisterAttempts;
         int effects = app.receiverRegisterEffects;
-        GuardedReaderApplication.arm(app, loader());
+        // A legitimate existing refusal sets sticky failure while staying open.
+        boolean refusedOnce = refused(() -> app.registerReceiver(newReceiver(),
+            new IntentFilter(ACTION), 0));
+        boolean stickyBefore = GuardedReaderApplication.captureFailed();
+        GuardedReaderApplication.arm(app, controlled);
         Object afterWrapper = storedWrapper(app, receiver);
+        // Constructing another application must not replace the owner.
         android.app.Application other = new GuardedReaderApplication();
-        boolean sameOwner = wrapper != null && wrapper == afterWrapper;
-        result.put("sameOwner", sameOwner).put("attempts", app.receiverRegisterAttempts)
-            .put("effects", app.receiverRegisterEffects)
-            .put("otherConstructed", other != null)
-            .put("native", app.nativeReceivers.size());
-        require(sameOwner, "the identical re-arm preserves the exact wrapper");
-        require(app.receiverRegisterAttempts == attempts, "no extra registration attempt");
-        require(app.receiverRegisterEffects == effects, "no extra native effect");
-        require(app.nativeReceivers.size() == 1, "the native handle is preserved");
-        require(GuardedReaderApplication.isArmed(), "the guard stays armed");
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver second = newReceiver();
+        app.registerReceiver(second, new IntentFilter(ACTION), 2);
+        boolean ownerStillWorks = storedWrapper(app, second) != null;
+        result.put("refusedOnce", refusedOnce).put("stickyBefore", stickyBefore)
+            .put("sameWrapper", wrapper != null && wrapper == afterWrapper)
+            .put("attempts", app.receiverRegisterAttempts).put("effects", app.receiverRegisterEffects)
+            .put("otherConstructed", other != null).put("ownerStillWorks", ownerStillWorks)
+            .put("stickyAfter", GuardedReaderApplication.captureFailed());
+        require(refusedOnce && stickyBefore, "the earlier refusal must set sticky failure");
+        require(wrapper != null && wrapper == afterWrapper,
+            "the identical re-arm preserves the exact wrapper");
+        require(app.receiverRegisterAttempts == attempts + 1,
+            "only the deliberate second registration adds an attempt");
+        require(app.receiverRegisterEffects == effects + 1,
+            "only the deliberate second registration adds an effect");
+        require(ownerStillWorks,
+            "the true owner still admits a registration after another app exists");
+        require(GuardedReaderApplication.captureFailed(),
+            "the identical re-arm must not clear the sticky failure");
     }
 
     private static void boundaryArmForeign(JSONObject result) throws Exception {
         GuardedReaderApplication owner = armedApp();
+        ClassLoader controlled = loader();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        owner.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(owner, receiver);
+        int attempts = owner.receiverRegisterAttempts;
         GuardedReaderApplication foreign = new GuardedReaderApplication();
-        SpyLoader spy = new SpyLoader(loader());
+        SpyLoader spy = new SpyLoader(controlled);
         boolean refused = refused(() -> GuardedReaderApplication.arm(foreign, spy));
+        Object afterWrapper = storedWrapper(owner, receiver);
+        // The original exact owner and loader still work after the refusal.
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver later = newReceiver();
+        owner.registerReceiver(later, new IntentFilter(ACTION), 2);
         result.put("refused", refused).put("spyQueries", spy.queried.size())
+            .put("sameWrapper", wrapper != null && wrapper == afterWrapper)
+            .put("attemptsBefore", attempts).put("attemptsAfter", owner.receiverRegisterAttempts)
+            .put("foreignAttempts", foreign.receiverRegisterAttempts)
+            .put("ownerStillWorks", storedWrapper(owner, later) != null)
             .put("armed", GuardedReaderApplication.isArmed());
         require(refused, "a foreign owner must be refused");
         require(spy.queried.isEmpty(),
             "a known foreign owner must never consult the supplied loader");
+        require(wrapper != null && wrapper == afterWrapper,
+            "the true owner's wrapper is unchanged by the refusal");
+        require(owner.receiverRegisterAttempts == attempts + 1,
+            "only the deliberate later registration adds an owner attempt");
+        require(foreign.receiverRegisterAttempts == 0,
+            "the foreign instance makes no native attempt");
+        require(storedWrapper(owner, later) != null,
+            "the original exact owner and loader still work after the refusal");
         require(GuardedReaderApplication.captureFailed(), "the refusal must fail the capture");
     }
 
     private static void boundaryArmOtherLoader(JSONObject result) throws Exception {
         GuardedReaderApplication owner = armedApp();
-        SpyLoader spy = new SpyLoader(loader());
+        ClassLoader controlled = loader();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        owner.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(owner, receiver);
+        SpyLoader spy = new SpyLoader(controlled);
         boolean refused = refused(() -> GuardedReaderApplication.arm(owner, spy));
+        Object afterWrapper = storedWrapper(owner, receiver);
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver later = newReceiver();
+        owner.registerReceiver(later, new IntentFilter(ACTION), 2);
         result.put("refused", refused).put("spyQueries", spy.queried.size())
+            .put("sameWrapper", wrapper != null && wrapper == afterWrapper)
+            .put("ownerStillWorks", storedWrapper(owner, later) != null)
             .put("armed", GuardedReaderApplication.isArmed());
         require(refused, "another loader must be refused");
-        require(spy.queried.isEmpty(),
-            "a known other loader must never be consulted");
+        require(spy.queried.isEmpty(), "a known other loader must never be consulted");
+        require(wrapper != null && wrapper == afterWrapper,
+            "the true owner's wrapper is unchanged by the refusal");
+        require(storedWrapper(owner, later) != null,
+            "the original exact owner and loader still work after the refusal");
         require(GuardedReaderApplication.captureFailed(), "the refusal must fail the capture");
+    }
+
+    /** Minimal cause-graph helpers for the driver's own assertions. */
+    static final class FieldOracleFreeChain {
+        static boolean hasCause(Throwable root, Throwable wanted) {
+            if (root == null) return false;
+            if (root == wanted) return true;
+            if (hasCause(root.getCause(), wanted)) return true;
+            for (Throwable suppressed : root.getSuppressed()) {
+                if (hasCause(suppressed, wanted)) return true;
+            }
+            return false;
+        }
+
+        static String describe(Throwable root) {
+            java.io.StringWriter text = new java.io.StringWriter();
+            java.io.PrintWriter writer = new java.io.PrintWriter(text);
+            root.printStackTrace(writer);
+            writer.flush();
+            return text.toString();
+        }
     }
 
     private static GuardedReaderApplication arm() {
