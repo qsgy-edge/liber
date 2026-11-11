@@ -258,7 +258,7 @@ public final class GuardedReaderApplicationTest {
             .put("captureFailed", GuardedReaderApplication.captureFailed());
         require(com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver.delivered == 0,
             "an inbound IPC attempt must never reach the native receiver");
-        require(!inbound.extrasRead, "an inbound IPC attempt must never read the extras");
+        require(inbound.extrasRead == 0, "an inbound IPC attempt must never read the extras");
         require(GuardedReaderApplication.captureFailed(),
             "an inbound IPC attempt must fail the capture visibly");
     }

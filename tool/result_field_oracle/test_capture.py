@@ -785,11 +785,30 @@ public class Application extends Context {
     /** Test-only inspection: the guard handles seen DURING the boundary. */
     public String receiverDuringEffect = "";
 
+    // Independent per-route native observations.
+    public final List<String> receiverRoutes = new ArrayList<>();
+    public int receiverNativeFlags = -1;
+    public String receiverNativePermission;
+    public Integer receiverNativeScheduler;
+
+    // Every public overload delegates to ONE private native routine, so a missing
+    // guard override cannot be masked by a virtual back-dispatch into another
+    // guard overload.
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
-        return registerReceiver(receiver, filter, 0);
+        return nativeRegister("2", receiver, filter, 0, null, null);
     }
 
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
+        return nativeRegister("3", receiver, filter, flags, null, null);
+    }
+
+    private Intent nativeRegister(String route, BroadcastReceiver receiver, IntentFilter filter,
+            int flags, String permission, android.os.Handler scheduler) {
+        receiverRoutes.add(route + ":" + System.identityHashCode(receiver));
+        receiverNativeFlags = flags;
+        receiverNativePermission = permission;
+        receiverNativeScheduler = scheduler == null ? null
+            : Integer.valueOf(System.identityHashCode(scheduler));
         receiverRegisterAttempts++;
         receiverEffects.add("register-attempt:" + System.identityHashCode(receiver));
         java.util.concurrent.CountDownLatch heldEntered = registerEntered;
@@ -815,12 +834,12 @@ public class Application extends Context {
 
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
             String broadcastPermission, android.os.Handler scheduler) {
-        return registerReceiver(receiver, filter, 0);
+        return nativeRegister("4", receiver, filter, 0, broadcastPermission, scheduler);
     }
 
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
             String broadcastPermission, android.os.Handler scheduler, int flags) {
-        return registerReceiver(receiver, filter, flags);
+        return nativeRegister("5", receiver, filter, flags, broadcastPermission, scheduler);
     }
 
     public void unregisterReceiver(BroadcastReceiver receiver) {
@@ -1232,17 +1251,28 @@ public abstract class BroadcastReceiver {
 ''',
     'android/content/Intent.java': '''package android.content;
 
-/** Test-only Intent boundary: extras are never read by the guard. */
+/**
+ * Test-only Intent boundary.
+ *
+ * <p>[extrasRead] is incremented by the real descriptor-faithful extras getter,
+ * so an actual extras read is observable without overriding an impossible
+ * method or making the receiver throw.
+ */
 public class Intent {
     private final String action;
-    public boolean extrasRead;
+    public int extrasRead;
 
     public Intent(String action) { this.action = action; }
 
     public String getAction() { return action; }
 
+    public android.os.Bundle getExtras() {
+        extrasRead++;
+        return new android.os.Bundle();
+    }
+
     public String getStringExtra(String name) {
-        extrasRead = true;
+        extrasRead++;
         return "should-not-be-read";
     }
 }
