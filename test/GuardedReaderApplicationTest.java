@@ -1887,18 +1887,110 @@ public final class GuardedReaderApplicationTest {
     }
 
     private static void boundaryArmInvalid(JSONObject result) throws Exception {
+        // (a) genuinely never armed: refusals stay silent and publish nothing.
         boolean nullApp = refused(() -> GuardedReaderApplication.arm(null, loader()));
         boolean wrongType = refused(() ->
             GuardedReaderApplication.arm(new android.app.Application(), loader()));
         boolean nullLoader = refused(() ->
             GuardedReaderApplication.arm(new GuardedReaderApplication(), null));
+        int failuresAfterNeverArmed = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").length();
         result.put("nullApp", nullApp).put("wrongType", wrongType)
             .put("nullLoader", nullLoader)
+            .put("failuresAfterNeverArmed", failuresAfterNeverArmed)
             .put("armed", GuardedReaderApplication.isArmed());
         require(nullApp, "a null application must be refused");
         require(wrongType, "a foreign application type must be refused");
         require(nullLoader, "a null loader must be refused");
         require(!GuardedReaderApplication.isArmed(), "no armed owner may be published");
+        require(failuresAfterNeverArmed == 0,
+            "a never-armed refusal must not record a capture failure");
+        // (b) an actually armed owner: each invalid argument adds one fresh entry.
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        int attempts = app.receiverRegisterAttempts;
+        int effects = app.receiverRegisterEffects;
+        SpyLoader spy = new SpyLoader(loader());
+        org.json.JSONArray activeDeltas = new org.json.JSONArray();
+        String[] activeReasons = new String[3];
+        for (int i = 0; i < 3; i++) {
+            int before = GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").length();
+            boolean refusedOne = i == 0
+                ? refused(() -> GuardedReaderApplication.arm(null, spy))
+                : i == 1
+                    ? refused(() -> GuardedReaderApplication.arm(
+                        new android.app.Application(), spy))
+                    : refused(() -> GuardedReaderApplication.arm(app, null));
+            int after = GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").length();
+            org.json.JSONArray all = GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures");
+            activeDeltas.put(after - before);
+            activeReasons[i] = after > before ? all.getString(after - 1) : "none";
+            require(refusedOne, "each active invalid arm must be refused");
+            require(after - before == 1,
+                "each active invalid argument must add exactly one failure entry");
+        }
+        result.put("activeDeltas", activeDeltas)
+            .put("activeReasons", new org.json.JSONArray(java.util.Arrays.asList(activeReasons)))
+            .put("spyQueries", spy.queried.size())
+            .put("sameWrapper", wrapper != null && wrapper == storedWrapper(app, receiver))
+            .put("attempts", app.receiverRegisterAttempts)
+            .put("effects", app.receiverRegisterEffects)
+            .put("native", app.nativeReceivers.size());
+        require(activeReasons[0].contains("invalid application argument"),
+            "the null-application reason is recorded");
+        require(activeReasons[1].contains("invalid application argument"),
+            "the foreign-application reason is recorded");
+        require(activeReasons[2].contains("null loader argument"),
+            "the null-loader reason is recorded");
+        require(spy.queried.isEmpty(),
+            "an invalid supplied loader must never be consulted");
+        require(wrapper != null && wrapper == storedWrapper(app, receiver),
+            "the true owner's wrapper is unchanged");
+        require(app.receiverRegisterAttempts == attempts,
+            "the invalid arms add no native attempt");
+        require(app.receiverRegisterEffects == effects,
+            "the invalid arms add no native effect");
+        require(app.nativeReceivers.size() == 1, "the native handle is unchanged");
+        // A normal same-owner admission still works.
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver later = newReceiver();
+        app.registerReceiver(later, new IntentFilter(ACTION), 2);
+        result.put("ownerStillWorks", storedWrapper(app, later) != null);
+        require(storedWrapper(app, later) != null,
+            "the same owner still admits a normal registration");
+        // (c) after the real closing boundary the same refusals stay visible.
+        JSONObject release = GuardedReaderApplication.releaseProcessResources();
+        require(release.optBoolean("closed"), "the real release closed the resources");
+        int attemptsAfterClose = app.receiverRegisterAttempts;
+        org.json.JSONArray closedDeltas = new org.json.JSONArray();
+        for (int i = 0; i < 3; i++) {
+            int before = GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").length();
+            boolean refusedOne = i == 0
+                ? refused(() -> GuardedReaderApplication.arm(null, loader()))
+                : i == 1
+                    ? refused(() -> GuardedReaderApplication.arm(
+                        new android.app.Application(), loader()))
+                    : refused(() -> GuardedReaderApplication.arm(app, null));
+            int after = GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").length();
+            closedDeltas.put(after - before);
+            require(refusedOne, "each closed invalid arm must be refused");
+            require(after - before == 1,
+                "each closed invalid argument must add exactly one failure entry");
+        }
+        result.put("closedDeltas", closedDeltas)
+            .put("attemptsAfterClose", app.receiverRegisterAttempts)
+            .put("nativeAfterClose", app.nativeReceivers.size());
+        require(app.receiverRegisterAttempts == attemptsAfterClose,
+            "the closed invalid arms add no native attempt");
+        require(app.nativeReceivers.isEmpty(), "the resources really closed");
+        require(GuardedReaderApplication.captureFailed(),
+            "the capture failure stays sticky");
     }
 
     /**

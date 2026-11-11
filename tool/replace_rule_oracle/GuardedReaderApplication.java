@@ -172,15 +172,17 @@ public final class GuardedReaderApplication extends Application {
      * owner, a null owner or a null loader is refused.
      */
     public static void arm(Application application, ClassLoader loader) {
-        if (!(application instanceof GuardedReaderApplication)) {
-            throw new SecurityException("the capture guard needs its own application instance");
-        }
-        if (loader == null) {
-            throw new SecurityException("the capture guard needs the verified target loader");
-        }
         // The cheap existing-lock rejection runs FIRST, so an already-known
         // closed or differently-owned lifetime never consults a supplied loader.
         synchronized (lock) {
+            if (!(application instanceof GuardedReaderApplication)) {
+                if (armed || closing) fail("arm with an invalid application argument");
+                throw new SecurityException("the capture guard needs its own application instance");
+            }
+            if (loader == null) {
+                if (armed || closing) fail("arm with a null loader argument");
+                throw new SecurityException("the capture guard needs the verified target loader");
+            }
             if (closing) {
                 fail("arm after the process closing boundary");
                 throw new SecurityException(
