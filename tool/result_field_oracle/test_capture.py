@@ -5931,6 +5931,8 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'boundary-closed-arm', 'boundary-closed-receiver',
                 'boundary-closed-lifecycle', 'boundary-closed-observer',
                 'boundary-close-before-reserve',
+                'boundary-arm-invalid', 'boundary-arm-loader', 'boundary-arm-same',
+                'boundary-arm-foreign', 'boundary-arm-other-loader',
             )
             outcomes = {}
             for control in controls:

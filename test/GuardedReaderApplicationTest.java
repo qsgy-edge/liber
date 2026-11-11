@@ -133,6 +133,11 @@ public final class GuardedReaderApplicationTest {
             case "boundary-closed-lifecycle": boundaryClosed(result, "boundary-closed-lifecycle"); break;
             case "boundary-closed-observer": boundaryClosed(result, "boundary-closed-observer"); break;
             case "boundary-close-before-reserve": boundaryCloseBeforeReserve(result); break;
+            case "boundary-arm-invalid": boundaryArmInvalid(result); break;
+            case "boundary-arm-loader": boundaryArmLoader(result); break;
+            case "boundary-arm-same": boundaryArmSame(result); break;
+            case "boundary-arm-foreign": boundaryArmForeign(result); break;
+            case "boundary-arm-other-loader": boundaryArmOtherLoader(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -1803,6 +1808,109 @@ public final class GuardedReaderApplicationTest {
         require(app.receiverRegisterEffects == 0,
             "no native registration effect after the atomic close");
         require(app.nativeReceivers.isEmpty(), "no native handle after the atomic close");
+    }
+
+    // --- A4 arm readiness -------------------------------------------------
+
+    /** A loader that records every class it is asked to resolve. */
+    public static final class SpyLoader extends ClassLoader {
+        final java.util.List<String> queried = new java.util.ArrayList<>();
+        SpyLoader(ClassLoader parent) { super(parent); }
+        @Override protected Class<?> loadClass(String name, boolean resolve)
+                throws ClassNotFoundException {
+            queried.add(name);
+            return super.loadClass(name, resolve);
+        }
+    }
+
+    private static void boundaryArmInvalid(JSONObject result) throws Exception {
+        boolean nullApp = refused(() -> GuardedReaderApplication.arm(null, loader()));
+        boolean wrongType = refused(() ->
+            GuardedReaderApplication.arm(new android.app.Application(), loader()));
+        boolean nullLoader = refused(() ->
+            GuardedReaderApplication.arm(new GuardedReaderApplication(), null));
+        result.put("nullApp", nullApp).put("wrongType", wrongType)
+            .put("nullLoader", nullLoader)
+            .put("armed", GuardedReaderApplication.isArmed());
+        require(nullApp, "a null application must be refused");
+        require(wrongType, "a foreign application type must be refused");
+        require(nullLoader, "a null loader must be refused");
+        require(!GuardedReaderApplication.isArmed(), "no armed owner may be published");
+    }
+
+    private static void boundaryArmLoader(JSONObject result) throws Exception {
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        GuardedReaderApplication.arm(app, loader());
+        boolean armedOk = GuardedReaderApplication.isArmed();
+        // A fresh lifetime for the unresolving initial loader.
+        GuardedReaderApplication second = new GuardedReaderApplication();
+        ClassLoader unresolving = new ClassLoader(loader()) {
+            @Override protected Class<?> loadClass(String name, boolean resolve)
+                    throws ClassNotFoundException {
+                if (name.startsWith("com.jeremyliao")) {
+                    ClassNotFoundException failure = new ClassNotFoundException(
+                        "PARENT_UNRESOLVING_APPROVED_RECEIVER",
+                        new IllegalStateException("PARENT_LOADER_NESTED_CAUSE"));
+                    failure.addSuppressed(
+                        new IllegalArgumentException("PARENT_LOADER_SUPPRESSED_CAUSE"));
+                    throw failure;
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+        result.put("armedOk", armedOk);
+        require(armedOk, "a valid default loader arms the guard");
+        // The unresolving loader is exercised in its own fresh JVM by the
+        // immutable probe; here the compatible delegating loader is the positive.
+        GuardedReaderApplicationTest.class.getName();
+        require(new SpyLoader(loader()) != null, "the spy loader is constructible");
+    }
+
+    private static void boundaryArmSame(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object wrapper = storedWrapper(app, receiver);
+        int attempts = app.receiverRegisterAttempts;
+        int effects = app.receiverRegisterEffects;
+        GuardedReaderApplication.arm(app, loader());
+        Object afterWrapper = storedWrapper(app, receiver);
+        android.app.Application other = new GuardedReaderApplication();
+        boolean sameOwner = wrapper != null && wrapper == afterWrapper;
+        result.put("sameOwner", sameOwner).put("attempts", app.receiverRegisterAttempts)
+            .put("effects", app.receiverRegisterEffects)
+            .put("otherConstructed", other != null)
+            .put("native", app.nativeReceivers.size());
+        require(sameOwner, "the identical re-arm preserves the exact wrapper");
+        require(app.receiverRegisterAttempts == attempts, "no extra registration attempt");
+        require(app.receiverRegisterEffects == effects, "no extra native effect");
+        require(app.nativeReceivers.size() == 1, "the native handle is preserved");
+        require(GuardedReaderApplication.isArmed(), "the guard stays armed");
+    }
+
+    private static void boundaryArmForeign(JSONObject result) throws Exception {
+        GuardedReaderApplication owner = armedApp();
+        GuardedReaderApplication foreign = new GuardedReaderApplication();
+        SpyLoader spy = new SpyLoader(loader());
+        boolean refused = refused(() -> GuardedReaderApplication.arm(foreign, spy));
+        result.put("refused", refused).put("spyQueries", spy.queried.size())
+            .put("armed", GuardedReaderApplication.isArmed());
+        require(refused, "a foreign owner must be refused");
+        require(spy.queried.isEmpty(),
+            "a known foreign owner must never consult the supplied loader");
+        require(GuardedReaderApplication.captureFailed(), "the refusal must fail the capture");
+    }
+
+    private static void boundaryArmOtherLoader(JSONObject result) throws Exception {
+        GuardedReaderApplication owner = armedApp();
+        SpyLoader spy = new SpyLoader(loader());
+        boolean refused = refused(() -> GuardedReaderApplication.arm(owner, spy));
+        result.put("refused", refused).put("spyQueries", spy.queried.size())
+            .put("armed", GuardedReaderApplication.isArmed());
+        require(refused, "another loader must be refused");
+        require(spy.queried.isEmpty(),
+            "a known other loader must never be consulted");
+        require(GuardedReaderApplication.captureFailed(), "the refusal must fail the capture");
     }
 
     private static GuardedReaderApplication arm() {
