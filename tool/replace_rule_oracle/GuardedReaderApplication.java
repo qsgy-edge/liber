@@ -434,6 +434,11 @@ public final class GuardedReaderApplication extends Application {
         for (BroadcastReceiver wrapper : receivers) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
+                synchronized (lock) {
+                    // Another caller already acknowledged this removal: no second
+                    // native call and no invented closure fact.
+                    if (!ownedReceivers.contains(wrapper)) continue;
+                }
                 if (!reserveNativeCall(wrapper)) {
                     // An acquisition or removal is still executing: an absent-native
                     // result is not proof it went away, and a second native call
@@ -463,6 +468,9 @@ public final class GuardedReaderApplication extends Application {
         for (ActivityLifecycleCallbacks callback : callbacks) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
+                synchronized (lock) {
+                    if (!ownedCallbacks.contains(callback)) continue;
+                }
                 if (!reserveNativeCall(callback)) {
                     // A lifecycle absent-native no-op is a genuine ACK only for a
                     // completed or uncertain acquisition, never for a running one.
@@ -1091,11 +1099,11 @@ public final class GuardedReaderApplication extends Application {
             // effect, so a throwing platform call cannot lose the handle.
             wrappers.put(receiver, wrapper);
             ownedReceivers.add(wrapper);
-        }
-        Intent sticky;
-        synchronized (lock) {
+            // The native reservation shares this exact lock with the ownership
+            // insertion, so no removal can slip into a gap between them.
             acquiringNative.add(wrapper);
         }
+        Intent sticky;
         try {
             sticky = super.registerReceiver(wrapper, filter, flags);
         } catch (Throwable error) {
@@ -1215,6 +1223,17 @@ public final class GuardedReaderApplication extends Application {
         }
         try {
             super.unregisterReceiver(wrapper);
+            // The owned ledger is cleared while the call is still reserved, so a
+            // concurrent removal cannot act on a just-acknowledged handle.
+            synchronized (lock) {
+                wrappers.remove(receiver);
+                ownedReceivers.remove(wrapper);
+            }
+            try {
+                receiverUnregistrations.put(wrapper.getClass().getName());
+            } catch (Throwable ignored) {
+                // The successful platform return already happened.
+            }
         } catch (Throwable error) {
             // The handle stays owned: without an acknowledgement the removal is
             // uncertain, and the complete cause is retained.
@@ -1223,15 +1242,6 @@ public final class GuardedReaderApplication extends Application {
                 : new SecurityException("guarded receiver removal failed: " + error, error);
         } finally {
             releaseNativeCall(wrapper);
-        }
-        synchronized (lock) {
-            wrappers.remove(receiver);
-            ownedReceivers.remove(wrapper);
-        }
-        try {
-            receiverUnregistrations.put(wrapper.getClass().getName());
-        } catch (Throwable ignored) {
-            // The successful platform return already happened.
         }
     }
 
@@ -1270,8 +1280,7 @@ public final class GuardedReaderApplication extends Application {
                 throw new SecurityException("guarded capture refused a duplicate lifecycle");
             }
             ownedCallbacks.add(callback);
-        }
-        synchronized (lock) {
+            // Same lock as the ownership insertion: no removal can interleave.
             acquiringNative.add(callback);
         }
         try {
@@ -1325,6 +1334,17 @@ public final class GuardedReaderApplication extends Application {
         }
         try {
             super.unregisterActivityLifecycleCallbacks(callback);
+            // Ledger first, still reserved, so no concurrent removal can act on a
+            // just-acknowledged handle.
+            synchronized (lock) {
+                ownedCallbacks.remove(callback);
+            }
+            try {
+                lifecycleUnregistrations.put(
+                    callback == null ? "null" : callback.getClass().getName());
+            } catch (Throwable ignored) {
+                // The successful platform return already happened.
+            }
         } catch (Throwable error) {
             // The handle stays owned: without an acknowledgement the removal is
             // uncertain, and the complete cause is retained.
@@ -1333,15 +1353,6 @@ public final class GuardedReaderApplication extends Application {
                 : new SecurityException("guarded lifecycle removal failed: " + error, error);
         } finally {
             releaseNativeCall(callback);
-        }
-        synchronized (lock) {
-            ownedCallbacks.remove(callback);
-        }
-        try {
-            lifecycleUnregistrations.put(
-                callback == null ? "null" : callback.getClass().getName());
-        } catch (Throwable ignored) {
-            // The successful platform return already happened.
         }
     }
 
