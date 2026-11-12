@@ -6116,6 +6116,10 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'a5-repair-mid-only-interrupt',
         'a5-repair-observer-after-effect-late-error',
         'a5-repair-concurrent-error-retention',
+        'a5-repair-receiver-public-error-bookkeeping',
+        'a5-repair-receiver-release-error-bookkeeping',
+        'a5-repair-lifecycle-public-error-bookkeeping',
+        'a5-repair-lifecycle-release-error-bookkeeping',
     )
 
     def _java_home(self):

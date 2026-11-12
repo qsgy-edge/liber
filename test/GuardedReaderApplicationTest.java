@@ -183,6 +183,14 @@ public final class GuardedReaderApplicationTest {
                 a5RepairObserverAfterEffectLateError(result); break;
             case "a5-repair-concurrent-error-retention":
                 a5RepairConcurrentErrorRetention(result); break;
+            case "a5-repair-receiver-public-error-bookkeeping":
+                a5RepairRemovalErrorBookkeeping(result, false, true); break;
+            case "a5-repair-receiver-release-error-bookkeeping":
+                a5RepairRemovalErrorBookkeeping(result, false, false); break;
+            case "a5-repair-lifecycle-public-error-bookkeeping":
+                a5RepairRemovalErrorBookkeeping(result, true, true); break;
+            case "a5-repair-lifecycle-release-error-bookkeeping":
+                a5RepairRemovalErrorBookkeeping(result, true, false); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -5578,6 +5586,192 @@ public final class GuardedReaderApplicationTest {
             "every refused unregistration is counted");
         require(receipt.optBoolean("captureFailed"),
             "the public errors fail the capture");
+    }
+
+    /**
+     * The removal reservation survives the original error rendering: while the
+     * first caller is inside the actual Throwable rendering boundary, two
+     * competing final cleanups must refuse completion and never clear this
+     * caller's reservation; then the recorded failure and the genuine retry ACK
+     * complete the lifetime.
+     */
+    private static void a5RepairRemovalErrorBookkeeping(JSONObject result, boolean lifecycle,
+            boolean publicCaller) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        final Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        final java.util.concurrent.CountDownLatch renderingEntered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch renderingHeld =
+            new java.util.concurrent.CountDownLatch(1);
+        // The actual external error-rendering boundary: the guard's real
+        // stackTraceOf(error) calls this virtual method from its catch, after the
+        // native failure and before it records or publishes the failure.
+        RuntimeException original = new IllegalStateException("A5_REPAIR_REMOVAL_PRIMARY",
+            new IllegalArgumentException("A5_REPAIR_REMOVAL_NESTED")) {
+            @Override public void printStackTrace(java.io.PrintWriter writer) {
+                renderingEntered.countDown();
+                try {
+                    if (!renderingHeld.await(20, java.util.concurrent.TimeUnit.SECONDS)) {
+                        throw new IllegalStateException(
+                            "the controlled error rendering was not released in time");
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                super.printStackTrace(writer);
+            }
+        };
+        original.addSuppressed(new IllegalStateException("A5_REPAIR_REMOVAL_SUPPRESSED"));
+        if (lifecycle) {
+            app.lifecycleUnregisterAfterEffect = original;
+        } else {
+            app.receiverUnregisterBeforeEffect = original;
+        }
+        final JSONObject[] firstReceipt = {null};
+        final Throwable[] firstError = {null};
+        Thread first = new Thread(() -> {
+            try {
+                if (publicCaller) {
+                    if (lifecycle) {
+                        app.unregisterActivityLifecycleCallbacks(
+                            (Application.ActivityLifecycleCallbacks) callback);
+                    } else {
+                        app.unregisterReceiver(receiver);
+                    }
+                } else {
+                    firstReceipt[0] = GuardedReaderApplication.releaseProcessResources();
+                }
+            } catch (Throwable error) {
+                firstError[0] = error;
+            }
+        }, "a5-repair-removal-error-" + (lifecycle ? "lifecycle" : "receiver") + "-"
+            + (publicCaller ? "public" : "release"));
+        first.start();
+        boolean entered = false;
+        JSONObject firstCompeting = null;
+        JSONObject secondCompeting = null;
+        int attemptsWhileHeld = -1;
+        int effectsWhileHeld = -1;
+        int nativeWhileHeld = -1;
+        boolean unrelatedEmpty = false;
+        boolean observerClosed = false;
+        boolean firstJoined = false;
+        boolean idle = false;
+        try {
+            entered = renderingEntered.await(10000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            // The original error has already happened; only its graph is held.
+            if (lifecycle) {
+                app.lifecycleUnregisterAfterEffect = null;
+            } else {
+                app.receiverUnregisterBeforeEffect = null;
+            }
+            firstCompeting = GuardedReaderApplication.releaseProcessResources();
+            secondCompeting = GuardedReaderApplication.releaseProcessResources();
+            attemptsWhileHeld = lifecycle ? app.lifecycleUnregisterAttempts
+                : app.receiverUnregisterAttempts;
+            effectsWhileHeld = lifecycle ? app.lifecycleUnregisterEffects
+                : app.receiverUnregisterEffects;
+            nativeWhileHeld = lifecycle ? app.nativeCallbacks.size()
+                : app.nativeReceivers.size();
+            unrelatedEmpty = lifecycle ? app.nativeReceivers.isEmpty()
+                : app.nativeCallbacks.isEmpty();
+            observerClosed = !GuardedReaderApplication.captureReceipt().optBoolean("observing");
+        } finally {
+            renderingHeld.countDown();
+            first.join(40000);
+            firstJoined = !first.isAlive();
+            if (lifecycle) {
+                app.lifecycleUnregisterAfterEffect = null;
+            } else {
+                app.receiverUnregisterBeforeEffect = null;
+            }
+            idle = android.os.Handler.awaitIdle(10000);
+        }
+        JSONObject capture = GuardedReaderApplication.captureReceipt();
+        org.json.JSONArray retained = capture.getJSONArray("failures");
+        int primaries = 0;
+        int nesteds = 0;
+        int suppresseds = 0;
+        for (int i = 0; i < retained.length(); i++) {
+            String entry = retained.getString(i);
+            if (entry.contains("A5_REPAIR_REMOVAL_PRIMARY")) primaries++;
+            if (entry.contains("A5_REPAIR_REMOVAL_NESTED")) nesteds++;
+            if (entry.contains("A5_REPAIR_REMOVAL_SUPPRESSED")) suppresseds++;
+        }
+        String firstChain = firstError[0] == null ? "none"
+            : FieldOracleFreeChain.describe(firstError[0]);
+        result.put("lifecycle", lifecycle).put("publicCaller", publicCaller)
+            .put("entered", entered)
+            .put("firstCompeting", firstCompeting).put("secondCompeting", secondCompeting)
+            .put("attemptsWhileHeld", attemptsWhileHeld)
+            .put("effectsWhileHeld", effectsWhileHeld)
+            .put("nativeWhileHeld", nativeWhileHeld)
+            .put("unrelatedEmpty", unrelatedEmpty)
+            .put("observerClosed", observerClosed)
+            .put("firstJoined", firstJoined).put("idle", idle)
+            .put("firstError", firstChain).put("firstReceipt", firstReceipt[0])
+            .put("retainedPrimaries", primaries).put("retainedNesteds", nesteds)
+            .put("retainedSuppresseds", suppresseds)
+            .put("captureFailed", capture.optBoolean("captureFailed"));
+        require(entered, "the first caller reached the actual error-rendering boundary");
+        require(firstCompeting != null && !firstCompeting.optBoolean("closed"),
+            "the first competing cleanup must refuse completion while the error is unpublished: "
+                + firstCompeting);
+        require(secondCompeting != null && !secondCompeting.optBoolean("closed"),
+            "the second competing cleanup must refuse completion while the error is unpublished: "
+                + secondCompeting);
+        require(attemptsWhileHeld == 1,
+            "the competing cleanups never duplicate the target native removal call");
+        require(effectsWhileHeld == (lifecycle ? 1 : 0),
+            "the held removal keeps its exact single effect state");
+        require(nativeWhileHeld == (lifecycle ? 0 : 1),
+            "the held removal keeps its exact native registry state");
+        require(unrelatedEmpty, "the unrelated owned domain still cleaned normally");
+        require(observerClosed, "the observer domain still closed normally");
+        require(firstJoined, "the first caller terminated after the rendering was released");
+        require(idle, "the actual MAIN work finished");
+        require(primaries == 1 && nesteds == 1 && suppresseds == 1,
+            "exactly one complete original primary, nested and suppressed graph is retained");
+        require(capture.optBoolean("captureFailed"),
+            "the original removal failure is sticky");
+        if (publicCaller) {
+            require(firstError[0] instanceof SecurityException,
+                "the public removal propagates its documented refusal");
+            require(FieldOracleFreeChain.hasCause(firstError[0], original),
+                "the propagated refusal keeps the original error as its cause");
+            require(firstError[0].getMessage().contains("A5_REPAIR_REMOVAL_PRIMARY"),
+                "the propagated refusal names the original error");
+        } else {
+            require(firstError[0] == null, "the final release records, it does not throw");
+            require(firstReceipt[0] != null && !firstReceipt[0].optBoolean("closed"),
+                "the first final receipt is not a false closure");
+            require(firstReceipt[0].getJSONArray("removalFailures").toString()
+                .contains("A5_REPAIR_REMOVAL_PRIMARY"),
+                "the first final receipt contains the complete original removal failure");
+        }
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        int attemptsAfterRetry = lifecycle ? app.lifecycleUnregisterAttempts
+            : app.receiverUnregisterAttempts;
+        int effectsAfterRetry = lifecycle ? app.lifecycleUnregisterEffects
+            : app.receiverUnregisterEffects;
+        int nativeAfterRetry = lifecycle ? app.nativeCallbacks.size()
+            : app.nativeReceivers.size();
+        result.put("retryClosed", retry.optBoolean("closed"))
+            .put("attemptsAfterRetry", attemptsAfterRetry)
+            .put("effectsAfterRetry", effectsAfterRetry)
+            .put("nativeAfterRetry", nativeAfterRetry);
+        require(retry.optBoolean("closed"), "the genuine final retry ACK closes");
+        require(attemptsAfterRetry == 2,
+            "the genuine retry is the second real target attempt");
+        require(effectsAfterRetry == 1,
+            "the target effected exactly once across the failed call and the ACK");
+        require(nativeAfterRetry == 0, "the target native registry is empty");
     }
 
     /** Bounded join that surfaces the real liveness result. */

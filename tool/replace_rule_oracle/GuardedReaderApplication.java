@@ -412,19 +412,15 @@ public final class GuardedReaderApplication extends Application {
     /**
      * Performs one already-reserved native removal and its bookkeeping.
      *
-     * <p>The native call runs outside the lock. The owned ledger is cleared only
-     * after the real return, and the reservation is retained through that
-     * bookkeeping, so a concurrent caller never acts on a just-acknowledged
-     * handle.
+     * <p>The native call runs outside the lock, and the owned ledger is cleared
+     * only after the real return. The caller owns the reservation and releases
+     * it in its own outer finally, after the success counter or the original
+     * failure record, so no concurrent caller can act on a just-acknowledged
+     * handle or observe a clean capture before the failure ledger.
      */
-    private static void performReservedRemoval(Object handle, Runnable nativeCall,
-            Runnable acknowledged) {
-        try {
-            nativeCall.run();
-            acknowledged.run();
-        } finally {
-            releaseNativeCall(handle);
-        }
+    private static void performReservedRemoval(Runnable nativeCall, Runnable acknowledged) {
+        nativeCall.run();
+        acknowledged.run();
     }
 
     /** Whether the exact owned observer's native call is still executing. */
@@ -511,9 +507,9 @@ public final class GuardedReaderApplication extends Application {
             callbacks = new ArrayList<>(ownedCallbacks);
         }
         for (BroadcastReceiver wrapper : receivers) {
+            boolean reserved = false;
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
-                boolean reserved;
                 try {
                     reserved = reserveOwnedRemoval(wrapper, ownedReceivers);
                 } catch (IllegalStateException inFlight) {
@@ -529,7 +525,7 @@ public final class GuardedReaderApplication extends Application {
                     continue;
                 }
                 final GuardedReaderApplication ownerInstance = exactOwner;
-                performReservedRemoval(wrapper,
+                performReservedRemoval(
                     () -> ownerInstance.superUnregisterReceiver(wrapper),
                     () -> {
                         synchronized (lock) {
@@ -549,12 +545,16 @@ public final class GuardedReaderApplication extends Application {
                 String chain = stackTraceOf(error);
                 removalFailures.put("receiver: " + chain);
                 fail("receiver removal failed: " + chain);
+            } finally {
+                // Only this iteration's own successful reservation is released,
+                // after its success counter or original failure record.
+                if (reserved) releaseNativeCall(wrapper);
             }
         }
         for (ActivityLifecycleCallbacks callback : callbacks) {
+            boolean reserved = false;
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
-                boolean reserved;
                 try {
                     reserved = reserveOwnedRemoval(callback, ownedCallbacks);
                 } catch (IllegalStateException inFlight) {
@@ -565,7 +565,7 @@ public final class GuardedReaderApplication extends Application {
                 }
                 if (!reserved) continue;
                 final GuardedReaderApplication ownerInstance = exactOwner;
-                performReservedRemoval(callback,
+                performReservedRemoval(
                     () -> ownerInstance.superUnregisterCallbacks(callback),
                     () -> {
                         synchronized (lock) {
@@ -584,6 +584,10 @@ public final class GuardedReaderApplication extends Application {
                 String chain = stackTraceOf(error);
                 removalFailures.put("lifecycle: " + chain);
                 fail("lifecycle removal failed: " + chain);
+            } finally {
+                // Only this iteration's own successful reservation is released,
+                // after its success counter or original failure record.
+                if (reserved) releaseNativeCall(callback);
             }
         }
         int ownedReceiverCount;
@@ -1363,7 +1367,7 @@ public final class GuardedReaderApplication extends Application {
             throw new SecurityException("guarded capture refuses a foreign unregistration");
         }
         try {
-            performReservedRemoval(wrapper,
+            performReservedRemoval(
                 () -> superUnregisterReceiver(wrapper),
                 () -> {
                     // The owned ledger and its receipt are written while the call
@@ -1385,6 +1389,11 @@ public final class GuardedReaderApplication extends Application {
             fail("receiver removal failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded receiver removal failed: " + error, error);
+        } finally {
+            // The reservation ends only after the acknowledgement or the original
+            // failure record, so no concurrent cleanup can close the lifetime
+            // before this caller publishes its failure.
+            releaseNativeCall(wrapper);
         }
     }
 
@@ -1489,7 +1498,7 @@ public final class GuardedReaderApplication extends Application {
                 "guarded capture refuses a foreign lifecycle unregistration");
         }
         try {
-            performReservedRemoval(callback,
+            performReservedRemoval(
                 () -> superUnregisterCallbacks(callback),
                 () -> {
                     // Ledger and receipt first, still reserved, so no concurrent
@@ -1510,6 +1519,11 @@ public final class GuardedReaderApplication extends Application {
             fail("lifecycle removal failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded lifecycle removal failed: " + error, error);
+        } finally {
+            // The reservation ends only after the acknowledgement or the original
+            // failure record, so no concurrent cleanup can close the lifetime
+            // before this caller publishes its failure.
+            releaseNativeCall(callback);
         }
     }
 
