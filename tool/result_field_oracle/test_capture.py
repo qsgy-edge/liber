@@ -6287,6 +6287,15 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             run_cp = os.pathsep.join([str(overlay_classes), str(driver_classes),
                                       str(sdk_classes), str(jar)])
             guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
+            # Read back the actual SDK-loaded bytes while this classpath exists.
+            identity = self._run(
+                [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                 'io.liber.oracle.nested.GuardedReaderApplicationTest', 'loaded-identity'], repo)
+            self.assertEqual(identity.returncode, 0, identity.stderr.decode(errors='replace'))
+            loaded = json.loads(identity.stdout.decode(errors='replace').strip().splitlines()[-1])
+            self.assertTrue(loaded['ok'])
+            self.assertEqual(Path(loaded['codeSource']).resolve(), sdk_classes.resolve())
+            self.assertEqual(loaded['classSha256']['GuardedReaderApplication.class'], guard_sha)
             outcomes = {}
             for control in self.GUARD_CONTROLS:
                 run = self._run(
