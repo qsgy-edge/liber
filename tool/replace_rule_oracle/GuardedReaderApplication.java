@@ -888,6 +888,7 @@ public final class GuardedReaderApplication extends Application {
                     // The cancellation itself failed: the uncertainty is retained
                     // with the complete original and suppressed cleanup graph, and
                     // the item is never retired here.
+                    if (cancelError != error) error.addSuppressed(cancelError);
                     fail("the main looper rejected the work and the cancellation failed: "
                         + stackTraceOf(error) + stackTraceOf(cancelError));
                     throw error instanceof Exception ? (Exception) error

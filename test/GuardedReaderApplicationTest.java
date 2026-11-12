@@ -3135,79 +3135,26 @@ public final class GuardedReaderApplicationTest {
     }
 
     /** A marker alone never proves the queue drained. */
-    /** A marker is not a transitive drain of later descendant work. */
-    private static void a5MarkerNotDrain(JSONObject result) throws Exception {
-        GuardedReaderApplication app = armedApp();
-        final java.util.concurrent.CountDownLatch descendantHeld =
-            new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.CountDownLatch descendantRelease =
-            new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.CountDownLatch markerDone =
-            new java.util.concurrent.CountDownLatch(1);
-        final Throwable[] descendantError = {null};
-        final Thread[] descendant = {null};
-        boolean posted = new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            try {
-                descendant[0] = new Thread(() -> {
-                    try {
-                        GuardedReaderApplication.beginSaveObservation(
-                            "http://book/1", "http://book/1/c1");
-                    } catch (Throwable error) {
-                        descendantError[0] = error;
-                    }
-                }, "a5-marker-descendant");
-                descendant[0].start();
-                descendantHeld.countDown();
-                descendantRelease.await(20, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (Throwable ignored) {
-                // surfaced through descendantError and the assertions below
-            } finally {
-                markerDone.countDown();
-            }
-        });
-        boolean held = descendantHeld.await(20, java.util.concurrent.TimeUnit.SECONDS);
-        boolean markerFinished = markerDone.await(20, java.util.concurrent.TimeUnit.SECONDS);
-        int pendingWhileDescendant = pendingOwnedWork();
-        JSONObject releaseWhileDescendant = GuardedReaderApplication.releaseProcessResources();
-        descendantRelease.countDown();
-        boolean joined = descendant[0] != null && a5JoinBounded(descendant[0], 20000);
-        android.os.Handler.flush();
-        boolean idle = android.os.Handler.awaitIdle(10000);
-        int pendingAfter = pendingOwnedWork();
-        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
-        result.put("posted", posted).put("held", held)
-            .put("markerFinishedWhileDescendantHeld", markerFinished)
-            .put("pendingWhileDescendant", pendingWhileDescendant)
-            .put("releaseWhileDescendant", releaseWhileDescendant.optBoolean("closed"))
-            .put("joined", joined).put("idle", idle)
-            .put("pendingAfter", pendingAfter)
-            .put("descendantError", descendantError[0] == null ? "none"
-                : FieldOracleFreeChain.describe(descendantError[0]))
-            .put("retryClosed", retry.optBoolean("closed"));
-        require(posted && held, "the outer callback really scheduled the descendant");
-        require(markerFinished, "the marker completed while the descendant was held");
-        require(pendingWhileDescendant >= 1,
-            "the marker is not a transitive drain: the descendant stays tracked");
-        require(!releaseWhileDescendant.optBoolean("closed"),
-            "a marker plus a held descendant is not a closure");
-        require(joined, "the descendant thread finished");
-        require(idle, "the main thread reached idle");
-        require(pendingAfter == 0, "the genuine finish retires the descendant");
-        require(retry.optBoolean("closed"), "the real retry closes");
-    }
-
-    /** A queued item is cancelled before MAIN starts; the retry reaches native. */
+    /** A queued removal is interrupted before MAIN starts; the retry reaches native. */
     private static void a5QueuedRemovalInterrupt(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
         Object observable = liveObservableForTest();
+        // A real typed matching MAIN event, so the removal path is reached.
         GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        // A real typed matching MAIN event, so the removal path is reached.
+        java.lang.reflect.Method deliver = observable.getClass()
+            .getDeclaredMethod("deliver", Object.class);
+        deliver.setAccessible(true);
+        deliver.invoke(observable, "a5-removal-event");
         android.os.Handler.hold();
         final Throwable[] callerError = {null};
+        final boolean[] flagInside = {false};
         Thread caller = new Thread(() -> {
             try {
                 GuardedReaderApplication.endSaveObservation(0);
             } catch (Throwable error) {
                 callerError[0] = error;
+                flagInside[0] = Thread.currentThread().isInterrupted();
             }
         }, "a5-removal-caller");
         caller.start();
@@ -3215,30 +3162,37 @@ public final class GuardedReaderApplicationTest {
         caller.interrupt();
         boolean joined = a5JoinBounded(caller, 10000);
         int pendingAfterExit = pendingOwnedWork();
-        int effectsBefore = (Integer) observableField(observable, "observerRemoveEffects");
+        int removeEffectsBefore = (Integer) observableField(observable, "observerRemoveEffects");
         android.os.Handler.flush();
         boolean idle = android.os.Handler.awaitIdle(10000);
         int pendingAfterIdle = pendingOwnedWork();
-        int effectsAfter = (Integer) observableField(observable, "observerRemoveEffects");
+        int removeEffectsAfter = (Integer) observableField(observable, "observerRemoveEffects");
         JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        int removeEffectsFinal = (Integer) observableField(observable, "observerRemoveEffects");
         result.put("queued", queued).put("joined", joined)
             .put("pendingAfterExit", pendingAfterExit)
+            .put("removeEffectsBeforeFlush", removeEffectsAfter - removeEffectsBefore)
             .put("idle", idle).put("pendingAfterIdle", pendingAfterIdle)
-            .put("removeEffects", effectsAfter - effectsBefore)
+            .put("removeEffectsAfterRetry", removeEffectsFinal - removeEffectsBefore)
             .put("callerError", callerError[0] == null ? "none"
                 : FieldOracleFreeChain.describe(callerError[0]))
+            .put("interruptFlagInside", flagInside[0])
             .put("retryClosed", retry.optBoolean("closed"))
             .put("captureFailed", GuardedReaderApplication.captureFailed());
         require(queued, "the removal work was queued");
         require(joined, "the interrupted caller exited");
         require(pendingAfterExit == 1,
-            "no native removal happened before the main acknowledgement");
-        require(effectsAfter - effectsBefore == 0,
-            "the native removal never ran while the item was queued");
-        require(idle, "the main thread reached idle");
-        require(pendingAfterIdle == 0, "the inert acknowledgement retires the item");
+            "the queued removal stays owned before the main acknowledgement");
+        require(removeEffectsAfter - removeEffectsBefore == 0,
+            "no native removal happened before the flush");
+        require(flagInside[0], "the caller's own interrupt flag is preserved");
         require(callerError[0] instanceof InterruptedException,
             "the original interruption is retained");
+        require(idle, "the main thread reached idle");
+        require(pendingAfterIdle == 0, "the inert acknowledgement retires the item");
+        require(removeEffectsFinal - removeEffectsBefore >= 1,
+            "the real retry actually reaches the native removal");
+        require(pendingOwnedWork() == 0, "the owned work is empty after the retry");
         require(GuardedReaderApplication.captureFailed(),
             "the interruption visibly fails the capture");
     }
@@ -3258,33 +3212,47 @@ public final class GuardedReaderApplicationTest {
         long elapsedMillis = (System.nanoTime() - started) / 1000000L;
         int pendingAfterExpiry = pendingOwnedWork();
         int observeEffects = (Integer) observableField(observable, "observerObserveEffects");
+        boolean interruptedInside = Thread.currentThread().isInterrupted();
+        String chain = thrown == null ? "none" : FieldOracleFreeChain.describe(thrown);
         android.os.Handler.flush();
         boolean idle = android.os.Handler.awaitIdle(10000);
         int pendingAfterIdle = pendingOwnedWork();
         JSONObject retry = GuardedReaderApplication.releaseProcessResources();
         result.put("elapsedMillis", elapsedMillis).put("thrown", thrown != null)
+            .put("type", thrown == null ? "none" : thrown.getClass().getName())
+            .put("chain", chain)
             .put("pendingAfterExpiry", pendingAfterExpiry)
             .put("observeEffects", observeEffects)
+            .put("interrupted", interruptedInside)
             .put("idle", idle).put("pendingAfterIdle", pendingAfterIdle)
-            .put("retryClosed", retry.optBoolean("closed"));
-        require(elapsedMillis >= 30000L,
-            "the real unchanged deadline actually elapsed");
-        require(thrown != null, "the expiry reaches the caller");
+            .put("retryClosed", retry.optBoolean("closed"))
+            .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(elapsedMillis >= 30000L, "the real unchanged deadline actually elapsed");
+        require(thrown instanceof IllegalStateException,
+            "the expiry surfaces as the actual deadline failure type");
+        require(chain.contains("main-thread work did not complete"),
+            "the actual deadline reason is retained");
+        require(!interruptedInside, "the expiry is a deadline, not an interruption");
         require(pendingAfterExpiry == 1,
             "the timed-out work stays tracked until the inert acknowledgement");
         require(observeEffects == 0, "no native observer effect happened");
         require(idle, "the main thread reached idle");
         require(pendingAfterIdle == 0, "the inert acknowledgement retires it");
         require(retry.optBoolean("closed"), "the honest cleanup closes");
+        require(GuardedReaderApplication.captureFailed(),
+            "the deadline visibly fails the capture");
     }
 
-    /** A genuine before-enqueue fault, with a real cancellation acknowledgement. */
+    /** A genuine before-enqueue fault, with real native cancellation acknowledgement. */
     private static void a5PostThrowBefore(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
         RuntimeException original = new IllegalStateException("A5_BEFORE_POST",
             new IllegalArgumentException("A5_BEFORE_NESTED"));
         original.addSuppressed(new IllegalStateException("A5_BEFORE_SUPPRESSED"));
+        // The post throws AND the native cancellation itself fails.
+        RuntimeException cancelFailure = new IllegalStateException("A5_CANCEL_FAILED");
         android.os.Handler.beforePostFault = original;
+        android.os.Handler.removeFault = cancelFailure;
         Throwable thrown = null;
         try {
             GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
@@ -3292,30 +3260,65 @@ public final class GuardedReaderApplicationTest {
             thrown = error;
         } finally {
             android.os.Handler.beforePostFault = null;
+            android.os.Handler.removeFault = null;
         }
         int pending = pendingOwnedWork();
         String failures = GuardedReaderApplication.captureReceipt()
             .getJSONArray("failures").toString();
         String chain = thrown == null ? "none" : FieldOracleFreeChain.describe(thrown);
+        boolean exactSuppressed = false;
+        if (thrown != null) {
+            for (Throwable suppressed : thrown.getSuppressed()) {
+                if (suppressed == cancelFailure) exactSuppressed = true;
+            }
+        }
         result.put("identity", thrown == original).put("chain", chain)
+            .put("exactCancelSuppressed", exactSuppressed)
             .put("pending", pending).put("failures", failures);
         require(thrown == original, "the original before-enqueue fault reaches the caller");
         require(chain.contains("A5_BEFORE_POST") && chain.contains("A5_BEFORE_NESTED")
             && chain.contains("A5_BEFORE_SUPPRESSED"),
             "the complete before-enqueue graph reaches the caller");
-        require(pending == 0, "a never-enqueued item retires");
+        require(exactSuppressed,
+            "the exact native cancellation failure is retained as a suppressed cause");
+        require(chain.contains("A5_CANCEL_FAILED"),
+            "the cancellation failure is visible in the retained graph");
+        // The cancellation itself failed, so the uncertainty is honestly retained:
+        // no fabricated acknowledgement and no forced retirement.
+        require(pending == 1,
+            "a failed native cancellation keeps the item tracked, not falsely retired");
         require(failures.contains("A5_BEFORE_POST"),
             "the before-enqueue fault is retained in the capture");
     }
 
     /** A throwing post after the body STARTED must never retire the running work. */
     private static void a5PostThrowAfterRunning(JSONObject result) throws Exception {
-        GuardedReaderApplication app = armedApp();
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        final java.util.concurrent.CountDownLatch bodyEntered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch bodyRelease =
+            new java.util.concurrent.CountDownLatch(1);
+        // A loader that holds ONLY the Pair metadata; readiness never loads it.
+        ClassLoader held = new ClassLoader(loader()) {
+            @Override protected Class<?> loadClass(String name, boolean resolve)
+                    throws ClassNotFoundException {
+                if ("kotlin.Pair".equals(name)) {
+                    // The actual guarded body signals that it started.
+                    android.os.Handler.afterPostStarted.countDown();
+                    bodyEntered.countDown();
+                    try {
+                        bodyRelease.await(30, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+        GuardedReaderApplication.arm(app, held);
         RuntimeException original = new IllegalStateException("A5_AFTER_POST",
             new IllegalArgumentException("A5_AFTER_NESTED"));
         original.addSuppressed(new IllegalStateException("A5_AFTER_SUPPRESSED"));
-        final java.util.concurrent.CountDownLatch bodyRelease =
-            new java.util.concurrent.CountDownLatch(1);
         android.os.Handler.afterPostStarted =
             new java.util.concurrent.CountDownLatch(1);
         android.os.Handler.afterPostFault = original;
@@ -3328,11 +3331,12 @@ public final class GuardedReaderApplicationTest {
             }
         }, "a5-after-caller");
         caller.start();
-        boolean started = android.os.Handler.afterPostStarted
-            .await(20, java.util.concurrent.TimeUnit.SECONDS);
+        boolean started = bodyEntered.await(20, java.util.concurrent.TimeUnit.SECONDS);
         boolean joined = a5JoinBounded(caller, 20000);
-        int pendingWhileRunning = pendingOwnedWork();
-        JSONObject releaseWhileRunning = GuardedReaderApplication.releaseProcessResources();
+        int pendingWhileHeld = pendingOwnedWork();
+        JSONObject releaseWhileHeld = GuardedReaderApplication.releaseProcessResources();
+        Object observable = liveObservableForTest();
+        int observeEffects = (Integer) observableField(observable, "observerObserveEffects");
         bodyRelease.countDown();
         boolean idle = android.os.Handler.awaitIdle(20000);
         int pendingAfterFinish = pendingOwnedWork();
@@ -3342,21 +3346,107 @@ public final class GuardedReaderApplicationTest {
         String chain = callerError[0] == null ? "none"
             : FieldOracleFreeChain.describe(callerError[0]);
         result.put("started", started).put("joined", joined)
-            .put("pendingWhileRunning", pendingWhileRunning)
-            .put("releaseWhileRunning", releaseWhileRunning.optBoolean("closed"))
+            .put("pendingWhileHeld", pendingWhileHeld)
+            .put("releaseWhileHeld", releaseWhileHeld.optBoolean("closed"))
+            .put("observeEffects", observeEffects)
             .put("idle", idle).put("pendingAfterFinish", pendingAfterFinish)
             .put("chain", chain).put("retryClosed", retry.optBoolean("closed"));
-        require(started, "the body actually started before the post threw");
-        require(joined, "the waiting caller exited on the original post object");
+        require(started, "the real guarded body started and is held on Pair metadata");
+        require(joined, "the waiting caller exited on the original post fault");
         require(chain.contains("A5_AFTER_POST") && chain.contains("A5_AFTER_NESTED")
             && chain.contains("A5_AFTER_SUPPRESSED"),
             "the complete after-enqueue graph reaches the caller");
-        require(pendingWhileRunning == 1,
+        require(pendingWhileHeld == 1,
             "a throwing post after the body started never retires the running work");
-        require(!releaseWhileRunning.optBoolean("closed"),
-            "the running work keeps the lifetime honestly unclosed");
+        require(!releaseWhileHeld.optBoolean("closed"),
+            "the held body keeps the lifetime honestly unclosed");
+        require(observeEffects == 0, "no native observer effect is attached after closing");
         require(idle, "the controlled release finished the body");
         require(pendingAfterFinish == 0, "the running work self-retires on completion");
+        require(retry.optBoolean("closed"), "the real retry closes");
+    }
+
+    /** A marker is not a transitive drain of later descendant work. */
+    private static void a5MarkerNotDrain(JSONObject result) throws Exception {
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        final java.util.concurrent.CountDownLatch pairHeld =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch pairRelease =
+            new java.util.concurrent.CountDownLatch(1);
+        ClassLoader heldLoader = new ClassLoader(loader()) {
+            @Override protected Class<?> loadClass(String name, boolean resolve)
+                    throws ClassNotFoundException {
+                if ("kotlin.Pair".equals(name)) {
+                    pairHeld.countDown();
+                    try {
+                        pairRelease.await(30, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+        GuardedReaderApplication.arm(app, heldLoader);
+        final Throwable[] descendantError = {null};
+        final Thread[] descendant = {null};
+        final JSONObject[] fenceResult = {null};
+        android.os.Handler.hold();
+        // The real fence marker is submitted FIRST, so it is ordered ahead of the
+        // descendant and can complete while the descendant body is still held.
+        Thread fenceThread = new Thread(() -> {
+            try {
+                fenceResult[0] = GuardedReaderApplication.fenceMainLooper(30000);
+            } catch (Throwable error) {
+                descendantError[0] = error;
+            }
+        }, "a5-marker-fence");
+        fenceThread.start();
+        boolean markerQueued = android.os.Handler.awaitQueued(20000);
+        // The real tracked descendant is enqueued AFTER the marker.
+        descendant[0] = new Thread(() -> {
+            try {
+                GuardedReaderApplication.beginSaveObservation(
+                    "http://book/1", "http://book/1/c1");
+            } catch (Throwable error) {
+                descendantError[0] = error;
+            }
+        }, "a5-marker-descendant");
+        descendant[0].start();
+        boolean bodyHeld = false;
+        android.os.Handler.flush();
+        boolean fenceJoined = a5JoinBounded(fenceThread, 30000);
+        bodyHeld = pairHeld.await(30, java.util.concurrent.TimeUnit.SECONDS);
+        boolean markerCompleted = fenceResult[0] != null
+            && fenceResult[0].optBoolean("completed");
+        int pendingWhileHeld = pendingOwnedWork();
+        JSONObject releaseWhileHeld = GuardedReaderApplication.releaseProcessResources();
+        pairRelease.countDown();
+        boolean joined = a5JoinBounded(descendant[0], 30000);
+        boolean idle = android.os.Handler.awaitIdle(10000);
+        int pendingAfter = pendingOwnedWork();
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        result.put("markerQueued", markerQueued).put("fenceJoined", fenceJoined)
+            .put("bodyHeld", bodyHeld)
+            .put("markerCompleted", markerCompleted)
+            .put("pendingWhileHeld", pendingWhileHeld)
+            .put("releaseWhileHeld", releaseWhileHeld.optBoolean("closed"))
+            .put("joined", joined).put("idle", idle)
+            .put("pendingAfter", pendingAfter)
+            .put("descendantError", descendantError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(descendantError[0]))
+            .put("retryClosed", retry.optBoolean("closed"));
+        require(markerQueued, "the real fence marker was actually enqueued");
+        require(fenceJoined, "the fence thread completed");
+        require(markerCompleted, "the real fence marker completed");
+        require(bodyHeld, "the descendant body is actually held");
+        require(pendingWhileHeld == 1,
+            "the marker is not a transitive drain: the descendant stays tracked");
+        require(!releaseWhileHeld.optBoolean("closed"),
+            "a completed marker plus a held descendant is not a closure");
+        require(joined, "the descendant thread finished");
+        require(idle, "the main thread reached idle");
+        require(pendingAfter == 0, "the genuine finish retires the descendant");
         require(retry.optBoolean("closed"), "the real retry closes");
     }
 

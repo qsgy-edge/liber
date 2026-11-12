@@ -1435,25 +1435,21 @@ public class Handler {
     private static final List<Runnable> held = new ArrayList<>();
     private static CountDownLatch queued = new CountDownLatch(1);
 
-    public Handler(Looper looper) {}
-
-    private static boolean refuseNext;
-
     /** Test-only: thrown before the work is enqueued at all. */
     public static Throwable beforePostFault;
-    /** Test-only: thrown after the work is enqueued and, if asked, has started. */
+    /** Test-only: thrown after the work is enqueued and the body has started. */
     public static Throwable afterPostFault;
-    /** Test-only: counted down when a posted body actually begins executing. */
+    /** Test-only: thrown by the native removal itself. */
+    public static Throwable removeFault;
+    /** Test-only: counted down by the guarded body, only ever awaited here. */
     public static CountDownLatch afterPostStarted;
+
+    private static boolean refuseNext;
 
     /** Test-only: the next post is refused without running the work. */
     public static void refuseNext() {
         refuseNext = true;
     }
-
-    private final java.util.Set<Runnable> mine =
-        java.util.Collections.synchronizedSet(
-            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Runnable, Boolean>()));
 
     private static void rethrow(Throwable error) {
         Handler.<RuntimeException>sneaky(error);
@@ -1464,37 +1460,50 @@ public class Handler {
         throw (T) error;
     }
 
-    public boolean post(Runnable work) {
+    /** Exact callbacks this Handler has accepted and not yet delivered. */
+    private static final java.util.Set<Runnable> accepted =
+        java.util.Collections.synchronizedSet(
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Runnable, Boolean>()));
+
+    /** Exact callbacks whose delivery the native removal actually cancelled. */
+    private static final java.util.Set<Runnable> cancelled =
+        java.util.Collections.synchronizedSet(
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Runnable, Boolean>()));
+
+    public Handler(Looper looper) {}
+
+    public final boolean post(Runnable work) {
         if (beforePostFault != null) {
             Throwable fault = beforePostFault;
             beforePostFault = null;
             rethrow(fault);
         }
+        accepted.add(work);
         synchronized (held) {
             if (refuseNext) {
                 refuseNext = false;
+                accepted.remove(work);
                 return false;
             }
             if (holding) {
                 held.add(work);
-                mine.add(work);
                 queued.countDown();
             } else {
-                MAIN.execute(() -> {
-                    mine.remove(work);
-                    CountDownLatch started = afterPostStarted;
-                    if (started != null) started.countDown();
-                    work.run();
-                });
+                MAIN.execute(() -> deliver(work));
             }
         }
         if (afterPostFault != null) {
             CountDownLatch started = afterPostStarted;
             if (started != null) {
                 try {
-                    started.await(10, TimeUnit.SECONDS);
+                    if (!started.await(20, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException(
+                            "the guarded body never signalled that it started");
+                    }
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
+                    throw new IllegalStateException(
+                        "interrupted while waiting for the guarded body to start", interrupted);
                 }
             }
             Throwable fault = afterPostFault;
@@ -1504,11 +1513,26 @@ public class Handler {
         return true;
     }
 
-    /** Test-only: real per-Handler cancellation acknowledgement. */
-    public boolean removeCallbacks(Runnable work) {
+    /** Delivers a submitted callback unless the native removal already cancelled it. */
+    private static void deliver(Runnable work) {
+        synchronized (accepted) {
+            if (cancelled.remove(work)) return;
+            accepted.remove(work);
+        }
+        work.run();
+    }
+
+    public final void removeCallbacks(Runnable work) {
+        if (removeFault != null) {
+            Throwable fault = removeFault;
+            removeFault = null;
+            rethrow(fault);
+        }
+        synchronized (accepted) {
+            if (accepted.remove(work)) cancelled.add(work);
+        }
         synchronized (held) {
-            boolean removed = held.remove(work);
-            return mine.remove(work) || removed;
+            held.remove(work);
         }
     }
 
@@ -1530,7 +1554,7 @@ public class Handler {
             pending = new ArrayList<>(held);
             held.clear();
         }
-        for (Runnable work : pending) MAIN.execute(work);
+        for (Runnable work : pending) MAIN.execute(() -> deliver(work));
     }
 
     public static boolean awaitIdle(long millis) throws Exception {
