@@ -2221,12 +2221,12 @@ public class FakePreferences implements SharedPreferences {
 
         FakeEditor(FakePreferences target) { this.target = target; }
 
-        @Override public SharedPreferences.Editor putBoolean(String key, boolean value) {
+        @Override public Editor putBoolean(String key, boolean value) {
             pending.put(key, value);
             return this;
         }
 
-        @Override public SharedPreferences.Editor remove(String key) {
+        @Override public Editor remove(String key) {
             removed.add(key);
             return this;
         }
