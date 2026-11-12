@@ -6112,18 +6112,6 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             run_cp, sdk_classes, guard_class = self._guard_sdk_classpath(
                 repo, java, android, jar, root)
             guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
-            # Passive metadata: the SAME SDK-first classpath, invoked once, so this
-            # record carries its own actual loaded-identity byte readback.
-            identity_run = self._run(
-                [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
-                 'io.liber.oracle.nested.GuardedReaderApplicationTest',
-                 'loaded-identity'], repo)
-            identity_out = identity_run.stdout.decode(errors='replace').strip()
-            self.assertEqual(identity_run.returncode, 0,
-                             identity_out + identity_run.stderr.decode(errors='replace'))
-            identity = json.loads(identity_out.splitlines()[-1])
-            self.assertEqual(Path(identity['codeSource']).resolve(), sdk_classes.resolve(),
-                             'the loaded guard must come from the SDK-compiled directory')
             identity_run = self._run(
                 [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
                  'io.liber.oracle.nested.GuardedReaderApplicationTest',
