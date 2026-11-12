@@ -1437,8 +1437,19 @@ public class Handler {
 
     public Handler(Looper looper) {}
 
+    private static boolean refuseNext;
+
+    /** Test-only: the next post is refused without running the work. */
+    public static void refuseNext() {
+        refuseNext = true;
+    }
+
     public boolean post(Runnable work) {
         synchronized (held) {
+            if (refuseNext) {
+                refuseNext = false;
+                return false;
+            }
             if (holding) {
                 held.add(work);
                 queued.countDown();
@@ -6029,6 +6040,10 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
                 'boundary-duplicate-receiver-pending', 'boundary-duplicate-lifecycle-pending',
                 'boundary-unarmed-forwarding', 'boundary-activity-refusal',
                 'boundary-closing-owned-removal', 'boundary-ipc-open', 'boundary-ipc-closing',
+                'a5-cancel-queued-acquire', 'a5-direct-main-tracked',
+                'a5-enqueue-refused', 'a5-body-error-retained',
+                'a5-many-cycles-retire', 'a5-native-inflight-lifecycle',
+
             )
             outcomes = {}
             for control in controls:

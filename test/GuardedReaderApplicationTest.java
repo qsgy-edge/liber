@@ -152,6 +152,13 @@ public final class GuardedReaderApplicationTest {
             case "boundary-closing-owned-removal": boundaryClosingOwnedRemoval(result); break;
             case "boundary-ipc-open": boundaryIpcOpen(result); break;
             case "boundary-ipc-closing": boundaryIpcClosing(result); break;
+            case "a5-cancel-queued-acquire": a5CancelQueuedAcquire(result); break;
+            case "a5-direct-main-tracked": a5DirectMainTracked(result); break;
+            case "a5-enqueue-refused": a5EnqueueRefused(result); break;
+            case "a5-body-error-retained": a5BodyErrorRetained(result); break;
+            case "a5-many-cycles-retire": a5ManyCyclesRetire(result); break;
+            case "a5-native-inflight-lifecycle": a5NativeInflightLifecycle(result); break;
+            case "a5-marker-not-drain": a5MarkerNotDrain(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -2837,6 +2844,215 @@ public final class GuardedReaderApplicationTest {
 
     private static void boundaryIpcClosing(JSONObject result) throws Exception {
         ipcDelivery(result, "boundary-ipc-closing");
+    }
+
+    // --- A5 owned main-work lifetime --------------------------------------
+
+    private static int pendingOwnedWork() throws Exception {
+        return GuardedReaderApplication.captureReceipt().optInt("pendingOwnedWork");
+    }
+
+    /** A queued item abandoned by its caller never runs and retires itself. */
+    private static void a5CancelQueuedAcquire(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        android.os.Handler.hold();
+        final boolean[] ran = {false};
+        final Throwable[] callerError = {null};
+        Thread caller = new Thread(() -> {
+            try {
+                GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+            } catch (Throwable error) {
+                callerError[0] = error;
+            }
+        }, "a5-cancel-caller");
+        caller.start();
+        boolean queued = android.os.Handler.awaitQueued(5000);
+        int pendingWhileHeld = pendingOwnedWork();
+        caller.interrupt();
+        caller.join(10000);
+        android.os.Handler.flush();
+        android.os.Handler.awaitIdle(5000);
+        int pendingAfter = pendingOwnedWork();
+        result.put("queued", queued).put("pendingWhileHeld", pendingWhileHeld)
+            .put("callerError", callerError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(callerError[0]))
+            .put("pendingAfter", pendingAfter)
+            .put("nativeEffects", app.receiverRegisterEffects)
+            .put("interrupted", caller.isInterrupted())
+            .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(queued, "the work must be queued before the caller exits");
+        require(pendingWhileHeld == 1, "the queued item is visible while pending");
+        require(callerError[0] instanceof InterruptedException,
+            "the caller observes its own interruption");
+        require(app.receiverRegisterEffects == 0,
+            "an abandoned queued item never reaches the native effect");
+        require(pendingAfter == 0, "the abandoned item retires itself");
+        require(GuardedReaderApplication.captureFailed(),
+            "an interrupted wait visibly fails the capture");
+    }
+
+    /** Direct MAIN execution is tracked through the same owned lifetime. */
+    private static void a5DirectMainTracked(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final int[] pendingDuring = {-1};
+        final boolean[] onMain = {false};
+        JSONObject begin = GuardedReaderApplication.beginSaveObservation(
+            "http://book/1", "http://book/1/c1");
+        // beginSaveObservation marshals to MAIN; assert the tracked lifetime after.
+        pendingDuring[0] = pendingOwnedWork();
+        onMain[0] = begin.optBoolean("onMain");
+        result.put("beginOnMain", onMain[0]).put("pendingAfter", pendingDuring[0]);
+        require(onMain[0], "the observation registered on MAIN");
+        require(pendingDuring[0] == 0,
+            "direct MAIN work retires when it finishes");
+        GuardedReaderApplication.endSaveObservation(0);
+    }
+
+    /** A refused enqueue visibly fails the capture. */
+    private static void a5EnqueueRefused(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        android.os.Handler.refuseNext();
+        Throwable thrown = faulted(() -> GuardedReaderApplication.beginSaveObservation(
+            "http://book/1", "http://book/1/c1"));
+        int pending = pendingOwnedWork();
+        result.put("thrown", thrown != null).put("pending", pending)
+            .put("nativeEffects", app.receiverRegisterEffects)
+            .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(thrown != null, "a refused enqueue is rethrown to the caller");
+        require(pending == 0, "a refused enqueue retires its item");
+        require(app.receiverRegisterEffects == 0, "no native effect happened");
+        require(GuardedReaderApplication.captureFailed(),
+            "a refused enqueue visibly fails the capture");
+    }
+
+    /** A body error is retained with its cause and retires the item. */
+    private static void a5BodyErrorRetained(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object observable = liveObservableForTest();
+        RuntimeException original = new IllegalStateException("A5_BODY_ERROR",
+            new IllegalArgumentException("A5_BODY_NESTED"));
+        original.addSuppressed(new IllegalStateException("A5_BODY_SUPPRESSED"));
+        setObservableField(observable, "observerObserveBeforeEffect", original);
+        Throwable thrown = null;
+        try {
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        } catch (Throwable error) {
+            thrown = error;
+        }
+        setObservableField(observable, "observerObserveBeforeEffect", null);
+        int pending = pendingOwnedWork();
+        String failures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        String chain = thrown == null ? "none" : FieldOracleFreeChain.describe(thrown);
+        result.put("identity", thrown == original).put("thrownType",
+                thrown == null ? "none" : thrown.getClass().getName())
+            .put("chain", chain).put("pending", pending).put("failures", failures);
+        require(thrown != null, "the body error reaches the caller");
+        require(chain.contains("A5_BODY_ERROR") && chain.contains("A5_BODY_NESTED")
+            && chain.contains("A5_BODY_SUPPRESSED"),
+            "the complete body cause graph reaches the caller");
+        require(pending == 0, "a failed body retires its item");
+        require(failures.contains("A5_BODY_ERROR") && failures.contains("A5_BODY_NESTED")
+            && failures.contains("A5_BODY_SUPPRESSED"),
+            "the complete body cause graph is retained in the capture");
+    }
+
+    /** Many real work cycles all retire: value-key semantics, no leak. */
+    private static void a5ManyCyclesRetire(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        int cycles = 130;
+        for (int i = 0; i < cycles; i++) {
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+            GuardedReaderApplication.endSaveObservation(0);
+        }
+        int pending = pendingOwnedWork();
+        result.put("cycles", cycles).put("pending", pending);
+        require(pending == 0, "every completed cycle retires its item");
+        // Each cycle intentionally carries no event, so the capture failure is
+        // the expected A2 disposition; only retirement is asserted here.
+    }
+
+    /** A real lifecycle acquisition held before its effect blocks false closure. */
+    private static void a5NativeInflightLifecycle(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final java.util.concurrent.CountDownLatch entered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release =
+            new java.util.concurrent.CountDownLatch(1);
+        Application.class.getField("lifecycleEntered").set(null, entered);
+        Application.class.getField("lifecycleHeld").set(null, release);
+        final Object callback = approvedCallback();
+        final Throwable[] firstError = {null};
+        Thread first = new Thread(() -> {
+            try {
+                app.registerActivityLifecycleCallbacks(
+                    (Application.ActivityLifecycleCallbacks) callback);
+            } catch (Throwable error) {
+                firstError[0] = error;
+            }
+        }, "a5-native-inflight");
+        first.start();
+        boolean enteredOk;
+        try {
+            enteredOk = entered.await(5000, java.util.concurrent.TimeUnit.SECONDS);
+            JSONObject release1 = GuardedReaderApplication.releaseProcessResources();
+            result.put("entered", enteredOk).put("firstClosed", release1.optBoolean("closed"))
+                .put("nativeEffectsWhileHeld", app.lifecycleRegisterEffects);
+            require(enteredOk, "the native acquisition must be held before its effect");
+            require(!release1.optBoolean("closed"),
+                "a lifetime with an in-flight acquisition is not closed");
+            require(app.lifecycleRegisterEffects == 0,
+                "the held acquisition has not effected yet");
+        } finally {
+            release.countDown();
+            Application.class.getField("lifecycleEntered").set(null, null);
+            Application.class.getField("lifecycleHeld").set(null, null);
+            first.join(10000);
+        }
+        result.put("firstError", firstError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(firstError[0]))
+            .put("firstAlive", first.isAlive())
+            .put("nativeEffects", app.lifecycleRegisterEffects)
+            .put("nativeHeld", app.nativeCallbacks.size());
+        require(firstError[0] == null, "the held acquisition completes normally");
+        require(!first.isAlive(), "the acquisition thread terminated");
+        require(app.lifecycleRegisterEffects == 1, "the acquisition really effected");
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        result.put("retryClosed", retry.optBoolean("closed"))
+            .put("nativeAfter", app.nativeCallbacks.size());
+        require(retry.optBoolean("closed"),
+            "the later real retry closes once the acquisition is known");
+    }
+
+    /** A marker alone never proves the queue drained. */
+    private static void a5MarkerNotDrain(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        android.os.Handler.hold();
+        final Throwable[] callerError = {null};
+        Thread caller = new Thread(() -> {
+            try {
+                GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+            } catch (Throwable error) {
+                callerError[0] = error;
+            }
+        }, "a5-marker-caller");
+        caller.start();
+        boolean queued = android.os.Handler.awaitQueued(5000);
+        JSONObject fence = GuardedReaderApplication.fenceMainLooper(30000);
+        int pendingAfterFence = pendingOwnedWork();
+        caller.interrupt();
+        caller.join(10000);
+        android.os.Handler.flush();
+        android.os.Handler.awaitIdle(5000);
+        result.put("queued", queued).put("fenceCompleted", fence.optBoolean("completed"))
+            .put("pendingAfterFence", pendingAfterFence)
+            .put("pendingAfterFlush", pendingOwnedWork());
+        require(queued, "the work is queued");
+        // The marker is held behind the same queue, so it cannot complete while
+        // owned work is outstanding; either way it never retires that work.
+        require(pendingAfterFence >= 1,
+            "a marker never retires outstanding owned work");
+        require(pendingOwnedWork() == 0, "the real flush retires it");
     }
 
     private static GuardedReaderApplication arm() {

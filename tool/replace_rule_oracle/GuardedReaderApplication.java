@@ -12,9 +12,11 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -119,19 +121,31 @@ public final class GuardedReaderApplication extends Application {
     private static volatile JSONObject lastTerminal;
 
     /** Main-thread work this guard owns and has not yet seen finish. */
-    private static final Map<Long, OwnedWork> pendingWork = new IdentityHashMap<>();
+    private static final Map<Long, OwnedWork> pendingWork = new HashMap<>();
     private static final AtomicInteger workSequence = new AtomicInteger();
+
+    /**
+     * Actual native handles whose acquisition call has not yet returned.
+     *
+     * <p>An absent-native no-op removal must never clear a handle whose
+     * acquisition is still executing.
+     */
+    private static final Set<Object> acquiringNative = java.util.Collections
+        .newSetFromMap(new IdentityHashMap<Object, Boolean>());
 
     /**
      * One queued main-thread work item. {@link #abandon()} makes a queued item
      * inert, so work the caller gave up on can never attach after closure.
      */
     private static final class OwnedWork {
+        static final int QUEUED = 0;
+        static final int STARTED = 1;
+        static final int FINISHED = 2;
+        static final int ABANDONED = 3;
+
         private final long id;
         private final Callable<JSONObject> body;
-        private volatile boolean abandoned;
-        private volatile boolean started;
-        private volatile boolean finished;
+        private int state = QUEUED;
         private volatile JSONObject result;
         private volatile Throwable failure;
         private final CountDownLatch done = new CountDownLatch(1);
@@ -141,22 +155,50 @@ public final class GuardedReaderApplication extends Application {
             this.body = body;
         }
 
-        void abandon() { abandoned = true; }
+        /**
+         * Atomically abandons a still-queued item and retires it.
+         *
+         * <p>Only a queued item can be abandoned, so the transition itself is the
+         * never-start proof; an already-started item is never cancelled.
+         */
+        boolean abandon() {
+            synchronized (this) {
+                if (state != QUEUED) return false;
+                state = ABANDONED;
+            }
+            retire();
+            return true;
+        }
 
         void run() {
-            if (abandoned) {
-                finished = true;
+            boolean inert;
+            synchronized (this) {
+                inert = state != QUEUED;
+                if (!inert) state = STARTED;
+            }
+            if (inert) {
+                // Observed-inert work retires itself; nothing was executed.
+                retire();
                 done.countDown();
                 return;
             }
-            started = true;
             try {
                 result = body.call();
             } catch (Throwable error) {
                 failure = error;
             } finally {
-                finished = true;
+                synchronized (this) {
+                    state = FINISHED;
+                }
+                // Self-retirement: a caller that already exited cannot leak this.
+                retire();
                 done.countDown();
+            }
+        }
+
+        private void retire() {
+            synchronized (lock) {
+                pendingWork.remove(id);
             }
         }
     }
@@ -302,6 +344,13 @@ public final class GuardedReaderApplication extends Application {
         }
     }
 
+    /** Whether this exact native handle's acquisition call is still executing. */
+    private static boolean nativeInFlight(Object handle) {
+        synchronized (lock) {
+            return acquiringNative.contains(handle);
+        }
+    }
+
     /** Answers whether this instance is the exact armed owner. */
     private boolean isOwner() {
         synchronized (lock) {
@@ -389,10 +438,12 @@ public final class GuardedReaderApplication extends Application {
         int ownedReceiverCount;
         int ownedCallbackCount;
         int pending;
+        boolean nativeInFlight;
         synchronized (lock) {
             ownedReceiverCount = ownedReceivers.size();
             ownedCallbackCount = ownedCallbacks.size();
             pending = pendingWork.size();
+            nativeInFlight = !acquiringNative.isEmpty();
         }
         JSONObject receipt = new JSONObject();
         try {
@@ -409,7 +460,8 @@ public final class GuardedReaderApplication extends Application {
                     && ownedReceiverCount == 0
                     && ownedCallbackCount == 0
                     && pending == 0
-                    && !observing);
+                    && !observing
+                    && !nativeInFlight);
         } catch (Throwable error) {
             return receipt;
         }
@@ -497,12 +549,19 @@ public final class GuardedReaderApplication extends Application {
             observeMethod = observe;
             removeMethod = remove;
             observing = true;
+            synchronized (lock) {
+                acquiringNative.add(observer);
+            }
             try {
                 observe.invoke(observable, observer);
             } catch (Throwable error) {
                 fail("observer registration failed: " + stackTraceOf(error));
                 throw error instanceof Exception ? (Exception) error
                     : new IllegalStateException(error);
+            } finally {
+                synchronized (lock) {
+                    acquiringNative.remove(observer);
+                }
             }
             return new JSONObject()
                 .put("tag", SAVE_CONTENT_TAG)
@@ -573,6 +632,11 @@ public final class GuardedReaderApplication extends Application {
                 observerClosed = true;
                 lastTerminal = null;
                 return new JSONObject().put("removed", false).put("reason", "never-registered");
+            }
+            if (nativeInFlight(observer)) {
+                fail("observer removal while its acquisition is still in flight");
+                throw new IllegalStateException(
+                    "guarded capture refuses a removal while the acquisition is in flight");
             }
             try {
                 remove.invoke(observable, observer);
@@ -751,17 +815,34 @@ public final class GuardedReaderApplication extends Application {
      * it stays counted as pending until the main thread has actually seen it.
      */
     private JSONObject runOnMain(Callable<JSONObject> work) throws Exception {
-        if (Looper.myLooper() == Looper.getMainLooper()) return work.call();
         final long id = workSequence.incrementAndGet();
         final OwnedWork owned = new OwnedWork(id, work);
         synchronized (lock) {
             pendingWork.put(id, owned);
         }
-        boolean posted = new Handler(Looper.getMainLooper()).post(owned::run);
-        if (!posted) {
-            synchronized (lock) {
-                pendingWork.remove(id);
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // Direct MAIN execution is tracked through the same owned lifetime,
+            // so it is visible while it runs and retires when it finishes.
+            owned.run();
+            if (owned.failure != null) {
+                fail("main-thread work failed: " + stackTraceOf(owned.failure));
+                throw owned.failure instanceof Exception
+                    ? (Exception) owned.failure : new IllegalStateException(owned.failure);
             }
+            return owned.result instanceof JSONObject ? owned.result : new JSONObject();
+        }
+        boolean posted;
+        try {
+            posted = new Handler(Looper.getMainLooper()).post(owned::run);
+        } catch (Throwable error) {
+            owned.abandon();
+            fail("the main looper rejected the work: " + stackTraceOf(error));
+            throw error instanceof Exception ? (Exception) error
+                : new IllegalStateException(error);
+        }
+        if (!posted) {
+            owned.abandon();
+            fail("the main looper refused the work");
             throw new IllegalStateException("the main looper refused the work");
         }
         boolean completed;
@@ -770,16 +851,17 @@ public final class GuardedReaderApplication extends Application {
         } catch (InterruptedException interrupted) {
             owned.abandon();
             Thread.currentThread().interrupt();
+            fail("the caller was interrupted waiting for main-thread work: "
+                + stackTraceOf(interrupted));
             throw interrupted;
         }
         if (!completed) {
             owned.abandon();
+            fail("main-thread work did not complete within the deadline");
             throw new IllegalStateException("main-thread work did not complete");
         }
-        synchronized (lock) {
-            pendingWork.remove(id);
-        }
         if (owned.failure != null) {
+            fail("main-thread work failed: " + stackTraceOf(owned.failure));
             throw owned.failure instanceof Exception
                 ? (Exception) owned.failure : new IllegalStateException(owned.failure);
         }
@@ -882,6 +964,9 @@ public final class GuardedReaderApplication extends Application {
             ownedReceivers.add(wrapper);
         }
         Intent sticky;
+        synchronized (lock) {
+            acquiringNative.add(wrapper);
+        }
         try {
             sticky = super.registerReceiver(wrapper, filter, flags);
         } catch (Throwable error) {
@@ -889,6 +974,10 @@ public final class GuardedReaderApplication extends Application {
             fail("registration failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded registration failed: " + error, error);
+        } finally {
+            synchronized (lock) {
+                acquiringNative.remove(wrapper);
+            }
         }
         successfulRegistrations.incrementAndGet();
         synchronized (lock) {
@@ -988,6 +1077,13 @@ public final class GuardedReaderApplication extends Application {
                 + (receiver == null ? "null" : receiver.getClass().getName()));
             throw new SecurityException("guarded capture refuses a foreign unregistration");
         }
+        if (nativeInFlight(wrapper)) {
+            // The acquisition is still executing: never clear it through an
+            // absent-native no-op.
+            fail("receiver removal while its acquisition is still in flight");
+            throw new SecurityException(
+                "guarded capture refuses a removal while the acquisition is in flight");
+        }
         try {
             super.unregisterReceiver(wrapper);
         } catch (Throwable error) {
@@ -1044,12 +1140,19 @@ public final class GuardedReaderApplication extends Application {
             }
             ownedCallbacks.add(callback);
         }
+        synchronized (lock) {
+            acquiringNative.add(callback);
+        }
         try {
             super.registerActivityLifecycleCallbacks(callback);
         } catch (Throwable error) {
             fail("lifecycle registration failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded lifecycle registration failed: " + error, error);
+        } finally {
+            synchronized (lock) {
+                acquiringNative.remove(callback);
+            }
         }
         successfulRegistrations.incrementAndGet();
         synchronized (lock) {
@@ -1083,6 +1186,11 @@ public final class GuardedReaderApplication extends Application {
                 throw new SecurityException(
                     "guarded capture refuses a foreign lifecycle unregistration");
             }
+        }
+        if (nativeInFlight(callback)) {
+            fail("lifecycle removal while its acquisition is still in flight");
+            throw new SecurityException(
+                "guarded capture refuses a removal while the acquisition is in flight");
         }
         try {
             super.unregisterActivityLifecycleCallbacks(callback);
