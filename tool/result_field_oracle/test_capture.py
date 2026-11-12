@@ -514,15 +514,20 @@ def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source
     if title:
         checked = []
         for descriptor, methods in capture.REFLECTED_ABI.items():
-            for method, signature in methods:
+            for method, signature, access in methods:
                 checked.append({'class': descriptor, 'method': method,
-                                'descriptor': signature,
+                                'descriptor': signature, 'access': access,
                                 'dex': capture.TITLE_PREFLIGHT_ABI_DEXES[0]})
+        harness = [{'class': descriptor, 'method': method,
+                    'descriptor': signature, 'access': access}
+                   for descriptor, methods in capture.HARNESS_ABI.items()
+                   for method, signature, access in methods]
         summary = {'name': capture.PREFLIGHT_SUMMARY,
                    'dexFiles': sorted(capture.TITLE_PREFLIGHT_ABI_DEXES),
-                   'checked': checked, 'status': 'verified'}
+                   'checked': checked, 'harness': harness, 'status': 'verified'}
         receipts.append(summary)
-        reflected = {'dexFiles': summary['dexFiles'], 'checked': checked}
+        reflected = {'dexFiles': summary['dexFiles'], 'checked': checked,
+                     'harness': harness}
     reference_dex_sha = reference_dex_sha or capture.sha256_bytes(b'synthetic-reference-dex')
     if harness_dex_sha is None:
         with zipfile.ZipFile(apk) as archive:
@@ -750,6 +755,13 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         case = self._case()
         del case['titleLifecycleProof']['tocCountWords']['previous']
         self._rejected(self._admit_native, case, 'fields differ')
+        # An absent key cannot read back false through getBoolean(KEY, true).
+        case = self._case()
+        case['titleLifecycleProof']['tocCountWords'].update(
+            {'previousPresent': False, 'previous': False,
+             'presentAfter': False, 'observedAfter': False})
+        self._rejected(self._admit_native, case,
+                       'absent prior must read back the actual default true')
 
     def _operations_case(self, terminal, names):
         requests = []
@@ -850,12 +862,14 @@ class TitlePreflightPlanTest(unittest.TestCase):
             Path('C:/java'), references, harness_dex_sha='d' * 64,
             title=title), fixture
 
-    def test_the_actual_title_plan_is_exactly_28_commands_and_one_summary(self):
+    def test_the_actual_title_plan_is_exactly_31_commands_and_one_summary(self):
         preflight, fixture = self._preflight()
-        self.assertEqual(len(preflight['commands']), 29)
+        self.assertEqual(len(preflight['commands']),
+                         len(capture.PREFLIGHT_BASE_COMMANDS)
+                         + len(capture.TITLE_PREFLIGHT_ABI_COMMANDS) + 1)
         self.assertEqual([row['name'] for row in preflight['commands'][:11]],
                          list(capture.PREFLIGHT_BASE_COMMANDS))
-        self.assertEqual([row['name'] for row in preflight['commands'][11:28]],
+        self.assertEqual([row['name'] for row in preflight['commands'][11:-1]],
                          list(capture.TITLE_PREFLIGHT_ABI_COMMANDS))
         self.assertEqual(preflight['commands'][-1]['name'],
                          capture.PREFLIGHT_SUMMARY)
@@ -898,6 +912,9 @@ class TitlePreflightPlanTest(unittest.TestCase):
         for mutate in (
             lambda item: item.update({'checked': item['checked'][:-1]}),
             lambda item: item['checked'][0].update({'dex': 'classes99.dex'}),
+            lambda item: item['checked'][0].update({'access': 'private'}),
+            lambda item: item.update({'harness': item['harness'][:-1]}),
+            lambda item: item['harness'][0].update({'method': 'other'}),
             lambda item: item.update({'status': 'unverified'}),
             lambda item: item.update({'dexFiles': list(reversed(item['dexFiles']))}),
         ):
@@ -932,7 +949,7 @@ class TitlePreflightPlanTest(unittest.TestCase):
             'guardedApplication': True,
             'baseContextBound': True,
             'baseContextClass': capture.SCRATCH_CONTEXT,
-            'externalFilesPath': root + '/files',
+            'externalFilesPath': root + '/external-files',
             'filesPath': root + '/files',
             'databasePath': root + '/databases/legado.db',
             'scratchRoot': root,
@@ -941,14 +958,16 @@ class TitlePreflightPlanTest(unittest.TestCase):
             'databaseRouted': True,
             'appUtilsApplicationClass': capture.GUARD_APPLICATION,
             'appUtilsSameApplication': True,
-            'bookHelpCachePath': root + '/cache',
+            'bookHelpCachePath': root + '/external-files/book_cache',
             'bookHelpCacheWithinScratch': True,
             'roomDatabasePath': root + '/databases/legado.db',
             'roomDatabaseWithinScratch': True,
         }
         report = {'isolation': {
             'scratchRoot': root,
+            'appFilesDir': root + '/files',
             'scratchFilesDir': root + '/files',
+            'appDatabasePath': root + '/databases/legado.db',
             'scratchDatabasePath': root + '/databases/legado.db',
             'earlyContainment': containment,
         }}
@@ -957,7 +976,8 @@ class TitlePreflightPlanTest(unittest.TestCase):
         for field, value in (
             ('scratchRoot', '/data/user/0/com.legado.app.debug/cache/other'),
             ('filesPath', '/data/user/0/com.legado.app.debug/files'),
-            ('bookHelpCachePath', '/data/user/0/com.legado.app.debug/cache'),
+            ('externalFilesPath', root + '/files'),
+            ('bookHelpCachePath', root + '/external-files/other'),
             ('roomDatabasePath', '/data/user/0/com.legado.app.debug/other/legado.db'),
             ('sameApplicationObject', False),
             ('baseContextClass', 'other'),
@@ -968,6 +988,21 @@ class TitlePreflightPlanTest(unittest.TestCase):
                 changed['isolation']['scratchRoot'] = value
             with self.subTest(field=field), self.assertRaises(ValueError):
                 capture._admit_title_early_containment(changed, manifest)
+        for field, value in (
+            ('appFilesDir', root + '/other'),
+            ('scratchFilesDir', root + '/other'),
+            ('appDatabasePath', root + '/other.db'),
+            ('scratchDatabasePath', root + '/other.db'),
+        ):
+            changed = json.loads(json.dumps(report))
+            changed['isolation'][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                capture._admit_title_early_containment(changed, manifest)
+        # The actual producer's external-files fallback remains legitimate.
+        fallback = json.loads(json.dumps(report))
+        fallback['isolation']['earlyContainment']['externalFilesPath'] = root + '/files'
+        fallback['isolation']['earlyContainment']['bookHelpCachePath'] = root + '/files/book_cache'
+        capture._admit_title_early_containment(fallback, manifest)
 
     def _guard_report(self):
         case = {
@@ -1033,6 +1068,10 @@ class TitlePreflightPlanTest(unittest.TestCase):
             (('receipt', 'observerClosed'), False),
             (('receipt', 'captureFailed'), True),
             (('receipt', 'saveEvents'), 2),
+            (('release', 'ownedReceivers'), 7),
+            (('release', 'removedReceivers'), 7),
+            (('release', 'ownedLifecycleCallbacks'), 7),
+            (('release', 'removedLifecycleCallbacks'), 7),
         ):
             changed = json.loads(json.dumps(report))
             guard = changed['cleanup']['savedContentGuard']
@@ -1049,6 +1088,594 @@ class TitlePreflightPlanTest(unittest.TestCase):
         guard['receipt']['lastEvent']['chapterUrl'] = '/other'
         with self.assertRaises(ValueError):
             capture._admit_process_guard_cleanup(changed, {'titleLifecycle': {}})
+        for mutate in (
+            lambda g: g['receipt']['receiverRegistrations'].append(
+                dict(g['receipt']['receiverRegistrations'][0])),
+            lambda g: g['receipt']['lifecycleRegistrations'].append(
+                capture.LEB_LIFECYCLE),
+            lambda g: g['receipt']['receiverUnregistrations'].append(
+                capture.GUARD_RECEIVER_WRAPPER),
+            lambda g: g['receipt'].update({'attemptedRegistrations': 3,
+                                           'successfulRegistrations': 3}),
+            lambda g: g.update({'ownedReceivers': 7, 'removedReceivers': 7}),
+        ):
+            changed = json.loads(json.dumps(report))
+            mutate(changed['cleanup']['savedContentGuard'])
+            with self.subTest(mutation=mutate), self.assertRaises(ValueError):
+                capture._admit_process_guard_cleanup(changed,
+                                                     {'titleLifecycle': {}})
+
+
+class TitlePhysicalEntryTest(unittest.TestCase):
+    """Actual capture.main --finalize/--verify-bundle over a title bundle.
+
+    The report and ADB ledger are synthetic mechanism data; the entry seam,
+    reconciliation, native-proof admission, command admission and finalization
+    are the real functions. The clean positive is established first, then each
+    coherent owned copy mutates one intended domain.
+    """
+
+    TARGET_ROOT = '/data/user/0/' + capture.SELECTED_TARGET['package']
+    SCRATCH_ROOT = TARGET_ROOT + '/cache/liber-fields-02'
+
+    def _fixture(self):
+        return json.loads((Path(__file__).resolve().parent
+                           / 'reader-title-lifecycle-fixtures-selected.json').read_bytes())
+
+    def _harness_apk(self, root, corpus_bytes, fixture):
+        provenance = {
+            'schemaVersion': 1, 'fixtureId': 'FIELDS-02',
+            'corpus': {
+                'asset': 'field-fixtures.json', 'bytes': len(corpus_bytes),
+                'sha256': capture.sha256_bytes(corpus_bytes),
+                'sha256Lf': capture.sha256_bytes(capture.lf_bytes(corpus_bytes)),
+                'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
+            },
+            'sources': capture.harness_source_hashes(selected=True),
+        }
+        apk = root / 'harness.apk'
+        with zipfile.ZipFile(apk, 'w') as archive:
+            archive.writestr('assets/field-fixtures.json', corpus_bytes)
+            archive.writestr('assets/field-provenance.json', json.dumps(provenance))
+            archive.writestr('classes.dex', b'synthetic-harness-dex')
+        return apk
+
+    def _proof(self, book_url, chapter_url):
+        event = {
+            'events': 1, 'duplicates': 0, 'foreignEvents': 0,
+            'callbackErrors': 0, 'offMainEvents': 0, 'malformedEvents': 0,
+            'lastEvent': {'bookUrl': book_url, 'chapterUrl': chapter_url,
+                          'correlates': True},
+            'removal': {'interface': capture.OBSERVABLE_INTERFACE,
+                        'declaringClass': capture.OBSERVABLE_INTERFACE,
+                        'onMain': True, 'removed': True},
+        }
+        return {
+            'bookParent': {'bookUrl': book_url, 'stored': True, 'readBack': True},
+            'chapterSeed': {'rows': 2, 'inserted': True},
+            'saveObserver': {'tag': 'saveContent',
+                             'interface': capture.OBSERVABLE_INTERFACE,
+                             'declaringClass': capture.OBSERVABLE_INTERFACE,
+                             'onMain': True, 'registered': True},
+            'tocCountWordsApplied': {'name': 'tocCountWords', 'applied': True,
+                                     'committed': True, 'observed': True},
+            'saveEvent': event,
+            'contentFiles': ['00000-0123456789abcdef.nb'],
+            'saveObserverClose': {**event, 'alreadyClosed': True, 'removed': True},
+            'tocCountWords': {'previousPresent': True, 'previous': True,
+                              'committed': True, 'presentAfter': True,
+                              'observedAfter': True, 'restored': True},
+        }
+
+    def _phases(self):
+        rows = [{'index': 0, 'title': 'CHAPTER ONE', 'variable': 'toc-a'},
+                {'index': 1, 'title': 'CHAPTER TWO', 'variable': 'toc-b'}]
+        return {phase: [dict(row) for row in rows]
+                for phase in capture.TITLE_LIFECYCLE_PHASES}
+
+    def _snapshot(self):
+        return _snapshot_bytes(capture.FROZEN_APP_STORE,
+                               ['.', 'cache', 'databases', 'shared_prefs', 'files'])
+
+    def _bundle(self, root):
+        root = Path(root)
+        root.mkdir(parents=True, exist_ok=True)
+        fixture = self._fixture()
+        corpus_bytes = (Path(__file__).resolve().parent
+                        / 'reader-title-lifecycle-fixtures-selected.json').read_bytes()
+        raw = capture.sha256_bytes(corpus_bytes)
+        lf = capture.sha256_bytes(capture.lf_bytes(corpus_bytes))
+        harness_apk = self._harness_apk(root, corpus_bytes, fixture)
+        target_apk = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+                          'phone-resume-20261020-01a15796/controller/'
+                          'team-baseline-migration-01/reference-stage/artifacts/'
+                          'legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        if not target_apk.is_file():
+            self.fail('the pinned target APK is required for the physical entry test')
+        target_sha = capture.sha256(target_apk)
+        with zipfile.ZipFile(target_apk) as archive:
+            reference_dex_sha = capture.sha256_bytes(archive.read('classes19.dex'))
+        artifact = capture.inspect_selected_apk(
+            harness_apk,
+            Path(__file__).resolve().parent
+            / 'reader-title-lifecycle-fixtures-selected.json',
+            fixture, None)
+        references = {row['path']: {'blobSha1': row['sha1'],
+                                    'worktreeSha256': 'a' * 64}
+                      for row in fixture['frozenSources']}
+        binding = _synthetic_selected_preflight(
+            root, fixture, artifact, harness_apk, target_apk,
+            Path('C:/source'), Path('C:/sdk'), Path('C:/java'), references,
+            reference_dex_sha=reference_dex_sha,
+            harness_dex_sha=capture.sha256_bytes(b'synthetic-harness-dex'),
+            title=True)
+        binding['targetApkSha256'] = target_sha
+        owner = {'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
+                 'targetPackage': capture.SELECTED_TARGET['package'],
+                 'harnessPackage': capture.PACKAGE,
+                 'targetApkSha256': fixture['target']['apkSha256'],
+                 'harnessApkSha256': artifact['apkSha256'],
+                 'corpusSha256Lf': lf, 'complete': True, 'seedRunId': 'run',
+                 'seedPid': 4242,
+                 'preferences': ['liber_fields_02_probe']}
+        requests = []
+        for index, wanted in enumerate(fixture['expectedRequests']):
+            response = fixture['responses'][index]
+            requests.append({
+                'method': wanted['method'], 'path': wanted['path'],
+                'query': wanted.get('query', {}),
+                'rawQuery': capture._canonical_raw_query(wanted),
+                'stage': 'search', 'headers': {}, 'body': '',
+                'receipt': {'terminal': 'responded',
+                            'status': response.get('status', 200),
+                            'responseId': response['id'],
+                            'redirect': (response.get('headers') or {}).get('Location'),
+                            'send': 'completed'},
+            })
+        spans = [(0, 4, 'four-stage'), (4, 8, 'four-stage'),
+                 (8, 13, capture.TITLE_LIFECYCLE_TERMINAL),
+                 (13, 18, capture.TITLE_LIFECYCLE_TERMINAL)]
+        names = {
+            'four-stage': ['search', 'bookInfo', 'tableOfContents', 'content'],
+            capture.TITLE_LIFECYCLE_TERMINAL: [
+                'search', 'bookInfo', 'tableOfContents', 'content',
+                'tableOfContents'],
+        }
+        cases = []
+        for (start, end, terminal), declared in zip(spans, fixture['cases']):
+            book_url = fixture['origin'] + '/' + declared['id'] + '/book/1'
+            chapter_one = '/' + declared['id'] + '/c/1'
+            chapter_two = '/' + declared['id'] + '/c/2'
+            operations = []
+            cursor = start
+            for name in names[terminal]:
+                operations.append({'name': name, 'outcome': 'completed',
+                                   'requestStart': cursor,
+                                   'requestEnd': cursor + 1,
+                                   'traceStart': cursor,
+                                   'traceEnd': cursor + 1})
+                cursor += 1
+            record = {
+                'id': declared['id'], 'terminal': terminal,
+                'search': {'results': [{'name': 'synthetic',
+                                        'author': 'synthetic',
+                                        'bookUrl': book_url,
+                                        'infoHtml': True}]},
+                'bookInfo': {'name': 'synthetic', 'author': 'synthetic',
+                             'bookUrl': book_url, 'tocUrl': '/toc'},
+                'tableOfContents': {'tocUrl': '/toc', 'chapters': [
+                    {'title': 'CHAPTER ONE', 'url': chapter_one,
+                     'absoluteUrl': fixture['origin'] + chapter_one,
+                     'tag': None, 'isVolume': False, 'isVip': False,
+                     'isPay': False, 'bookUrl': book_url},
+                    {'title': 'CHAPTER TWO', 'url': chapter_two,
+                     'absoluteUrl': fixture['origin'] + chapter_two,
+                     'tag': None, 'isVolume': False, 'isVip': False,
+                     'isPay': False, 'bookUrl': book_url},
+                ]},
+                'chapter': {'title': 'CHAPTER ONE', 'text': 'synthetic body'},
+                'sourceProbes': {'vipProbe': None, 'payProbe': None},
+                'operations': operations,
+                'requests': [requests[index] for index in range(start, end)],
+                'terminalOwner': {'owner': 'Coroutine.DEFAULT Job',
+                                  'observedChildren': 0,
+                                  'allCompleted': True, 'rootEmpty': True,
+                                  'launchAttempts': 0},
+            }
+            if terminal == capture.TITLE_LIFECYCLE_TERMINAL:
+                record['titleLifecycle'] = self._phases()
+                record['titleLifecycleProof'] = self._proof(book_url, chapter_one)
+            cases.append(record)
+        trace = []
+        for case in cases:
+            for operation in case['operations']:
+                for index in range(operation['requestStart'],
+                                   operation['requestEnd']):
+                    item = requests[index]
+                    trace.append({'stage': operation['name'],
+                                  'path': fixture['origin'] + item['path']
+                                  + ('' if not item['rawQuery'] else '?'
+                                     + item['rawQuery'])})
+                    requests[index]['stage'] = operation['name']
+                    local = index - case['operations'][0]['requestStart']
+                    case['requests'][local]['stage'] = operation['name']
+        containment = {
+            'appCtxClass': capture.GUARD_APPLICATION,
+            'activityThreadAppClass': capture.GUARD_APPLICATION,
+            'sameApplicationObject': True, 'guardedApplication': True,
+            'baseContextBound': True,
+            'baseContextClass': capture.SCRATCH_CONTEXT,
+            'externalFilesPath': self.SCRATCH_ROOT + '/external-files',
+            'filesPath': self.SCRATCH_ROOT + '/files',
+            'databasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+            'scratchRoot': self.SCRATCH_ROOT,
+            'externalFilesRouted': True, 'filesRouted': True,
+            'databaseRouted': True,
+            'appUtilsApplicationClass': capture.GUARD_APPLICATION,
+            'appUtilsSameApplication': True,
+            'bookHelpCachePath': self.SCRATCH_ROOT + '/external-files/book_cache',
+            'bookHelpCacheWithinScratch': True,
+            'roomDatabasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+            'roomDatabaseWithinScratch': True,
+        }
+        event = self._proof('x', 'y')['saveEvent']
+        guard = {
+            'release': {'ownedReceivers': 1, 'removedReceivers': 1,
+                        'ownedLifecycleCallbacks': 1,
+                        'removedLifecycleCallbacks': 1,
+                        'removalFailures': [], 'observerClose': {},
+                        'remainingOwnedReceivers': 0,
+                        'remainingOwnedLifecycleCallbacks': 0,
+                        'pendingOwnedWork': 0, 'closed': True},
+            'fence': {'posted': True, 'completed': True,
+                      'timeoutMillis': 5000, 'mainThread': False},
+            'receipt': {
+                'armed': True, 'ownerClass': capture.GUARD_APPLICATION,
+                'attemptedRegistrations': 2, 'successfulRegistrations': 2,
+                'receiverRegistrations': [{
+                    'overload': '3-arg', 'nativeClass': capture.LEB_RECEIVER,
+                    'wrapperClass': capture.GUARD_RECEIVER_WRAPPER,
+                    'flags': 2, 'actions': [capture.LEB_IPC_ACTION],
+                    'registered': True}],
+                'receiverUnregistrations': [capture.GUARD_RECEIVER_WRAPPER],
+                'lifecycleRegistrations': [capture.LEB_LIFECYCLE],
+                'lifecycleUnregistrations': [capture.LEB_LIFECYCLE],
+                'inboundAttempts': [], 'failures': [],
+                'blockedDeliveries': 0, 'foreignUnregistrations': 0,
+                'pendingWrappers': 0, 'pendingOwnedWork': 0,
+                'saveEvents': 1, 'foreignEvents': 0, 'callbackErrors': 0,
+                'observing': False, 'observerClosed': True,
+                'captureFailed': False,
+                'lastEvent': {'bookUrl': cases[-1]['bookInfo']['bookUrl'],
+                              'chapterUrl': cases[-1]['tableOfContents']
+                                  ['chapters'][0]['url'],
+                              'correlates': True},
+            },
+        }
+        report = {
+            'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
+            'baselineCommit': fixture['baselineCommit'],
+            'entryPoint': fixture['entryPoint'], 'origin': fixture['origin'],
+            'platform': 'android',
+            'fingerprint': fixture['target']['deviceFingerprint'],
+            'corpus': {'asset': 'field-fixtures.json',
+                       'bytes': len(corpus_bytes), 'sha256': raw,
+                       'sha256Lf': lf, 'fixtureId': 'FIELDS-02',
+                       'corpusVersion': 1},
+            'startupContainment': {'service': 'shortcut',
+                                   'provider': 'io.legado.app.api.ReaderProvider',
+                                   'intercepted': 1, 'handled': 1,
+                                   'beforeBinding': True},
+            'isolation': {
+                'bound': True, 'filesRouted': True, 'databaseRouted': True,
+                'deviceProtected': False, 'rootExistedAtStart': False,
+                'targetPackage': capture.SELECTED_TARGET['package'],
+                'targetApkSha256': fixture['target']['apkSha256'],
+                'harnessPackage': capture.PACKAGE,
+                'harnessApkSha256': artifact['apkSha256'],
+                'corpusSha256Lf': lf,
+                'preferencesPrefix': 'liber_fields_02_',
+                'scratchRoot': self.SCRATCH_ROOT,
+                'appClass': capture.GUARD_APPLICATION,
+                'appFilesDir': self.SCRATCH_ROOT + '/files',
+                'scratchFilesDir': self.SCRATCH_ROOT + '/files',
+                'appDatabasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+                'scratchDatabasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+                'earlyContainment': containment,
+                'preferenceProbe': {
+                    'name': 'liber_fields_02_probe', 'registered': True,
+                    'committed': True, 'scopedFile': True,
+                    'installationFile': False},
+            },
+            'hostInitialization': {
+                'verified': True, 'applicationAttached': False,
+                'invokedOn': 'unattached-instance',
+                'notRun': ['io.legado.app.App.onCreate'],
+                'method': fixture['hostInitialization']['method'],
+                'registeredWrappers': {
+                    item['type']: item['factory']
+                    for item in fixture['hostInitialization']['registrations']},
+            },
+            'terminalOwner': {
+                'scope': 'Coroutine.DEFAULT', 'rootActive': True,
+                'rootCompleted': False, 'baselineChildren': 0,
+                'childrenMethod': 'kotlinx.coroutines.Job.getChildren()',
+                'completionMethod': 'kotlinx.coroutines.Job.isCompleted()'},
+            'entryPoints': {
+                'searchBookAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
+                'getBookInfoAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
+                'getChapterListAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
+                'getContentAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
+            },
+            'cleanup': {
+                'fixtureId': 'FIELDS-02', 'corpusVersion': 1,
+                'serverClosed': True, 'ownerComplete': True,
+                'rootRetained': True, 'preferencesFenced': True,
+                'ownerRunId': 'run', 'scratchRoot': self.SCRATCH_ROOT,
+                'reportPath': self.SCRATCH_ROOT + '/field-oracle.json',
+                'ownedPreferences': ['liber_fields_02_probe'],
+                'openConnectionsAfterClose': 0, 'databaseClosed': True,
+                'activityLaunchAttempts': 0, 'savedContentGuard': guard,
+            },
+            'analysisFailure': None, 'caseFailures': {},
+            'cases': cases, 'requests': requests, 'stageTrace': trace,
+            'unmatchedRequests': [], 'serverErrors': [],
+        }
+        report_bytes = (json.dumps(report, ensure_ascii=False, indent=2)
+                        + '\n').encode()
+        before = self._snapshot()
+        manifest = {
+            'status': 'not-run',
+            'corpus': {'path': str(Path(__file__).resolve().parent
+                                   / 'reader-title-lifecycle-fixtures-selected.json'),
+                       'sha256': raw, 'bytes': len(corpus_bytes),
+                       'sha256Lf': lf, 'assetCopySha256': raw,
+                       'fixtureId': 'FIELDS-02', 'corpusVersion': 1},
+            'fingerprint': fixture['target']['deviceFingerprint'],
+            'baselineApkSha256': fixture['target']['apkSha256'],
+            'harnessApkSha256': artifact['apkSha256'],
+            'artifact': artifact,
+            'targetPrivateRoot': self.TARGET_ROOT,
+            'frozenSources': references,
+            'harnessSources': capture.harness_source_hashes(selected=True),
+            'scratchOwner': owner, 'serial': '5615f742',
+            'preflight': binding,
+            'scratchCleanup': {
+                'rootAbsent': True, 'ownedPreferencesAbsent': True,
+                'postStop': True, 'root': self.SCRATCH_ROOT,
+                'ownerRunId': 'run',
+                'reportedOwnedPreferences': ['liber_fields_02_probe']},
+            'commands': [],
+        }
+        (root / 'field-oracle.json').write_bytes(report_bytes)
+        (root / 'private-before.log').write_bytes(before)
+        (root / 'private-after.log').write_bytes(before)
+        (root / 'frozen.apk').write_bytes(target_apk.read_bytes())
+        (root / 'installed-harness.apk').write_bytes(harness_apk.read_bytes())
+        prefix = ['adb', '-s', '5615f742']
+
+        def add(name, args, data=b'', code=0):
+            log = name + '.log'
+            (root / log).write_bytes(data)
+            manifest['commands'].append({'command': prefix + args,
+                                         'exitCode': code, 'log': log})
+
+        def shell(script):
+            return ['shell', *capture.remote_script_arguments(
+                capture.SELECTED_TARGET['package'], script)]
+
+        add('fingerprint', ['shell', 'getprop', 'ro.build.fingerprint'],
+            (capture.SELECTED_TARGET['deviceFingerprint'] + '\n').encode())
+        add('sdk', ['shell', 'getprop', 'ro.build.version.sdk'], b'37\n')
+        add('webview', ['shell', 'dumpsys', 'webviewupdate'],
+            b'Current WebView package (name, version): '
+            b'(com.google.android.webview, 158.0.8127.2)\n')
+        add('baseline-path', ['shell', 'pm', 'path',
+                              capture.SELECTED_TARGET['package']],
+            b'package:/target.apk\n')
+        add('pull-baseline', ['pull', '/target.apk', str(root / 'frozen.apk')])
+        add('harness-existing', ['shell', 'pm', 'list', 'packages',
+                                 capture.PACKAGE])
+        add('target-process', ['shell', 'pidof',
+                               capture.SELECTED_TARGET['package']], code=1)
+        add('target-private-root', ['shell', 'run-as',
+                                    capture.SELECTED_TARGET['package'], 'pwd'],
+            (self.TARGET_ROOT + '\n').encode())
+        add('scratch-root-check', shell(
+            'if [ -e ' + shlex.quote(self.SCRATCH_ROOT)
+            + ' ]; then echo PRESENT; else echo ABSENT; fi'), b'ABSENT\n')
+        add('scratch-prefs-check', shell(
+            'if [ -d ' + shlex.quote(self.TARGET_ROOT + '/shared_prefs')
+            + ' ]; then find ' + shlex.quote(self.TARGET_ROOT + '/shared_prefs')
+            + ' -maxdepth 1 -name '
+            + shlex.quote(capture.OWNED_PREFERENCE_PREFIX + '*.xml')
+            + ' -print; fi'))
+        add('scratch-installation-probe-check', shell(
+            'if [ -e ' + shlex.quote(self.TARGET_ROOT + '/shared_prefs/probe.xml')
+            + ' ]; then echo PRESENT; fi'))
+        add('private-before', shell(capture._fields_snapshot_script(
+            self.TARGET_ROOT)), before)
+        add('install', ['install', '-r', str(harness_apk)], b'Success\n')
+        add('installed-harness-path', ['shell', 'pm', 'path', capture.PACKAGE],
+            b'package:/installed.apk\n')
+        add('installed-harness-pull', ['pull', '/installed.apk',
+                                       str(root / 'installed-harness.apk')])
+        add('instrumentation', ['shell', 'am', 'instrument', '-w', '-r',
+                                capture.INSTRUMENTATION],
+            b'INSTRUMENTATION_CODE: -1\n')
+        add('pull-report', ['exec-out', 'run-as',
+                            capture.SELECTED_TARGET['package'], 'cat',
+                            self.SCRATCH_ROOT + '/field-oracle.json'],
+            report_bytes)
+        add('scratch-owner', ['exec-out', 'run-as',
+                              capture.SELECTED_TARGET['package'], 'cat',
+                              self.SCRATCH_ROOT + '/owner.json'],
+            json.dumps(owner).encode())
+        add('owned-pid', ['shell', 'pidof',
+                          capture.SELECTED_TARGET['package']], b'4242\n')
+        add('poststop', ['shell', 'am', 'force-stop',
+                         capture.SELECTED_TARGET['package']])
+        add('poststop-check', ['shell', 'pidof',
+                               capture.SELECTED_TARGET['package']], code=1)
+        preference = self.TARGET_ROOT + '/shared_prefs/liber_fields_02_probe.xml'
+        add('scratch-remove-1', shell('rm -f -- ' + shlex.quote(preference)))
+        add('scratch-remove-root', shell('rm -rf -- '
+                                         + shlex.quote(self.SCRATCH_ROOT)))
+        add('scratch-absent-1', shell('test ! -e ' + shlex.quote(preference)))
+        add('scratch-absent-root', shell('test ! -e '
+                                         + shlex.quote(self.SCRATCH_ROOT)))
+        add('remove-harness', ['uninstall', capture.PACKAGE], b'Success\n')
+        add('harness-removed-check', ['shell', 'pm', 'list', 'packages',
+                                      capture.PACKAGE])
+        add('private-after', shell(capture._fields_snapshot_script(
+            self.TARGET_ROOT)), before)
+        (root / 'manifest.json').write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + '\n',
+            encoding='utf-8')
+        return root, fixture, binding, harness_apk, target_apk, report_bytes
+
+    def _main(self, mode, root, output, binding, fixture, harness_apk,
+              target_apk):
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+        argv = ['capture.py']
+        if mode == 'finalize':
+            argv += ['--finalize', '--serial', '5615f742']
+        else:
+            argv += ['--verify-bundle', str(root)]
+        argv += ['--fixture',
+                 str(Path(__file__).resolve().parent
+                     / 'reader-title-lifecycle-fixtures-selected.json'),
+                 '--apk', str(harness_apk), '--target-apk', str(target_apk),
+                 '--frozen-source', 'C:/source', '--java-home', 'C:/java',
+                 '--android-sdk', 'C:/sdk', '--output', str(output)]
+        if mode == 'finalize':
+            argv += ['--asset', str(Path(__file__).resolve().parent
+                                    / 'reader-title-lifecycle-fixtures-selected.json')]
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(sys, 'argv', argv), \
+                patch.object(capture, 'selected_preflight',
+                             return_value=binding),                 redirect_stdout(stdout), redirect_stderr(stderr):
+            code = capture.main()
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def _copy(self, source, destination):
+        import shutil
+        shutil.copytree(source, destination)
+        return destination
+
+    def test_clean_finalize_then_verify_and_intended_mutations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, fixture, binding, harness_apk, target_apk, report_bytes = \
+                self._bundle(base / 'clean')
+            code, stdout, stderr = self._main(
+                'finalize', root, root, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertTrue((root / 'golden.json').is_file())
+            manifest = json.loads((root / 'manifest.json').read_bytes())
+            self.assertEqual(manifest['status'], 'observed')
+            clean_hashes = {path.name: capture.sha256(path)
+                            for path in root.iterdir() if path.is_file()}
+            verify = base / 'verify'
+            code, stdout, stderr = self._main(
+                'verify', root, verify, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertEqual(json.loads((verify / 'verification.json').read_bytes())
+                             ['status'], 'verified-bundle')
+            self.assertEqual(clean_hashes,
+                             {path.name: capture.sha256(path)
+                              for path in root.iterdir() if path.is_file()})
+
+            mutations = {
+                'owner': lambda report, manifest: manifest['scratchOwner'].update(
+                    {'seedRunId': 'other'}),
+                'root': lambda report, manifest: report['isolation'].update(
+                    {'scratchRoot': self.SCRATCH_ROOT + '/other'}),
+                'observer': lambda report, manifest: report['cleanup']
+                    ['savedContentGuard']['receipt'].update(
+                        {'observerClosed': False}),
+                'process': lambda report, manifest: report['cleanup']
+                    ['savedContentGuard']['release'].update(
+                        {'ownedReceivers': 7, 'removedReceivers': 7}),
+                'preference': lambda report, manifest: report['cases'][2]
+                    ['titleLifecycleProof']['tocCountWords'].update(
+                        {'previous': False}),
+                'operation': lambda report, manifest: report['cases'][2]
+                    ['operations'].pop(),
+                'artifact': lambda report, manifest: manifest.update(
+                    {'harnessApkSha256': '0' * 64}),
+                'duplicate': lambda report, manifest: None,
+            }
+            expected = {
+                'owner': 'owner',
+                'root': 'root',
+                'observer': 'observer',
+                'process': 'process',
+                'preference': 'tocCountWords',
+                'operation': 'operation',
+                'artifact': 'harness',
+                'duplicate': 'duplicate',
+            }
+            for label, mutate in mutations.items():
+                copy = self._copy(root, base / ('mutation-' + label))
+                report = json.loads((copy / 'field-oracle.json').read_bytes())
+                manifest = json.loads((copy / 'manifest.json').read_bytes())
+                if label == 'duplicate':
+                    duplicate = (b'{"fixtureId":"FIELDS-02",'
+                                 b'"fixtureId":"FIELDS-02"}')
+                    (copy / 'field-oracle.json').write_bytes(duplicate)
+                    (copy / 'pull-report.log').write_bytes(duplicate)
+                    (copy / 'golden.json').write_bytes(duplicate)
+                    manifest['goldenSha256'] = capture.sha256(copy / 'golden.json')
+                    (copy / 'manifest.json').write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2)
+                        + '\n', encoding='utf-8')
+                else:
+                    mutate(report, manifest)
+                    data = (json.dumps(report, ensure_ascii=False, indent=2)
+                            + '\n').encode()
+                    (copy / 'field-oracle.json').write_bytes(data)
+                    (copy / 'pull-report.log').write_bytes(data)
+                    (copy / 'golden.json').write_bytes(data)
+                    manifest['goldenSha256'] = capture.sha256(copy / 'golden.json')
+                    (copy / 'manifest.json').write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2)
+                        + '\n', encoding='utf-8')
+                code, stdout, stderr = self._main(
+                    'finalize', copy, copy, binding, fixture, harness_apk,
+                    target_apk)
+                self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                receipt = copy / 'finalize-failure.json'
+                self.assertTrue(receipt.is_file(), label)
+                detail = receipt.read_text(encoding='utf-8')
+                self.assertIn(expected[label], detail, label)
+
+    def test_failed_finalize_preserves_a_preexisting_accepted_golden(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, fixture, binding, harness_apk, target_apk, report_bytes = \
+                self._bundle(base / 'accepted')
+            code, stdout, stderr = self._main(
+                'finalize', root, root, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            golden = (root / 'golden.json').read_bytes()
+            report = json.loads((root / 'field-oracle.json').read_bytes())
+            report['cases'][2]['titleLifecycleProof']['saveEvent']['events'] = 2
+            data = (json.dumps(report, ensure_ascii=False, indent=2)
+                    + '\n').encode()
+            (root / 'field-oracle.json').write_bytes(data)
+            (root / 'pull-report.log').write_bytes(data)
+            code, stdout, stderr = self._main(
+                'finalize', root, root, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 1, stdout + stderr)
+            self.assertEqual((root / 'golden.json').read_bytes(), golden)
+            self.assertTrue(list(root.glob('finalize-failure*.json')))
+
 
 
 GUARD_FAKES = {
@@ -1594,12 +2221,12 @@ public class FakePreferences implements SharedPreferences {
 
         FakeEditor(FakePreferences target) { this.target = target; }
 
-        @Override public Editor putBoolean(String key, boolean value) {
+        @Override public SharedPreferences.Editor putBoolean(String key, boolean value) {
             pending.put(key, value);
             return this;
         }
 
-        @Override public Editor remove(String key) {
+        @Override public SharedPreferences.Editor remove(String key) {
             removed.add(key);
             return this;
         }
@@ -2364,14 +2991,14 @@ public final class OwnedCleanupFixture {
         @Override
         public Editor edit() {
             return new Editor() {
-                @Override public Editor putString(String key, String value) { return this; }
-                @Override public Editor putStringSet(String key, Set<String> values) { return this; }
-                @Override public Editor putInt(String key, int value) { return this; }
-                @Override public Editor putLong(String key, long value) { return this; }
-                @Override public Editor putFloat(String key, float value) { return this; }
+                @Override public SharedPreferences.Editor putString(String key, String value) { return this; }
+                @Override public SharedPreferences.Editor putStringSet(String key, Set<String> values) { return this; }
+                @Override public SharedPreferences.Editor putInt(String key, int value) { return this; }
+                @Override public SharedPreferences.Editor putLong(String key, long value) { return this; }
+                @Override public SharedPreferences.Editor putFloat(String key, float value) { return this; }
                 @Override public Editor putBoolean(String key, boolean value) { return this; }
                 @Override public Editor remove(String key) { return this; }
-                @Override public Editor clear() { return this; }
+                @Override public SharedPreferences.Editor clear() { return this; }
                 @Override public void apply() { }
 
                 @Override
@@ -4719,7 +5346,7 @@ public final class StageAFixture {
             return value instanceof Boolean ? (Boolean) value : defValue;
         }
 
-        @Override public Editor edit() { return new Edit(this); }
+        @Override public SharedPreferences.Editor edit() { return new Edit(this); }
 
         @Override public void registerOnSharedPreferenceChangeListener(
                 OnSharedPreferenceChangeListener listener) {}
@@ -7346,6 +7973,191 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             self.assertEqual(nonselected['nativeQueryCalls'], 0)
             self.assertTrue(nonselected['cleanup']['ownerComplete'])
             self.assertIn('no private', result['scope'])
+
+    def test_the_actual_lifetime_serializes_the_prior_value(self):
+        """The real producer receipt carries the actual prior Boolean.
+
+        The current source is green for present-true, present-false and absent
+        default; the original missing-serialization source and a controlled
+        inverted-emission source are red at the same assertion. This is the
+        actual FieldOracle.TocCountWordsLifetime seam, not a fabricated proof
+        object, and it does not run any original guard driver mode.
+        """
+        java = self._java_home()
+        android = self._android_jar()
+        json_jar = self._json_jar()
+        repo = self._repo()
+        driver_source = r"""package io.liber.oracle.fields;
+
+import android.content.SharedPreferences;
+import org.json.JSONObject;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+public final class TocCountWordsLifetimeProbe {
+    static final class Prefs implements SharedPreferences {
+        final Map<String, Object> values = new HashMap<>();
+        @Override public Map<String, ?> getAll() { return values; }
+        @Override public String getString(String key, String def) {
+            Object value = values.get(key);
+            return value instanceof String ? (String) value : def;
+        }
+        @Override public Set<String> getStringSet(String key, Set<String> def) {
+            Object value = values.get(key);
+            return value instanceof Set ? (Set<String>) value : def;
+        }
+        @Override public int getInt(String key, int def) {
+            Object value = values.get(key);
+            return value instanceof Integer ? (Integer) value : def;
+        }
+        @Override public long getLong(String key, long def) {
+            Object value = values.get(key);
+            return value instanceof Long ? (Long) value : def;
+        }
+        @Override public float getFloat(String key, float def) {
+            Object value = values.get(key);
+            return value instanceof Float ? (Float) value : def;
+        }
+        @Override public boolean getBoolean(String key, boolean def) {
+            Object value = values.get(key);
+            return value instanceof Boolean ? (Boolean) value : def;
+        }
+        @Override public boolean contains(String key) { return values.containsKey(key); }
+        @Override public SharedPreferences.Editor edit() { return new Edit(this); }
+        @Override public void registerOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) {}
+        @Override public void unregisterOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) {}
+    }
+
+    static final class Edit implements SharedPreferences.Editor {
+        private final Prefs prefs;
+        Edit(Prefs prefs) { this.prefs = prefs; }
+        @Override public SharedPreferences.Editor putString(String key, String value) {
+            prefs.values.put(key, value); return this;
+        }
+        @Override public SharedPreferences.Editor putStringSet(String key, Set<String> value) {
+            prefs.values.put(key, value); return this;
+        }
+        @Override public SharedPreferences.Editor putInt(String key, int value) {
+            prefs.values.put(key, value); return this;
+        }
+        @Override public SharedPreferences.Editor putLong(String key, long value) {
+            prefs.values.put(key, value); return this;
+        }
+        @Override public SharedPreferences.Editor putFloat(String key, float value) {
+            prefs.values.put(key, value); return this;
+        }
+        @Override public SharedPreferences.Editor putBoolean(String key, boolean value) {
+            prefs.values.put(key, value); return this;
+        }
+        @Override public SharedPreferences.Editor remove(String key) {
+            prefs.values.remove(key); return this;
+        }
+        @Override public SharedPreferences.Editor clear() {
+            prefs.values.clear(); return this;
+        }
+        @Override public boolean commit() { return true; }
+        @Override public void apply() {}
+    }
+
+    public static void main(String[] args) throws Exception {
+        Prefs prefs = new Prefs();
+        if (args[0].equals("present-true")) {
+            prefs.values.put("tocCountWords", Boolean.TRUE);
+        } else if (args[0].equals("present-false")) {
+            prefs.values.put("tocCountWords", Boolean.FALSE);
+        } else if (!args[0].equals("absent")) {
+            throw new IllegalArgumentException(args[0]);
+        }
+        JSONObject prior = FieldOracle.TocCountWordsLifetime.capture(prefs);
+        FieldOracle.TocCountWordsLifetime.apply(prefs, true);
+        JSONObject restored = FieldOracle.TocCountWordsLifetime.restore(prefs, prior);
+        System.out.println(new JSONObject().put("prior", prior)
+            .put("restored", restored));
+    }
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            driver = root / 'driver-src/io/liber/oracle/fields/TocCountWordsLifetimeProbe.java'
+            driver.parent.mkdir(parents=True)
+            driver.write_text(driver_source, encoding='utf-8')
+
+            def compile_and_run(source, label):
+                classes = root / (label + '-classes')
+                classes.mkdir()
+                compiled = self._run(
+                    [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                     '-nowarn', '-encoding', 'UTF-8',
+                     '-cp', os.pathsep.join([str(json_jar), str(android)]),
+                     '-d', str(classes),
+                     str(repo / 'tool/nested_oracle/StateSessionOracle.java'),
+                     str(repo / 'tool/nested_oracle/HostRuntimeInit.java'),
+                     str(repo / 'tool/nested_oracle/ShortcutStartupGuard.java'),
+                     str(source)], repo)
+                self.assertEqual(compiled.returncode, 0, compiled.stderr.decode(errors='replace'))
+                driver_classes = root / (label + '-driver')
+                driver_classes.mkdir()
+                compiled = self._run(
+                    [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+                     '-nowarn', '-encoding', 'UTF-8',
+                     '-cp', os.pathsep.join([str(json_jar), str(android), str(classes)]),
+                     '-d', str(driver_classes), str(driver)], repo)
+                self.assertEqual(compiled.returncode, 0, compiled.stderr.decode(errors='replace'))
+                run_cp = os.pathsep.join([str(json_jar), str(android), str(classes),
+                                          str(driver_classes)])
+                results = {}
+                for case in ('present-true', 'present-false', 'absent'):
+                    run = self._run(
+                        [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                         'io.liber.oracle.fields.TocCountWordsLifetimeProbe', case], repo)
+                    self.assertEqual(run.returncode, 0,
+                                     run.stderr.decode(errors='replace'))
+                    results[case] = json.loads(
+                        run.stdout.decode('utf-8').strip().splitlines()[-1])
+                return results
+
+            current = compile_and_run(
+                repo / 'tool/result_field_oracle/FieldOracle.java', 'current')
+            self.assertEqual(current['present-true']['prior'],
+                             {'name': 'tocCountWords', 'previousPresent': True,
+                              'previous': True})
+            self.assertEqual(current['present-true']['restored']['previous'], True)
+            self.assertEqual(current['present-false']['prior'],
+                             {'name': 'tocCountWords', 'previousPresent': True,
+                              'previous': False})
+            self.assertEqual(current['present-false']['restored']['previous'], False)
+            self.assertEqual(current['absent']['prior'],
+                             {'name': 'tocCountWords', 'previousPresent': False,
+                              'previous': True})
+            self.assertEqual(current['absent']['restored']['previous'], True)
+            self.assertEqual(current['absent']['restored']['presentAfter'], False)
+
+            old_source = Path('C:/Temp/l138-stage-b-20261112-01a1cf9d/source-before/'
+                              'tool/result_field_oracle/FieldOracle.java')
+            self.assertTrue(old_source.is_file(), 'the original missing-serialization source must exist')
+            old = compile_and_run(old_source, 'old')
+            self.assertNotIn('previous', old['present-true']['restored'])
+            self.assertNotIn('previous', old['present-false']['restored'])
+            self.assertNotIn('previous', old['absent']['restored'])
+
+            current_text = (repo / 'tool/result_field_oracle/FieldOracle.java').read_text(
+                encoding='utf-8')
+            marker = '.put("previous", prior.getBoolean("previous"))'
+            self.assertEqual(current_text.count(marker), 1)
+            incorrect = root / 'incorrect/FieldOracle.java'
+            incorrect.parent.mkdir()
+            incorrect.write_text(
+                current_text.replace(marker,
+                                     '.put("previous", !prior.getBoolean("previous"))'),
+                encoding='utf-8')
+            wrong = compile_and_run(incorrect, 'incorrect')
+            self.assertNotEqual(wrong['present-true']['restored']['previous'], True)
+            self.assertNotEqual(wrong['present-false']['restored']['previous'], False)
+            self.assertNotEqual(wrong['absent']['restored']['previous'], True)
+
 
 class SelectedReceiptTest(unittest.TestCase):
     def test_complete_selected_receipts_and_raw_report_tamper(self):

@@ -280,7 +280,7 @@ the saved case:
 | `saveEvent` | The counted first-end terminal: exactly one correlated event, every invalid counter zero, the actual MAIN removal acknowledgement and the case's book/first-chapter raw URL. |
 | `saveObserverClose` | The cached repeat of that terminal with `alreadyClosed:true` and `removed:true`; it must agree with the first close. |
 | `contentFiles` | Sorted unique safe basenames enumerated under the proven `BookHelp` cache root; never absolute paths or traversal text. |
-| `tocCountWords` | The restoration receipt including the actual prior Boolean; `observedAfter` must equal that prior value, and an absent prior reads back through the real `getBoolean(KEY, true)` default. |
+| `tocCountWords` | The restoration receipt including the actual prior Boolean; `observedAfter` must equal that prior value. A present-false prior stays false; an absent prior must read back the real `getBoolean(KEY, true)` default `true`, never `false`. |
 
 The process guard is a report cleanup fact, not a per-case receipt. The corpus
 requires `cleanup.savedContentGuard = {release, fence, receipt}` once: the
@@ -294,11 +294,16 @@ observer. `saveEvents` is the latest per-case count, not a run total, and the
 final `lastEvent` joins the last saved case. A healthy final
 `release.observerClose` is empty because both case observers already closed.
 The selected runtime also joins `isolation.earlyContainment` to the measured
-target-private root: the guarded application identity, base-context binding,
-and canonical files/database/BookHelp/Room paths must all be inside that root.
-The old `four-stage` terminal keeps exactly four operations, and a record that
-carries `titleLifecycle` or `titleLifecycleProof` under any other terminal is
-refused.
+target-private root: the guarded application identity and base-context binding;
+`filesPath` is `<root>/files`; `databasePath` is
+`<root>/databases/legado.db`; `externalFilesPath` is
+`<root>/external-files` with the actual `<root>/files` fallback; the BookHelp
+cache is `<externalFilesPath>/book_cache`; and the Room path equals the
+admitted scratch database path. The release receiver/lifecycle counts must
+equal the admitted registration and removal inventories, not merely be equal
+positive numbers. The old `four-stage` terminal keeps exactly four operations,
+and a record that carries `titleLifecycle` or `titleLifecycleProof` under any
+other terminal is refused.
 
 The saved pair re-reads its own table of contents, so the same path appears
 twice in the declared sequence. The replay server serves a path's declared
@@ -313,12 +318,17 @@ and initialization are the fixed selected-reference values above.
 
 The current producer's retained preflight has an exact profile-owned plan: the
 eleven base command receipts, then one `target-abi-<dex>` receipt for each
-target DEX file that actually declares a reflected class in first-use order,
-then one `reflected-abi` summary that is not a subprocess. The title corpus
-admits exactly that plan; the historical eleven-row plan remains exact for its
-own ordinary profile, and neither plan is converted into the other. The summary
-and top-level `reflectedAbi` must reconcile the same sorted DEX inventory and
-the same nineteen descriptor checks.
+target DEX file that actually declares a reflected class in first-use order
+(twenty target-ABI commands for this target, including the candidate DEX files
+that were disassembled while locating a definition), then one `reflected-abi`
+summary that is not a subprocess. The title corpus admits exactly that plan;
+the historical eleven-row plan remains exact for its own ordinary profile, and
+neither plan is converted into the other. The summary and top-level
+`reflectedAbi` reconcile the same sorted DEX inventory, the thirty-eight
+target descriptor/accessibility checks (including the chapter-list DAO, Room
+open-helper/path chain, Pair, Observer, entity getters and CacheManager) and
+the thirty harness bridge/guard/scratch-context/FieldOracle checks. Missing,
+non-public or non-static required methods are refused.
 
 ```text
 pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build>   -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json

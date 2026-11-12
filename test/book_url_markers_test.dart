@@ -811,6 +811,21 @@ void main() {
           reason: '$prior ${jsonEncode(report['differences'])}',
         );
       }
+      // An absent key cannot read back false through getBoolean(KEY, true).
+      expectRefused(
+        () => pair(
+          damageNative: (envelope) {
+            (nativeProof(envelope)['tocCountWords'] as Map)
+                .addAll(<String, bool>{
+                  'previousPresent': false,
+                  'previous': false,
+                  'presentAfter': false,
+                  'observedAfter': false,
+                });
+          },
+        ),
+        reason: 'absent prior must read back the actual default true',
+      );
     });
 
     test('the refresh span must cover all five requests', () {
@@ -839,6 +854,669 @@ void main() {
         ),
       );
     });
+
+    test(
+      'shared container missing, null and non-map combinations are refused',
+      () {
+        for (final side in ['native', 'product', 'both']) {
+          for (final shape in ['missing', 'null', 'non-map']) {
+            expectRefused(
+              () => pair(
+                damageNative: side == 'native' || side == 'both'
+                    ? (envelope) {
+                        final record = nativeRecord(envelope);
+                        if (shape == 'missing') {
+                          record.remove('titleLifecycle');
+                        } else if (shape == 'null') {
+                          record['titleLifecycle'] = null;
+                        } else {
+                          record['titleLifecycle'] = 'not-a-map';
+                        }
+                      }
+                    : null,
+                damageProduct: side == 'product' || side == 'both'
+                    ? (envelope) {
+                        final record = productRecord(envelope);
+                        if (shape == 'missing') {
+                          record.remove('titleLifecycle');
+                        } else if (shape == 'null') {
+                          record['titleLifecycle'] = null;
+                        } else {
+                          record['titleLifecycle'] = 'not-a-map';
+                        }
+                      }
+                    : null,
+              ),
+            );
+          }
+        }
+      },
+    );
+
+    test('every phase and both sides have the complete row matrix', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        for (final side in ['native', 'product']) {
+          final damages = <String, void Function(Map<String, dynamic>)>{
+            'row-count': (record) {
+              ((record['titleLifecycle'] as Map)[phase] as List).removeLast();
+            },
+            'empty': (record) {
+              (record['titleLifecycle'] as Map)[phase] = <Object?>[];
+            },
+            'non-list': (record) {
+              (record['titleLifecycle'] as Map)[phase] = 'not-a-list';
+            },
+            'non-map-row': (record) {
+              final lifecycle = record['titleLifecycle'] as Map;
+              final rows = lifecycle[phase] as List;
+              lifecycle[phase] = <dynamic>['not-a-map', rows[1]];
+            },
+            'missing-index': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first as Map)
+                  .remove('index');
+            },
+            'missing-title': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first as Map)
+                  .remove('title');
+            },
+            'missing-variable': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first as Map)
+                  .remove('variable');
+            },
+            'null-index': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['index'] =
+                  null;
+            },
+            'null-title': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['title'] =
+                  null;
+            },
+            'wrong-index-type': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['index'] =
+                  '0';
+            },
+            'wrong-title-type': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['title'] =
+                  1;
+            },
+            'wrong-variable-type': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['variable'] =
+                  1;
+            },
+            'extra-field': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['wordCount'] =
+                  '1';
+            },
+            'duplicate-index': (record) {
+              final rows = (record['titleLifecycle'] as Map)[phase] as List;
+              (rows[0] as Map)['index'] = 1;
+            },
+            'reordered-index': (record) {
+              final rows = (record['titleLifecycle'] as Map)[phase] as List;
+              (rows[0] as Map)['index'] = 1;
+              (rows[1] as Map)['index'] = 0;
+            },
+            'empty-title': (record) {
+              (((record['titleLifecycle'] as Map)[phase] as List).first
+                      as Map)['title'] =
+                  '';
+            },
+          };
+          for (final entry in damages.entries) {
+            expectRefused(
+              () => pair(
+                damageNative: side == 'native'
+                    ? (envelope) => entry.value(nativeRecord(envelope))
+                    : null,
+                damageProduct: side == 'product'
+                    ? (envelope) => entry.value(productRecord(envelope))
+                    : null,
+              ),
+              reason: entry.key == 'row-count' || entry.key == 'empty'
+                  ? phase
+                  : null,
+            );
+          }
+        }
+      }
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        expectRefused(
+          () => pair(
+            damageNative: (envelope) =>
+                (nativeRecord(envelope)['titleLifecycle'] as Map).remove(phase),
+            damageProduct: (envelope) =>
+                (productRecord(envelope)['titleLifecycle'] as Map).remove(
+                  phase,
+                ),
+          ),
+        );
+      }
+    });
+
+    test('every phase title differs on the native side too', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        final report = pair(
+          damageNative: (envelope) {
+            final rows =
+                (nativeRecord(envelope)['titleLifecycle'] as Map)[phase]
+                    as List;
+            (rows[0] as Map)['title'] = 'NATIVE OTHER';
+          },
+        );
+        expect(report['status'], 'fail', reason: phase);
+        expect(
+          (report['differences'] as List).cast<Map>().any(
+            (row) => row['field'] == 'titleLifecycle.$phase[0].title',
+          ),
+          isTrue,
+          reason: phase,
+        );
+      }
+    });
+
+    test('raw, whitespace and null variable variants stay exact', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        for (final side in ['native', 'product']) {
+          for (final value in ['  raw  ', 'line\nbreak', '']) {
+            final report = pair(
+              damageNative: side == 'native'
+                  ? (envelope) {
+                      final rows =
+                          (nativeRecord(envelope)['titleLifecycle']
+                                  as Map)[phase]
+                              as List;
+                      (rows[0] as Map)['variable'] = value;
+                    }
+                  : null,
+              damageProduct: side == 'product'
+                  ? (envelope) {
+                      final rows =
+                          (productRecord(envelope)['titleLifecycle']
+                                  as Map)[phase]
+                              as List;
+                      (rows[0] as Map)['variable'] = value;
+                    }
+                  : null,
+            );
+            expect(report['status'], 'fail', reason: '$phase/$side/$value');
+            expect(
+              (report['differences'] as List).cast<Map>().any(
+                (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+              ),
+              isTrue,
+              reason: '$phase/$side/$value',
+            );
+          }
+        }
+        final bothNull = pair(
+          damageNative: (envelope) {
+            final rows =
+                (nativeRecord(envelope)['titleLifecycle'] as Map)[phase]
+                    as List;
+            (rows[0] as Map)['variable'] = null;
+          },
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle'] as Map)[phase]
+                    as List;
+            (rows[0] as Map)['variable'] = null;
+          },
+        );
+        expect(bothNull['status'], 'pass', reason: '$phase null');
+        final nullVersusString = pair(
+          damageProduct: (envelope) {
+            final rows =
+                (productRecord(envelope)['titleLifecycle'] as Map)[phase]
+                    as List;
+            (rows[0] as Map)['variable'] = null;
+          },
+        );
+        expect(
+          nullVersusString['status'],
+          'fail',
+          reason: '$phase null/string',
+        );
+        expect(
+          (nullVersusString['differences'] as List).cast<Map>().any(
+            (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+          ),
+          isTrue,
+        );
+      }
+    });
+
+    test('nested proof missing, null, type and error matrix is refused', () {
+      for (final root in [
+        'bookParent',
+        'chapterSeed',
+        'saveObserver',
+        'tocCountWordsApplied',
+        'saveEvent',
+        'contentFiles',
+        'saveObserverClose',
+        'tocCountWords',
+      ]) {
+        for (final shape in ['missing', 'null', 'non-map']) {
+          expectRefused(
+            () => pair(
+              damageNative: (envelope) {
+                final proof = nativeProof(envelope);
+                if (shape == 'missing') {
+                  proof.remove(root);
+                } else if (shape == 'null') {
+                  proof[root] = null;
+                } else {
+                  proof[root] = 'not-a-map';
+                }
+              },
+            ),
+            reason: root,
+          );
+        }
+      }
+      for (final entry in <String, void Function(Map<String, dynamic>)>{
+        'bookParent-bookUrl': (proof) =>
+            (proof['bookParent'] as Map)['bookUrl'] = 'other',
+        'bookParent-stored': (proof) =>
+            (proof['bookParent'] as Map)['stored'] = false,
+        'bookParent-readBack': (proof) =>
+            (proof['bookParent'] as Map)['readBack'] = false,
+        'chapterSeed-rows': (proof) =>
+            (proof['chapterSeed'] as Map)['rows'] = 1,
+        'chapterSeed-inserted': (proof) =>
+            (proof['chapterSeed'] as Map)['inserted'] = false,
+        'saveObserver-tag': (proof) =>
+            (proof['saveObserver'] as Map)['tag'] = 'other',
+        'saveObserver-interface': (proof) =>
+            (proof['saveObserver'] as Map)['interface'] = 'other',
+        'saveObserver-onMain': (proof) =>
+            (proof['saveObserver'] as Map)['onMain'] = false,
+        'saveObserver-registered': (proof) =>
+            (proof['saveObserver'] as Map)['registered'] = false,
+        'applied-name': (proof) =>
+            (proof['tocCountWordsApplied'] as Map)['name'] = 'other',
+        'applied-applied': (proof) =>
+            (proof['tocCountWordsApplied'] as Map)['applied'] = false,
+        'applied-committed': (proof) =>
+            (proof['tocCountWordsApplied'] as Map)['committed'] = false,
+        'applied-observed': (proof) =>
+            (proof['tocCountWordsApplied'] as Map)['observed'] = false,
+        'event-events': (proof) => (proof['saveEvent'] as Map)['events'] = 2,
+        'event-duplicates': (proof) =>
+            (proof['saveEvent'] as Map)['duplicates'] = 1,
+        'event-foreign': (proof) =>
+            (proof['saveEvent'] as Map)['foreignEvents'] = 1,
+        'event-callback': (proof) =>
+            (proof['saveEvent'] as Map)['callbackErrors'] = 1,
+        'event-offMain': (proof) =>
+            (proof['saveEvent'] as Map)['offMainEvents'] = 1,
+        'event-malformed': (proof) =>
+            (proof['saveEvent'] as Map)['malformedEvents'] = 1,
+        'event-failed': (proof) => (proof['saveEvent'] as Map)['failed'] = true,
+        'event-last-book': (proof) =>
+            ((proof['saveEvent'] as Map)['lastEvent'] as Map)['bookUrl'] =
+                'other',
+        'event-last-chapter': (proof) =>
+            ((proof['saveEvent'] as Map)['lastEvent'] as Map)['chapterUrl'] =
+                'other',
+        'event-last-correlates': (proof) =>
+            ((proof['saveEvent'] as Map)['lastEvent'] as Map)['correlates'] =
+                false,
+        'event-removal-interface': (proof) =>
+            ((proof['saveEvent'] as Map)['removal'] as Map)['interface'] =
+                'other',
+        'event-removal-class': (proof) =>
+            ((proof['saveEvent'] as Map)['removal'] as Map)['declaringClass'] =
+                'other',
+        'event-removal-onMain': (proof) =>
+            ((proof['saveEvent'] as Map)['removal'] as Map)['onMain'] = false,
+        'event-removal-removed': (proof) =>
+            ((proof['saveEvent'] as Map)['removal'] as Map)['removed'] = false,
+        'close-events': (proof) =>
+            (proof['saveObserverClose'] as Map)['events'] = 2,
+        'close-alreadyClosed': (proof) =>
+            (proof['saveObserverClose'] as Map)['alreadyClosed'] = false,
+        'close-removed': (proof) =>
+            (proof['saveObserverClose'] as Map)['removed'] = false,
+        'close-lastEvent': (proof) =>
+            ((proof['saveObserverClose'] as Map)['lastEvent']
+                    as Map)['bookUrl'] =
+                'other',
+        'files-empty': (proof) => proof['contentFiles'] = <Object?>[],
+        'files-traversal': (proof) => proof['contentFiles'] = ['../x'],
+        'files-slash': (proof) => proof['contentFiles'] = ['a/b'],
+        'files-backslash': (proof) => proof['contentFiles'] = ['a\\b'],
+        'files-duplicate': (proof) => proof['contentFiles'] = ['a', 'a'],
+        'files-order': (proof) => proof['contentFiles'] = ['b', 'a'],
+        'preference-restored': (proof) =>
+            (proof['tocCountWords'] as Map)['restored'] = false,
+        'preference-committed': (proof) =>
+            (proof['tocCountWords'] as Map)['committed'] = false,
+        'preference-present': (proof) =>
+            (proof['tocCountWords'] as Map)['presentAfter'] = false,
+        'preference-previous': (proof) =>
+            (proof['tocCountWords'] as Map)['previous'] = false,
+        'preference-observed': (proof) =>
+            (proof['tocCountWords'] as Map)['observedAfter'] = false,
+        'preference-absent-false': (proof) =>
+            (proof['tocCountWords'] as Map).addAll(<String, bool>{
+              'previousPresent': false,
+              'previous': false,
+              'presentAfter': false,
+              'observedAfter': false,
+            }),
+      }.entries) {
+        expectRefused(
+          () => pair(
+            damageNative: (envelope) => entry.value(nativeProof(envelope)),
+          ),
+          reason: entry.key.startsWith('preference-absent-false')
+              ? 'absent prior must read back the actual default true'
+              : null,
+        );
+      }
+    });
+
+    test('product-side five-operation failures are refused or named', () {
+      for (final entry in <String, void Function(Map<String, dynamic>)>{
+        'missing-operation': (record) {
+          (record['operations'] as List).removeLast();
+        },
+        'extra-operation': (record) {
+          (record['operations'] as List).add({
+            'name': 'search',
+            'outcome': 'completed',
+            'requestStart': 4,
+            'requestEnd': 5,
+            'traceStart': 4,
+            'traceEnd': 5,
+          });
+        },
+        'wrong-name': (record) {
+          ((record['operations'] as List).first as Map)['name'] = 'bookInfo';
+        },
+        'wrong-outcome': (record) {
+          ((record['operations'] as List).first as Map)['outcome'] = 'error';
+        },
+        'overlap': (record) {
+          ((record['operations'] as List)[1] as Map)['requestStart'] = 0;
+        },
+        'gap': (record) {
+          ((record['operations'] as List)[1] as Map)['requestStart'] = 2;
+        },
+        'outside': (record) {
+          ((record['operations'] as List).last as Map)['requestEnd'] = 99;
+        },
+        'wrong-stage': (record) {
+          ((record['operations'] as List).last as Map)['name'] = 'content';
+        },
+      }.entries) {
+        expectRefused(
+          () => pair(
+            damageProduct: (envelope) => entry.value(productRecord(envelope)),
+          ),
+        );
+      }
+      final wrongPath = pair(
+        damageProduct: (envelope) {
+          ((envelope['stageTrace'] as List).last as Map)['path'] =
+              'http://127.0.0.1:18733/wrong';
+        },
+      );
+      expect(wrongPath['status'], 'fail');
+      expect(
+        (wrongPath['differences'] as List).cast<Map>().any(
+          (row) => row['row'] == 'C3',
+        ),
+        isTrue,
+      );
+    });
+
+    Map<String, dynamic> multiCorpus() {
+      final base = _syntheticCorpus();
+      base['cases'] = [
+        {
+          'id': 'saved-one',
+          'terminal': 'four-stage-refresh',
+          'keyword': 'k',
+          'source': <String, Object?>{},
+        },
+        {
+          'id': 'saved-two',
+          'terminal': 'four-stage-refresh',
+          'keyword': 'k',
+          'source': <String, Object?>{},
+        },
+      ];
+      base['expectedRequests'] = [
+        for (var index = 0; index < 10; index++)
+          {
+            'method': 'GET',
+            'path': ['/a', '/b', '/c', '/d', '/e'][index % 5],
+            'query': <String, String>{},
+          },
+      ];
+      base['responses'] = [
+        for (var index = 0; index < 10; index++)
+          {
+            'id': 'r${index + 1}',
+            'method': 'GET',
+            'path': ['/a', '/b', '/c', '/d', '/e'][index % 5],
+            'status': 200,
+            'headers': <String, Object?>{},
+            'body': '',
+          },
+      ];
+      return base;
+    }
+
+    Map<String, dynamic> multiCase({bool product = false}) {
+      final base = multiCorpus();
+      final envelope = product
+          ? _syntheticProduct(base)
+          : _syntheticEnvelope(base);
+      final names = [
+        'search',
+        'bookInfo',
+        'tableOfContents',
+        'content',
+        'tableOfContents',
+      ];
+      Map<String, dynamic> record(String id, int start) => {
+        'id': id,
+        'terminal': 'four-stage-refresh',
+        'search': {
+          'results': [
+            {'name': 'name', 'author': 'author', 'bookUrl': book},
+          ],
+        },
+        'bookInfo': {
+          'name': 'name',
+          'author': 'author',
+          'bookUrl': book,
+          'tocUrl': '/toc',
+        },
+        'tableOfContents': {
+          'tocUrl': '/toc',
+          'chapters': [
+            {
+              'title': 'CHAPTER ONE',
+              'url': product ? 'http://synthetic.test/c' : chapter,
+              'absoluteUrl': 'http://synthetic.test/c',
+              'tag': null,
+              'isVolume': false,
+              'isVip': false,
+              'isPay': false,
+              if (product) 'address': chapter,
+              if (product) 'rawAddress': chapter,
+              if (product) 'storeKey': 'http://synthetic.test/c',
+              if (product) 'persistedAddress': 'http://synthetic.test/c',
+            },
+            {
+              'title': 'CHAPTER TWO',
+              'url': product ? 'http://synthetic.test/c2' : '/c2',
+              'absoluteUrl': 'http://synthetic.test/c2',
+              'tag': null,
+              'isVolume': false,
+              'isVip': false,
+              'isPay': false,
+              if (product) 'address': '/c2',
+              if (product) 'rawAddress': '/c2',
+              if (product) 'storeKey': 'http://synthetic.test/c2',
+              if (product) 'persistedAddress': 'http://synthetic.test/c2',
+            },
+          ],
+        },
+        'chapter': {'title': 'CHAPTER ONE', 'text': 'body'},
+        'sourceProbes': {'vipProbe': null, 'payProbe': null},
+        'operations': [
+          for (var index = 0; index < names.length; index++)
+            {
+              'name': names[index],
+              'outcome': 'completed',
+              'requestStart': start + index,
+              'requestEnd': start + index + 1,
+              'traceStart': start + index,
+              'traceEnd': start + index + 1,
+            },
+        ],
+        'requests': [
+          for (var index = start; index < start + 5; index++)
+            _requestFooter(
+              ['/a', '/b', '/c', '/d', '/e'][index % 5],
+              responseId: 'r${index + 1}',
+              stage: names[index - start],
+            ),
+        ],
+        'titleLifecycle': lifecycle(),
+        if (!product) 'titleLifecycleProof': proof(),
+      };
+      final records = [record('saved-one', 0), record('saved-two', 5)];
+      if (product) {
+        envelope['caseRecords'] = records;
+      } else {
+        envelope['cases'] = records;
+      }
+      envelope['requests'] = [
+        for (var index = 0; index < 10; index++)
+          _requestFooter(
+            ['/a', '/b', '/c', '/d', '/e'][index % 5],
+            responseId: 'r${index + 1}',
+            stage: names[index % 5],
+          ),
+      ];
+      envelope['stageTrace'] = [
+        for (var index = 0; index < 10; index++)
+          {
+            'stage': names[index % 5],
+            'path':
+                'http://127.0.0.1:18733${['/a', '/b', '/c', '/d', '/e'][index % 5]}',
+          },
+      ];
+      return envelope;
+    }
+
+    test(
+      'lifecycle multi-case ownership rejects stale, overlap, gap and mixed order',
+      () {
+        for (final product in [false, true]) {
+          final clean = _compare(
+            multiCase(),
+            multiCase(product: true),
+            multiCorpus(),
+          );
+          expect(
+            clean['status'],
+            'pass',
+            reason: 'product=$product ${jsonEncode(clean['differences'])}',
+          );
+          for (final damage in <String, void Function(Map<String, dynamic>)>{
+            'overlap': (envelope) {
+              final records =
+                  (envelope[product ? 'caseRecords' : 'cases'] as List);
+              (((records[1] as Map)['operations'] as List).first
+                      as Map)['requestStart'] =
+                  4;
+            },
+            'gap': (envelope) {
+              final records =
+                  (envelope[product ? 'caseRecords' : 'cases'] as List);
+              (((records[1] as Map)['operations'] as List).first
+                      as Map)['requestStart'] =
+                  6;
+            },
+            'stale': (envelope) {
+              final records =
+                  (envelope[product ? 'caseRecords' : 'cases'] as List);
+              (((records[1] as Map)['operations'] as List).first as Map)
+                ..['requestStart'] = 0
+                ..['traceStart'] = 0;
+            },
+            'mixed-order': (envelope) {
+              final records =
+                  (envelope[product ? 'caseRecords' : 'cases'] as List);
+              final first = (records[0] as Map)['id'];
+              (records[0] as Map)['id'] = (records[1] as Map)['id'];
+              (records[1] as Map)['id'] = first;
+            },
+            'missing-case': (envelope) {
+              (envelope[product ? 'caseRecords' : 'cases'] as List)
+                  .removeLast();
+            },
+            'extra-request': (envelope) {
+              (envelope['requests'] as List).add(_requestFooter('/extra'));
+            },
+          }.entries) {
+            final damaged = multiCase(product: product);
+            damage.value(damaged);
+            expectRefused(() => _compare(multiCase(), damaged, multiCorpus()));
+          }
+          final wrongTarget = multiCase(product: product);
+          ((wrongTarget['stageTrace'] as List).last as Map)['path'] =
+              'http://127.0.0.1:18733/wrong';
+          if (product) {
+            final report = _compare(multiCase(), wrongTarget, multiCorpus());
+            expect(report['status'], 'fail');
+            expect(
+              (report['differences'] as List).cast<Map>().any(
+                (row) => row['row'] == 'C3',
+              ),
+              isTrue,
+            );
+          } else {
+            expectRefused(
+              () => _compare(multiCase(), wrongTarget, multiCorpus()),
+            );
+          }
+        }
+      },
+    );
   });
 
   test('chronological case ids cannot be swapped under a coherent set', () {

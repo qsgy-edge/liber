@@ -2058,6 +2058,13 @@ void _admitTitleLifecycleProof(
       'the actual prior value',
     );
   }
+  if (preference['previousPresent'] == false &&
+      preference['previous'] != true) {
+    throw StateError(
+      '$label.titleLifecycleProof.tocCountWords absent prior must read back '
+      'the actual default true',
+    );
+  }
 }
 
 const _observableInterface = 'com.jeremyliao.liveeventbus.core.Observable';

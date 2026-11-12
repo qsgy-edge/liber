@@ -76,7 +76,7 @@ TITLE_PREFLIGHT_ABI_DEXES = (
     'classes17.dex', 'classes19.dex', 'classes20.dex', 'classes22.dex',
     'classes24.dex', 'classes25.dex', 'classes12.dex', 'classes23.dex',
     'classes18.dex', 'classes21.dex', 'classes26.dex', 'classes33.dex',
-    'classes31.dex',
+    'classes31.dex', 'classes29.dex', 'classes.dex', 'classes30.dex',
 )
 TITLE_PREFLIGHT_ABI_COMMANDS = tuple(
     'target-abi-' + name for name in TITLE_PREFLIGHT_ABI_DEXES)
@@ -323,53 +323,182 @@ def _check_selected_manifest(text):
 
 # The reflected ABI the saved-content observation actually uses. Checked only
 # for a corpus that declares the lifecycle observation, against the real target
-# DEX; Java compilation cannot check a reflection contract.
+# DEX; Java compilation cannot check a reflection contract. The third element
+# is the required public accessibility; a static invocation additionally
+# requires STATIC.
 REFLECTED_ABI = {
     'Lio/legado/app/help/book/BookHelp;': [
-        ('getCachePath', '()Ljava/lang/String;'),
+        ('getCachePath', '()Ljava/lang/String;', 'public'),
     ],
     'Lio/legado/app/data/entities/Book;': [
-        ('getFolderName', '()Ljava/lang/String;'),
-        ('getBookUrl', '()Ljava/lang/String;'),
+        ('getFolderName', '()Ljava/lang/String;', 'public'),
+        ('getBookUrl', '()Ljava/lang/String;', 'public'),
+        ('getName', '()Ljava/lang/String;', 'public'),
+        ('getAuthor', '()Ljava/lang/String;', 'public'),
+        ('getTocUrl', '()Ljava/lang/String;', 'public'),
+        ('getIntro', '()Ljava/lang/String;', 'public'),
     ],
     'Lio/legado/app/data/entities/BookChapter;': [
-        ('getIndex', '()I'),
-        ('getTitle', '()Ljava/lang/String;'),
-        ('getUrl', '()Ljava/lang/String;'),
-        ('getVariable', '()Ljava/lang/String;'),
-        ('setVariable', '(Ljava/lang/String;)V'),
+        ('getIndex', '()I', 'public'),
+        ('getTitle', '()Ljava/lang/String;', 'public'),
+        ('getUrl', '()Ljava/lang/String;', 'public'),
+        ('getVariable', '()Ljava/lang/String;', 'public'),
+        ('setVariable', '(Ljava/lang/String;)V', 'public'),
+        ('getAbsoluteURL', '()Ljava/lang/String;', 'public'),
+        ('getTag', '()Ljava/lang/String;', 'public'),
+        ('isVolume', '()Z', 'public'),
+        ('isVip', '()Z', 'public'),
+        ('isPay', '()Z', 'public'),
+        ('getBookUrl', '()Ljava/lang/String;', 'public'),
+    ],
+    'Lio/legado/app/data/entities/BookSource;': [
+        ('getKey', '()Ljava/lang/String;', 'public'),
     ],
     'Lio/legado/app/data/dao/BookChapterDao;': [
-        ('insert', '([Lio/legado/app/data/entities/BookChapter;)V'),
+        ('insert', '([Lio/legado/app/data/entities/BookChapter;)V', 'public'),
+        ('getChapterList', '(Ljava/lang/String;)Ljava/util/List;', 'public'),
     ],
     'Lio/legado/app/data/dao/BookDao;': [
-        ('insertRows', '([Lio/legado/app/data/entities/Book;)V'),
-        ('getBook', '(Ljava/lang/String;)Lio/legado/app/data/entities/Book;'),
+        ('insertRows', '([Lio/legado/app/data/entities/Book;)V', 'public'),
+        ('getBook', '(Ljava/lang/String;)Lio/legado/app/data/entities/Book;', 'public'),
     ],
     'Lio/legado/app/data/AppDatabase;': [
-        ('getBookChapterDao', '()Lio/legado/app/data/dao/BookChapterDao;'),
-        ('getBookDao', '()Lio/legado/app/data/dao/BookDao;'),
+        ('getBookChapterDao', '()Lio/legado/app/data/dao/BookChapterDao;', 'public'),
+        ('getBookDao', '()Lio/legado/app/data/dao/BookDao;', 'public'),
     ],
     'Lio/legado/app/help/config/AppConfig;': [
-        ('getTocCountWords', '()Z'),
+        ('getTocCountWords', '()Z', 'public'),
     ],
     'Lsplitties/init/AppCtxKt;': [
-        ('getAppCtx', '()Landroid/content/Context;'),
+        ('getAppCtx', '()Landroid/content/Context;', 'public static'),
     ],
     'Lcom/jeremyliao/liveeventbus/LiveEventBus;': [
-        ('get', '(Ljava/lang/String;Ljava/lang/Class;)Lcom/jeremyliao/liveeventbus/core/Observable;'),
+        ('get', '(Ljava/lang/String;Ljava/lang/Class;)Lcom/jeremyliao/liveeventbus/core/Observable;',
+         'public static'),
     ],
     'Lcom/jeremyliao/liveeventbus/core/Observable;': [
-        ('observeForever', '(Landroidx/lifecycle/Observer;)V'),
-        ('removeObserver', '(Landroidx/lifecycle/Observer;)V'),
+        ('observeForever', '(Landroidx/lifecycle/Observer;)V', 'public'),
+        ('removeObserver', '(Landroidx/lifecycle/Observer;)V', 'public'),
     ],
     'Lcom/jeremyliao/liveeventbus/utils/AppUtils;': [
-        ('getApp', '()Landroid/app/Application;'),
+        ('getApp', '()Landroid/app/Application;', 'public static'),
+    ],
+    'Landroidx/room/RoomDatabase;': [
+        ('getOpenHelper', '()Landroidx/sqlite/db/SupportSQLiteOpenHelper;', 'public'),
+    ],
+    'Landroidx/sqlite/db/framework/FrameworkSQLiteOpenHelper;': [
+        ('getWritableDatabase', '()Landroidx/sqlite/db/SupportSQLiteDatabase;', 'public'),
+    ],
+    'Landroidx/sqlite/db/framework/FrameworkSQLiteDatabase;': [
+        ('getPath', '()Ljava/lang/String;', 'public'),
+    ],
+    'Lkotlin/Pair;': [
+        ('getFirst', '()Ljava/lang/Object;', 'public'),
+        ('getSecond', '()Ljava/lang/Object;', 'public'),
+    ],
+    'Landroidx/lifecycle/Observer;': [
+        ('onChanged', '(Ljava/lang/Object;)V', 'public'),
+    ],
+    'Lio/legado/app/help/CacheManager;': [
+        ('get', '(Ljava/lang/String;)Ljava/lang/String;', 'public'),
+    ],
+}
+
+# The harness-side public reflection seam: FieldOracle reaches the bridge by
+# name, the bridge reaches the guard and the scratch context directly. Only the
+# members the selected lifecycle actually invokes are listed.
+HARNESS_ABI = {
+    'Lio/liber/oracle/nested/SelectedFieldHostBridge;': [
+        ('arm', '(Landroid/app/Application;Ljava/lang/ClassLoader;)V', 'public static'),
+        ('armed', '()Z', 'public static'),
+        ('beginSaveObservation', '(Ljava/lang/String;Ljava/lang/String;)Lorg/json/JSONObject;',
+         'public static'),
+        ('captureFailed', '()Z', 'public static'),
+        ('captureReceipt', '()Lorg/json/JSONObject;', 'public static'),
+        ('endSaveObservation', '(J)Lorg/json/JSONObject;', 'public static'),
+        ('fenceMainLooper', '(J)Lorg/json/JSONObject;', 'public static'),
+        ('launchAttempts', '()I', 'public static'),
+        ('releaseProcessResources', '()Lorg/json/JSONObject;', 'public static'),
+    ],
+    'Lio/liber/oracle/nested/GuardedReaderApplication;': [
+        ('arm', '(Landroid/app/Application;Ljava/lang/ClassLoader;)V', 'public static'),
+        ('beginSaveObservation', '(Ljava/lang/String;Ljava/lang/String;)Lorg/json/JSONObject;',
+         'public static'),
+        ('captureFailed', '()Z', 'public static'),
+        ('captureReceipt', '()Lorg/json/JSONObject;', 'public static'),
+        ('endSaveObservation', '(J)Lorg/json/JSONObject;', 'public static'),
+        ('fenceMainLooper', '(J)Lorg/json/JSONObject;', 'public static'),
+        ('releaseProcessResources', '()Lorg/json/JSONObject;', 'public static'),
+    ],
+    'Lio/liber/oracle/nested/StateSessionOracle$ScratchContext;': [
+        ('bind', '(Ljava/lang/String;Lorg/json/JSONObject;)V', 'public'),
+        ('fence', '(Ljava/lang/String;)Z', 'public'),
+        ('getDatabasePath', '(Ljava/lang/String;)Ljava/io/File;', 'public'),
+        ('getExternalFilesDir', '(Ljava/lang/String;)Ljava/io/File;', 'public'),
+        ('getFilesDir', '()Ljava/io/File;', 'public'),
+        ('isBound', '()Z', 'public'),
+        ('ownedPreferences', '()Ljava/util/Set;', 'public'),
+        ('preferencesPrefix', '()Ljava/lang/String;', 'public'),
+        ('rootExistedAtStart', '()Z', 'public'),
+        ('seedProbePreferences',
+         '(Landroid/content/Context;Ljava/io/File;Ljava/lang/String;)Lorg/json/JSONObject;',
+         'public'),
+        ('writeOwnerComplete', '(Ljava/lang/String;)V', 'public'),
+    ],
+    'Lio/liber/oracle/fields/FieldOracle;': [
+        ('newApplication',
+         '(Ljava/lang/ClassLoader;Ljava/lang/String;Landroid/content/Context;)Landroid/app/Application;',
+         'public'),
+        ('onCreate', '(Landroid/os/Bundle;)V', 'public'),
+        ('onException', '(Ljava/lang/Object;Ljava/lang/Throwable;)Z', 'public'),
     ],
 }
 
 
-def _admit_reflected_abi(target_apk, tools, run, receipts):
+def _abi_class_part(dump, descriptor, label):
+    parts = [part for part in re.split(r'(?=Class #\d+\s+-)', dump)
+             if "Class descriptor  : '" + descriptor + "'" in part]
+    if len(parts) != 1:
+        raise ValueError(label + ' definition differs: ' + descriptor)
+    part = parts[0]
+    access = re.search(r"Class descriptor  : '" + re.escape(descriptor)
+                       + r"'\s+Access flags\s+: 0x[0-9a-fA-F]+ \(([^)]*)\)", part)
+    if access is None or 'PUBLIC' not in access.group(1):
+        raise ValueError(label + ' class is not public: ' + descriptor)
+    return part
+
+
+def _abi_method_access(part, descriptor, method, signature, required, label):
+    pattern = (r"name\s+: '" + re.escape(method) + r"'\s+type\s+: '"
+               + re.escape(signature)
+               + r"'\s+access\s+: 0x[0-9a-fA-F]+ \(([^)]*)\)")
+    matches = re.findall(pattern, part)
+    if len(matches) != 1:
+        raise ValueError(label + ' method differs: ' + descriptor + '->' + method
+                         + ' ' + signature)
+    actual = matches[0]
+    if 'PUBLIC' not in actual:
+        raise ValueError(label + ' method is not public: ' + descriptor + '->'
+                         + method)
+    if 'STATIC' in required and 'STATIC' not in actual:
+        raise ValueError(label + ' method is not static: ' + descriptor + '->'
+                         + method)
+    return actual
+
+
+def _admit_harness_abi(dump):
+    checked = []
+    for descriptor, methods in HARNESS_ABI.items():
+        part = _abi_class_part(dump, descriptor, 'harness ABI')
+        for method, signature, required in methods:
+            actual = _abi_method_access(part, descriptor, method, signature,
+                                        required, 'harness ABI')
+            checked.append({'class': descriptor, 'method': method,
+                            'descriptor': signature, 'access': required})
+    return checked
+
+
+def _admit_reflected_abi(target_apk, tools, run, receipts, harness_checked):
     """Check the reflected classes/methods/descriptors in the real target DEX.
 
     The dex file that defines each class is found by its descriptor bytes, so
@@ -413,21 +542,18 @@ def _admit_reflected_abi(target_apk, tools, run, receipts):
     checked = []
     for descriptor, methods in sorted(REFLECTED_ABI.items()):
         dump = dumps[located[descriptor]]
-        parts = [part for part in re.split(r'(?=Class #\d+\s+-)', dump)
-                 if "Class descriptor  : '" + descriptor + "'" in part]
-        if len(parts) != 1:
-            raise ValueError('reflected class definition differs: ' + descriptor)
-        for method, signature in methods:
-            pattern = (r"name\s+: '" + re.escape(method) + r"'\s+type\s+: '"
-                       + re.escape(signature) + r"'")
-            if len(re.findall(pattern, parts[0])) != 1:
-                raise ValueError('reflected ABI differs: ' + descriptor + '->' + method
-                                 + ' ' + signature)
+        part = _abi_class_part(dump, descriptor, 'target ABI')
+        for method, signature, required in methods:
+            _abi_method_access(part, descriptor, method, signature, required,
+                               'target ABI')
             checked.append({'class': descriptor, 'method': method,
-                            'descriptor': signature, 'dex': located[descriptor]})
+                            'descriptor': signature, 'access': required,
+                            'dex': located[descriptor]})
     receipts.append({'name': 'reflected-abi', 'dexFiles': sorted(dumps),
-                     'checked': checked, 'status': 'verified'})
-    return {'dexFiles': sorted(dumps), 'checked': checked}
+                     'checked': checked, 'harness': harness_checked,
+                     'status': 'verified'})
+    return {'dexFiles': sorted(dumps), 'checked': checked,
+            'harness': harness_checked}
 
 
 def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidence=None):
@@ -546,7 +672,9 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
             raise ValueError('selected DEX entry differs: ' + name)
     reflected_abi = None
     if isinstance(fixture.get('titleLifecycle'), dict):
-        reflected_abi = _admit_reflected_abi(target_apk, tools, run, receipts)
+        harness_checked = _admit_harness_abi(dump)
+        reflected_abi = _admit_reflected_abi(target_apk, tools, run, receipts,
+                                             harness_checked)
     return {'artifact': artifact, 'targetApkSha256': sha256(target_apk),
             'dexSha256': sha256_bytes(dex), 'referenceDexSha256': sha256_bytes(reference_dex),
             'inputs': {'harnessApk': str(apk), 'targetApk': str(target_apk), 'source': str(source),
@@ -1206,6 +1334,9 @@ def _admit_title_lifecycle_proof(case, terminal, label, isolation=None):
     if preference['observedAfter'] != preference['previous']:
         raise ValueError(label + '.titleLifecycleProof.tocCountWords observed value '
                          'differs from the actual prior value')
+    if preference['previousPresent'] is False and preference['previous'] is not True:
+        raise ValueError(label + '.titleLifecycleProof.tocCountWords absent prior '
+                         'must read back the actual default true')
 
 
 def _admit_provenance(manifest, fixture_bytes, fixture, isolation):
@@ -1420,18 +1551,40 @@ def _admit_title_early_containment(report, manifest):
         if _required_bool(containment, field,
                           'report.isolation.earlyContainment') is not True:
             raise ValueError('early containment ' + field + ' must be true')
-    for field, isolation_field in (('filesPath', 'scratchFilesDir'),
-                                   ('databasePath', 'scratchDatabasePath')):
-        value = _required_string(containment, field,
+    files_path = _required_string(containment, 'filesPath',
+                                  'report.isolation.earlyContainment')
+    database_path = _required_string(containment, 'databasePath',
+                                     'report.isolation.earlyContainment')
+    external_path = _required_string(containment, 'externalFilesPath',
+                                     'report.isolation.earlyContainment')
+    cache_path = _required_string(containment, 'bookHelpCachePath',
+                                  'report.isolation.earlyContainment')
+    room_path = _required_string(containment, 'roomDatabasePath',
                                  'report.isolation.earlyContainment')
+    expected_files = root + '/files'
+    expected_database = root + '/databases/legado.db'
+    if files_path != expected_files:
+        raise ValueError('early containment filesPath is not the scratch files directory')
+    if database_path != expected_database:
+        raise ValueError('early containment databasePath is not the scratch database')
+    if external_path not in (root + '/external-files', expected_files):
+        raise ValueError('early containment externalFilesPath is not the scratch external-files directory')
+    if cache_path != external_path + '/book_cache':
+        raise ValueError('early containment bookHelpCachePath is not the scratch book_cache')
+    if room_path != database_path:
+        raise ValueError('early containment roomDatabasePath differs from the scratch database')
+    for field, value in (('filesPath', files_path), ('databasePath', database_path),
+                         ('externalFilesPath', external_path),
+                         ('bookHelpCachePath', cache_path),
+                         ('roomDatabasePath', room_path)):
         _require_contained(value, root, 'early containment ' + field)
-        if value != _required_string(isolation, isolation_field, 'report.isolation'):
-            raise ValueError('early containment ' + field
-                             + ' differs from the bound scratch path')
-    for field in ('externalFilesPath', 'bookHelpCachePath', 'roomDatabasePath'):
-        _require_contained(_required_string(
-            containment, field, 'report.isolation.earlyContainment'), root,
-            'early containment ' + field)
+    for field, expected in (('appFilesDir', files_path),
+                            ('scratchFilesDir', files_path),
+                            ('appDatabasePath', database_path),
+                            ('scratchDatabasePath', database_path)):
+        if _required_string(isolation, field, 'report.isolation') != expected:
+            raise ValueError('report.isolation.' + field
+                             + ' differs from the actual scratch relationship')
 
 
 def _admit_process_guard_cleanup(report, fixture):
@@ -1454,11 +1607,14 @@ def _admit_process_guard_cleanup(report, fixture):
                                    'guard.release.ownedLifecycleCallbacks')
     if owned_receivers <= 0 or owned_callbacks <= 0:
         raise ValueError('the process guard never registered its owned resources')
-    if _require_int(release.get('removedReceivers'),
-                    'guard.release.removedReceivers') != owned_receivers:
+    removed_receivers = _require_int(release.get('removedReceivers'),
+                                     'guard.release.removedReceivers')
+    removed_callbacks = _require_int(
+        release.get('removedLifecycleCallbacks'),
+        'guard.release.removedLifecycleCallbacks')
+    if removed_receivers != owned_receivers:
         raise ValueError('the process guard did not remove every receiver')
-    if _require_int(release.get('removedLifecycleCallbacks'),
-                    'guard.release.removedLifecycleCallbacks') != owned_callbacks:
+    if removed_callbacks != owned_callbacks:
         raise ValueError('the process guard did not remove every lifecycle callback')
     if _required_list(release, 'removalFailures', 'guard.release'):
         raise ValueError('the process guard recorded a removal failure')
@@ -1530,15 +1686,24 @@ def _admit_process_guard_cleanup(report, fixture):
     if _required_bool(registration, 'registered',
                       'guard.receipt.receiverRegistrations[0]') is not True:
         raise ValueError('the process guard receiver was not registered')
-    if _required_list(receipt, 'receiverUnregistrations',
-                      'guard.receipt') != [GUARD_RECEIVER_WRAPPER]:
+    receiver_unregistrations = _required_list(
+        receipt, 'receiverUnregistrations', 'guard.receipt')
+    lifecycle_registrations = _required_list(
+        receipt, 'lifecycleRegistrations', 'guard.receipt')
+    lifecycle_unregistrations = _required_list(
+        receipt, 'lifecycleUnregistrations', 'guard.receipt')
+    if receiver_unregistrations != [GUARD_RECEIVER_WRAPPER]:
         raise ValueError('the process guard receiver removal was not acknowledged')
-    if _required_list(receipt, 'lifecycleRegistrations',
-                      'guard.receipt') != [LEB_LIFECYCLE]:
+    if lifecycle_registrations != [LEB_LIFECYCLE]:
         raise ValueError('the process guard lifecycle registration differs')
-    if _required_list(receipt, 'lifecycleUnregistrations',
-                      'guard.receipt') != [LEB_LIFECYCLE]:
+    if lifecycle_unregistrations != [LEB_LIFECYCLE]:
         raise ValueError('the process guard lifecycle removal was not acknowledged')
+    if owned_receivers != len(receivers) or owned_receivers != len(receiver_unregistrations):
+        raise ValueError('the process guard receiver counts contradict their inventory')
+    if owned_callbacks != len(lifecycle_registrations)             or owned_callbacks != len(lifecycle_unregistrations):
+        raise ValueError('the process guard lifecycle counts contradict their inventory')
+    if attempted != len(receivers) + len(lifecycle_registrations):
+        raise ValueError('the process guard registration total contradicts its inventory')
     for field in ('inboundAttempts', 'failures'):
         if _required_list(receipt, field, 'guard.receipt'):
             raise ValueError('the process guard recorded a ' + field + ' fact')
@@ -1677,7 +1842,7 @@ def _preflight_command_names(profile):
 
 def _admit_reflected_abi_summary(summary, top_level, label):
     """The one non-command ABI summary and its top-level mirror."""
-    _exact_keys(summary, {'name', 'dexFiles', 'checked', 'status'}, label)
+    _exact_keys(summary, {'name', 'dexFiles', 'checked', 'harness', 'status'}, label)
     if _required_string(summary, 'name', label) != PREFLIGHT_SUMMARY:
         raise ValueError(label + '.name differs')
     if _required_string(summary, 'status', label) != 'verified':
@@ -1687,9 +1852,9 @@ def _admit_reflected_abi_summary(summary, top_level, label):
             or len(set(dex_files)) != len(dex_files)):
         raise ValueError(label + '.dexFiles is not the exact sorted DEX inventory')
     checked = _required_list(summary, 'checked', label)
-    expected = {(descriptor, method, signature)
+    expected = {(descriptor, method, signature, access)
                 for descriptor, methods in REFLECTED_ABI.items()
-                for method, signature in methods}
+                for method, signature, access in methods}
     if len(checked) != len(expected):
         raise ValueError(label + '.checked count differs')
     seen = set()
@@ -1697,18 +1862,42 @@ def _admit_reflected_abi_summary(summary, top_level, label):
         item_label = label + '.checked[' + str(index) + ']'
         if not isinstance(item, dict):
             raise ValueError(item_label + ' must be an object')
-        _exact_keys(item, {'class', 'method', 'descriptor', 'dex'}, item_label)
+        _exact_keys(item, {'class', 'method', 'descriptor', 'access', 'dex'},
+                    item_label)
         triple = (_required_string(item, 'class', item_label),
                   _required_string(item, 'method', item_label),
-                  _required_string(item, 'descriptor', item_label))
+                  _required_string(item, 'descriptor', item_label),
+                  _required_string(item, 'access', item_label))
         if triple not in expected or triple in seen:
             raise ValueError(item_label + ' is not an expected reflected method')
         seen.add(triple)
         if _required_string(item, 'dex', item_label) not in dex_files:
             raise ValueError(item_label + '.dex is outside the summary inventory')
+    harness = _required_list(summary, 'harness', label)
+    expected_harness = {(descriptor, method, signature, access)
+                        for descriptor, methods in HARNESS_ABI.items()
+                        for method, signature, access in methods}
+    if len(harness) != len(expected_harness):
+        raise ValueError(label + '.harness count differs')
+    seen_harness = set()
+    for index, item in enumerate(harness):
+        item_label = label + '.harness[' + str(index) + ']'
+        if not isinstance(item, dict):
+            raise ValueError(item_label + ' must be an object')
+        _exact_keys(item, {'class', 'method', 'descriptor', 'access'}, item_label)
+        triple = (_required_string(item, 'class', item_label),
+                  _required_string(item, 'method', item_label),
+                  _required_string(item, 'descriptor', item_label),
+                  _required_string(item, 'access', item_label))
+        if triple not in expected_harness or triple in seen_harness:
+            raise ValueError(item_label + ' is not an expected harness method')
+        seen_harness.add(triple)
     if top_level is not None:
-        _exact_keys(top_level, {'dexFiles', 'checked'}, 'preflight.reflectedAbi')
-        if top_level.get('dexFiles') != dex_files or top_level.get('checked') != checked:
+        _exact_keys(top_level, {'dexFiles', 'checked', 'harness'},
+                    'preflight.reflectedAbi')
+        if (top_level.get('dexFiles') != dex_files
+                or top_level.get('checked') != checked
+                or top_level.get('harness') != harness):
             raise ValueError('preflight.reflectedAbi differs from the summary receipt')
 
 
