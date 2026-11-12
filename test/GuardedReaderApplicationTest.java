@@ -163,6 +163,7 @@ public final class GuardedReaderApplicationTest {
             case "a5-post-throw-before": a5PostThrowBefore(result); break;
             case "a5-post-throw-after-running": a5PostThrowAfterRunning(result); break;
             case "a5-marker-not-drain": a5MarkerNotDrain(result); break;
+            case "a5-native-lifecycle-remove-before": a5NativeLifecycleRemoveBefore(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -3541,6 +3542,133 @@ public final class GuardedReaderApplicationTest {
         require(idle, "the main thread reached idle");
         require(pendingAfter == 0, "the genuine finish retires the descendant");
         require(retry.optBoolean("closed"), "the real retry closes");
+    }
+
+    /** A real lifecycle removal held before its effect blocks false closure. */
+    private static void a5NativeLifecycleRemoveBefore(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        final Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        final java.util.concurrent.CountDownLatch entered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release =
+            new java.util.concurrent.CountDownLatch(1);
+        Application.class.getField("lifecycleRemoveEntered").set(app, entered);
+        Application.class.getField("lifecycleRemoveHeld").set(app, release);
+        final Throwable[] firstError = {null};
+        Thread first = new Thread(() -> {
+            try {
+                app.unregisterActivityLifecycleCallbacks(
+                    (Application.ActivityLifecycleCallbacks) callback);
+            } catch (Throwable error) {
+                firstError[0] = error;
+            }
+        }, "a5-native-remove-before");
+        first.start();
+        boolean enteredOk;
+        JSONObject firstRelease;
+        boolean firstAliveWhileHeld;
+        int attemptsAtHold;
+        int attemptsAfterFirstRelease;
+        int effectsAfterFirstRelease;
+        int nativeWhileHeld;
+        boolean nativeExactWhileHeld;
+        boolean ownedWhileHeld;
+        boolean firstClosed;
+        int remainingOwnedWhileHeld;
+        int removedWhileHeld;
+        String firstFailures;
+        try {
+            enteredOk = entered.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            attemptsAtHold = app.lifecycleUnregisterAttempts;
+            firstRelease = GuardedReaderApplication.releaseProcessResources();
+            firstAliveWhileHeld = first.isAlive();
+            attemptsAfterFirstRelease = app.lifecycleUnregisterAttempts;
+            effectsAfterFirstRelease = app.lifecycleUnregisterEffects;
+            nativeWhileHeld = app.nativeCallbacks.size();
+            nativeExactWhileHeld = app.nativeCallbacks.containsKey(callback);
+            ownedWhileHeld = ownedCallback(callback);
+            firstClosed = firstRelease.optBoolean("closed");
+            remainingOwnedWhileHeld =
+                firstRelease.optInt("remainingOwnedLifecycleCallbacks");
+            removedWhileHeld = firstRelease.optInt("removedLifecycleCallbacks");
+            firstFailures = firstRelease.optJSONArray("removalFailures").toString();
+        } finally {
+            release.countDown();
+            Application.class.getField("lifecycleRemoveEntered").set(app, null);
+            Application.class.getField("lifecycleRemoveHeld").set(app, null);
+            first.join(10000);
+        }
+        boolean firstAlive = first.isAlive();
+        String firstChain = firstError[0] == null ? "none"
+            : FieldOracleFreeChain.describe(firstError[0]);
+        int attemptsAfterAck = app.lifecycleUnregisterAttempts;
+        int effectsAfterAck = app.lifecycleUnregisterEffects;
+        int nativeAfterAck = app.nativeCallbacks.size();
+        boolean ownedAfterAck = ownedCallback(callback);
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        boolean retryClosed = retry.optBoolean("closed");
+        int attemptsAfterRetry = app.lifecycleUnregisterAttempts;
+        int effectsAfterRetry = app.lifecycleUnregisterEffects;
+        int nativeAfterRetry = app.nativeCallbacks.size();
+        boolean ownedAfterRetry = ownedCallback(callback);
+        boolean captureFailed = GuardedReaderApplication.captureFailed();
+        result.put("callbackIdentity", System.identityHashCode(callback))
+            .put("entered", enteredOk)
+            .put("firstAliveWhileHeld", firstAliveWhileHeld)
+            .put("attemptsAtHold", attemptsAtHold)
+            .put("attemptsAfterFirstRelease", attemptsAfterFirstRelease)
+            .put("effectsAfterFirstRelease", effectsAfterFirstRelease)
+            .put("nativeWhileHeld", nativeWhileHeld)
+            .put("nativeExactWhileHeld", nativeExactWhileHeld)
+            .put("ownedWhileHeld", ownedWhileHeld)
+            .put("firstClosed", firstClosed)
+            .put("remainingOwnedWhileHeld", remainingOwnedWhileHeld)
+            .put("removedWhileHeld", removedWhileHeld)
+            .put("firstFailures", firstFailures)
+            .put("firstAlive", firstAlive)
+            .put("firstError", firstChain)
+            .put("attemptsAfterAck", attemptsAfterAck)
+            .put("effectsAfterAck", effectsAfterAck)
+            .put("nativeAfterAck", nativeAfterAck)
+            .put("ownedAfterAck", ownedAfterAck)
+            .put("retryClosed", retryClosed)
+            .put("attemptsAfterRetry", attemptsAfterRetry)
+            .put("effectsAfterRetry", effectsAfterRetry)
+            .put("nativeAfterRetry", nativeAfterRetry)
+            .put("ownedAfterRetry", ownedAfterRetry)
+            .put("captureFailed", captureFailed);
+        require(enteredOk, "the native removal was held before its effect");
+        require(firstAliveWhileHeld, "the removal worker is still alive while held");
+        require(attemptsAtHold == 1, "exactly one native removal attempt was made");
+        require(attemptsAfterFirstRelease == 1,
+            "the final release made no duplicate native removal attempt");
+        require(effectsAfterFirstRelease == 0,
+            "the held removal has not effected yet");
+        require(nativeWhileHeld == 1 && nativeExactWhileHeld,
+            "the exact callback remains in the native registry");
+        require(ownedWhileHeld, "the guard still owns the exact callback");
+        require(!firstClosed,
+            "a lifetime with an in-flight removal is not closed");
+        require(remainingOwnedWhileHeld == 1 && removedWhileHeld == 0,
+            "the refusal retains the owned callback without a removal");
+        require(firstFailures.contains("lifecycle native call still in flight at release"),
+            "the refusal records the actual in-flight reason");
+        require(!firstAlive, "the held removal thread terminated");
+        if (firstError[0] instanceof Exception) throw (Exception) firstError[0];
+        if (firstError[0] != null) throw new AssertionError(firstError[0]);
+        require(attemptsAfterAck == 1 && effectsAfterAck == 1,
+            "the actual first acknowledgement is one attempt and one effect");
+        require(nativeAfterAck == 0 && !ownedAfterAck,
+            "the acknowledgement empties the native and owned registries");
+        require(retryClosed, "the real retry closes after the acknowledgement");
+        require(attemptsAfterRetry == 1 && effectsAfterRetry == 1,
+            "the retry closes without another native removal call");
+        require(nativeAfterRetry == 0 && !ownedAfterRetry,
+            "the retry leaves native and owned empty");
+        require(captureFailed,
+            "the unsafe-cleanup refusal keeps the capture failure sticky");
     }
 
     /** Bounded join that surfaces the real liveness result. */

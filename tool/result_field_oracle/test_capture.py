@@ -873,6 +873,8 @@ public class Application extends Context {
     public RuntimeException lifecycleRegisterAfterEffect;
     public RuntimeException lifecycleUnregisterBeforeEffect;
     public RuntimeException lifecycleUnregisterAfterEffect;
+    public volatile java.util.concurrent.CountDownLatch lifecycleRemoveEntered;
+    public volatile java.util.concurrent.CountDownLatch lifecycleRemoveHeld;
     public String lifecycleDuringEffect = "";
 
     // Test-only one-shot holds: the FIRST native call is held so a duplicate can
@@ -925,6 +927,11 @@ public class Application extends Context {
 
     public void unregisterActivityLifecycleCallbacks(ActivityLifecycleCallbacks callback) {
         lifecycleUnregisterAttempts++;
+        java.util.concurrent.CountDownLatch entered = lifecycleRemoveEntered;
+        java.util.concurrent.CountDownLatch held = lifecycleRemoveHeld;
+        lifecycleRemoveEntered = null;
+        lifecycleRemoveHeld = null;
+        holdOnce(entered, held);
         lifecycleEffects.add("unregister-attempt:" + System.identityHashCode(callback));
         if (lifecycleUnregisterBeforeEffect != null) throw lifecycleUnregisterBeforeEffect;
         // The native lifecycle contract returns normally for an absent member.
@@ -5963,7 +5970,7 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'a5-many-cycles-retire', 'a5-native-inflight-lifecycle',
         'a5-queued-removal-interrupt', 'a5-real-timeout-queued',
         'a5-post-throw-before', 'a5-post-throw-after-running',
-        'a5-marker-not-drain',
+        'a5-marker-not-drain', 'a5-native-lifecycle-remove-before',
     )
 
     def _java_home(self):
