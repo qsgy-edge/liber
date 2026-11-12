@@ -297,9 +297,12 @@ The selected runtime also joins `isolation.earlyContainment` to the measured
 target-private root: the guarded application identity and base-context binding;
 `filesPath` is `<root>/files`; `databasePath` is
 `<root>/databases/legado.db`; `externalFilesPath` is
-`<root>/external-files` with the actual `<root>/files` fallback; the BookHelp
-cache is `<externalFilesPath>/book_cache`; and the Room path equals the
-admitted scratch database path. The release receiver/lifecycle counts must
+`<root>/external-files` (the generic `ContextExtensions` files fallback cannot
+produce this selected bound route because `ScratchContext` always returns a
+non-null external-files directory and the producer requires
+`canonicalExternal` to equal it); the BookHelp cache is
+`<root>/external-files/book_cache`; and the Room path equals the admitted
+scratch database path. The release receiver/lifecycle counts must
 equal the admitted registration and removal inventories, not merely be equal
 positive numbers. The old `four-stage` terminal keeps exactly four operations,
 and a record that carries `titleLifecycle` or `titleLifecycleProof` under any

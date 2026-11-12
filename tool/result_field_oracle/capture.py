@@ -1567,9 +1567,9 @@ def _admit_title_early_containment(report, manifest):
         raise ValueError('early containment filesPath is not the scratch files directory')
     if database_path != expected_database:
         raise ValueError('early containment databasePath is not the scratch database')
-    if external_path not in (root + '/external-files', expected_files):
+    if external_path != root + '/external-files':
         raise ValueError('early containment externalFilesPath is not the scratch external-files directory')
-    if cache_path != external_path + '/book_cache':
+    if cache_path != root + '/external-files/book_cache':
         raise ValueError('early containment bookHelpCachePath is not the scratch book_cache')
     if room_path != database_path:
         raise ValueError('early containment roomDatabasePath differs from the scratch database')

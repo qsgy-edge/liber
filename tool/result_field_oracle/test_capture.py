@@ -998,11 +998,14 @@ class TitlePreflightPlanTest(unittest.TestCase):
             changed['isolation'][field] = value
             with self.subTest(field=field), self.assertRaises(ValueError):
                 capture._admit_title_early_containment(changed, manifest)
-        # The actual producer's external-files fallback remains legitimate.
+        # The generic ContextExtensions fallback cannot produce this selected
+        # bound route: ScratchContext always returns external-files and the
+        # producer requires canonicalExternal to equal it.
         fallback = json.loads(json.dumps(report))
         fallback['isolation']['earlyContainment']['externalFilesPath'] = root + '/files'
         fallback['isolation']['earlyContainment']['bookHelpCachePath'] = root + '/files/book_cache'
-        capture._admit_title_early_containment(fallback, manifest)
+        with self.assertRaisesRegex(ValueError, 'externalFilesPath'):
+            capture._admit_title_early_containment(fallback, manifest)
 
     def _guard_report(self):
         case = {
@@ -1452,6 +1455,8 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         (root / 'private-after.log').write_bytes(before)
         (root / 'frozen.apk').write_bytes(target_apk.read_bytes())
         (root / 'installed-harness.apk').write_bytes(harness_apk.read_bytes())
+        (root / 'nested').mkdir()
+        (root / 'nested/sentinel.txt').write_bytes(b'preserve me\n')
         prefix = ['adb', '-s', '5615f742']
 
         def add(name, args, data=b'', code=0):
@@ -1556,7 +1561,10 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         with patch.object(sys, 'argv', argv), \
                 patch.object(capture, 'selected_preflight',
                              return_value=binding),                 redirect_stdout(stdout), redirect_stderr(stderr):
-            code = capture.main()
+            try:
+                code = capture.main()
+            except SystemExit as error:
+                code = error.code if isinstance(error.code, int) else 1
         return code, stdout.getvalue(), stderr.getvalue()
 
     def _copy(self, source, destination):
@@ -1564,20 +1572,107 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         shutil.copytree(source, destination)
         return destination
 
-    def test_clean_finalize_then_verify_and_intended_mutations(self):
+    def _inventory(self, root):
+        root = Path(root)
+        inventory = {'.': ('D', None)}
+        for path in sorted(root.rglob('*')):
+            relative = path.relative_to(root).as_posix()
+            if path.is_dir():
+                inventory[relative] = ('D', None)
+            else:
+                inventory[relative] = ('F', capture.sha256(path))
+        return inventory
+
+    def _write_manifest(self, root, manifest):
+        (Path(root) / 'manifest.json').write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + '\n',
+            encoding='utf-8')
+
+    def _mutate(self, root, label):
+        root = Path(root)
+        report = json.loads((root / 'field-oracle.json').read_bytes())
+        manifest = json.loads((root / 'manifest.json').read_bytes())
+        expected = {
+            'owner': 'owner', 'root': 'root',
+            'external-path': 'externalFilesPath', 'observer': 'observer',
+            'process': 'process', 'preference': 'tocCountWords',
+            'operation': 'operation', 'artifact': 'harness',
+            'duplicate': 'duplicate', 'preflight-summary': 'reflected',
+            'profile': 'target ABI command', 'raw-ledger': 'raw report differs',
+        }[label]
+        if label == 'duplicate':
+            data = (b'{"fixtureId":"FIELDS-02",'
+                    b'"fixtureId":"FIELDS-02"}')
+            (root / 'field-oracle.json').write_bytes(data)
+            (root / 'pull-report.log').write_bytes(data)
+            (root / 'golden.json').write_bytes(data)
+            manifest['goldenSha256'] = capture.sha256(root / 'golden.json')
+            self._write_manifest(root, manifest)
+            return expected
+        if label == 'raw-ledger':
+            (root / 'pull-report.log').write_bytes(
+                (root / 'field-oracle.json').read_bytes() + b' ')
+            return expected
+        if label == 'preflight-summary':
+            manifest['preflight']['commands'][-1]['checked'][0]['method'] = 'other'
+            self._write_manifest(root, manifest)
+            return expected
+        if label == 'profile':
+            manifest['preflight']['commands'][11]['command'] = [
+                'dexdump.exe', 'wrong.dex']
+            self._write_manifest(root, manifest)
+            return expected
+        if label == 'artifact':
+            manifest['harnessApkSha256'] = '0' * 64
+            self._write_manifest(root, manifest)
+            return expected
+        if label == 'owner':
+            manifest['scratchOwner']['seedRunId'] = 'other'
+            self._write_manifest(root, manifest)
+            return expected
+        if label == 'root':
+            report['isolation']['scratchRoot'] = self.SCRATCH_ROOT + '/other'
+        elif label == 'external-path':
+            report['isolation']['earlyContainment']['externalFilesPath'] = \
+                self.SCRATCH_ROOT + '/files'
+            report['isolation']['earlyContainment']['bookHelpCachePath'] = \
+                self.SCRATCH_ROOT + '/files/book_cache'
+        elif label == 'observer':
+            report['cleanup']['savedContentGuard']['receipt'][
+                'observerClosed'] = False
+        elif label == 'process':
+            report['cleanup']['savedContentGuard']['release'].update(
+                {'ownedReceivers': 7, 'removedReceivers': 7})
+        elif label == 'preference':
+            report['cases'][2]['titleLifecycleProof']['tocCountWords'][
+                'previous'] = False
+        elif label == 'operation':
+            report['cases'][2]['operations'].pop()
+        else:
+            raise AssertionError(label)
+        data = (json.dumps(report, ensure_ascii=False, indent=2) + '\n').encode()
+        (root / 'field-oracle.json').write_bytes(data)
+        (root / 'pull-report.log').write_bytes(data)
+        (root / 'golden.json').write_bytes(data)
+        manifest['goldenSha256'] = capture.sha256(root / 'golden.json')
+        self._write_manifest(root, manifest)
+        return expected
+
+    def test_clean_finalize_and_verify_preserve_recursive_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
-            root, fixture, binding, harness_apk, target_apk, report_bytes = \
+            root, fixture, binding, harness_apk, target_apk, _ = \
                 self._bundle(base / 'clean')
+            sentinel = root / 'nested/sentinel.txt'
+            self.assertTrue(sentinel.is_file())
             code, stdout, stderr = self._main(
                 'finalize', root, root, binding, fixture, harness_apk,
                 target_apk)
             self.assertEqual(code, 0, stdout + stderr)
+            self.assertEqual(json.loads((root / 'manifest.json').read_bytes())
+                             ['status'], 'observed')
             self.assertTrue((root / 'golden.json').is_file())
-            manifest = json.loads((root / 'manifest.json').read_bytes())
-            self.assertEqual(manifest['status'], 'observed')
-            clean_hashes = {path.name: capture.sha256(path)
-                            for path in root.iterdir() if path.is_file()}
+            before = self._inventory(root)
             verify = base / 'verify'
             code, stdout, stderr = self._main(
                 'verify', root, verify, binding, fixture, harness_apk,
@@ -1585,97 +1680,86 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             self.assertEqual(code, 0, stdout + stderr)
             self.assertEqual(json.loads((verify / 'verification.json').read_bytes())
                              ['status'], 'verified-bundle')
-            self.assertEqual(clean_hashes,
-                             {path.name: capture.sha256(path)
-                              for path in root.iterdir() if path.is_file()})
+            self.assertEqual(self._inventory(root), before)
+            self.assertEqual(capture.sha256(sentinel),
+                             before['nested/sentinel.txt'][1])
 
-            mutations = {
-                'owner': lambda report, manifest: manifest['scratchOwner'].update(
-                    {'seedRunId': 'other'}),
-                'root': lambda report, manifest: report['isolation'].update(
-                    {'scratchRoot': self.SCRATCH_ROOT + '/other'}),
-                'observer': lambda report, manifest: report['cleanup']
-                    ['savedContentGuard']['receipt'].update(
-                        {'observerClosed': False}),
-                'process': lambda report, manifest: report['cleanup']
-                    ['savedContentGuard']['release'].update(
-                        {'ownedReceivers': 7, 'removedReceivers': 7}),
-                'preference': lambda report, manifest: report['cases'][2]
-                    ['titleLifecycleProof']['tocCountWords'].update(
-                        {'previous': False}),
-                'operation': lambda report, manifest: report['cases'][2]
-                    ['operations'].pop(),
-                'artifact': lambda report, manifest: manifest.update(
-                    {'harnessApkSha256': '0' * 64}),
-                'duplicate': lambda report, manifest: None,
-            }
-            expected = {
-                'owner': 'owner',
-                'root': 'root',
-                'observer': 'observer',
-                'process': 'process',
-                'preference': 'tocCountWords',
-                'operation': 'operation',
-                'artifact': 'harness',
-                'duplicate': 'duplicate',
-            }
-            for label, mutate in mutations.items():
-                copy = self._copy(root, base / ('mutation-' + label))
-                report = json.loads((copy / 'field-oracle.json').read_bytes())
-                manifest = json.loads((copy / 'manifest.json').read_bytes())
-                if label == 'duplicate':
-                    duplicate = (b'{"fixtureId":"FIELDS-02",'
-                                 b'"fixtureId":"FIELDS-02"}')
-                    (copy / 'field-oracle.json').write_bytes(duplicate)
-                    (copy / 'pull-report.log').write_bytes(duplicate)
-                    (copy / 'golden.json').write_bytes(duplicate)
-                    manifest['goldenSha256'] = capture.sha256(copy / 'golden.json')
-                    (copy / 'manifest.json').write_text(
-                        json.dumps(manifest, ensure_ascii=False, indent=2)
-                        + '\n', encoding='utf-8')
-                else:
-                    mutate(report, manifest)
-                    data = (json.dumps(report, ensure_ascii=False, indent=2)
-                            + '\n').encode()
-                    (copy / 'field-oracle.json').write_bytes(data)
-                    (copy / 'pull-report.log').write_bytes(data)
-                    (copy / 'golden.json').write_bytes(data)
-                    manifest['goldenSha256'] = capture.sha256(copy / 'golden.json')
-                    (copy / 'manifest.json').write_text(
-                        json.dumps(manifest, ensure_ascii=False, indent=2)
-                        + '\n', encoding='utf-8')
-                code, stdout, stderr = self._main(
-                    'finalize', copy, copy, binding, fixture, harness_apk,
-                    target_apk)
-                self.assertEqual(code, 1, label + ' ' + stdout + stderr)
-                receipt = copy / 'finalize-failure.json'
-                self.assertTrue(receipt.is_file(), label)
-                detail = receipt.read_text(encoding='utf-8')
-                self.assertIn(expected[label], detail, label)
-
-    def test_failed_finalize_preserves_a_preexisting_accepted_golden(self):
+    def test_both_entry_paths_refuse_each_intended_domain(self):
+        labels = ('owner', 'root', 'external-path', 'observer', 'process',
+                  'preference', 'operation', 'artifact', 'duplicate',
+                  'preflight-summary', 'profile', 'raw-ledger')
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
-            root, fixture, binding, harness_apk, target_apk, report_bytes = \
+            clean, fixture, binding, harness_apk, target_apk, _ = \
+                self._bundle(base / 'clean')
+            code, stdout, stderr = self._main(
+                'finalize', clean, clean, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            for label in labels:
+                for mode in ('finalize', 'verify'):
+                    copy = self._copy(clean, base / (label + '-' + mode))
+                    expected = self._mutate(copy, label)
+                    before = self._inventory(copy)
+                    if mode == 'finalize':
+                        code, stdout, stderr = self._main(
+                            'finalize', copy, copy, binding, fixture,
+                            harness_apk, target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        failures = sorted(copy.glob('finalize-failure*.json'))
+                        self.assertTrue(failures, label)
+                        detail = failures[-1].read_text(encoding='utf-8')
+                        self.assertIn(expected, detail, label)
+                        after = self._inventory(copy)
+                        added = {path for path in after if path not in before}
+                        self.assertTrue(added)
+                        self.assertTrue(all('finalize-failure' in path
+                                            for path in added), (label, added))
+                        for path, value in before.items():
+                            self.assertEqual(after[path], value, (label, path))
+                    else:
+                        output = base / (label + '-verify-out')
+                        code, stdout, stderr = self._main(
+                            'verify', copy, output, binding, fixture,
+                            harness_apk, target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        receipt = output / 'verification-failure.json'
+                        self.assertTrue(receipt.is_file(), label)
+                        detail = receipt.read_text(encoding='utf-8')
+                        self.assertIn(expected, detail, label)
+                        self.assertEqual(self._inventory(copy), before, label)
+
+    def test_failed_finalize_preserves_all_preexisting_accepted_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, fixture, binding, harness_apk, target_apk, _ = \
                 self._bundle(base / 'accepted')
             code, stdout, stderr = self._main(
                 'finalize', root, root, binding, fixture, harness_apk,
                 target_apk)
             self.assertEqual(code, 0, stdout + stderr)
-            golden = (root / 'golden.json').read_bytes()
+            accepted = self._inventory(root)
             report = json.loads((root / 'field-oracle.json').read_bytes())
             report['cases'][2]['titleLifecycleProof']['saveEvent']['events'] = 2
             data = (json.dumps(report, ensure_ascii=False, indent=2)
                     + '\n').encode()
             (root / 'field-oracle.json').write_bytes(data)
             (root / 'pull-report.log').write_bytes(data)
+            mutated = self._inventory(root)
             code, stdout, stderr = self._main(
                 'finalize', root, root, binding, fixture, harness_apk,
                 target_apk)
             self.assertEqual(code, 1, stdout + stderr)
-            self.assertEqual((root / 'golden.json').read_bytes(), golden)
-            self.assertTrue(list(root.glob('finalize-failure*.json')))
-
+            after = self._inventory(root)
+            for path, value in mutated.items():
+                self.assertEqual(after[path], value, path)
+            added = {path for path in after if path not in mutated}
+            self.assertTrue(added)
+            self.assertTrue(all('finalize-failure' in path for path in added))
+            self.assertEqual(capture.sha256(root / 'golden.json'),
+                             accepted['golden.json'][1])
+            self.assertEqual(accepted['golden.json'],
+                             mutated['golden.json'])
 
 
 GUARD_FAKES = {
@@ -2991,14 +3075,14 @@ public final class OwnedCleanupFixture {
         @Override
         public Editor edit() {
             return new Editor() {
-                @Override public SharedPreferences.Editor putString(String key, String value) { return this; }
-                @Override public SharedPreferences.Editor putStringSet(String key, Set<String> values) { return this; }
-                @Override public SharedPreferences.Editor putInt(String key, int value) { return this; }
-                @Override public SharedPreferences.Editor putLong(String key, long value) { return this; }
-                @Override public SharedPreferences.Editor putFloat(String key, float value) { return this; }
+                @Override public Editor putString(String key, String value) { return this; }
+                @Override public Editor putStringSet(String key, Set<String> values) { return this; }
+                @Override public Editor putInt(String key, int value) { return this; }
+                @Override public Editor putLong(String key, long value) { return this; }
+                @Override public Editor putFloat(String key, float value) { return this; }
                 @Override public Editor putBoolean(String key, boolean value) { return this; }
                 @Override public Editor remove(String key) { return this; }
-                @Override public SharedPreferences.Editor clear() { return this; }
+                @Override public Editor clear() { return this; }
                 @Override public void apply() { }
 
                 @Override
@@ -5346,7 +5430,7 @@ public final class StageAFixture {
             return value instanceof Boolean ? (Boolean) value : defValue;
         }
 
-        @Override public SharedPreferences.Editor edit() { return new Edit(this); }
+        @Override public Editor edit() { return new Edit(this); }
 
         @Override public void registerOnSharedPreferenceChangeListener(
                 OnSharedPreferenceChangeListener listener) {}
