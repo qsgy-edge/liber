@@ -1515,6 +1515,13 @@ public class Handler {
     /** Test-only: counted down by the guarded body, only ever awaited here. */
     public static CountDownLatch afterPostStarted;
 
+    /**
+     * Test-only one-shot actual post-entry hold: the caller has entered the
+     * external post but the callback has not been enqueued yet.
+     */
+    public static volatile CountDownLatch postEntered;
+    public static volatile CountDownLatch postHeld;
+
     private static boolean refuseNext;
 
     /** Test-only: the next post is refused without running the work. */
@@ -1566,6 +1573,23 @@ public class Handler {
     public Handler(Looper looper) {}
 
     public final boolean post(Runnable work) {
+        CountDownLatch enteredPost = postEntered;
+        CountDownLatch heldPost = postHeld;
+        postEntered = null;
+        postHeld = null;
+        if (enteredPost != null) enteredPost.countDown();
+        if (heldPost != null) {
+            try {
+                if (!heldPost.await(15, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException(
+                        "the controlled post-entry hold was not released in time");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                    "the controlled post-entry hold was interrupted", interrupted);
+            }
+        }
         nativePostCalls++;
         lastPostedCallback = work;
         lastPostOwner = this;
@@ -6088,6 +6112,10 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'a5-native-observer-remove-after', 'a5-native-observer-late-interrupt',
         'a5-native-observer-late-deadline', 'a5-native-observer-late-error',
         'a5-native-entry-interrupted-cleanup', 'a5-native-event-wait-interrupt',
+        'a5-repair-stale-observation-close', 'a5-repair-entry-only-interrupt',
+        'a5-repair-mid-only-interrupt',
+        'a5-repair-observer-after-effect-late-error',
+        'a5-repair-concurrent-error-retention',
     )
 
     def _java_home(self):

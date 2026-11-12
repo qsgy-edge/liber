@@ -176,6 +176,13 @@ public final class GuardedReaderApplicationTest {
             case "a5-native-observer-late-error": a5NativeObserverLateError(result); break;
             case "a5-native-entry-interrupted-cleanup": a5NativeEntryInterruptedCleanup(result); break;
             case "a5-native-event-wait-interrupt": a5NativeEventWaitInterrupt(result); break;
+            case "a5-repair-stale-observation-close": a5RepairStaleObservationClose(result); break;
+            case "a5-repair-entry-only-interrupt": a5RepairEntryOnlyInterrupt(result); break;
+            case "a5-repair-mid-only-interrupt": a5RepairMidOnlyInterrupt(result); break;
+            case "a5-repair-observer-after-effect-late-error":
+                a5RepairObserverAfterEffectLateError(result); break;
+            case "a5-repair-concurrent-error-retention":
+                a5RepairConcurrentErrorRetention(result); break;
             case "save-off-main": saveOffMain(result); break;
             case "save-idempotent": saveIdempotent(result); break;
             case "save-invalid-repeat": saveInvalidRepeat(result); break;
@@ -3148,17 +3155,21 @@ public final class GuardedReaderApplicationTest {
     }
 
     /** A marker alone never proves the queue drained. */
-    /** A queued removal is interrupted before MAIN starts; the retry reaches native. */
+    /**
+     * A queued removal is interrupted before MAIN starts; the healthy typed
+     * prestate is proven first, and the later real retry closes the owned
+     * observer with an actual native removal.
+     */
     private static void a5QueuedRemovalInterrupt(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
         Object observable = liveObservableForTest();
-        // A real typed matching MAIN event, so the removal path is reached.
         GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        // A real typed matching MAIN event, so the removal path is reached.
-        java.lang.reflect.Method deliver = observable.getClass()
-            .getDeclaredMethod("deliver", Object.class);
-        deliver.setAccessible(true);
-        deliver.invoke(observable, "a5-removal-event");
+        // The approved typed Pair on the controlled MAIN thread, so the removal
+        // path is reached with a healthy prestate instead of an off-MAIN failure.
+        deliver("http://book/1", "http://book/1/c1");
+        JSONObject prestate = GuardedReaderApplication.captureReceipt();
+        int attemptsBefore = a5NativeObserverAttempts(observable);
+        int effectsBefore = a5NativeObserverEffects(observable);
         android.os.Handler.hold();
         final Throwable[] callerError = {null};
         final boolean[] flagInside = {false};
@@ -3175,36 +3186,51 @@ public final class GuardedReaderApplicationTest {
         caller.interrupt();
         boolean joined = a5JoinBounded(caller, 10000);
         int pendingAfterExit = pendingOwnedWork();
-        int removeEffectsBefore = (Integer) observableField(observable, "observerRemoveEffects");
         android.os.Handler.flush();
         boolean idle = android.os.Handler.awaitIdle(10000);
         int pendingAfterIdle = pendingOwnedWork();
-        int removeEffectsAfter = (Integer) observableField(observable, "observerRemoveEffects");
+        int attemptsAfterFlush = a5NativeObserverAttempts(observable);
+        int effectsAfterFlush = a5NativeObserverEffects(observable);
         JSONObject retry = GuardedReaderApplication.releaseProcessResources();
-        int removeEffectsFinal = (Integer) observableField(observable, "observerRemoveEffects");
-        result.put("queued", queued).put("joined", joined)
+        int attemptsAfterRetry = a5NativeObserverAttempts(observable);
+        int effectsAfterRetry = a5NativeObserverEffects(observable);
+        int nativeAfterRetry = a5NativeObserverCount(observable);
+        result.put("preEvents", prestate.optInt("saveEvents"))
+            .put("preObserving", prestate.optBoolean("observing"))
+            .put("preCaptureFailed", prestate.optBoolean("captureFailed"))
+            .put("queued", queued).put("joined", joined)
             .put("pendingAfterExit", pendingAfterExit)
-            .put("removeEffectsBeforeFlush", removeEffectsAfter - removeEffectsBefore)
+            .put("attemptsBeforeFlush", attemptsAfterFlush - attemptsBefore)
+            .put("effectsBeforeFlush", effectsAfterFlush - effectsBefore)
             .put("idle", idle).put("pendingAfterIdle", pendingAfterIdle)
-            .put("removeEffectsAfterRetry", removeEffectsFinal - removeEffectsBefore)
+            .put("attemptsAfterRetry", attemptsAfterRetry - attemptsBefore)
+            .put("effectsAfterRetry", effectsAfterRetry - effectsBefore)
+            .put("nativeAfterRetry", nativeAfterRetry)
             .put("callerError", callerError[0] == null ? "none"
                 : FieldOracleFreeChain.describe(callerError[0]))
             .put("interruptFlagInside", flagInside[0])
             .put("retryClosed", retry.optBoolean("closed"))
             .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(prestate.optBoolean("observing") && prestate.optInt("saveEvents") == 1
+            && !prestate.optBoolean("captureFailed"),
+            "the typed MAIN event leaves a healthy prestate before the interruption");
         require(queued, "the removal work was queued");
         require(joined, "the interrupted caller exited");
         require(pendingAfterExit == 1,
             "the queued removal stays owned before the main acknowledgement");
-        require(removeEffectsAfter - removeEffectsBefore == 0,
+        require(attemptsAfterFlush - attemptsBefore == 0
+            && effectsAfterFlush - effectsBefore == 0,
             "no native removal happened before the flush");
         require(flagInside[0], "the caller's own interrupt flag is preserved");
         require(callerError[0] instanceof InterruptedException,
             "the original interruption is retained");
         require(idle, "the main thread reached idle");
         require(pendingAfterIdle == 0, "the inert acknowledgement retires the item");
-        require(removeEffectsFinal - removeEffectsBefore >= 1,
-            "the real retry actually reaches the native removal");
+        require(attemptsAfterRetry - attemptsBefore == 1
+            && effectsAfterRetry - effectsBefore == 1,
+            "the real retry makes exactly one native removal attempt and effect");
+        require(nativeAfterRetry == 0, "the retry leaves the native observer registry empty");
+        require(retry.optBoolean("closed"), "the later real retry genuinely closes");
         require(pendingOwnedWork() == 0, "the owned work is empty after the retry");
         require(GuardedReaderApplication.captureFailed(),
             "the interruption visibly fails the capture");
@@ -5016,6 +5042,542 @@ public final class GuardedReaderApplicationTest {
             "the original event validity is preserved");
         require(GuardedReaderApplication.captureFailed(),
             "the capture failure stays sticky");
+    }
+
+    // --- A5 repair: stale close, isolated interruptions, late error, errors ---
+
+    /**
+     * A delayed end for observation A must never remove or validate B. The
+     * first A close really acknowledges; B is begun while the older A post is
+     * held before its actual enqueue; the stale A post is then released and must
+     * refuse without touching B's tuple or terminal. B still receives its own
+     * typed event on MAIN and closes with B facts.
+     */
+    private static void a5RepairStaleObservationClose(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/A", "http://book/A/c1");
+        deliver("http://book/A", "http://book/A/c1");
+        java.util.concurrent.CountDownLatch[] nativeHold =
+            a5NativeHold(observable, "removeEntered", "removeHeld");
+        final JSONObject[] answers = {null, null};
+        final Throwable[] errors = {null, null};
+        Thread first = new Thread(() -> {
+            try {
+                answers[0] = GuardedReaderApplication.endSaveObservation(0);
+            } catch (Throwable error) {
+                errors[0] = error;
+            }
+        }, "a5-repair-first-close-A");
+        first.start();
+        boolean nativeEntered;
+        boolean postEnteredOk;
+        boolean firstJoined;
+        boolean staleJoined;
+        boolean idle;
+        JSONObject beforeB;
+        JSONObject afterStale;
+        JSONObject staleAnswer;
+        JSONObject second;
+        JSONObject closure;
+        int attemptsAfterStale;
+        int effectsAfterStale;
+        int nativeAfterStale;
+        int attemptsAfterB;
+        int effectsAfterB;
+        int nativeAfterB;
+        java.util.concurrent.CountDownLatch postEntered =
+            new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch postHeld =
+            new java.util.concurrent.CountDownLatch(1);
+        Thread stale = null;
+        try {
+            nativeEntered = nativeHold[0].await(5000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            // The one-shot actual Handler.post entry hold: the older A close has
+            // entered the external post but has not been enqueued yet.
+            android.os.Handler.postEntered = postEntered;
+            android.os.Handler.postHeld = postHeld;
+            stale = new Thread(() -> {
+                try {
+                    answers[1] = GuardedReaderApplication.endSaveObservation(0);
+                } catch (Throwable error) {
+                    errors[1] = error;
+                }
+            }, "a5-repair-stale-close-A");
+            stale.start();
+            postEnteredOk = postEntered.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            nativeHold[1].countDown();
+            firstJoined = a5JoinBounded(first, 10000);
+            // A is genuinely closed; B begins normally while the older A post is
+            // still held before the queue.
+            GuardedReaderApplication.beginSaveObservation("http://book/B", "http://book/B/c1");
+            beforeB = GuardedReaderApplication.captureReceipt();
+            postHeld.countDown();
+            staleJoined = a5JoinBounded(stale, 10000);
+            idle = android.os.Handler.awaitIdle(10000);
+            afterStale = GuardedReaderApplication.captureReceipt();
+            staleAnswer = answers[1];
+            attemptsAfterStale = a5NativeObserverAttempts(observable);
+            effectsAfterStale = a5NativeObserverEffects(observable);
+            nativeAfterStale = a5NativeObserverCount(observable);
+            // B receives its OWN typed event on MAIN and closes with B facts.
+            deliver("http://book/B", "http://book/B/c1");
+            second = GuardedReaderApplication.endSaveObservation(0);
+            attemptsAfterB = a5NativeObserverAttempts(observable);
+            effectsAfterB = a5NativeObserverEffects(observable);
+            nativeAfterB = a5NativeObserverCount(observable);
+            closure = GuardedReaderApplication.releaseProcessResources();
+        } finally {
+            nativeHold[1].countDown();
+            a5NativeClearHold(observable, "removeEntered", "removeHeld");
+            android.os.Handler.postEntered = null;
+            android.os.Handler.postHeld = null;
+            postHeld.countDown();
+            first.join(40000);
+            if (stale != null) stale.join(40000);
+            android.os.Handler.awaitIdle(10000);
+        }
+        result.put("nativeEntered", nativeEntered).put("postEntered", postEnteredOk)
+            .put("firstJoined", firstJoined).put("staleJoined", staleJoined)
+            .put("idle", idle)
+            .put("firstError", errors[0] == null ? "none"
+                : FieldOracleFreeChain.describe(errors[0]))
+            .put("staleError", errors[1] == null ? "none"
+                : FieldOracleFreeChain.describe(errors[1]))
+            .put("firstA", answers[0]).put("staleA", staleAnswer)
+            .put("beforeB", beforeB).put("afterStaleA", afterStale)
+            .put("attemptsAfterStale", attemptsAfterStale)
+            .put("effectsAfterStale", effectsAfterStale)
+            .put("nativeAfterStale", nativeAfterStale)
+            .put("secondB", second)
+            .put("attemptsAfterB", attemptsAfterB)
+            .put("effectsAfterB", effectsAfterB)
+            .put("nativeAfterB", nativeAfterB)
+            .put("closure", closure)
+            .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(nativeEntered, "the first A removal was genuinely inside Native");
+        require(postEnteredOk, "the stale A close was held inside the actual post");
+        require(firstJoined, "the first A close terminated");
+        require(staleJoined, "the stale A close terminated");
+        require(idle, "the actual MAIN work finished");
+        require(errors[0] == null, "the first A close did not throw");
+        require(errors[1] == null, "the stale A close was refused, not thrown");
+        require(answers[0] != null && answers[0].optInt("events") == 1
+            && !answers[0].optBoolean("failed")
+            && answers[0].getJSONObject("removal").optBoolean("removed"),
+            "the first A close is a genuine valid acknowledgement");
+        require(beforeB.optBoolean("observing") && beforeB.optInt("saveEvents") == 0
+            && !beforeB.optBoolean("captureFailed"),
+            "B is genuinely observed with no own event before the stale post");
+        require(staleAnswer != null && staleAnswer.optBoolean("alreadyClosed")
+            && !staleAnswer.optBoolean("removed")
+            && "stale-observation".equals(staleAnswer.optString("reason")),
+            "the stale A close is refused without inventing a removal");
+        require(afterStale.optBoolean("observing") && afterStale.optInt("saveEvents") == 0
+            && !afterStale.optBoolean("captureFailed"),
+            "the stale A close did not touch B's observation or invent a B event");
+        require(attemptsAfterStale == 1 && effectsAfterStale == 1 && nativeAfterStale == 1,
+            "the stale A close made no native removal against B");
+        require(second.optInt("events") == 1 && !second.optBoolean("failed")
+            && second.getJSONObject("removal").optBoolean("removed"),
+            "B closes with its own genuine valid facts");
+        require("http://book/B".equals(second.getJSONObject("lastEvent").optString("bookUrl")),
+            "B's terminal carries B's own event, never A's");
+        require(attemptsAfterB == 2 && effectsAfterB == 2 && nativeAfterB == 0,
+            "B's close is the second real attempt and effect");
+        require(closure.optBoolean("closed"), "the later real release closes");
+        require(!GuardedReaderApplication.captureFailed(),
+            "the refused stale close does not fail the healthy capture");
+    }
+
+    /**
+     * A clean entry-only interruption with all three real resource domains and
+     * a valid typed event: the incoming flag is consumed for best effort and
+     * restored, but it neither records nor clears a healthy capture failure.
+     */
+    private static void a5RepairEntryOnlyInterrupt(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        JSONObject prestate = GuardedReaderApplication.captureReceipt();
+        final JSONObject[] receipt = {null};
+        final Throwable[] error = {null};
+        final boolean[] flagAfter = {false};
+        Thread release = new Thread(() -> {
+            Thread.currentThread().interrupt();
+            try {
+                receipt[0] = GuardedReaderApplication.releaseProcessResources();
+                flagAfter[0] = Thread.currentThread().isInterrupted();
+            } catch (Throwable thrown) {
+                error[0] = thrown;
+            }
+        }, "a5-repair-entry-only-interrupt");
+        release.start();
+        boolean joined = a5JoinBounded(release, 30000);
+        JSONObject releaseReceipt = receipt[0];
+        JSONObject after = GuardedReaderApplication.captureReceipt();
+        int attempts = a5NativeObserverAttempts(observable);
+        int effects = a5NativeObserverEffects(observable);
+        int nativeObservers = a5NativeObserverCount(observable);
+        result.put("preEvents", prestate.optInt("saveEvents"))
+            .put("preCaptureFailed", prestate.optBoolean("captureFailed"))
+            .put("joined", joined)
+            .put("error", error[0] == null ? "none"
+                : FieldOracleFreeChain.describe(error[0]))
+            .put("release", releaseReceipt).put("flagAfter", flagAfter[0])
+            .put("attempts", attempts).put("effects", effects)
+            .put("nativeObservers", nativeObservers)
+            .put("nativeReceivers", app.nativeReceivers.size())
+            .put("nativeCallbacks", app.nativeCallbacks.size())
+            .put("captureFailedAfter", after.optBoolean("captureFailed"))
+            .put("failures", after.getJSONArray("failures").toString());
+        require(prestate.optInt("saveEvents") == 1
+            && !prestate.optBoolean("captureFailed"),
+            "the entry-only schedule starts from a healthy known capture");
+        require(joined, "the entry-interrupted cleanup terminated");
+        require(error[0] == null, "the entry-only cleanup itself did not throw");
+        require(releaseReceipt != null && releaseReceipt.optBoolean("closed"),
+            "a clean entry-only interruption still closes all three domains");
+        require(flagAfter[0], "the incoming interrupt flag is restored after cleanup");
+        require(!GuardedReaderApplication.captureFailed(),
+            "an incoming flag alone does not fail a healthy capture");
+        require(after.getJSONArray("failures").length() == 0,
+            "an incoming flag alone records no failure");
+        require(attempts == 1 && effects == 1 && nativeObservers == 0,
+            "the observer is removed by one real attempt and effect");
+        require(app.nativeReceivers.isEmpty() && app.nativeCallbacks.isEmpty(),
+            "the receiver and lifecycle domains are genuinely empty");
+        JSONObject observerClose = releaseReceipt.optJSONObject("observerClose");
+        JSONObject removal = observerClose == null ? null
+            : observerClose.optJSONObject("removal");
+        require(removal != null && removal.optBoolean("removed"),
+            "the observer close carries its genuine removal acknowledgement");
+    }
+
+    /**
+     * An initially-clear-flag interruption during cleanup stays visible: the
+     * observer removal is uncertain, the later domains still clean, the late
+     * ACK finalizes the valid terminal, and the real retry closes.
+     */
+    private static void a5RepairMidOnlyInterrupt(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver receiver = newReceiver();
+        app.registerReceiver(receiver, new IntentFilter(ACTION), 2);
+        Object callback = approvedCallback();
+        app.registerActivityLifecycleCallbacks(
+            (Application.ActivityLifecycleCallbacks) callback);
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        java.util.concurrent.CountDownLatch[] hold =
+            a5NativeHold(observable, "removeEntered", "removeHeld");
+        final JSONObject[] receipt = {null};
+        final Throwable[] error = {null};
+        final boolean[] flagAfter = {false};
+        Thread release = new Thread(() -> {
+            try {
+                receipt[0] = GuardedReaderApplication.releaseProcessResources();
+                flagAfter[0] = Thread.currentThread().isInterrupted();
+            } catch (Throwable thrown) {
+                error[0] = thrown;
+            }
+        }, "a5-repair-mid-only-interrupt");
+        release.start();
+        boolean entered;
+        boolean joined;
+        JSONObject releaseReceipt;
+        int attemptsDuring;
+        int effectsDuring;
+        int nativeReceiversDuring;
+        int nativeCallbacksDuring;
+        boolean idle;
+        int attemptsAfter;
+        int effectsAfter;
+        int nativeAfter;
+        JSONObject repeat;
+        JSONObject retry;
+        try {
+            entered = hold[0].await(10000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            // The flag is initially clear; the interrupt arrives during cleanup.
+            release.interrupt();
+            joined = a5JoinBounded(release, 20000);
+            releaseReceipt = receipt[0];
+            attemptsDuring = a5NativeObserverAttempts(observable);
+            effectsDuring = a5NativeObserverEffects(observable);
+            nativeReceiversDuring = app.nativeReceivers.size();
+            nativeCallbacksDuring = app.nativeCallbacks.size();
+            hold[1].countDown();
+            a5NativeClearHold(observable, "removeEntered", "removeHeld");
+            idle = android.os.Handler.awaitIdle(10000);
+            attemptsAfter = a5NativeObserverAttempts(observable);
+            effectsAfter = a5NativeObserverEffects(observable);
+            nativeAfter = a5NativeObserverCount(observable);
+            repeat = GuardedReaderApplication.endSaveObservation(0);
+            retry = GuardedReaderApplication.releaseProcessResources();
+        } finally {
+            hold[1].countDown();
+            a5NativeClearHold(observable, "removeEntered", "removeHeld");
+            release.join(40000);
+            android.os.Handler.awaitIdle(10000);
+        }
+        String removalFailures = releaseReceipt == null ? ""
+            : releaseReceipt.optJSONArray("removalFailures").toString();
+        String captureFailures = GuardedReaderApplication.captureReceipt()
+            .getJSONArray("failures").toString();
+        result.put("entered", entered).put("joined", joined)
+            .put("error", error[0] == null ? "none"
+                : FieldOracleFreeChain.describe(error[0]))
+            .put("release", releaseReceipt).put("flagAfter", flagAfter[0])
+            .put("attemptsDuring", attemptsDuring)
+            .put("effectsDuring", effectsDuring)
+            .put("nativeReceiversDuring", nativeReceiversDuring)
+            .put("nativeCallbacksDuring", nativeCallbacksDuring)
+            .put("idle", idle).put("attemptsAfter", attemptsAfter)
+            .put("effectsAfter", effectsAfter).put("nativeAfter", nativeAfter)
+            .put("repeat", repeat).put("retryClosed", retry.optBoolean("closed"))
+            .put("removalFailures", removalFailures)
+            .put("captureFailures", captureFailures)
+            .put("captureFailed", GuardedReaderApplication.captureFailed());
+        require(entered, "the observer removal was genuinely held inside Native");
+        require(joined, "the mid-cleanup-interrupted cleanup terminated");
+        require(error[0] == null, "the cleanup records the interruption, it does not throw");
+        require(releaseReceipt != null && !releaseReceipt.optBoolean("closed"),
+            "a mid-cleanup interruption is not reported as closure");
+        require(removalFailures.contains("InterruptedException"),
+            "the observer removal records the actual mid-cleanup interruption");
+        require(captureFailures.contains("interrupted waiting for main-thread work"),
+            "the mid-cleanup interruption is recorded as a capture failure");
+        require(GuardedReaderApplication.captureFailed(),
+            "the mid-cleanup interruption fails the capture");
+        require(flagAfter[0], "the mid-cleanup interrupt remains visible");
+        require(attemptsDuring == 1 && effectsDuring == 0,
+            "the held removal made one attempt and no effect");
+        require(nativeReceiversDuring == 0 && nativeCallbacksDuring == 0,
+            "the later receiver and lifecycle domains still cleaned");
+        require(idle, "the real removal body finished on MAIN");
+        require(attemptsAfter == 1 && effectsAfter == 1 && nativeAfter == 0,
+            "the late ACK is exactly one attempt and one effect");
+        require(repeat.optBoolean("alreadyClosed") && repeat.optBoolean("removed")
+            && repeat.optInt("events") == 1 && !repeat.optBoolean("failed"),
+            "the late ACK finalizes the valid terminal");
+        require(retry.optBoolean("closed"), "the later real retry closes");
+    }
+
+    /**
+     * An after-effect observer throw after the waiter departed keeps the full
+     * original graph and the exact uncertainty even though the native observer
+     * registry is already empty; only the genuine second absent-return ACK is a
+     * success.
+     */
+    private static void a5RepairObserverAfterEffectLateError(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        Object observable = liveObservableForTest();
+        GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        deliver("http://book/1", "http://book/1/c1");
+        java.util.concurrent.CountDownLatch[] hold =
+            a5NativeHold(observable, "removeAfterEntered", "removeAfterHeld");
+        final Throwable[] callerError = {null};
+        Thread caller = new Thread(() -> {
+            try {
+                GuardedReaderApplication.endSaveObservation(0);
+            } catch (Throwable error) {
+                callerError[0] = error;
+            }
+        }, "a5-repair-observer-after-effect-late-error");
+        caller.start();
+        boolean entered;
+        boolean joined;
+        int attemptsAtHold;
+        int effectsAtHold;
+        int nativeAtHold;
+        boolean idle;
+        String failures;
+        JSONObject afterError;
+        int attemptsAfterError;
+        int effectsAfterError;
+        int nativeAfterError;
+        JSONObject retry;
+        int attemptsAfterRetry;
+        int effectsAfterRetry;
+        int nativeAfterRetry;
+        JSONObject release;
+        try {
+            entered = hold[0].await(5000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            attemptsAtHold = a5NativeObserverAttempts(observable);
+            effectsAtHold = a5NativeObserverEffects(observable);
+            nativeAtHold = a5NativeObserverCount(observable);
+            // The waiter departs before the after-effect throw.
+            caller.interrupt();
+            joined = a5JoinBounded(caller, 10000);
+            RuntimeException original = new IllegalStateException("A5_AFTER_EFFECT_ERROR",
+                new IllegalArgumentException("A5_AFTER_EFFECT_NESTED"));
+            original.addSuppressed(new IllegalStateException("A5_AFTER_EFFECT_SUPPRESSED"));
+            setObservableField(observable, "observerRemoveAfterEffect", original);
+            hold[1].countDown();
+            a5NativeClearHold(observable, "removeAfterEntered", "removeAfterHeld");
+            idle = android.os.Handler.awaitIdle(10000);
+            failures = GuardedReaderApplication.captureReceipt()
+                .getJSONArray("failures").toString();
+            afterError = GuardedReaderApplication.captureReceipt();
+            attemptsAfterError = a5NativeObserverAttempts(observable);
+            effectsAfterError = a5NativeObserverEffects(observable);
+            nativeAfterError = a5NativeObserverCount(observable);
+            setObservableField(observable, "observerRemoveAfterEffect", null);
+            retry = GuardedReaderApplication.endSaveObservation(0);
+            attemptsAfterRetry = a5NativeObserverAttempts(observable);
+            effectsAfterRetry = a5NativeObserverEffects(observable);
+            nativeAfterRetry = a5NativeObserverCount(observable);
+            release = GuardedReaderApplication.releaseProcessResources();
+        } finally {
+            hold[1].countDown();
+            a5NativeClearHold(observable, "removeAfterEntered", "removeAfterHeld");
+            setObservableField(observable, "observerRemoveAfterEffect", null);
+            caller.join(40000);
+            android.os.Handler.awaitIdle(10000);
+        }
+        result.put("entered", entered).put("joined", joined)
+            .put("callerError", callerError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(callerError[0]))
+            .put("attemptsAtHold", attemptsAtHold)
+            .put("effectsAtHold", effectsAtHold).put("nativeAtHold", nativeAtHold)
+            .put("idle", idle).put("failures", failures)
+            .put("observingAfterError", afterError.optBoolean("observing"))
+            .put("observerClosedAfterError", afterError.optBoolean("observerClosed"))
+            .put("attemptsAfterError", attemptsAfterError)
+            .put("effectsAfterError", effectsAfterError)
+            .put("nativeAfterError", nativeAfterError)
+            .put("retry", retry).put("attemptsAfterRetry", attemptsAfterRetry)
+            .put("effectsAfterRetry", effectsAfterRetry)
+            .put("nativeAfterRetry", nativeAfterRetry)
+            .put("releaseClosed", release.optBoolean("closed"));
+        require(entered, "the real removal body was genuinely held after its effect");
+        require(attemptsAtHold == 1 && effectsAtHold == 1 && nativeAtHold == 0,
+            "the held removal already effected once and the native observer is gone");
+        require(joined, "the interrupted waiter exited before the after-effect throw");
+        require(callerError[0] instanceof InterruptedException,
+            "the departed waiter keeps its own interruption");
+        require(failures.contains("A5_AFTER_EFFECT_ERROR")
+            && failures.contains("A5_AFTER_EFFECT_NESTED")
+            && failures.contains("A5_AFTER_EFFECT_SUPPRESSED"),
+            "the late after-effect primary, nested and suppressed graph is retained");
+        require(afterError.optBoolean("observing")
+            && !afterError.optBoolean("observerClosed"),
+            "the failed after-effect removal keeps the exact uncertainty and no false closure");
+        require(attemptsAfterError == 1 && effectsAfterError == 1 && nativeAfterError == 0,
+            "the uncertainty is retained even though the native registry is empty");
+        require(retry.getJSONObject("removal").optBoolean("removed"),
+            "the retry returns a genuine absent-return ACK");
+        require(retry.optInt("events") == 1 && !retry.optBoolean("failed"),
+            "the retry carries the correct case proof");
+        require(attemptsAfterRetry == 2 && effectsAfterRetry == 1 && nativeAfterRetry == 0,
+            "the ACK is a second real attempt with no second effect");
+        require(release.optBoolean("closed"), "the later real release closes");
+    }
+
+    /**
+     * Bounded simultaneous public error producers: every required record is
+     * retained, and a concurrent receipt snapshot never observes a torn array.
+     */
+    private static void a5RepairConcurrentErrorRetention(JSONObject result) throws Exception {
+        GuardedReaderApplication app = armedApp();
+        int producers = 12;
+        int perProducer = 25;
+        int total = producers * perProducer;
+        final java.util.concurrent.CountDownLatch start =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicBoolean stop =
+            new java.util.concurrent.atomic.AtomicBoolean();
+        final java.util.concurrent.atomic.AtomicReference<Throwable> readerError =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        Thread reader = new Thread(() -> {
+            try {
+                start.await();
+                while (!stop.get()) {
+                    JSONObject snapshot = GuardedReaderApplication.captureReceipt();
+                    int failures = snapshot.getJSONArray("failures").length();
+                    if (failures < 0 || failures > total) {
+                        throw new AssertionError("torn failure snapshot: " + failures);
+                    }
+                    Thread.yield();
+                }
+            } catch (Throwable error) {
+                readerError.set(error);
+            }
+        }, "a5-repair-error-reader");
+        reader.start();
+        Thread[] workers = new Thread[producers];
+        final java.util.concurrent.atomic.AtomicReference<Throwable> producerError =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        for (int i = 0; i < producers; i++) {
+            final boolean receiver = i % 2 == 0;
+            workers[i] = new Thread(() -> {
+                try {
+                    start.await();
+                    for (int n = 0; n < perProducer; n++) {
+                        try {
+                            if (receiver) {
+                                app.unregisterReceiver(new ForeignReceiver());
+                            } else {
+                                app.unregisterActivityLifecycleCallbacks(new ForeignLifecycle());
+                            }
+                        } catch (SecurityException expected) {
+                            // The public refusal is the required error record.
+                        }
+                    }
+                } catch (Throwable error) {
+                    producerError.compareAndSet(null, error);
+                }
+            }, "a5-repair-error-producer-" + i);
+            workers[i].start();
+        }
+        start.countDown();
+        for (Thread worker : workers) worker.join(30000);
+        stop.set(true);
+        reader.join(30000);
+        JSONObject receipt = GuardedReaderApplication.captureReceipt();
+        org.json.JSONArray failures = receipt.getJSONArray("failures");
+        int receiverFailures = 0;
+        int lifecycleFailures = 0;
+        for (int i = 0; i < failures.length(); i++) {
+            String failure = failures.getString(i);
+            if (failure.startsWith("unregister of a receiver the guard does not own")) {
+                receiverFailures++;
+            } else if (failure.startsWith(
+                    "unregister of a lifecycle callback the guard does not own")) {
+                lifecycleFailures++;
+            }
+        }
+        result.put("total", total).put("retained", failures.length())
+            .put("receiverFailures", receiverFailures)
+            .put("lifecycleFailures", lifecycleFailures)
+            .put("foreignUnregistrations", receipt.optInt("foreignUnregistrations"))
+            .put("readerError", readerError.get() == null ? "none"
+                : FieldOracleFreeChain.describe(readerError.get()))
+            .put("producerError", producerError.get() == null ? "none"
+                : FieldOracleFreeChain.describe(producerError.get()))
+            .put("captureFailed", receipt.optBoolean("captureFailed"));
+        for (Thread worker : workers) {
+            require(!worker.isAlive(), "every public error producer terminated");
+        }
+        require(!reader.isAlive(), "the concurrent receipt reader terminated");
+        require(producerError.get() == null,
+            "no producer failed outside the intended public refusal");
+        require(readerError.get() == null,
+            "no concurrent receipt snapshot observed a torn failure array");
+        require(failures.length() == total,
+            "every required public error record is retained");
+        require(receiverFailures == total / 2 && lifecycleFailures == total / 2,
+            "both required error families are fully retained");
+        require(receipt.optInt("foreignUnregistrations") == total,
+            "every refused unregistration is counted");
+        require(receipt.optBoolean("captureFailed"),
+            "the public errors fail the capture");
     }
 
     /** Bounded join that surfaces the real liveness result. */

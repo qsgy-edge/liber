@@ -343,10 +343,14 @@ public final class GuardedReaderApplication extends Application {
 
     private static void fail(String reason) {
         captureFailed = true;
-        try {
-            guardFailures.put(reason);
-        } catch (Throwable ignored) {
-            // The flag already records it.
+        // The shared diagnostic array is written under the same lock its
+        // snapshots use, so concurrent producers cannot lose a record.
+        synchronized (lock) {
+            try {
+                guardFailures.put(reason);
+            } catch (Throwable ignored) {
+                // The flag already records it.
+            }
         }
     }
 
@@ -531,11 +535,11 @@ public final class GuardedReaderApplication extends Application {
                         synchronized (lock) {
                             ownedReceivers.remove(wrapper);
                             wrappers.values().remove(wrapper);
-                        }
-                        try {
-                            receiverUnregistrations.put(wrapper.getClass().getName());
-                        } catch (Throwable ignored) {
-                            // The successful platform return already happened.
+                            try {
+                                receiverUnregistrations.put(wrapper.getClass().getName());
+                            } catch (Throwable ignored) {
+                                // The successful platform return already happened.
+                            }
                         }
                     });
                 removedReceivers++;
@@ -566,11 +570,11 @@ public final class GuardedReaderApplication extends Application {
                     () -> {
                         synchronized (lock) {
                             ownedCallbacks.remove(callback);
-                        }
-                        try {
-                            lifecycleUnregistrations.put(callback.getClass().getName());
-                        } catch (Throwable ignored) {
-                            // The successful platform return already happened.
+                            try {
+                                lifecycleUnregistrations.put(callback.getClass().getName());
+                            } catch (Throwable ignored) {
+                                // The successful platform return already happened.
+                            }
                         }
                     });
                 removedCallbacks++;
@@ -706,21 +710,21 @@ public final class GuardedReaderApplication extends Application {
             }
             try {
                 observe.invoke(observable, observer);
+                // The reservation covers the returned metadata bookkeeping too, so
+                // a completed acquisition receipt cannot precede its own facts.
+                return new JSONObject()
+                    .put("tag", SAVE_CONTENT_TAG)
+                    .put("interface", OBSERVABLE_INTERFACE)
+                    .put("declaringClass", observe.getDeclaringClass().getName())
+                    .put("onMain", Looper.myLooper() == Looper.getMainLooper())
+                    .put("registered", true);
             } catch (Throwable error) {
                 fail("observer registration failed: " + stackTraceOf(error));
                 throw error instanceof Exception ? (Exception) error
                     : new IllegalStateException(error);
             } finally {
-                synchronized (lock) {
-                    nativeCalls.remove(observer);
-                }
+                releaseNativeCall(observer);
             }
-            return new JSONObject()
-                .put("tag", SAVE_CONTENT_TAG)
-                .put("interface", OBSERVABLE_INTERFACE)
-                .put("declaringClass", observe.getDeclaringClass().getName())
-                .put("onMain", Looper.myLooper() == Looper.getMainLooper())
-                .put("registered", true);
         });
     }
 
@@ -740,12 +744,17 @@ public final class GuardedReaderApplication extends Application {
     }
 
     private JSONObject closeObserver(long timeoutMillis) throws Exception {
-        final Observation observation = current;
-        if (observerClosed && !observing) {
-            // A repeat returns the frozen terminal snapshot of the first close.
-            // Only an acknowledged actual removal can be an idempotent success; a
-            // never-registered close stays a failed non-removal on every repeat.
-            return closedTerminal();
+        final Observation observation;
+        synchronized (lock) {
+            // The captured observation, the closed flags and the corresponding
+            // terminal are read under the same lock the writer publishes them.
+            observation = current;
+            if (observerClosed && !observing) {
+                // A repeat returns the frozen terminal snapshot of the first
+                // close. Only an acknowledged actual removal can be an idempotent
+                // success; a never-registered close stays a failed non-removal.
+                return closedTerminal();
+            }
         }
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while ((observation == null || observation.events.get() == 0)
@@ -765,6 +774,11 @@ public final class GuardedReaderApplication extends Application {
             final Object observer;
             final Method remove;
             synchronized (lock) {
+                if (current != observation) {
+                    // A stale end must never act on the next case's tuple: the
+                    // captured observation is the only case this call may close.
+                    return staleObservationRefusal();
+                }
                 if (observerClosed && !observing) {
                     // Another caller already acknowledged this removal: no second
                     // native call, and the frozen terminal is the honest answer.
@@ -823,34 +837,46 @@ public final class GuardedReaderApplication extends Application {
     }
 
     /**
+     * The honest answer for an end whose captured observation is no longer the
+     * live one. It touches neither the next case's tuple nor the cached terminal.
+     */
+    private static JSONObject staleObservationRefusal() throws Exception {
+        return new JSONObject().put("alreadyClosed", true).put("removed", false)
+            .put("reason", "stale-observation").put("failed", true);
+    }
+
+    /**
      * The frozen terminal of an acknowledged close, as a fresh deep copy.
      *
      * <p>Only an acknowledged actual removal can be an idempotent success; a
-     * never-registered close stays a failed non-removal on every repeat.
+     * never-registered close stays a failed non-removal on every repeat. The
+     * terminal is read under the same lock that publishes it with its flags.
      */
     private static JSONObject closedTerminal() throws Exception {
-        JSONObject result = new JSONObject();
-        JSONObject terminal = lastTerminal;
-        if (terminal == null) {
-            return result.put("alreadyClosed", true).put("removed", false)
-                .put("reason", "never-registered").put("failed", true);
+        synchronized (lock) {
+            JSONObject result = new JSONObject();
+            JSONObject terminal = lastTerminal;
+            if (terminal == null) {
+                return result.put("alreadyClosed", true).put("removed", false)
+                    .put("reason", "never-registered").put("failed", true);
+            }
+            result.put("alreadyClosed", true);
+            // A deep copy, so a caller editing any returned root or nested object
+            // cannot mutate the cached first-close facts.
+            JSONObject copy = new JSONObject(terminal.toString());
+            java.util.Iterator<String> names = copy.keys();
+            while (names.hasNext()) {
+                String name = names.next();
+                result.put(name, copy.get(name));
+            }
+            // The top-level acknowledgement mirrors the actual removal that was
+            // really observed on the first close, never an invented one.
+            JSONObject recorded = terminal.optJSONObject("removal");
+            boolean acknowledged = recorded != null && recorded.optBoolean("removed");
+            result.put("removed", acknowledged);
+            if (!acknowledged) result.put("failed", true);
+            return result;
         }
-        result.put("alreadyClosed", true);
-        // A deep copy, so a caller editing any returned root or nested object
-        // cannot mutate the cached first-close facts.
-        JSONObject copy = new JSONObject(terminal.toString());
-        java.util.Iterator<String> names = copy.keys();
-        while (names.hasNext()) {
-            String name = names.next();
-            result.put(name, copy.get(name));
-        }
-        // The top-level acknowledgement mirrors the actual removal that was
-        // really observed on the first close, never an invented one.
-        JSONObject recorded = terminal.optJSONObject("removal");
-        boolean acknowledged = recorded != null && recorded.optBoolean("removed");
-        result.put("removed", acknowledged);
-        if (!acknowledged) result.put("failed", true);
-        return result;
     }
 
     /**
@@ -1189,6 +1215,15 @@ public final class GuardedReaderApplication extends Application {
                 fail("duplicate registration of the same receiver");
                 throw new SecurityException("guarded capture refused a duplicate registration");
             }
+            // Refuse a busy exact handle atomically BEFORE inserting ownership:
+            // an old removal's acknowledgement may have released ownership while
+            // its reservation is still executing, and a false reservation add
+            // would let that old caller erase the new acquisition's busy fact.
+            if (nativeCalls.contains(wrapper)) {
+                fail("receiver registration while its native call is still in flight");
+                throw new SecurityException(
+                    "guarded capture refuses a registration while a native call is in flight");
+            }
             // Reserve the exact native mapping and owned wrapper BEFORE the
             // effect, so a throwing platform call cannot lose the handle.
             wrappers.put(receiver, wrapper);
@@ -1197,34 +1232,36 @@ public final class GuardedReaderApplication extends Application {
             // insertion, so no removal can slip into a gap between them.
             nativeCalls.add(wrapper);
         }
-        Intent sticky;
         try {
-            sticky = super.registerReceiver(wrapper, filter, flags);
-        } catch (Throwable error) {
-            // The handle stays owned: the platform may have registered it.
-            fail("registration failed: " + stackTraceOf(error));
-            throw error instanceof SecurityException ? (SecurityException) error
-                : new SecurityException("guarded registration failed: " + error, error);
-        } finally {
-            synchronized (lock) {
-                nativeCalls.remove(wrapper);
-            }
-        }
-        successfulRegistrations.incrementAndGet();
-        synchronized (lock) {
+            Intent sticky;
             try {
-                receiverRegistrations.put(new JSONObject()
-                    .put("overload", overload)
-                    .put("nativeClass", receiver.getClass().getName())
-                    .put("wrapperClass", wrapper.getClass().getName())
-                    .put("flags", flags)
-                    .put("actions", actionsOf(filter))
-                    .put("registered", true));
-            } catch (Throwable ignored) {
-                // The successful platform return already happened.
+                sticky = super.registerReceiver(wrapper, filter, flags);
+            } catch (Throwable error) {
+                // The handle stays owned: the platform may have registered it.
+                fail("registration failed: " + stackTraceOf(error));
+                throw error instanceof SecurityException ? (SecurityException) error
+                    : new SecurityException("guarded registration failed: " + error, error);
             }
+            // The reservation covers the success counter and receipt bookkeeping,
+            // so a completed receipt can never be observed before its facts.
+            successfulRegistrations.incrementAndGet();
+            synchronized (lock) {
+                try {
+                    receiverRegistrations.put(new JSONObject()
+                        .put("overload", overload)
+                        .put("nativeClass", receiver.getClass().getName())
+                        .put("wrapperClass", wrapper.getClass().getName())
+                        .put("flags", flags)
+                        .put("actions", actionsOf(filter))
+                        .put("registered", true));
+                } catch (Throwable ignored) {
+                    // The successful platform return already happened.
+                }
+            }
+            return sticky;
+        } finally {
+            releaseNativeCall(wrapper);
         }
-        return sticky;
     }
 
     /** The exact registration this capture allows, or the reason it is refused. */
@@ -1329,17 +1366,17 @@ public final class GuardedReaderApplication extends Application {
             performReservedRemoval(wrapper,
                 () -> superUnregisterReceiver(wrapper),
                 () -> {
-                    // The owned ledger is cleared while the call is still reserved,
-                    // so a concurrent removal cannot act on a just-acknowledged
-                    // handle.
+                    // The owned ledger and its receipt are written while the call
+                    // is still reserved, so a concurrent removal cannot act on a
+                    // just-acknowledged handle and the snapshot stays coherent.
                     synchronized (lock) {
                         wrappers.remove(receiver);
                         ownedReceivers.remove(wrapper);
-                    }
-                    try {
-                        receiverUnregistrations.put(wrapper.getClass().getName());
-                    } catch (Throwable ignored) {
-                        // The successful platform return already happened.
+                        try {
+                            receiverUnregistrations.put(wrapper.getClass().getName());
+                        } catch (Throwable ignored) {
+                            // The successful platform return already happened.
+                        }
                     }
                 });
         } catch (Throwable error) {
@@ -1385,28 +1422,39 @@ public final class GuardedReaderApplication extends Application {
                 fail("duplicate registration of the same lifecycle callback");
                 throw new SecurityException("guarded capture refused a duplicate lifecycle");
             }
+            // Refuse a busy exact handle atomically BEFORE inserting ownership:
+            // a removal acknowledgement clears ownership before its reservation
+            // is released, so reacquisition must not reuse that executing call.
+            if (nativeCalls.contains(callback)) {
+                fail("lifecycle registration while its native call is still in flight");
+                throw new SecurityException(
+                    "guarded capture refuses a registration while a native call is in flight");
+            }
             ownedCallbacks.add(callback);
             // Same lock as the ownership insertion: no removal can interleave.
             nativeCalls.add(callback);
         }
         try {
-            super.registerActivityLifecycleCallbacks(callback);
-        } catch (Throwable error) {
-            fail("lifecycle registration failed: " + stackTraceOf(error));
-            throw error instanceof SecurityException ? (SecurityException) error
-                : new SecurityException("guarded lifecycle registration failed: " + error, error);
-        } finally {
-            synchronized (lock) {
-                nativeCalls.remove(callback);
-            }
-        }
-        successfulRegistrations.incrementAndGet();
-        synchronized (lock) {
             try {
-                lifecycleRegistrations.put(callback.getClass().getName());
-            } catch (Throwable ignored) {
-                // The successful platform return already happened.
+                super.registerActivityLifecycleCallbacks(callback);
+            } catch (Throwable error) {
+                fail("lifecycle registration failed: " + stackTraceOf(error));
+                throw error instanceof SecurityException ? (SecurityException) error
+                    : new SecurityException(
+                        "guarded lifecycle registration failed: " + error, error);
             }
+            // The reservation covers the success counter and receipt bookkeeping,
+            // so a completed receipt can never be observed before its facts.
+            successfulRegistrations.incrementAndGet();
+            synchronized (lock) {
+                try {
+                    lifecycleRegistrations.put(callback.getClass().getName());
+                } catch (Throwable ignored) {
+                    // The successful platform return already happened.
+                }
+            }
+        } finally {
+            releaseNativeCall(callback);
         }
     }
 
@@ -1444,16 +1492,16 @@ public final class GuardedReaderApplication extends Application {
             performReservedRemoval(callback,
                 () -> superUnregisterCallbacks(callback),
                 () -> {
-                    // Ledger first, still reserved, so no concurrent removal can
-                    // act on a just-acknowledged handle.
+                    // Ledger and receipt first, still reserved, so no concurrent
+                    // removal can act on a just-acknowledged handle.
                     synchronized (lock) {
                         ownedCallbacks.remove(callback);
-                    }
-                    try {
-                        lifecycleUnregistrations.put(
-                            callback == null ? "null" : callback.getClass().getName());
-                    } catch (Throwable ignored) {
-                        // The successful platform return already happened.
+                        try {
+                            lifecycleUnregistrations.put(
+                                callback == null ? "null" : callback.getClass().getName());
+                        } catch (Throwable ignored) {
+                            // The successful platform return already happened.
+                        }
                     }
                 });
         } catch (Throwable error) {
