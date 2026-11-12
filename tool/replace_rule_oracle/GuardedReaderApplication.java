@@ -165,9 +165,18 @@ public final class GuardedReaderApplication extends Application {
             synchronized (this) {
                 if (state != QUEUED) return false;
                 state = ABANDONED;
+                return true;
             }
+        }
+
+        /**
+         * Retires an item the platform never accepted.
+         *
+         * <p>Only a known-not-posted item may retire without an observation or a
+         * cancellation acknowledgement; a generic abandonment may not.
+         */
+        void retireUnposted() {
             retire();
-            return true;
         }
 
         void run() {
@@ -186,6 +195,9 @@ public final class GuardedReaderApplication extends Application {
                 result = body.call();
             } catch (Throwable error) {
                 failure = error;
+                // The executing boundary records the complete original graph,
+                // even when the waiting caller has already exited.
+                fail("main-thread work failed: " + stackTraceOf(error));
             } finally {
                 synchronized (this) {
                     state = FINISHED;
@@ -403,6 +415,12 @@ public final class GuardedReaderApplication extends Application {
         for (BroadcastReceiver wrapper : receivers) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
+                if (nativeInFlight(wrapper)) {
+                    // The acquisition is still executing: an absent-native result
+                    // is not proof it went away.
+                    throw new IllegalStateException(
+                        "receiver acquisition still in flight at release");
+                }
                 exactOwner.superUnregisterReceiver(wrapper);
                 removedReceivers++;
                 synchronized (lock) {
@@ -421,6 +439,12 @@ public final class GuardedReaderApplication extends Application {
         for (ActivityLifecycleCallbacks callback : callbacks) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
+                if (nativeInFlight(callback)) {
+                    // A lifecycle absent-native no-op is a genuine ACK only for a
+                    // completed or uncertain acquisition, never for a running one.
+                    throw new IllegalStateException(
+                        "lifecycle acquisition still in flight at release");
+                }
                 exactOwner.superUnregisterCallbacks(callback);
                 removedCallbacks++;
                 synchronized (lock) {
@@ -542,14 +566,19 @@ public final class GuardedReaderApplication extends Application {
             Method remove = observableInterface.getMethod("removeObserver", observerInterface);
             Object observer = Proxy.newProxyInstance(loader,
                 new Class<?>[]{observerInterface}, new SaveEventHandler(observation, loader));
-            // The complete removal tuple is reserved BEFORE the effect, so a
-            // throwing observeForever cannot lose the handle it may have installed.
-            saveObservable = observable;
-            saveObserver = observer;
-            observeMethod = observe;
-            removeMethod = remove;
-            observing = true;
+            // The tuple reservation and the closing recheck share one lock
+            // boundary, so an already-started body cannot attach after closing.
             synchronized (lock) {
+                if (closing) {
+                    fail("observer registration after the process closing boundary");
+                    throw new SecurityException(
+                        "the capture guard lifetime is closed; no new observation is admitted");
+                }
+                saveObservable = observable;
+                saveObserver = observer;
+                observeMethod = observe;
+                removeMethod = remove;
+                observing = true;
                 acquiringNative.add(observer);
             }
             try {
@@ -825,7 +854,6 @@ public final class GuardedReaderApplication extends Application {
             // so it is visible while it runs and retires when it finishes.
             owned.run();
             if (owned.failure != null) {
-                fail("main-thread work failed: " + stackTraceOf(owned.failure));
                 throw owned.failure instanceof Exception
                     ? (Exception) owned.failure : new IllegalStateException(owned.failure);
             }
@@ -836,12 +864,14 @@ public final class GuardedReaderApplication extends Application {
             posted = new Handler(Looper.getMainLooper()).post(owned::run);
         } catch (Throwable error) {
             owned.abandon();
+            owned.retireUnposted();
             fail("the main looper rejected the work: " + stackTraceOf(error));
             throw error instanceof Exception ? (Exception) error
                 : new IllegalStateException(error);
         }
         if (!posted) {
             owned.abandon();
+            owned.retireUnposted();
             fail("the main looper refused the work");
             throw new IllegalStateException("the main looper refused the work");
         }
@@ -861,7 +891,6 @@ public final class GuardedReaderApplication extends Application {
             throw new IllegalStateException("main-thread work did not complete");
         }
         if (owned.failure != null) {
-            fail("main-thread work failed: " + stackTraceOf(owned.failure));
             throw owned.failure instanceof Exception
                 ? (Exception) owned.failure : new IllegalStateException(owned.failure);
         }

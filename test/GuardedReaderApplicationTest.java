@@ -2882,6 +2882,8 @@ public final class GuardedReaderApplicationTest {
             .put("captureFailed", GuardedReaderApplication.captureFailed());
         require(queued, "the work must be queued before the caller exits");
         require(pendingWhileHeld == 1, "the queued item is visible while pending");
+        require(pendingAfter == 0,
+            "the item retires only after the main observation acknowledges it");
         require(callerError[0] instanceof InterruptedException,
             "the caller observes its own interruption");
         require(app.receiverRegisterEffects == 0,
@@ -2994,7 +2996,7 @@ public final class GuardedReaderApplicationTest {
         first.start();
         boolean enteredOk;
         try {
-            enteredOk = entered.await(5000, java.util.concurrent.TimeUnit.SECONDS);
+            enteredOk = entered.await(5000, java.util.concurrent.TimeUnit.MILLISECONDS);
             JSONObject release1 = GuardedReaderApplication.releaseProcessResources();
             result.put("entered", enteredOk).put("firstClosed", release1.optBoolean("closed"))
                 .put("nativeEffectsWhileHeld", app.lifecycleRegisterEffects);
@@ -3022,6 +3024,9 @@ public final class GuardedReaderApplicationTest {
             .put("nativeAfter", app.nativeCallbacks.size());
         require(retry.optBoolean("closed"),
             "the later real retry closes once the acquisition is known");
+        require(app.nativeCallbacks.isEmpty(),
+            "the retry actually removes the native callback");
+        require(!ownedCallback(callback), "the retry clears the owned callback");
     }
 
     /** A marker alone never proves the queue drained. */
