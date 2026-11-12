@@ -5854,6 +5854,9 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'double-end-idempotent', 'release-closes-observer',
         'owner-not-overwritten', 'arm-rejects', 'foreign-event-fails',
         'abandoned-registration', 'two-saved-cases', 'wrong-loader-refused',
+        'a5-cancel-queued-acquire', 'a5-direct-main-tracked',
+        'a5-enqueue-refused', 'a5-body-error-retained',
+        'a5-many-cycles-retire', 'a5-native-inflight-lifecycle',
     )
 
     def _java_home(self):

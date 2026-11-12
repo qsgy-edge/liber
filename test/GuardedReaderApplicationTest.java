@@ -2855,59 +2855,129 @@ public final class GuardedReaderApplicationTest {
     /** A queued item abandoned by its caller never runs and retires itself. */
     private static void a5CancelQueuedAcquire(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
+        Object observable = liveObservableForTest();
         android.os.Handler.hold();
-        final boolean[] ran = {false};
         final Throwable[] callerError = {null};
+        final boolean[] flagInside = {false};
         Thread caller = new Thread(() -> {
             try {
                 GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
             } catch (Throwable error) {
                 callerError[0] = error;
+                flagInside[0] = Thread.currentThread().isInterrupted();
             }
         }, "a5-cancel-caller");
         caller.start();
         boolean queued = android.os.Handler.awaitQueued(5000);
-        int pendingWhileHeld = pendingOwnedWork();
         caller.interrupt();
         caller.join(10000);
+        // The caller has exited, but the main observation has not run yet.
+        int pendingAfterExit = pendingOwnedWork();
+        boolean aliveAfterExit = caller.isAlive();
+        int observeAttemptsBefore = (Integer) observableField(observable,
+            "observerObserveAttempts");
+        int observeEffectsBefore = (Integer) observableField(observable,
+            "observerObserveEffects");
         android.os.Handler.flush();
-        android.os.Handler.awaitIdle(5000);
-        int pendingAfter = pendingOwnedWork();
-        result.put("queued", queued).put("pendingWhileHeld", pendingWhileHeld)
+        boolean idle = android.os.Handler.awaitIdle(10000);
+        int pendingAfterIdle = pendingOwnedWork();
+        int observeAttemptsAfter = (Integer) observableField(observable,
+            "observerObserveAttempts");
+        int observeEffectsAfter = (Integer) observableField(observable,
+            "observerObserveEffects");
+        result.put("queued", queued).put("pendingAfterExit", pendingAfterExit)
+            .put("aliveAfterExit", aliveAfterExit)
             .put("callerError", callerError[0] == null ? "none"
                 : FieldOracleFreeChain.describe(callerError[0]))
-            .put("pendingAfter", pendingAfter)
-            .put("nativeEffects", app.receiverRegisterEffects)
-            .put("interrupted", caller.isInterrupted())
+            .put("idle", idle).put("pendingAfterIdle", pendingAfterIdle)
+            .put("observeAttempts", observeAttemptsAfter - observeAttemptsBefore)
+            .put("observeEffects", observeEffectsAfter - observeEffectsBefore)
+            .put("interrupted", flagInside[0])
             .put("captureFailed", GuardedReaderApplication.captureFailed());
         require(queued, "the work must be queued before the caller exits");
-        require(pendingWhileHeld == 1, "the queued item is visible while pending");
-        require(pendingAfter == 0,
-            "the item retires only after the main observation acknowledges it");
+        require(!aliveAfterExit, "the interrupted caller has exited");
+        require(pendingAfterExit == 1,
+            "the abandoned item stays tracked until the main observation acknowledges it");
         require(callerError[0] instanceof InterruptedException,
             "the caller observes its own interruption");
-        require(app.receiverRegisterEffects == 0,
-            "an abandoned queued item never reaches the native effect");
-        require(pendingAfter == 0, "the abandoned item retires itself");
+        require(flagInside[0], "the caller interrupt flag is preserved");
+        require(idle, "the main observation actually ran and acknowledged idle");
+        require(pendingAfterIdle == 0, "the item retires after the real acknowledgement");
+        require(observeAttemptsAfter - observeAttemptsBefore == 0,
+            "an abandoned queued item never reaches the native observe attempt");
+        require(observeEffectsAfter - observeEffectsBefore == 0,
+            "an abandoned queued item never reaches the native observe effect");
         require(GuardedReaderApplication.captureFailed(),
             "an interrupted wait visibly fails the capture");
     }
 
     /** Direct MAIN execution is tracked through the same owned lifetime. */
     private static void a5DirectMainTracked(JSONObject result) throws Exception {
-        GuardedReaderApplication app = armedApp();
+        GuardedReaderApplication app = new GuardedReaderApplication();
+        final java.util.concurrent.CountDownLatch metadataEntered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch metadataRelease =
+            new java.util.concurrent.CountDownLatch(1);
+        // A delegating loader that holds ONLY the Pair metadata on MAIN.
+        ClassLoader held = new ClassLoader(loader()) {
+            @Override protected Class<?> loadClass(String name, boolean resolve)
+                    throws ClassNotFoundException {
+                if ("kotlin.Pair".equals(name)) {
+                    metadataEntered.countDown();
+                    try {
+                        metadataRelease.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+        GuardedReaderApplication.arm(app, held);
         final int[] pendingDuring = {-1};
         final boolean[] onMain = {false};
-        JSONObject begin = GuardedReaderApplication.beginSaveObservation(
-            "http://book/1", "http://book/1/c1");
-        // beginSaveObservation marshals to MAIN; assert the tracked lifetime after.
+        final Throwable[] beginError = {null};
+        final java.util.concurrent.CountDownLatch outerDone =
+            new java.util.concurrent.CountDownLatch(1);
+        boolean posted = new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+                onMain[0] = android.os.Looper.myLooper() == android.os.Looper.getMainLooper();
+                GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+            } catch (Throwable error) {
+                beginError[0] = error;
+            } finally {
+                outerDone.countDown();
+            }
+        });
+        boolean entered = metadataEntered.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        // The body is running on MAIN right now: pending must be visible.
         pendingDuring[0] = pendingOwnedWork();
-        onMain[0] = begin.optBoolean("onMain");
-        result.put("beginOnMain", onMain[0]).put("pendingAfter", pendingDuring[0]);
-        require(onMain[0], "the observation registered on MAIN");
-        require(pendingDuring[0] == 0,
-            "direct MAIN work retires when it finishes");
-        GuardedReaderApplication.endSaveObservation(0);
+        JSONObject releaseWhileRunning = GuardedReaderApplication.releaseProcessResources();
+        metadataRelease.countDown();
+        boolean finished = outerDone.await(15000, java.util.concurrent.TimeUnit.SECONDS);
+        Object observable = liveObservableForTest();
+        int observeEffects = (Integer) observableField(observable, "observerObserveEffects");
+        JSONObject retry = GuardedReaderApplication.releaseProcessResources();
+        result.put("posted", posted).put("entered", entered).put("onMain", onMain[0])
+            .put("pendingDuring", pendingDuring[0])
+            .put("releaseWhileRunning", releaseWhileRunning.optBoolean("closed"))
+            .put("finished", finished)
+            .put("beginError", beginError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(beginError[0]))
+            .put("observeEffects", observeEffects)
+            .put("retryClosed", retry.optBoolean("closed"));
+        require(posted && entered, "the outer MAIN callback really entered the body");
+        require(onMain[0], "the body actually ran on MAIN");
+        require(pendingDuring[0] == 1,
+            "direct MAIN work is visible while it is running");
+        require(!releaseWhileRunning.optBoolean("closed"),
+            "a release during the running body is not a closure");
+        require(finished, "the held body finished after the metadata was released");
+        require(beginError[0] != null,
+            "the body was refused because the lifetime was already closing");
+        require(observeEffects == 0,
+            "no native observer effect is attached after closing");
+        require(retry.optBoolean("closed"), "the later real retry closes");
     }
 
     /** A refused enqueue visibly fails the capture. */
@@ -2930,33 +3000,64 @@ public final class GuardedReaderApplicationTest {
     /** A body error is retained with its cause and retires the item. */
     private static void a5BodyErrorRetained(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
-        Object observable = liveObservableForTest();
-        RuntimeException original = new IllegalStateException("A5_BODY_ERROR",
+        final RuntimeException original = new IllegalStateException("A5_BODY_ERROR",
             new IllegalArgumentException("A5_BODY_NESTED"));
         original.addSuppressed(new IllegalStateException("A5_BODY_SUPPRESSED"));
-        setObservableField(observable, "observerObserveBeforeEffect", original);
-        Throwable thrown = null;
-        try {
-            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
-        } catch (Throwable error) {
-            thrown = error;
-        }
-        setObservableField(observable, "observerObserveBeforeEffect", null);
-        int pending = pendingOwnedWork();
+        final java.util.concurrent.CountDownLatch bodyEntered =
+            new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch bodyRelease =
+            new java.util.concurrent.CountDownLatch(1);
+        // The approved focused host seam: the existing private runOnMain.
+        java.lang.reflect.Method runOnMain =
+            GuardedReaderApplication.class.getDeclaredMethod("runOnMain", java.util.concurrent.Callable.class);
+        runOnMain.setAccessible(true);
+        final Throwable[] callerError = {null};
+        Thread caller = new Thread(() -> {
+            try {
+                runOnMain.invoke(app, (java.util.concurrent.Callable<JSONObject>) () -> {
+                    bodyEntered.countDown();
+                    try {
+                        bodyRelease.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    throw original;
+                });
+            } catch (Throwable error) {
+                callerError[0] = error;
+            }
+        }, "a5-body-caller");
+        android.os.Handler.hold();
+        caller.start();
+        boolean queued = android.os.Handler.awaitQueued(5000);
+        // Start the body first, so it is genuinely running when the waiter exits.
+        android.os.Handler.flush();
+        boolean entered = bodyEntered.await(10000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        caller.interrupt();
+        caller.join(10000);
+        int pendingAfterExit = pendingOwnedWork();
+        // Now let the already-running body throw, after the caller has exited.
+        bodyRelease.countDown();
+        boolean idle = android.os.Handler.awaitIdle(10000);
+        int pendingAfterIdle = pendingOwnedWork();
         String failures = GuardedReaderApplication.captureReceipt()
             .getJSONArray("failures").toString();
-        String chain = thrown == null ? "none" : FieldOracleFreeChain.describe(thrown);
-        result.put("identity", thrown == original).put("thrownType",
-                thrown == null ? "none" : thrown.getClass().getName())
-            .put("chain", chain).put("pending", pending).put("failures", failures);
-        require(thrown != null, "the body error reaches the caller");
-        require(chain.contains("A5_BODY_ERROR") && chain.contains("A5_BODY_NESTED")
-            && chain.contains("A5_BODY_SUPPRESSED"),
-            "the complete body cause graph reaches the caller");
-        require(pending == 0, "a failed body retires its item");
+        result.put("queued", queued).put("entered", entered)
+            .put("pendingAfterExit", pendingAfterExit)
+            .put("idle", idle).put("pendingAfterIdle", pendingAfterIdle)
+            .put("callerError", callerError[0] == null ? "none"
+                : FieldOracleFreeChain.describe(callerError[0]))
+            .put("failures", failures);
+        require(queued, "the body was queued before the caller exited");
+        require(!caller.isAlive(), "the interrupted caller has exited");
+        require(pendingAfterExit == 1,
+            "the queued body stays tracked after the caller exits");
+        require(entered, "the held body actually started after the flush");
+        require(idle, "the body finished and the main thread is idle");
+        require(pendingAfterIdle == 0, "the failed body retires its item");
         require(failures.contains("A5_BODY_ERROR") && failures.contains("A5_BODY_NESTED")
             && failures.contains("A5_BODY_SUPPRESSED"),
-            "the complete body cause graph is retained in the capture");
+            "the executing boundary records the complete late body graph");
     }
 
     /** Many real work cycles all retire: value-key semantics, no leak. */
