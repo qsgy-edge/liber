@@ -782,6 +782,13 @@ public class Application extends Context {
     public RuntimeException receiverUnregisterBeforeEffect;
     public RuntimeException receiverUnregisterAfterEffect;
 
+    // Test-only one-shot holds around the actual removal effect: the caller is
+    // genuinely inside the native call, before or after the registry effect.
+    public volatile java.util.concurrent.CountDownLatch receiverRemoveEntered;
+    public volatile java.util.concurrent.CountDownLatch receiverRemoveHeld;
+    public volatile java.util.concurrent.CountDownLatch receiverRemoveAfterEntered;
+    public volatile java.util.concurrent.CountDownLatch receiverRemoveAfterHeld;
+
     /** Test-only inspection: the guard handles seen DURING the boundary. */
     public String receiverDuringEffect = "";
 
@@ -847,6 +854,11 @@ public class Application extends Context {
     public void unregisterReceiver(BroadcastReceiver receiver) {
         receiverUnregisterAttempts++;
         receiverEffects.add("unregister-attempt:" + System.identityHashCode(receiver));
+        java.util.concurrent.CountDownLatch removeEntered = receiverRemoveEntered;
+        java.util.concurrent.CountDownLatch removeHeld = receiverRemoveHeld;
+        receiverRemoveEntered = null;
+        receiverRemoveHeld = null;
+        holdOnce(removeEntered, removeHeld);
         if (unregisterFailure != null) throw unregisterFailure;
         if (receiverUnregisterBeforeEffect != null) throw receiverUnregisterBeforeEffect;
         if (!nativeReceivers.containsKey(receiver)) {
@@ -857,6 +869,11 @@ public class Application extends Context {
         receiverUnregisterEffects++;
         receiverEffects.add("unregister-effect:" + System.identityHashCode(receiver));
         unregistered.add(receiver.getClass().getName());
+        java.util.concurrent.CountDownLatch afterEntered = receiverRemoveAfterEntered;
+        java.util.concurrent.CountDownLatch afterHeld = receiverRemoveAfterHeld;
+        receiverRemoveAfterEntered = null;
+        receiverRemoveAfterHeld = null;
+        holdOnce(afterEntered, afterHeld);
         if (receiverUnregisterAfterEffect != null) throw receiverUnregisterAfterEffect;
     }
 
@@ -875,6 +892,8 @@ public class Application extends Context {
     public RuntimeException lifecycleUnregisterAfterEffect;
     public volatile java.util.concurrent.CountDownLatch lifecycleRemoveEntered;
     public volatile java.util.concurrent.CountDownLatch lifecycleRemoveHeld;
+    public volatile java.util.concurrent.CountDownLatch lifecycleRemoveAfterEntered;
+    public volatile java.util.concurrent.CountDownLatch lifecycleRemoveAfterHeld;
     public String lifecycleDuringEffect = "";
 
     // Test-only one-shot holds: the FIRST native call is held so a duplicate can
@@ -940,6 +959,11 @@ public class Application extends Context {
             lifecycleEffects.add("unregister-effect:" + System.identityHashCode(callback));
             lifecycleUnregistered.add(callback.getClass().getName());
         }
+        java.util.concurrent.CountDownLatch afterEntered = lifecycleRemoveAfterEntered;
+        java.util.concurrent.CountDownLatch afterHeld = lifecycleRemoveAfterHeld;
+        lifecycleRemoveAfterEntered = null;
+        lifecycleRemoveAfterHeld = null;
+        holdOnce(afterEntered, afterHeld);
         if (lifecycleUnregisterAfterEffect != null) throw lifecycleUnregisterAfterEffect;
     }
 
@@ -1029,6 +1053,46 @@ public final class BoundaryInspection {
     public static volatile Object reservedObserver;
     public static volatile Object reservedRemoveMethod;
     public static volatile boolean observerTupleExact;
+
+    /** Read-only: whether the exact owned observer's native call is reserved. */
+    public static volatile boolean observerNativeBusy;
+
+    /** Read-only: how many native calls the guard currently reserves. */
+    public static volatile int nativeCallCount;
+
+    /**
+     * Read-only: the guard's native-call reservation set under either name.
+     *
+     * <p>The set covered acquisitions only before it also covered removals, so a
+     * missing current name is not a failure; a missing both is reported.
+     */
+    private static java.util.Set<?> nativeCalls(Class<?> guard) throws Exception {
+        for (String name : new String[] {"nativeCalls", "acquiringNative"}) {
+            try {
+                Field field = guard.getDeclaredField(name);
+                field.setAccessible(true);
+                return (java.util.Set<?>) field.get(null);
+            } catch (NoSuchFieldException missing) {
+                // The previous name is supported for honest old-source sensitivity.
+            }
+        }
+        throw new NoSuchFieldException("no native-call reservation set");
+    }
+
+    public static String nativeState() {
+        try {
+            Class<?> guard = Class.forName("io.liber.oracle.nested.GuardedReaderApplication");
+            java.util.Set<?> busy = nativeCalls(guard);
+            Field observer = guard.getDeclaredField("saveObserver");
+            observer.setAccessible(true);
+            Object exact = observer.get(null);
+            nativeCallCount = busy.size();
+            observerNativeBusy = exact != null && busy.contains(exact);
+            return "nativeCalls=" + nativeCallCount + ";observerBusy=" + observerNativeBusy;
+        } catch (Throwable error) {
+            return "inspection-failed:" + error.getClass().getSimpleName();
+        }
+    }
 
     public static String observerState() {
         try {
@@ -1641,6 +1705,38 @@ final class LiveEventImpl implements Observable<Object> {
     public RuntimeException observerRemoveAfterEffect;
     public String observerDuringEffect = "";
 
+    // Test-only one-shot holds around the actual native effect: the caller is
+    // genuinely inside the native call, before or after the registry effect.
+    public volatile java.util.concurrent.CountDownLatch observeEntered;
+    public volatile java.util.concurrent.CountDownLatch observeHeld;
+    public volatile java.util.concurrent.CountDownLatch removeEntered;
+    public volatile java.util.concurrent.CountDownLatch removeHeld;
+    public volatile java.util.concurrent.CountDownLatch removeAfterEntered;
+    public volatile java.util.concurrent.CountDownLatch removeAfterHeld;
+
+    /**
+     * The bounded one-shot hold.
+     *
+     * <p>A timed-out or interrupted wait throws with the original cause and never
+     * lets the caller proceed into the native effect.
+     */
+    private static void holdOnce(java.util.concurrent.CountDownLatch entered,
+            java.util.concurrent.CountDownLatch held) {
+        if (entered == null || held == null) return;
+        entered.countDown();
+        try {
+            // Longer than the unchanged 30000 ms deadline the guard really uses.
+            if (!held.await(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                throw new IllegalStateException(
+                    "the controlled native hold was not released in time");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                "the controlled native hold was interrupted", interrupted);
+        }
+    }
+
     @Override public void observeForever(Observer<Object> observer) {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             throw new IllegalStateException("observeForever must run on MAIN");
@@ -1650,6 +1746,11 @@ final class LiveEventImpl implements Observable<Object> {
         io.liber.oracle.nested.BoundaryInspection.invokedObserver = observer;
         io.liber.oracle.nested.BoundaryInspection.invokedObservable = this;
         observerDuringEffect = io.liber.oracle.nested.BoundaryInspection.observerState();
+        java.util.concurrent.CountDownLatch observeGate = observeEntered;
+        java.util.concurrent.CountDownLatch observeGateHeld = observeHeld;
+        observeEntered = null;
+        observeHeld = null;
+        holdOnce(observeGate, observeGateHeld);
         if (observerObserveBeforeEffect != null) throw observerObserveBeforeEffect;
         observeCalls++;
         nativeObservers.put(observer, Boolean.TRUE);
@@ -1665,6 +1766,11 @@ final class LiveEventImpl implements Observable<Object> {
         }
         observerRemoveAttempts++;
         observerEffects.add("remove-attempt:" + System.identityHashCode(observer));
+        java.util.concurrent.CountDownLatch removeGate = removeEntered;
+        java.util.concurrent.CountDownLatch removeGateHeld = removeHeld;
+        removeEntered = null;
+        removeHeld = null;
+        holdOnce(removeGate, removeGateHeld);
         if (observerRemoveBeforeEffect != null) throw observerRemoveBeforeEffect;
         // The native contract returns normally for an absent member.
         boolean present = nativeObservers.remove(observer) != null;
@@ -1674,6 +1780,11 @@ final class LiveEventImpl implements Observable<Object> {
             observerEffects.add("remove-effect:" + System.identityHashCode(observer));
             observers.remove(observer);
         }
+        java.util.concurrent.CountDownLatch afterGate = removeAfterEntered;
+        java.util.concurrent.CountDownLatch afterGateHeld = removeAfterHeld;
+        removeAfterEntered = null;
+        removeAfterHeld = null;
+        holdOnce(afterGate, afterGateHeld);
         if (observerRemoveAfterEffect != null) throw observerRemoveAfterEffect;
     }
 
@@ -5970,7 +6081,13 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'a5-many-cycles-retire', 'a5-native-inflight-lifecycle',
         'a5-queued-removal-interrupt', 'a5-real-timeout-queued',
         'a5-post-throw-before', 'a5-post-throw-after-running',
-        'a5-marker-not-drain', 'a5-native-lifecycle-remove-before',
+        'a5-marker-not-drain', 'a5-native-receiver-acquire',
+        'a5-native-observer-acquire', 'a5-native-receiver-remove-before',
+        'a5-native-receiver-remove-after', 'a5-native-lifecycle-remove-before',
+        'a5-native-lifecycle-remove-after', 'a5-native-observer-remove-before',
+        'a5-native-observer-remove-after', 'a5-native-observer-late-interrupt',
+        'a5-native-observer-late-deadline', 'a5-native-observer-late-error',
+        'a5-native-entry-interrupted-cleanup', 'a5-native-event-wait-interrupt',
     )
 
     def _java_home(self):

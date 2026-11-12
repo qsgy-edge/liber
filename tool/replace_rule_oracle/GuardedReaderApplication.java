@@ -125,12 +125,13 @@ public final class GuardedReaderApplication extends Application {
     private static final AtomicInteger workSequence = new AtomicInteger();
 
     /**
-     * Actual native handles whose acquisition call has not yet returned.
+     * Actual native handles whose acquisition or removal call is executing.
      *
-     * <p>An absent-native no-op removal must never clear a handle whose
-     * acquisition is still executing.
+     * <p>The same identity set covers both directions, so an absent-native no-op
+     * removal never clears a handle whose acquisition is still executing, and a
+     * second removal never overlaps the first.
      */
-    private static final Set<Object> acquiringNative = java.util.Collections
+    private static final Set<Object> nativeCalls = java.util.Collections
         .newSetFromMap(new IdentityHashMap<Object, Boolean>());
 
     /**
@@ -356,10 +357,10 @@ public final class GuardedReaderApplication extends Application {
         }
     }
 
-    /** Whether this exact native handle's acquisition call is still executing. */
+    /** Whether this exact native handle's call is still executing. */
     private static boolean nativeInFlight(Object handle) {
         synchronized (lock) {
-            return acquiringNative.contains(handle);
+            return nativeCalls.contains(handle);
         }
     }
 
@@ -371,15 +372,64 @@ public final class GuardedReaderApplication extends Application {
      */
     private static boolean reserveNativeCall(Object handle) {
         synchronized (lock) {
-            return acquiringNative.add(handle);
+            return nativeCalls.add(handle);
         }
     }
 
     /** Clears the reservation once the actual native call has returned. */
     private static void releaseNativeCall(Object handle) {
         synchronized (lock) {
-            acquiringNative.remove(handle);
+            nativeCalls.remove(handle);
         }
+    }
+
+    /**
+     * Reserves one owned receiver or lifecycle handle for its actual removal.
+     *
+     * <p>The owned-membership decision and the native reservation share the
+     * existing lock, so a stale snapshot whose removal another caller already
+     * acknowledged is skipped atomically, and a handle whose acquisition or
+     * first removal is still alive is refused instead of called twice.
+     *
+     * @return true when this caller reserved the handle, false when another
+     *     caller already acknowledged the removal and no call is needed
+     * @throws IllegalStateException when a native call for this handle is alive
+     */
+    private static boolean reserveOwnedRemoval(Object handle, List<?> owned) {
+        synchronized (lock) {
+            if (!owned.contains(handle)) return false;
+            if (!reserveNativeCall(handle)) {
+                throw new IllegalStateException("the native call is still in flight");
+            }
+            return true;
+        }
+    }
+
+    /**
+     * Performs one already-reserved native removal and its bookkeeping.
+     *
+     * <p>The native call runs outside the lock. The owned ledger is cleared only
+     * after the real return, and the reservation is retained through that
+     * bookkeeping, so a concurrent caller never acts on a just-acknowledged
+     * handle.
+     */
+    private static void performReservedRemoval(Object handle, Runnable nativeCall,
+            Runnable acknowledged) {
+        try {
+            nativeCall.run();
+            acknowledged.run();
+        } finally {
+            releaseNativeCall(handle);
+        }
+    }
+
+    /** Whether the exact owned observer's native call is still executing. */
+    private static boolean observerNativeInFlight() {
+        Object observer;
+        synchronized (lock) {
+            observer = saveObserver;
+        }
+        return observer != null && nativeInFlight(observer);
     }
 
     /** Answers whether this instance is the exact armed owner. */
@@ -393,8 +443,21 @@ public final class GuardedReaderApplication extends Application {
      * Removes every process-owned resource once and answers whether the domain
      * is genuinely closed. A handle whose removal fails stays owned, so a retry
      * is a real retry and a failed removal is never turned into empty success.
+     *
+     * <p>An incoming interrupt is consumed only so the best-effort cleanup can
+     * run; it is restored in finally and it neither records nor clears a failure.
      */
     public static JSONObject releaseProcessResources() {
+        boolean entryInterrupted = Thread.interrupted();
+        try {
+            return releaseOwnedResources();
+        } finally {
+            if (entryInterrupted) Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The actual best-effort cleanup behind {@link #releaseProcessResources()}. */
+    private static JSONObject releaseOwnedResources() {
         GuardedReaderApplication exactOwner;
         synchronized (lock) {
             exactOwner = owner;
@@ -409,19 +472,31 @@ public final class GuardedReaderApplication extends Application {
         // it attached.
         JSONObject observerClose = new JSONObject();
         if (observing) {
-            try {
-                observerClose = exactOwner == null
-                    ? new JSONObject().put("removed", false)
-                    : exactOwner.closeObserver(0L);
-            } catch (Throwable error) {
+            if (observerNativeInFlight()) {
+                // A known observer native call is in flight: scheduling another
+                // MAIN removal would wait behind it. Record the honest refusal and
+                // let the unrelated receiver and lifecycle domains clean.
                 try {
-                    // The complete throwable graph, and the capture failure is
-                    // marked while receiver and lifecycle cleanup still run.
-                    String chain = stackTraceOf(error);
-                    removalFailures.put("observer: " + chain);
-                    fail("observer removal failed: " + chain);
+                    removalFailures.put("observer: native call still in flight at release");
+                    fail("observer native call still in flight at release");
                 } catch (Throwable ignored) {
                     // The failure is still counted below.
+                }
+            } else {
+                try {
+                    observerClose = exactOwner == null
+                        ? new JSONObject().put("removed", false)
+                        : exactOwner.closeObserver(0L);
+                } catch (Throwable error) {
+                    try {
+                        // The complete throwable graph, and the capture failure is
+                        // marked while receiver and lifecycle cleanup still run.
+                        String chain = stackTraceOf(error);
+                        removalFailures.put("observer: " + chain);
+                        fail("observer removal failed: " + chain);
+                    } catch (Throwable ignored) {
+                        // The failure is still counted below.
+                    }
                 }
             }
         }
@@ -434,29 +509,36 @@ public final class GuardedReaderApplication extends Application {
         for (BroadcastReceiver wrapper : receivers) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
-                synchronized (lock) {
-                    // Another caller already acknowledged this removal: no second
-                    // native call and no invented closure fact.
-                    if (!ownedReceivers.contains(wrapper)) continue;
-                }
-                if (!reserveNativeCall(wrapper)) {
+                boolean reserved;
+                try {
+                    reserved = reserveOwnedRemoval(wrapper, ownedReceivers);
+                } catch (IllegalStateException inFlight) {
                     // An acquisition or removal is still executing: an absent-native
                     // result is not proof it went away, and a second native call
                     // would be a duplicate operation.
                     throw new IllegalStateException(
-                        "receiver native call still in flight at release");
+                        "receiver native call still in flight at release", inFlight);
                 }
-                try {
-                    exactOwner.superUnregisterReceiver(wrapper);
-                } finally {
-                    releaseNativeCall(wrapper);
+                if (!reserved) {
+                    // Another caller already acknowledged this removal: no second
+                    // native call and no invented closure fact.
+                    continue;
                 }
+                final GuardedReaderApplication ownerInstance = exactOwner;
+                performReservedRemoval(wrapper,
+                    () -> ownerInstance.superUnregisterReceiver(wrapper),
+                    () -> {
+                        synchronized (lock) {
+                            ownedReceivers.remove(wrapper);
+                            wrappers.values().remove(wrapper);
+                        }
+                        try {
+                            receiverUnregistrations.put(wrapper.getClass().getName());
+                        } catch (Throwable ignored) {
+                            // The successful platform return already happened.
+                        }
+                    });
                 removedReceivers++;
-                synchronized (lock) {
-                    ownedReceivers.remove(wrapper);
-                    wrappers.values().remove(wrapper);
-                }
-                receiverUnregistrations.put(wrapper.getClass().getName());
             } catch (Throwable error) {
                 // The complete throwable graph, so a nested or suppressed cause
                 // in the final release is never lost.
@@ -468,25 +550,30 @@ public final class GuardedReaderApplication extends Application {
         for (ActivityLifecycleCallbacks callback : callbacks) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
-                synchronized (lock) {
-                    if (!ownedCallbacks.contains(callback)) continue;
-                }
-                if (!reserveNativeCall(callback)) {
+                boolean reserved;
+                try {
+                    reserved = reserveOwnedRemoval(callback, ownedCallbacks);
+                } catch (IllegalStateException inFlight) {
                     // A lifecycle absent-native no-op is a genuine ACK only for a
                     // completed or uncertain acquisition, never for a running one.
                     throw new IllegalStateException(
-                        "lifecycle native call still in flight at release");
+                        "lifecycle native call still in flight at release", inFlight);
                 }
-                try {
-                    exactOwner.superUnregisterCallbacks(callback);
-                } finally {
-                    releaseNativeCall(callback);
-                }
+                if (!reserved) continue;
+                final GuardedReaderApplication ownerInstance = exactOwner;
+                performReservedRemoval(callback,
+                    () -> ownerInstance.superUnregisterCallbacks(callback),
+                    () -> {
+                        synchronized (lock) {
+                            ownedCallbacks.remove(callback);
+                        }
+                        try {
+                            lifecycleUnregistrations.put(callback.getClass().getName());
+                        } catch (Throwable ignored) {
+                            // The successful platform return already happened.
+                        }
+                    });
                 removedCallbacks++;
-                synchronized (lock) {
-                    ownedCallbacks.remove(callback);
-                }
-                lifecycleUnregistrations.put(callback.getClass().getName());
             } catch (Throwable error) {
                 // The complete throwable graph, so a nested or suppressed cause
                 // in the final lifecycle cleanup is never lost.
@@ -503,7 +590,7 @@ public final class GuardedReaderApplication extends Application {
             ownedReceiverCount = ownedReceivers.size();
             ownedCallbackCount = ownedCallbacks.size();
             pending = pendingWork.size();
-            nativeInFlight = !acquiringNative.isEmpty();
+            nativeInFlight = !nativeCalls.isEmpty();
         }
         JSONObject receipt = new JSONObject();
         try {
@@ -615,7 +702,7 @@ public final class GuardedReaderApplication extends Application {
                 observeMethod = observe;
                 removeMethod = remove;
                 observing = true;
-                acquiringNative.add(observer);
+                nativeCalls.add(observer);
             }
             try {
                 observe.invoke(observable, observer);
@@ -625,7 +712,7 @@ public final class GuardedReaderApplication extends Application {
                     : new IllegalStateException(error);
             } finally {
                 synchronized (lock) {
-                    acquiringNative.remove(observer);
+                    nativeCalls.remove(observer);
                 }
             }
             return new JSONObject()
@@ -653,33 +740,12 @@ public final class GuardedReaderApplication extends Application {
     }
 
     private JSONObject closeObserver(long timeoutMillis) throws Exception {
-        JSONObject result = new JSONObject();
         final Observation observation = current;
         if (observerClosed && !observing) {
             // A repeat returns the frozen terminal snapshot of the first close.
             // Only an acknowledged actual removal can be an idempotent success; a
             // never-registered close stays a failed non-removal on every repeat.
-            JSONObject terminal = lastTerminal;
-            if (terminal == null) {
-                return result.put("alreadyClosed", true).put("removed", false)
-                    .put("reason", "never-registered").put("failed", true);
-            }
-            result.put("alreadyClosed", true);
-            // A deep copy, so a caller editing any returned root or nested object
-            // cannot mutate the cached first-close facts.
-            JSONObject copy = new JSONObject(terminal.toString());
-            java.util.Iterator<String> names = copy.keys();
-            while (names.hasNext()) {
-                String name = names.next();
-                result.put(name, copy.get(name));
-            }
-            // The top-level acknowledgement mirrors the actual removal that was
-            // really observed on the first close, never an invented one.
-            JSONObject recorded = terminal.optJSONObject("removal");
-            boolean acknowledged = recorded != null && recorded.optBoolean("removed");
-            result.put("removed", acknowledged);
-            if (!acknowledged) result.put("failed", true);
-            return result;
+            return closedTerminal();
         }
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while ((observation == null || observation.events.get() == 0)
@@ -694,100 +760,108 @@ public final class GuardedReaderApplication extends Application {
                 throw interrupted;
             }
         }
-        JSONObject removal = runOnMain(() -> {
-            Object observable = saveObservable;
-            Object observer = saveObserver;
-            Method remove = removeMethod;
-            if (observable == null || observer == null || remove == null) {
-                // A registration that never completed owns nothing to remove, so
-                // there is no acknowledgement to repeat as a success.
-                observing = false;
-                observerClosed = true;
-                lastTerminal = null;
-                return new JSONObject().put("removed", false).put("reason", "never-registered");
-            }
-            if (nativeInFlight(observer)) {
-                fail("observer removal while its acquisition is still in flight");
-                throw new IllegalStateException(
-                    "guarded capture refuses a removal while the acquisition is in flight");
+        return runOnMain(() -> {
+            final Object observable;
+            final Object observer;
+            final Method remove;
+            synchronized (lock) {
+                if (observerClosed && !observing) {
+                    // Another caller already acknowledged this removal: no second
+                    // native call, and the frozen terminal is the honest answer.
+                    return closedTerminal();
+                }
+                observable = saveObservable;
+                observer = saveObserver;
+                remove = removeMethod;
+                if (observable == null || observer == null || remove == null) {
+                    // A registration that never completed owns nothing to remove,
+                    // so there is no acknowledgement to repeat as a success.
+                    observing = false;
+                    observerClosed = true;
+                    lastTerminal = null;
+                    return finalizeObservation(observation,
+                        new JSONObject().put("removed", false)
+                            .put("reason", "never-registered"));
+                }
+                if (!reserveNativeCall(observer)) {
+                    fail("observer removal while its acquisition is still in flight");
+                    throw new IllegalStateException(
+                        "guarded capture refuses a removal while the acquisition is in flight");
+                }
             }
             try {
                 remove.invoke(observable, observer);
+                // The complete terminal facts, with the real removal metadata,
+                // are finalized in this executing body, so a departed,
+                // interrupted or timed-out waiter cannot lose the acknowledgement
+                // or the case validity.
+                JSONObject terminal = finalizeObservation(observation,
+                    new JSONObject()
+                        .put("interface", OBSERVABLE_INTERFACE)
+                        .put("declaringClass", remove.getDeclaringClass().getName())
+                        .put("onMain", Looper.myLooper() == Looper.getMainLooper())
+                        .put("removed", true));
+                synchronized (lock) {
+                    observing = false;
+                    observerClosed = true;
+                    if (observation != null) observation.closed = true;
+                    saveObservable = null;
+                    saveObserver = null;
+                    lastTerminal = terminal;
+                }
+                return new JSONObject(terminal.toString());
             } catch (Throwable error) {
                 // The tuple stays owned: without an acknowledgement the removal is
                 // uncertain, and the complete cause is retained.
                 fail("observer removal failed: " + stackTraceOf(error));
                 throw error instanceof Exception ? (Exception) error
                     : new IllegalStateException(error);
+            } finally {
+                releaseNativeCall(observer);
             }
-            observing = false;
-            observerClosed = true;
-            if (observation != null) observation.closed = true;
-            saveObservable = null;
-            saveObserver = null;
-            JSONObject acknowledged = new JSONObject()
-                .put("removed", true);
-            // Freeze the terminal facts in this executing body, so a departed,
-            // interrupted or timed-out waiter cannot lose the acknowledgement.
-            lastTerminal = observerTerminal(observation, acknowledged);
-            return new JSONObject()
-                .put("interface", OBSERVABLE_INTERFACE)
-                .put("declaringClass", remove.getDeclaringClass().getName())
-                .put("onMain", Looper.myLooper() == Looper.getMainLooper())
-                .put("removed", true);
         });
-        // The final actual case facts are snapshotted after the removal ack, from
-        // this observation's own counters.
-        int events = observation == null ? 0 : observation.events.get();
-        int duplicates = observation == null ? 0 : observation.duplicates.get();
-        int foreign = observation == null ? 0 : observation.foreign.get();
-        int callbackErrors = observation == null ? 0 : observation.callbackErrors.get();
-        int offMain = observation == null ? 0 : observation.offMain.get();
-        int malformed = observation == null ? 0 : observation.malformed.get();
-        result.put("events", events)
-            .put("duplicates", duplicates)
-            .put("foreignEvents", foreign)
-            .put("callbackErrors", callbackErrors)
-            .put("offMainEvents", offMain)
-            .put("malformedEvents", malformed)
-            .put("lastEvent", new JSONObject(
-                (observation == null ? lastEvent : observation.lastEvent).toString()))
-            .put("removal", removal);
-        if (duplicates != 0) {
-            fail("a duplicate save event reached this case's observer");
-            result.put("failed", true);
+    }
+
+    /**
+     * The frozen terminal of an acknowledged close, as a fresh deep copy.
+     *
+     * <p>Only an acknowledged actual removal can be an idempotent success; a
+     * never-registered close stays a failed non-removal on every repeat.
+     */
+    private static JSONObject closedTerminal() throws Exception {
+        JSONObject result = new JSONObject();
+        JSONObject terminal = lastTerminal;
+        if (terminal == null) {
+            return result.put("alreadyClosed", true).put("removed", false)
+                .put("reason", "never-registered").put("failed", true);
         }
-        if (foreign != 0) {
-            fail("a foreign save event reached this case's observer");
-            result.put("failed", true);
+        result.put("alreadyClosed", true);
+        // A deep copy, so a caller editing any returned root or nested object
+        // cannot mutate the cached first-close facts.
+        JSONObject copy = new JSONObject(terminal.toString());
+        java.util.Iterator<String> names = copy.keys();
+        while (names.hasNext()) {
+            String name = names.next();
+            result.put(name, copy.get(name));
         }
-        if (callbackErrors != 0) {
-            fail("a save-event callback failed");
-            result.put("failed", true);
-        }
-        if (offMain != 0) {
-            fail("a save event was delivered off the main thread");
-            result.put("failed", true);
-        }
-        if (malformed != 0) {
-            fail("a malformed save event reached this case's observer");
-            result.put("failed", true);
-        }
-        if (events != 1) {
-            fail("the case observation did not carry exactly one correlated save event");
-            result.put("failed", true);
-        }
-        // Freeze the terminal view only after every fact is known, so a later
-        // stale callback or a repeat cannot change what this case reports.
-        if (lastTerminal == null) {
-            lastTerminal = removal.optBoolean("removed")
-                ? new JSONObject(result.toString()) : null;
-        }
+        // The top-level acknowledgement mirrors the actual removal that was
+        // really observed on the first close, never an invented one.
+        JSONObject recorded = terminal.optJSONObject("removal");
+        boolean acknowledged = recorded != null && recorded.optBoolean("removed");
+        result.put("removed", acknowledged);
+        if (!acknowledged) result.put("failed", true);
         return result;
     }
 
-    /** The frozen terminal facts of one observer close, built from its own counters. */
-    private static JSONObject observerTerminal(Observation observation, JSONObject removal)
+    /**
+     * The complete A2 validity of one observation, finalized in the executing
+     * removal body so a departed waiter cannot lose it.
+     *
+     * <p>This is the single place the per-observation validity is decided: the
+     * counters are read once, every invalid cause is recorded, and the frozen
+     * snapshot carries the real removal acknowledgement.
+     */
+    private static JSONObject finalizeObservation(Observation observation, JSONObject removal)
             throws Exception {
         int events = observation == null ? 0 : observation.events.get();
         int duplicates = observation == null ? 0 : observation.duplicates.get();
@@ -805,8 +879,28 @@ public final class GuardedReaderApplication extends Application {
             .put("lastEvent", new JSONObject(
                 (observation == null ? lastEvent : observation.lastEvent).toString()))
             .put("removal", removal);
-        if (duplicates != 0 || foreign != 0 || callbackErrors != 0
-                || offMain != 0 || malformed != 0 || events != 1) {
+        if (duplicates != 0) {
+            fail("a duplicate save event reached this case's observer");
+            snapshot.put("failed", true);
+        }
+        if (foreign != 0) {
+            fail("a foreign save event reached this case's observer");
+            snapshot.put("failed", true);
+        }
+        if (callbackErrors != 0) {
+            fail("a save-event callback failed");
+            snapshot.put("failed", true);
+        }
+        if (offMain != 0) {
+            fail("a save event was delivered off the main thread");
+            snapshot.put("failed", true);
+        }
+        if (malformed != 0) {
+            fail("a malformed save event reached this case's observer");
+            snapshot.put("failed", true);
+        }
+        if (events != 1) {
+            fail("the case observation did not carry exactly one correlated save event");
             snapshot.put("failed", true);
         }
         return snapshot;
@@ -1101,7 +1195,7 @@ public final class GuardedReaderApplication extends Application {
             ownedReceivers.add(wrapper);
             // The native reservation shares this exact lock with the ownership
             // insertion, so no removal can slip into a gap between them.
-            acquiringNative.add(wrapper);
+            nativeCalls.add(wrapper);
         }
         Intent sticky;
         try {
@@ -1113,7 +1207,7 @@ public final class GuardedReaderApplication extends Application {
                 : new SecurityException("guarded registration failed: " + error, error);
         } finally {
             synchronized (lock) {
-                acquiringNative.remove(wrapper);
+                nativeCalls.remove(wrapper);
             }
         }
         successfulRegistrations.incrementAndGet();
@@ -1214,34 +1308,46 @@ public final class GuardedReaderApplication extends Application {
                 + (receiver == null ? "null" : receiver.getClass().getName()));
             throw new SecurityException("guarded capture refuses a foreign unregistration");
         }
-        if (!reserveNativeCall(wrapper)) {
+        boolean reserved;
+        try {
+            reserved = reserveOwnedRemoval(wrapper, ownedReceivers);
+        } catch (IllegalStateException inFlight) {
             // The acquisition or another removal is still executing: never clear
             // it through an absent-native no-op.
             fail("receiver removal while a native call is still in flight");
             throw new SecurityException(
                 "guarded capture refuses a removal while a native call is in flight");
         }
+        if (!reserved) {
+            // Another caller already acknowledged this removal: no second call.
+            foreignUnregistrations.incrementAndGet();
+            fail("unregister of a receiver the guard does not own: "
+                + (receiver == null ? "null" : receiver.getClass().getName()));
+            throw new SecurityException("guarded capture refuses a foreign unregistration");
+        }
         try {
-            super.unregisterReceiver(wrapper);
-            // The owned ledger is cleared while the call is still reserved, so a
-            // concurrent removal cannot act on a just-acknowledged handle.
-            synchronized (lock) {
-                wrappers.remove(receiver);
-                ownedReceivers.remove(wrapper);
-            }
-            try {
-                receiverUnregistrations.put(wrapper.getClass().getName());
-            } catch (Throwable ignored) {
-                // The successful platform return already happened.
-            }
+            performReservedRemoval(wrapper,
+                () -> superUnregisterReceiver(wrapper),
+                () -> {
+                    // The owned ledger is cleared while the call is still reserved,
+                    // so a concurrent removal cannot act on a just-acknowledged
+                    // handle.
+                    synchronized (lock) {
+                        wrappers.remove(receiver);
+                        ownedReceivers.remove(wrapper);
+                    }
+                    try {
+                        receiverUnregistrations.put(wrapper.getClass().getName());
+                    } catch (Throwable ignored) {
+                        // The successful platform return already happened.
+                    }
+                });
         } catch (Throwable error) {
             // The handle stays owned: without an acknowledgement the removal is
             // uncertain, and the complete cause is retained.
             fail("receiver removal failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded receiver removal failed: " + error, error);
-        } finally {
-            releaseNativeCall(wrapper);
         }
     }
 
@@ -1281,7 +1387,7 @@ public final class GuardedReaderApplication extends Application {
             }
             ownedCallbacks.add(callback);
             // Same lock as the ownership insertion: no removal can interleave.
-            acquiringNative.add(callback);
+            nativeCalls.add(callback);
         }
         try {
             super.registerActivityLifecycleCallbacks(callback);
@@ -1291,7 +1397,7 @@ public final class GuardedReaderApplication extends Application {
                 : new SecurityException("guarded lifecycle registration failed: " + error, error);
         } finally {
             synchronized (lock) {
-                acquiringNative.remove(callback);
+                nativeCalls.remove(callback);
             }
         }
         successfulRegistrations.incrementAndGet();
@@ -1319,40 +1425,43 @@ public final class GuardedReaderApplication extends Application {
             throw new SecurityException(
                 "guarded capture refuses a foreign lifecycle unregistration");
         }
-        synchronized (lock) {
-            if (!ownedCallbacks.contains(callback)) {
-                foreignUnregistrations.incrementAndGet();
-                fail("unregister of a lifecycle callback the guard does not own");
-                throw new SecurityException(
-                    "guarded capture refuses a foreign lifecycle unregistration");
-            }
-        }
-        if (!reserveNativeCall(callback)) {
+        boolean reserved;
+        try {
+            reserved = reserveOwnedRemoval(callback, ownedCallbacks);
+        } catch (IllegalStateException inFlight) {
             fail("lifecycle removal while a native call is still in flight");
             throw new SecurityException(
                 "guarded capture refuses a removal while a native call is in flight");
         }
+        if (!reserved) {
+            // Another caller already acknowledged this removal: no second call.
+            foreignUnregistrations.incrementAndGet();
+            fail("unregister of a lifecycle callback the guard does not own");
+            throw new SecurityException(
+                "guarded capture refuses a foreign lifecycle unregistration");
+        }
         try {
-            super.unregisterActivityLifecycleCallbacks(callback);
-            // Ledger first, still reserved, so no concurrent removal can act on a
-            // just-acknowledged handle.
-            synchronized (lock) {
-                ownedCallbacks.remove(callback);
-            }
-            try {
-                lifecycleUnregistrations.put(
-                    callback == null ? "null" : callback.getClass().getName());
-            } catch (Throwable ignored) {
-                // The successful platform return already happened.
-            }
+            performReservedRemoval(callback,
+                () -> superUnregisterCallbacks(callback),
+                () -> {
+                    // Ledger first, still reserved, so no concurrent removal can
+                    // act on a just-acknowledged handle.
+                    synchronized (lock) {
+                        ownedCallbacks.remove(callback);
+                    }
+                    try {
+                        lifecycleUnregistrations.put(
+                            callback == null ? "null" : callback.getClass().getName());
+                    } catch (Throwable ignored) {
+                        // The successful platform return already happened.
+                    }
+                });
         } catch (Throwable error) {
             // The handle stays owned: without an acknowledgement the removal is
             // uncertain, and the complete cause is retained.
             fail("lifecycle removal failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded lifecycle removal failed: " + error, error);
-        } finally {
-            releaseNativeCall(callback);
         }
     }
 
