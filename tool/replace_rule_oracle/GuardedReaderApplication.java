@@ -363,6 +363,25 @@ public final class GuardedReaderApplication extends Application {
         }
     }
 
+    /**
+     * Reserves one exact native call for this handle.
+     *
+     * <p>The same identity set covers acquisition and removal, so a second
+     * native call can never overlap an executing one.
+     */
+    private static boolean reserveNativeCall(Object handle) {
+        synchronized (lock) {
+            return acquiringNative.add(handle);
+        }
+    }
+
+    /** Clears the reservation once the actual native call has returned. */
+    private static void releaseNativeCall(Object handle) {
+        synchronized (lock) {
+            acquiringNative.remove(handle);
+        }
+    }
+
     /** Answers whether this instance is the exact armed owner. */
     private boolean isOwner() {
         synchronized (lock) {
@@ -415,13 +434,18 @@ public final class GuardedReaderApplication extends Application {
         for (BroadcastReceiver wrapper : receivers) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
-                if (nativeInFlight(wrapper)) {
-                    // The acquisition is still executing: an absent-native result
-                    // is not proof it went away.
+                if (!reserveNativeCall(wrapper)) {
+                    // An acquisition or removal is still executing: an absent-native
+                    // result is not proof it went away, and a second native call
+                    // would be a duplicate operation.
                     throw new IllegalStateException(
-                        "receiver acquisition still in flight at release");
+                        "receiver native call still in flight at release");
                 }
-                exactOwner.superUnregisterReceiver(wrapper);
+                try {
+                    exactOwner.superUnregisterReceiver(wrapper);
+                } finally {
+                    releaseNativeCall(wrapper);
+                }
                 removedReceivers++;
                 synchronized (lock) {
                     ownedReceivers.remove(wrapper);
@@ -439,13 +463,17 @@ public final class GuardedReaderApplication extends Application {
         for (ActivityLifecycleCallbacks callback : callbacks) {
             try {
                 if (exactOwner == null) throw new IllegalStateException("no exact owner");
-                if (nativeInFlight(callback)) {
+                if (!reserveNativeCall(callback)) {
                     // A lifecycle absent-native no-op is a genuine ACK only for a
                     // completed or uncertain acquisition, never for a running one.
                     throw new IllegalStateException(
-                        "lifecycle acquisition still in flight at release");
+                        "lifecycle native call still in flight at release");
                 }
-                exactOwner.superUnregisterCallbacks(callback);
+                try {
+                    exactOwner.superUnregisterCallbacks(callback);
+                } finally {
+                    releaseNativeCall(callback);
+                }
                 removedCallbacks++;
                 synchronized (lock) {
                     ownedCallbacks.remove(callback);
@@ -648,7 +676,15 @@ public final class GuardedReaderApplication extends Application {
         long deadline = System.currentTimeMillis() + timeoutMillis;
         while ((observation == null || observation.events.get() == 0)
                 && System.currentTimeMillis() < deadline) {
-            Thread.sleep(5);
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException interrupted) {
+                // The original graph and the flag survive, and the capture fails.
+                Thread.currentThread().interrupt();
+                fail("the observer close wait was interrupted: "
+                    + stackTraceOf(interrupted));
+                throw interrupted;
+            }
         }
         JSONObject removal = runOnMain(() -> {
             Object observable = saveObservable;
@@ -681,6 +717,11 @@ public final class GuardedReaderApplication extends Application {
             if (observation != null) observation.closed = true;
             saveObservable = null;
             saveObserver = null;
+            JSONObject acknowledged = new JSONObject()
+                .put("removed", true);
+            // Freeze the terminal facts in this executing body, so a departed,
+            // interrupted or timed-out waiter cannot lose the acknowledgement.
+            lastTerminal = observerTerminal(observation, acknowledged);
             return new JSONObject()
                 .put("interface", OBSERVABLE_INTERFACE)
                 .put("declaringClass", remove.getDeclaringClass().getName())
@@ -730,9 +771,37 @@ public final class GuardedReaderApplication extends Application {
         }
         // Freeze the terminal view only after every fact is known, so a later
         // stale callback or a repeat cannot change what this case reports.
-        lastTerminal = removal.optBoolean("removed")
-            ? new JSONObject(result.toString()) : null;
+        if (lastTerminal == null) {
+            lastTerminal = removal.optBoolean("removed")
+                ? new JSONObject(result.toString()) : null;
+        }
         return result;
+    }
+
+    /** The frozen terminal facts of one observer close, built from its own counters. */
+    private static JSONObject observerTerminal(Observation observation, JSONObject removal)
+            throws Exception {
+        int events = observation == null ? 0 : observation.events.get();
+        int duplicates = observation == null ? 0 : observation.duplicates.get();
+        int foreign = observation == null ? 0 : observation.foreign.get();
+        int callbackErrors = observation == null ? 0 : observation.callbackErrors.get();
+        int offMain = observation == null ? 0 : observation.offMain.get();
+        int malformed = observation == null ? 0 : observation.malformed.get();
+        JSONObject snapshot = new JSONObject();
+        snapshot.put("events", events)
+            .put("duplicates", duplicates)
+            .put("foreignEvents", foreign)
+            .put("callbackErrors", callbackErrors)
+            .put("offMainEvents", offMain)
+            .put("malformedEvents", malformed)
+            .put("lastEvent", new JSONObject(
+                (observation == null ? lastEvent : observation.lastEvent).toString()))
+            .put("removal", removal);
+        if (duplicates != 0 || foreign != 0 || callbackErrors != 0
+                || offMain != 0 || malformed != 0 || events != 1) {
+            snapshot.put("failed", true);
+        }
+        return snapshot;
     }
 
     /** The complete throwable graph, including the reflection target and causes. */
@@ -1137,12 +1206,12 @@ public final class GuardedReaderApplication extends Application {
                 + (receiver == null ? "null" : receiver.getClass().getName()));
             throw new SecurityException("guarded capture refuses a foreign unregistration");
         }
-        if (nativeInFlight(wrapper)) {
-            // The acquisition is still executing: never clear it through an
-            // absent-native no-op.
-            fail("receiver removal while its acquisition is still in flight");
+        if (!reserveNativeCall(wrapper)) {
+            // The acquisition or another removal is still executing: never clear
+            // it through an absent-native no-op.
+            fail("receiver removal while a native call is still in flight");
             throw new SecurityException(
-                "guarded capture refuses a removal while the acquisition is in flight");
+                "guarded capture refuses a removal while a native call is in flight");
         }
         try {
             super.unregisterReceiver(wrapper);
@@ -1152,6 +1221,8 @@ public final class GuardedReaderApplication extends Application {
             fail("receiver removal failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded receiver removal failed: " + error, error);
+        } finally {
+            releaseNativeCall(wrapper);
         }
         synchronized (lock) {
             wrappers.remove(receiver);
@@ -1247,10 +1318,10 @@ public final class GuardedReaderApplication extends Application {
                     "guarded capture refuses a foreign lifecycle unregistration");
             }
         }
-        if (nativeInFlight(callback)) {
-            fail("lifecycle removal while its acquisition is still in flight");
+        if (!reserveNativeCall(callback)) {
+            fail("lifecycle removal while a native call is still in flight");
             throw new SecurityException(
-                "guarded capture refuses a removal while the acquisition is in flight");
+                "guarded capture refuses a removal while a native call is in flight");
         }
         try {
             super.unregisterActivityLifecycleCallbacks(callback);
@@ -1260,6 +1331,8 @@ public final class GuardedReaderApplication extends Application {
             fail("lifecycle removal failed: " + stackTraceOf(error));
             throw error instanceof SecurityException ? (SecurityException) error
                 : new SecurityException("guarded lifecycle removal failed: " + error, error);
+        } finally {
+            releaseNativeCall(callback);
         }
         synchronized (lock) {
             ownedCallbacks.remove(callback);
