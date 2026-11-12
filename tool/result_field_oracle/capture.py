@@ -2081,10 +2081,11 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
     if (output / 'pull-report.log').read_bytes() != report_bytes:
         fail('raw report differs')
     try:
-        if json.loads((output / 'scratch-owner.log').read_bytes()) != manifest.get('scratchOwner'):
-            fail('raw owner differs')
+        raw_owner = json.loads((output / 'scratch-owner.log').read_bytes())
     except (ValueError, UnicodeDecodeError):
         fail('raw owner is malformed')
+    if raw_owner != manifest.get('scratchOwner'):
+        fail('raw owner differs')
     for name in ('target-process', 'poststop-check'):
         if indexed[name + '.log']['exitCode'] != 1 or (output / (name + '.log')).read_bytes().strip():
             fail(name + ' absence differs')
