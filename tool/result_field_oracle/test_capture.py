@@ -1439,12 +1439,37 @@ public class Handler {
 
     private static boolean refuseNext;
 
+    /** Test-only: thrown before the work is enqueued at all. */
+    public static Throwable beforePostFault;
+    /** Test-only: thrown after the work is enqueued and, if asked, has started. */
+    public static Throwable afterPostFault;
+    /** Test-only: counted down when a posted body actually begins executing. */
+    public static CountDownLatch afterPostStarted;
+
     /** Test-only: the next post is refused without running the work. */
     public static void refuseNext() {
         refuseNext = true;
     }
 
+    private final java.util.Set<Runnable> mine =
+        java.util.Collections.synchronizedSet(
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Runnable, Boolean>()));
+
+    private static void rethrow(Throwable error) {
+        Handler.<RuntimeException>sneaky(error);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends Throwable> void sneaky(Throwable error) throws T {
+        throw (T) error;
+    }
+
     public boolean post(Runnable work) {
+        if (beforePostFault != null) {
+            Throwable fault = beforePostFault;
+            beforePostFault = null;
+            rethrow(fault);
+        }
         synchronized (held) {
             if (refuseNext) {
                 refuseNext = false;
@@ -1452,12 +1477,39 @@ public class Handler {
             }
             if (holding) {
                 held.add(work);
+                mine.add(work);
                 queued.countDown();
-                return true;
+            } else {
+                MAIN.execute(() -> {
+                    mine.remove(work);
+                    CountDownLatch started = afterPostStarted;
+                    if (started != null) started.countDown();
+                    work.run();
+                });
             }
         }
-        MAIN.execute(work);
+        if (afterPostFault != null) {
+            CountDownLatch started = afterPostStarted;
+            if (started != null) {
+                try {
+                    started.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            Throwable fault = afterPostFault;
+            afterPostFault = null;
+            rethrow(fault);
+        }
         return true;
+    }
+
+    /** Test-only: real per-Handler cancellation acknowledgement. */
+    public boolean removeCallbacks(Runnable work) {
+        synchronized (held) {
+            boolean removed = held.remove(work);
+            return mine.remove(work) || removed;
+        }
     }
 
     public static void hold() {
@@ -5857,6 +5909,9 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         'a5-cancel-queued-acquire', 'a5-direct-main-tracked',
         'a5-enqueue-refused', 'a5-body-error-retained',
         'a5-many-cycles-retire', 'a5-native-inflight-lifecycle',
+        'a5-queued-removal-interrupt', 'a5-real-timeout-queued',
+        'a5-post-throw-before', 'a5-post-throw-after-running',
+        'a5-marker-not-drain',
     )
 
     def _java_home(self):

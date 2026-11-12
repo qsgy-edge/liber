@@ -859,12 +859,42 @@ public final class GuardedReaderApplication extends Application {
             }
             return owned.result instanceof JSONObject ? owned.result : new JSONObject();
         }
-        boolean posted;
+        final Handler handler;
         try {
-            posted = new Handler(Looper.getMainLooper()).post(owned::run);
+            handler = new Handler(Looper.getMainLooper());
         } catch (Throwable error) {
+            // A constructor failure is known before any post: nothing was enqueued.
             owned.abandon();
             owned.retireUnposted();
+            fail("the main looper handler could not be created: " + stackTraceOf(error));
+            throw error instanceof Exception ? (Exception) error
+                : new IllegalStateException(error);
+        }
+        final Runnable callback = owned::run;
+        boolean posted;
+        try {
+            posted = handler.post(callback);
+        } catch (Throwable error) {
+            // A throwing post is not proof that nothing was enqueued. Only an
+            // item that was still queued, and whose exact callback removal the
+            // platform actually acknowledged, may retire without an observation.
+            if (owned.abandon()) {
+                try {
+                    // The real SDK removal returns void, so the never-started
+                    // proof is the atomic abandonment itself; the exact callback
+                    // is still offered for cancellation.
+                    handler.removeCallbacks(callback);
+                } catch (Throwable cancelError) {
+                    // The cancellation itself failed: the uncertainty is retained
+                    // with the complete original and suppressed cleanup graph, and
+                    // the item is never retired here.
+                    fail("the main looper rejected the work and the cancellation failed: "
+                        + stackTraceOf(error) + stackTraceOf(cancelError));
+                    throw error instanceof Exception ? (Exception) error
+                        : new IllegalStateException(error);
+                }
+                owned.retireUnposted();
+            }
             fail("the main looper rejected the work: " + stackTraceOf(error));
             throw error instanceof Exception ? (Exception) error
                 : new IllegalStateException(error);
