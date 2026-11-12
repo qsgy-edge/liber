@@ -1470,9 +1470,34 @@ public class Handler {
         java.util.Collections.synchronizedSet(
             java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Runnable, Boolean>()));
 
+    /** Test-only: actual native post/cancel receiver and argument readouts. */
+    public static int nativePostCalls;
+    public static int nativeCancelCalls;
+    public static Runnable lastPostedCallback;
+    public static Runnable lastCancelledCallback;
+    public static Object lastPostOwner;
+    public static Object lastCancelOwner;
+
+    public static void resetNativeReadouts() {
+        nativePostCalls = 0;
+        nativeCancelCalls = 0;
+        lastPostedCallback = null;
+        lastCancelledCallback = null;
+        lastPostOwner = null;
+        lastCancelOwner = null;
+    }
+
+    /** Test-only: how many exact callbacks the native queue still holds. */
+    public static int nativePendingCount() {
+        return accepted.size();
+    }
+
     public Handler(Looper looper) {}
 
     public final boolean post(Runnable work) {
+        nativePostCalls++;
+        lastPostedCallback = work;
+        lastPostOwner = this;
         if (beforePostFault != null) {
             Throwable fault = beforePostFault;
             beforePostFault = null;
@@ -1528,6 +1553,9 @@ public class Handler {
             removeFault = null;
             rethrow(fault);
         }
+        nativeCancelCalls++;
+        lastCancelledCallback = work;
+        lastCancelOwner = this;
         synchronized (accepted) {
             if (accepted.remove(work)) cancelled.add(work);
         }
@@ -6084,6 +6112,18 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
             run_cp, sdk_classes, guard_class = self._guard_sdk_classpath(
                 repo, java, android, jar, root)
             guard_sha = hashlib.sha256(guard_class.read_bytes()).hexdigest()
+            # Passive metadata: the SAME SDK-first classpath, invoked once, so this
+            # record carries its own actual loaded-identity byte readback.
+            identity_run = self._run(
+                [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                 'io.liber.oracle.nested.GuardedReaderApplicationTest',
+                 'loaded-identity'], repo)
+            identity_out = identity_run.stdout.decode(errors='replace').strip()
+            self.assertEqual(identity_run.returncode, 0,
+                             identity_out + identity_run.stderr.decode(errors='replace'))
+            identity = json.loads(identity_out.splitlines()[-1])
+            self.assertEqual(Path(identity['codeSource']).resolve(), sdk_classes.resolve(),
+                             'the loaded guard must come from the SDK-compiled directory')
             identity_run = self._run(
                 [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
                  'io.liber.oracle.nested.GuardedReaderApplicationTest',

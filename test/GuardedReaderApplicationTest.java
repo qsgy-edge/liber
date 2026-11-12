@@ -3246,49 +3246,142 @@ public final class GuardedReaderApplicationTest {
     /** A genuine before-enqueue fault, with real native cancellation acknowledgement. */
     private static void a5PostThrowBefore(JSONObject result) throws Exception {
         GuardedReaderApplication app = armedApp();
+        java.lang.reflect.Method runOnMain =
+            GuardedReaderApplication.class.getDeclaredMethod(
+                "runOnMain", java.util.concurrent.Callable.class);
+        runOnMain.setAccessible(true);
+
+        // ---- Positive 1: throw before the native enqueue, cancellation succeeds.
         RuntimeException original = new IllegalStateException("A5_BEFORE_POST",
             new IllegalArgumentException("A5_BEFORE_NESTED"));
         original.addSuppressed(new IllegalStateException("A5_BEFORE_SUPPRESSED"));
-        // The post throws AND the native cancellation itself fails.
-        RuntimeException cancelFailure = new IllegalStateException("A5_CANCEL_FAILED");
+        android.os.Handler.resetNativeReadouts();
         android.os.Handler.beforePostFault = original;
-        android.os.Handler.removeFault = cancelFailure;
+        final boolean[] bodyRan = {false};
         Throwable thrown = null;
         try {
-            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+            runOnMain.invoke(app, (java.util.concurrent.Callable<JSONObject>) () -> {
+                bodyRan[0] = true;
+                return new JSONObject();
+            });
         } catch (Throwable error) {
-            thrown = error;
+            thrown = error instanceof java.lang.reflect.InvocationTargetException
+                ? error.getCause() : error;
         } finally {
             android.os.Handler.beforePostFault = null;
-            android.os.Handler.removeFault = null;
         }
         int pending = pendingOwnedWork();
+        int postCalls = android.os.Handler.nativePostCalls;
+        int cancelCalls = android.os.Handler.nativeCancelCalls;
+        boolean sameOwner = android.os.Handler.lastPostOwner != null
+            && android.os.Handler.lastPostOwner == android.os.Handler.lastCancelOwner;
+        boolean sameCallback = android.os.Handler.lastPostedCallback != null
+            && android.os.Handler.lastPostedCallback == android.os.Handler.lastCancelledCallback;
         String failures = GuardedReaderApplication.captureReceipt()
             .getJSONArray("failures").toString();
         String chain = thrown == null ? "none" : FieldOracleFreeChain.describe(thrown);
-        boolean exactSuppressed = false;
-        if (thrown != null) {
-            for (Throwable suppressed : thrown.getSuppressed()) {
-                if (suppressed == cancelFailure) exactSuppressed = true;
-            }
-        }
         result.put("identity", thrown == original).put("chain", chain)
-            .put("exactCancelSuppressed", exactSuppressed)
-            .put("pending", pending).put("failures", failures);
+            .put("bodyRan", bodyRan[0]).put("pending", pending)
+            .put("postCalls", postCalls).put("cancelCalls", cancelCalls)
+            .put("sameOwner", sameOwner).put("sameCallback", sameCallback)
+            .put("failures", failures);
         require(thrown == original, "the original before-enqueue fault reaches the caller");
         require(chain.contains("A5_BEFORE_POST") && chain.contains("A5_BEFORE_NESTED")
             && chain.contains("A5_BEFORE_SUPPRESSED"),
             "the complete before-enqueue graph reaches the caller");
-        require(exactSuppressed,
-            "the exact native cancellation failure is retained as a suppressed cause");
-        require(chain.contains("A5_CANCEL_FAILED"),
-            "the cancellation failure is visible in the retained graph");
-        // The cancellation itself failed, so the uncertainty is honestly retained:
-        // no fabricated acknowledgement and no forced retirement.
-        require(pending == 1,
-            "a failed native cancellation keeps the item tracked, not falsely retired");
+        require(!bodyRan[0], "the body never ran for a before-enqueue fault");
+        require(postCalls == 1 && cancelCalls == 1,
+            "the same actual Handler received the post and the cancellation");
+        require(sameOwner, "the native cancellation used the exact same Handler");
+        require(sameCallback, "the native cancellation used the exact same callback");
+        require(pending == 0, "a successful void cancellation retires the item");
         require(failures.contains("A5_BEFORE_POST"),
             "the before-enqueue fault is retained in the capture");
+
+        // ---- Positive 2: accepted by the native queue, cancelled before it starts.
+        RuntimeException lateFault = new IllegalStateException("A5_ACCEPTED_THEN_CANCELLED");
+        android.os.Handler.hold();
+        android.os.Handler.resetNativeReadouts();
+        android.os.Handler.afterPostFault = lateFault;
+        final boolean[] bodyRanLate = {false};
+        Throwable lateThrown = null;
+        int acceptedBeforeCancel;
+        int acceptedAfterCancel;
+        try {
+            runOnMain.invoke(app, (java.util.concurrent.Callable<JSONObject>) () -> {
+                bodyRanLate[0] = true;
+                return new JSONObject();
+            });
+        } catch (Throwable error) {
+            lateThrown = error instanceof java.lang.reflect.InvocationTargetException
+                ? error.getCause() : error;
+        } finally {
+            android.os.Handler.afterPostFault = null;
+        }
+        acceptedAfterCancel = android.os.Handler.nativePendingCount();
+        int latePostCalls = android.os.Handler.nativePostCalls;
+        int lateCancelCalls = android.os.Handler.nativeCancelCalls;
+        boolean lateSameOwner = android.os.Handler.lastPostOwner != null
+            && android.os.Handler.lastPostOwner == android.os.Handler.lastCancelOwner;
+        boolean lateSameCallback = android.os.Handler.lastPostedCallback != null
+            && android.os.Handler.lastPostedCallback == android.os.Handler.lastCancelledCallback;
+        int pendingLate = pendingOwnedWork();
+        android.os.Handler.flush();
+        boolean idle = android.os.Handler.awaitIdle(10000);
+        result.put("lateIdentity", lateThrown == lateFault)
+            .put("lateBodyRan", bodyRanLate[0])
+            .put("latePostCalls", latePostCalls).put("lateCancelCalls", lateCancelCalls)
+            .put("lateSameOwner", lateSameOwner).put("lateSameCallback", lateSameCallback)
+            .put("nativeQueueAfterCancel", acceptedAfterCancel)
+            .put("pendingLate", pendingLate).put("idle", idle);
+        require(lateThrown == lateFault,
+            "the accepted-then-cancelled original fault reaches the caller");
+        require(latePostCalls == 1 && lateCancelCalls == 1,
+            "the native queue accepted the callback and the removal was invoked");
+        require(lateSameOwner && lateSameCallback,
+            "the removal used the exact same Handler and callback that were posted");
+        require(acceptedAfterCancel == 0,
+            "the real callback cancellation emptied the native queue before the flush");
+        require(pendingLate == 0,
+            "the acknowledged cancellation retires the item before the flush");
+        require(idle, "the main thread reached idle");
+        require(!bodyRanLate[0],
+            "the flush and idle never delivered the cancelled callback or its body");
+
+        // ---- Preserved: the native cancellation itself fails, honestly unclosed.
+        RuntimeException cancelFailure = new IllegalStateException("A5_CANCEL_FAILED");
+        android.os.Handler.beforePostFault = original;
+        android.os.Handler.removeFault = cancelFailure;
+        Throwable failedThrown = null;
+        try {
+            GuardedReaderApplication.beginSaveObservation("http://book/1", "http://book/1/c1");
+        } catch (Throwable error) {
+            failedThrown = error;
+        } finally {
+            android.os.Handler.beforePostFault = null;
+            android.os.Handler.removeFault = null;
+        }
+        int failedPending = pendingOwnedWork();
+        boolean exactSuppressed = false;
+        if (failedThrown != null) {
+            for (Throwable suppressed : failedThrown.getSuppressed()) {
+                if (suppressed == cancelFailure) exactSuppressed = true;
+            }
+        }
+        String failedChain = failedThrown == null ? "none"
+            : FieldOracleFreeChain.describe(failedThrown);
+        result.put("cancelIdentity", failedThrown == original)
+            .put("exactCancelSuppressed", exactSuppressed)
+            .put("cancelChain", failedChain)
+            .put("failedPending", failedPending);
+        require(failedThrown == original,
+            "the original post fault remains the primary failure");
+        require(exactSuppressed,
+            "the exact native cancellation failure is retained as a suppressed cause");
+        require(failedChain.contains("A5_CANCEL_FAILED"),
+            "the cancellation failure is visible in the retained graph");
+        require(failedPending == 1,
+            "a failed native cancellation keeps the item tracked, not falsely retired");
     }
 
     /** A throwing post after the body STARTED must never retire the running work. */
