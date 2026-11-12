@@ -1553,11 +1553,6 @@ public final class FieldOracle extends Instrumentation {
         String bookUrl = str(bookClass, book, "getBookUrl");
         String chapterUrl = str(chapterClass, chapters.get(0), "getUrl");
 
-        // R6: the immutable prior preference state is captured BEFORE any
-        // mutation and stays reachable by the finally below even when the
-        // mutation itself throws.
-        JSONObject priorPreference = capturePriorPreference(loader);
-
         // F9: the actual parent book row, through its own DAO, before any child.
         Object bookDao = selectedDatabase.getClass().getMethod("getBookDao")
             .invoke(selectedDatabase);
@@ -1955,6 +1950,7 @@ public final class FieldOracle extends Instrumentation {
                 && observed == prior.getBoolean("previous");
             JSONObject receipt = new JSONObject()
                 .put("previousPresent", prior.getBoolean("previousPresent"))
+                .put("previous", prior.getBoolean("previous"))
                 .put("committed", committed)
                 .put("presentAfter", present)
                 .put("observedAfter", observed)
@@ -1964,21 +1960,6 @@ public final class FieldOracle extends Instrumentation {
             }
             return receipt;
         }
-    }
-
-    /** R6: the immutable prior preference state, captured BEFORE any mutation. */
-    private JSONObject capturePriorPreference(ClassLoader loader) throws Exception {
-        return TocCountWordsLifetime.capture(defaultPreferences(loader));
-    }
-
-    /** Applies the approved value and records what was actually observed. */
-    private JSONObject applyTocCountWords(ClassLoader loader, boolean value) throws Exception {
-        return TocCountWordsLifetime.apply(defaultPreferences(loader), value);
-    }
-
-    private JSONObject restoreTocCountWords(ClassLoader loader, JSONObject state)
-            throws Exception {
-        return TocCountWordsLifetime.restore(defaultPreferences(loader), state);
     }
 
     private android.content.SharedPreferences defaultPreferences(ClassLoader loader)

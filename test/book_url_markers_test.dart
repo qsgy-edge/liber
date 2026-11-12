@@ -237,49 +237,65 @@ void main() {
     // The four phase arrays are shared with the product; the native proof is
     // producer evidence and must never be required of the product. These run
     // through the real public comparator, not a copied one.
+    const book = 'http://synthetic.test/book';
+    const chapter = '/c';
+
     List<Map<String, Object?>> rows() => [
       {'index': 0, 'title': 'CHAPTER ONE', 'variable': 'toc-a'},
       {'index': 1, 'title': 'CHAPTER TWO', 'variable': 'toc-b'},
     ];
 
-    Map<String, Object?> proof() => {
-      'bookParent': {
-        'bookUrl': 'http://synthetic.test/book',
-        'stored': true,
-        'readBack': true,
-      },
-      'chapterSeed': {'rows': 2, 'inserted': true},
-      'saveEvent': {
-        'tag': 'saveContent',
-        'delivered': true,
-        'correlates': true,
-        'fence': {'posted': true, 'completed': true},
-      },
-      'contentFiles': ['00000-abc.nb'],
-      'tocCountWords': {
-        'previousPresent': true,
-        'committed': true,
-        'presentAfter': true,
-        'observedAfter': true,
-        'restored': true,
-      },
-      'saveObserverRemoved': true,
-      'guard': {
-        'release': {
-          'ownedReceivers': 1,
-          'removedReceivers': 1,
-          'ownedLifecycleCallbacks': 1,
-          'removedLifecycleCallbacks': 1,
-        },
-        'fence': {'posted': true, 'completed': true},
-        'receipt': {
-          'blockedDeliveries': 0,
-          'pendingWrappers': 0,
-          'inboundAttempts': <Object?>[],
-          'failures': <Object?>[],
-        },
+    Map<String, Object?> terminal() => {
+      'events': 1,
+      'duplicates': 0,
+      'foreignEvents': 0,
+      'callbackErrors': 0,
+      'offMainEvents': 0,
+      'malformedEvents': 0,
+      'lastEvent': {'bookUrl': book, 'chapterUrl': chapter, 'correlates': true},
+      'removal': {
+        'interface': 'com.jeremyliao.liveeventbus.core.Observable',
+        'declaringClass': 'com.jeremyliao.liveeventbus.core.Observable',
+        'onMain': true,
+        'removed': true,
       },
     };
+
+    Map<String, Object?> proof({
+      bool previousPresent = true,
+      bool previous = true,
+      bool observedAfter = true,
+    }) {
+      final event = terminal();
+      return {
+        'bookParent': {'bookUrl': book, 'stored': true, 'readBack': true},
+        'chapterSeed': {'rows': 2, 'inserted': true},
+        'saveObserver': {
+          'tag': 'saveContent',
+          'interface': 'com.jeremyliao.liveeventbus.core.Observable',
+          'declaringClass': 'com.jeremyliao.liveeventbus.core.Observable',
+          'onMain': true,
+          'registered': true,
+        },
+        'tocCountWordsApplied': {
+          'name': 'tocCountWords',
+          'applied': true,
+          'committed': true,
+          'observed': true,
+        },
+        'saveEvent': event,
+        'contentFiles': ['00000-abc.nb'],
+        'saveObserverClose': {...event, 'alreadyClosed': true, 'removed': true},
+        'tocCountWords': {
+          'previousPresent': previousPresent,
+          'previous': previous,
+          'committed': true,
+          'presentAfter': previousPresent,
+          'observedAfter': observedAfter,
+          'restored': true,
+        },
+      };
+    }
 
     Map<String, Object?> lifecycle() => {
       'beforeContent': rows(),
@@ -288,7 +304,10 @@ void main() {
       'storedAfterRefresh': rows(),
     };
 
-    Map<String, dynamic> corpus({String terminal = 'four-stage-refresh'}) {
+    Map<String, dynamic> corpus({
+      String terminal = 'four-stage-refresh',
+      int requestCount = 5,
+    }) {
       final base = _syntheticCorpus();
       base['cases'] = [
         {
@@ -298,16 +317,17 @@ void main() {
           'source': <String, Object?>{},
         },
       ];
+      final paths = ['/a', '/b', '/c', '/d', '/e'].take(requestCount).toList();
       base['expectedRequests'] = [
-        for (final path in ['/a', '/b', '/c', '/d', '/e'])
+        for (final path in paths)
           {'method': 'GET', 'path': path, 'query': <String, String>{}},
       ];
       base['responses'] = [
-        for (var index = 0; index < 5; index++)
+        for (var index = 0; index < paths.length; index++)
           {
             'id': 'r${index + 1}',
             'method': 'GET',
-            'path': ['/a', '/b', '/c', '/d', '/e'][index],
+            'path': paths[index],
             'status': 200,
             'headers': <String, Object?>{},
             'body': '',
@@ -319,24 +339,34 @@ void main() {
     Map<String, dynamic> envelope(
       Map<String, dynamic> corpus, {
       required bool native,
+      String terminal = 'four-stage-refresh',
     }) {
       final base = native
           ? _syntheticEnvelope(corpus)
           : _syntheticProduct(corpus);
-      const names = [
-        'search',
-        'bookInfo',
-        'tableOfContents',
-        'content',
-        'tableOfContents',
-      ];
+      final names = switch (terminal) {
+        'search-empty' => const ['search'],
+        'four-stage' => const [
+          'search',
+          'bookInfo',
+          'tableOfContents',
+          'content',
+        ],
+        _ => const [
+          'search',
+          'bookInfo',
+          'tableOfContents',
+          'content',
+          'tableOfContents',
+        ],
+      };
       final record = native
           ? _clone(_case())
           : _clone(
               ((base['caseRecords'] as List).first as Map)
                   .cast<String, dynamic>(),
             );
-      record['terminal'] = 'four-stage-refresh';
+      record['terminal'] = terminal;
       record['operations'] = [
         for (var index = 0; index < names.length; index++)
           {
@@ -356,8 +386,54 @@ void main() {
             stage: names[index],
           ),
       ];
-      record['titleLifecycle'] = lifecycle();
-      if (native) record['titleLifecycleProof'] = proof();
+      if (terminal == 'search-empty') {
+        record['search'] = {'results': <Object?>[]};
+        record['bookInfo'] = null;
+        record['tableOfContents'] = null;
+        record['chapter'] = null;
+      } else {
+        record['bookInfo'] = {
+          'name': 'name',
+          'author': 'author',
+          'bookUrl': book,
+          'tocUrl': '/toc',
+        };
+        record['tableOfContents'] = {
+          'tocUrl': '/toc',
+          'chapters': [
+            {
+              'title': 'CHAPTER ONE',
+              'url': native ? chapter : 'http://synthetic.test/c',
+              'absoluteUrl': 'http://synthetic.test/c',
+              'tag': null,
+              'isVolume': false,
+              'isVip': false,
+              'isPay': false,
+              if (!native) 'address': chapter,
+              if (!native) 'rawAddress': chapter,
+              if (!native) 'storeKey': 'http://synthetic.test/c',
+              if (!native) 'persistedAddress': 'http://synthetic.test/c',
+            },
+            {
+              'title': 'CHAPTER TWO',
+              'url': native ? '/c2' : 'http://synthetic.test/c2',
+              'absoluteUrl': 'http://synthetic.test/c2',
+              'tag': null,
+              'isVolume': false,
+              'isVip': false,
+              'isPay': false,
+              if (!native) 'address': '/c2',
+              if (!native) 'rawAddress': '/c2',
+              if (!native) 'storeKey': 'http://synthetic.test/c2',
+              if (!native) 'persistedAddress': 'http://synthetic.test/c2',
+            },
+          ],
+        };
+      }
+      if (terminal == 'four-stage-refresh') {
+        record['titleLifecycle'] = lifecycle();
+        if (native) record['titleLifecycleProof'] = proof();
+      }
       if (native) {
         base['cases'] = [record];
       } else {
@@ -383,12 +459,14 @@ void main() {
     }
 
     Map<String, dynamic> pair({
+      String terminal = 'four-stage-refresh',
+      int requestCount = 5,
       void Function(Map<String, dynamic>)? damageNative,
       void Function(Map<String, dynamic>)? damageProduct,
     }) {
-      final base = corpus();
-      final golden = envelope(base, native: true);
-      final product = envelope(base, native: false);
+      final base = corpus(terminal: terminal, requestCount: requestCount);
+      final golden = envelope(base, native: true, terminal: terminal);
+      final product = envelope(base, native: false, terminal: terminal);
       damageNative?.call(golden);
       damageProduct?.call(product);
       return _compare(golden, product, base);
@@ -401,6 +479,23 @@ void main() {
         ((envelope['caseRecords'] as List).first as Map)
             .cast<String, dynamic>();
 
+    Map<String, dynamic> nativeProof(Map<String, dynamic> envelope) =>
+        (nativeRecord(envelope)['titleLifecycleProof'] as Map)
+            .cast<String, dynamic>();
+
+    void expectRefused(void Function() action, {String? reason}) {
+      expect(
+        action,
+        throwsA(
+          isA<StateError>().having(
+            (error) => '$error',
+            'message',
+            reason == null ? anything : contains(reason),
+          ),
+        ),
+      );
+    }
+
     test('the shared phases pass and the product needs no native proof', () {
       final report = pair();
       expect(
@@ -410,7 +505,84 @@ void main() {
       );
     });
 
+    test('ordinary four-stage and search-empty positives are clean', () {
+      for (final terminal in ['four-stage', 'search-empty']) {
+        final report = pair(
+          terminal: terminal,
+          requestCount: terminal == 'search-empty' ? 1 : 4,
+        );
+        expect(
+          report['status'],
+          'pass',
+          reason: '$terminal ${jsonEncode(report['differences'])}',
+        );
+      }
+    });
+
+    test('a non-observing terminal may not carry either field', () {
+      for (final terminal in ['four-stage', 'search-empty']) {
+        for (final side in ['native', 'product']) {
+          for (final field in ['titleLifecycle', 'titleLifecycleProof']) {
+            expectRefused(
+              () => pair(
+                terminal: terminal,
+                requestCount: terminal == 'search-empty' ? 1 : 4,
+                damageNative: side == 'native'
+                    ? (envelope) => nativeRecord(envelope)[field] =
+                          field == 'titleLifecycle' ? lifecycle() : proof()
+                    : null,
+                damageProduct: side == 'product'
+                    ? (envelope) => productRecord(envelope)[field] =
+                          field == 'titleLifecycle' ? lifecycle() : proof()
+                    : null,
+              ),
+              reason: 'not declared by its terminal',
+            );
+          }
+        }
+      }
+    });
+
     test('a changed variable in any phase is a named difference', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        for (final side in ['native', 'product']) {
+          final report = pair(
+            damageNative: side == 'native'
+                ? (envelope) {
+                    final rows =
+                        (nativeRecord(envelope)['titleLifecycle'] as Map)[phase]
+                            as List;
+                    (rows[0] as Map)['variable'] = 'tampered';
+                  }
+                : null,
+            damageProduct: side == 'product'
+                ? (envelope) {
+                    final rows =
+                        (productRecord(envelope)['titleLifecycle']
+                                as Map)[phase]
+                            as List;
+                    (rows[0] as Map)['variable'] = 'tampered';
+                  }
+                : null,
+          );
+          expect(report['status'], 'fail', reason: '$phase/$side');
+          expect(
+            (report['differences'] as List).cast<Map>().any(
+              (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+            ),
+            isTrue,
+            reason: '$phase/$side',
+          );
+        }
+      }
+    });
+
+    test('a changed title in any phase is a named difference', () {
       for (final phase in [
         'beforeContent',
         'storedAfterContent',
@@ -422,13 +594,13 @@ void main() {
             final rows =
                 (productRecord(envelope)['titleLifecycle'] as Map)[phase]
                     as List;
-            (rows[0] as Map)['variable'] = 'tampered';
+            (rows[1] as Map)['title'] = 'OTHER';
           },
         );
         expect(report['status'], 'fail', reason: phase);
         expect(
           (report['differences'] as List).cast<Map>().any(
-            (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+            (row) => row['field'] == 'titleLifecycle.$phase[1].title',
           ),
           isTrue,
           reason: phase,
@@ -436,64 +608,101 @@ void main() {
       }
     });
 
-    test('a changed title is a named difference', () {
-      final report = pair(
-        damageProduct: (envelope) {
-          final rows =
-              (productRecord(envelope)['titleLifecycle']
-                      as Map)['refreshedChapters']
-                  as List;
-          (rows[1] as Map)['title'] = 'OTHER';
-        },
-      );
-      expect(report['status'], 'fail');
-      expect(
-        (report['differences'] as List).cast<Map>().any(
-          (row) => row['field'] == 'titleLifecycle.refreshedChapters[1].title',
-        ),
-        isTrue,
-      );
-    });
-
     test('the observation is required on both sides when declared', () {
-      expect(
+      expectRefused(
         () => pair(
           damageProduct: (envelope) =>
               productRecord(envelope).remove('titleLifecycle'),
         ),
-        throwsA(isA<StateError>()),
       );
-      expect(
+      expectRefused(
         () => pair(
           damageNative: (envelope) =>
               nativeRecord(envelope).remove('titleLifecycle'),
         ),
-        throwsA(isA<StateError>()),
       );
     });
 
-    test('a non-observing case may not carry either field', () {
-      final base = corpus(terminal: 'four-stage');
-      final golden = envelope(base, native: true);
-      final product = envelope(base, native: false);
-      final record = productRecord(product);
-      record['terminal'] = 'four-stage';
-      record['operations'] = (record['operations'] as List).take(4).toList();
-      expect(() => _compare(golden, product, base), throwsA(isA<StateError>()));
+    test('every phase missing, null or wrong-typed is refused', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        for (final side in ['native', 'product']) {
+          for (final damage in <void Function(Map<String, dynamic>)>[
+            (rows) => rows.remove(phase),
+            (rows) => rows[phase] = null,
+            (rows) => rows[phase] = <Object?>[],
+            (rows) => rows[phase] = 'not-a-list',
+          ]) {
+            expectRefused(
+              () => pair(
+                damageNative: side == 'native'
+                    ? (envelope) => damage(
+                        (nativeRecord(envelope)['titleLifecycle'] as Map)
+                            .cast<String, dynamic>(),
+                      )
+                    : null,
+                damageProduct: side == 'product'
+                    ? (envelope) => damage(
+                        (productRecord(envelope)['titleLifecycle'] as Map)
+                            .cast<String, dynamic>(),
+                      )
+                    : null,
+              ),
+            );
+          }
+        }
+      }
     });
 
-    test('an undeclared shared field is refused', () {
-      expect(
-        () => pair(
-          damageProduct: (envelope) {
-            (productRecord(envelope)['titleLifecycle']
-                as Map)['writeContainment'] = {
-              'cachePath': 'x',
-            };
-          },
-        ),
-        throwsA(isA<StateError>()),
-      );
+    test('row count, order, fields and types are refused', () {
+      for (final damage in <void Function(Map<String, dynamic>)>[
+        (record) {
+          final rows =
+              (record['titleLifecycle'] as Map)['beforeContent'] as List;
+          rows.removeLast();
+        },
+        (record) {
+          final lifecycle = record['titleLifecycle'] as Map;
+          final rows = lifecycle['beforeContent'] as List;
+          lifecycle['beforeContent'] = <dynamic>['not-a-map', rows[1]];
+        },
+        (record) {
+          final rows =
+              (record['titleLifecycle'] as Map)['beforeContent'] as List;
+          (rows[0] as Map).remove('variable');
+        },
+        (record) {
+          final rows =
+              (record['titleLifecycle'] as Map)['beforeContent'] as List;
+          (rows[0] as Map)['wordCount'] = '1';
+        },
+        (record) {
+          final rows =
+              (record['titleLifecycle'] as Map)['beforeContent'] as List;
+          (rows[0] as Map)['index'] = 1;
+          (rows[1] as Map)['index'] = 0;
+        },
+        (record) {
+          final rows =
+              (record['titleLifecycle'] as Map)['beforeContent'] as List;
+          (rows[0] as Map)['index'] = true;
+        },
+        (record) {
+          final rows =
+              (record['titleLifecycle'] as Map)['beforeContent'] as List;
+          (rows[0] as Map)['title'] = '';
+        },
+      ]) {
+        expectRefused(
+          () => pair(
+            damageProduct: (envelope) => damage(productRecord(envelope)),
+          ),
+        );
+      }
     });
 
     test('null and missing variables stay distinct', () {
@@ -517,7 +726,7 @@ void main() {
         'pass',
         reason: jsonEncode(report['differences']),
       );
-      expect(
+      expectRefused(
         () => pair(
           damageProduct: (envelope) {
             final rows =
@@ -527,98 +736,107 @@ void main() {
             (rows[0] as Map).remove('variable');
           },
         ),
-        throwsA(isA<StateError>()),
       );
     });
 
-    test('row count, order and extra fields are refused', () {
-      expect(
-        () => pair(
-          damageProduct: (envelope) {
-            final rows =
-                (productRecord(envelope)['titleLifecycle']
-                        as Map)['beforeContent']
-                    as List;
-            rows.removeLast();
-          },
-        ),
-        throwsA(isA<StateError>()),
-      );
-      expect(
-        () => pair(
-          damageProduct: (envelope) {
-            final rows =
-                (productRecord(envelope)['titleLifecycle']
-                        as Map)['beforeContent']
-                    as List;
-            (rows[0] as Map)['index'] = 1;
-            (rows[1] as Map)['index'] = 0;
-          },
-        ),
-        throwsA(isA<StateError>()),
-      );
-      expect(
-        () => pair(
-          damageProduct: (envelope) {
-            final rows =
-                (productRecord(envelope)['titleLifecycle']
-                        as Map)['beforeContent']
-                    as List;
-            (rows[0] as Map)['wordCount'] = '1';
-          },
-        ),
-        throwsA(isA<StateError>()),
-      );
-    });
-
-    test('the native proof is native-only and must be closed', () {
-      expect(
+    test('the native proof is native-only and must be the actual shape', () {
+      expectRefused(
         () => pair(
           damageNative: (envelope) =>
               nativeRecord(envelope).remove('titleLifecycleProof'),
         ),
-        throwsA(isA<StateError>()),
       );
-      expect(
+      expectRefused(
         () => pair(
           damageProduct: (envelope) =>
               productRecord(envelope)['titleLifecycleProof'] = proof(),
         ),
-        throwsA(isA<StateError>()),
       );
-      expect(
-        () => pair(
+      for (final damage in <void Function(Map<String, dynamic>)>[
+        (proof) => proof.remove('saveObserverClose'),
+        (proof) => proof['undeclared'] = true,
+        (proof) => (proof['bookParent'] as Map)['bookUrl'] = 'other',
+        (proof) => (proof['bookParent'] as Map)['readBack'] = false,
+        (proof) => (proof['chapterSeed'] as Map)['rows'] = 1,
+        (proof) => (proof['saveObserver'] as Map)['onMain'] = false,
+        (proof) => (proof['saveObserver'] as Map)['tag'] = 'other',
+        (proof) => (proof['tocCountWordsApplied'] as Map)['applied'] = false,
+        (proof) => (proof['saveEvent'] as Map)['events'] = 2,
+        (proof) => (proof['saveEvent'] as Map)['duplicates'] = 1,
+        (proof) =>
+            ((proof['saveEvent'] as Map)['removal'] as Map)['removed'] = false,
+        (proof) =>
+            ((proof['saveEvent'] as Map)['lastEvent'] as Map)['chapterUrl'] =
+                '/other',
+        (proof) =>
+            ((proof['saveEvent'] as Map)['lastEvent'] as Map)['correlates'] =
+                false,
+        (proof) => (proof['saveObserverClose'] as Map)['events'] = 2,
+        (proof) => (proof['saveObserverClose'] as Map)['alreadyClosed'] = false,
+        (proof) => proof['contentFiles'] = ['a/b'],
+        (proof) => proof['contentFiles'] = ['b', 'a'],
+        (proof) => proof['contentFiles'] = ['a', 'a'],
+        (proof) => (proof['tocCountWords'] as Map)['restored'] = false,
+        (proof) => (proof['tocCountWords'] as Map)['previous'] = false,
+        (proof) => (proof['tocCountWords'] as Map).remove('previous'),
+      ]) {
+        expectRefused(
+          () => pair(damageNative: (envelope) => damage(nativeProof(envelope))),
+        );
+      }
+      // A present false prior and an absent prior read back through the actual
+      // getBoolean default are both clean positives.
+      for (final prior in [
+        {
+          'previousPresent': true,
+          'previous': false,
+          'presentAfter': true,
+          'observedAfter': false,
+        },
+        {
+          'previousPresent': false,
+          'previous': true,
+          'presentAfter': false,
+          'observedAfter': true,
+        },
+      ]) {
+        final report = pair(
           damageNative: (envelope) {
-            final guard =
-                ((nativeRecord(envelope)['titleLifecycleProof'] as Map)['guard']
-                    as Map);
-            (guard['release'] as Map)['removedReceivers'] = 0;
+            (nativeProof(envelope)['tocCountWords'] as Map).addAll(prior);
           },
-        ),
-        throwsA(isA<StateError>()),
-      );
-      expect(
-        () => pair(
-          damageNative: (envelope) {
-            final guard =
-                ((nativeRecord(envelope)['titleLifecycleProof'] as Map)['guard']
-                    as Map);
-            (guard['receipt'] as Map)['blockedDeliveries'] = 1;
-          },
-        ),
-        throwsA(isA<StateError>()),
-      );
+        );
+        expect(
+          report['status'],
+          'pass',
+          reason: '$prior ${jsonEncode(report['differences'])}',
+        );
+      }
     });
 
     test('the refresh span must cover all five requests', () {
-      expect(
+      expectRefused(
         () => pair(
           damageNative: (envelope) {
             final record = nativeRecord(envelope);
             (record['operations'] as List).removeLast();
           },
         ),
-        throwsA(isA<StateError>()),
+      );
+      expectRefused(
+        () => pair(
+          damageNative: (envelope) {
+            final record = nativeRecord(envelope);
+            ((record['operations'] as List).last as Map)['requestStart'] = 3;
+          },
+        ),
+      );
+      expectRefused(
+        () => pair(
+          damageNative: (envelope) {
+            ((envelope['stageTrace'] as List).last as Map)['path'] =
+                'http://127.0.0.1:18733/wrong';
+          },
+        ),
       );
     });
   });

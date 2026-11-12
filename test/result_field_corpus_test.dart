@@ -242,16 +242,22 @@ void main() {
       'storedAfterRefresh',
     ]);
     expect(lifecycle['tocCountWordsPreference'], 'tocCountWords');
+    final pins = [
+      for (final source in (corpus['frozenSources'] as List).cast<Map>())
+        source['path'],
+    ];
+    expect(pins, hasLength(20));
     expect(
-      [
-        for (final source in (corpus['frozenSources'] as List).cast<Map>())
-          source['path'],
-      ],
+      pins,
       containsAll(<String>[
         'app/src/main/java/io/legado/app/help/book/BookHelp.kt',
         'app/src/main/java/io/legado/app/data/dao/BookChapterDao.kt',
         'app/src/main/java/io/legado/app/help/config/AppConfig.kt',
         'app/src/main/java/io/legado/app/utils/ContextExtensions.kt',
+        'app/src/main/java/io/legado/app/data/dao/BookDao.kt',
+        'app/src/main/java/io/legado/app/data/AppDatabase.kt',
+        'app/src/main/java/io/legado/app/utils/EventBusExtensions.kt',
+        'app/src/main/java/io/legado/app/constant/EventBus.kt',
       ]),
     );
   });

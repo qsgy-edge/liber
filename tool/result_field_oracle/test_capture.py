@@ -477,7 +477,7 @@ _SYNTHETIC_HARNESS_APK = _synthetic_dex_archive('classes.dex', b'synthetic-harne
 
 
 def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source, sdk, java, references,
-                                  reference_dex_sha=None, harness_dex_sha=None):
+                                  reference_dex_sha=None, harness_dex_sha=None, title=False):
     tools = sdk / 'build-tools' / '35.0.1'
     javabin = java / 'bin' / 'java.exe'
     commands = {
@@ -493,6 +493,12 @@ def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source
         'reference-dex': [tools / 'dexdump.exe', source / 'fields-reference-dex-mechanics' / 'classes19.dex'],
         'dex': [tools / 'dexdump.exe', source / 'fields-dex-mechanics' / 'classes.dex'],
     }
+    if title:
+        for dex_name in capture.TITLE_PREFLIGHT_ABI_DEXES:
+            commands['target-abi-' + dex_name] = [
+                tools / 'dexdump.exe',
+                source / ('fields-target-dex-mechanics-' + dex_name) / dex_name,
+            ]
     values = {'source-head': capture.SELECTED_BASELINE + '\n',
               'source-tree': '0f69dc7004012a969551ce271dc4e11051637d32\n',
               'source-blobs': '\n'.join(r['sha1'] for r in fixture['frozenSources']) + '\n'}
@@ -504,6 +510,19 @@ def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source
             (output / ('preflight-' + name + '.stderr.log')).write_bytes(b'')
         receipts.append({'name': name, 'exitCode': 0, 'command': [str(x) for x in command],
                          'stdoutSha256': capture.sha256_bytes(data), 'stderrSha256': capture.sha256_bytes(b'')})
+    reflected = None
+    if title:
+        checked = []
+        for descriptor, methods in capture.REFLECTED_ABI.items():
+            for method, signature in methods:
+                checked.append({'class': descriptor, 'method': method,
+                                'descriptor': signature,
+                                'dex': capture.TITLE_PREFLIGHT_ABI_DEXES[0]})
+        summary = {'name': capture.PREFLIGHT_SUMMARY,
+                   'dexFiles': sorted(capture.TITLE_PREFLIGHT_ABI_DEXES),
+                   'checked': checked, 'status': 'verified'}
+        receipts.append(summary)
+        reflected = {'dexFiles': summary['dexFiles'], 'checked': checked}
     reference_dex_sha = reference_dex_sha or capture.sha256_bytes(b'synthetic-reference-dex')
     if harness_dex_sha is None:
         with zipfile.ZipFile(apk) as archive:
@@ -514,7 +533,8 @@ def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source
                        'androidSdk': str(sdk), 'javaHome': str(java),
                        'referenceDex': str(commands['reference-dex'][1]),
                        'harnessDex': str(commands['dex'][1])},
-            'referenceSources': references, 'commands': receipts}
+            'referenceSources': references, 'reflectedAbi': reflected,
+            'commands': receipts}
 
 
 class TitleLifecycleAdmissionTest(unittest.TestCase):
@@ -533,34 +553,57 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         return {phase: [dict(row) for row in rows]
                 for phase in capture.TITLE_LIFECYCLE_PHASES}
 
-    def _proof(self):
+    BOOK = ORIGIN + '/book/1'
+    CHAPTER = '/chapter/1'
+
+    def _terminal(self):
         return {
-            'bookParent': {'bookUrl': self.ORIGIN + '/book/1',
-                           'stored': True, 'readBack': True},
-            'chapterSeed': {'rows': 2, 'inserted': True},
-            'saveEvent': {'tag': 'saveContent', 'delivered': True,
-                          'correlates': True,
-                          'fence': {'posted': True, 'completed': True,
-                                    'timeoutMillis': 5000, 'mainThread': False}},
-            'contentFiles': ['00000-0123456789abcdef.nb'],
-            'tocCountWords': {'previousPresent': True, 'committed': True,
-                              'presentAfter': True, 'observedAfter': True,
-                              'restored': True},
-            'saveObserverRemoved': True,
-            'guard': {
-                'release': {'ownedReceivers': 1, 'removedReceivers': 1,
-                            'ownedLifecycleCallbacks': 1,
-                            'removedLifecycleCallbacks': 1},
-                'fence': {'posted': True, 'completed': True,
-                          'timeoutMillis': 5000, 'mainThread': False},
-                'receipt': {'blockedDeliveries': 0, 'pendingWrappers': 0,
-                            'inboundAttempts': [], 'failures': []},
+            'events': 1, 'duplicates': 0, 'foreignEvents': 0,
+            'callbackErrors': 0, 'offMainEvents': 0, 'malformedEvents': 0,
+            'lastEvent': {'bookUrl': self.BOOK, 'chapterUrl': self.CHAPTER,
+                          'correlates': True},
+            'removal': {
+                'interface': capture.OBSERVABLE_INTERFACE,
+                'declaringClass': capture.OBSERVABLE_INTERFACE,
+                'onMain': True, 'removed': True,
             },
         }
 
+    def _proof(self):
+        terminal = self._terminal()
+        return {
+            'bookParent': {'bookUrl': self.BOOK, 'stored': True,
+                           'readBack': True},
+            'chapterSeed': {'rows': 2, 'inserted': True},
+            'saveObserver': {
+                'tag': 'saveContent',
+                'interface': capture.OBSERVABLE_INTERFACE,
+                'declaringClass': capture.OBSERVABLE_INTERFACE,
+                'onMain': True, 'registered': True,
+            },
+            'tocCountWordsApplied': {'name': 'tocCountWords', 'applied': True,
+                                     'committed': True, 'observed': True},
+            'saveEvent': terminal,
+            'contentFiles': ['00000-0123456789abcdef.nb'],
+            'saveObserverClose': {**terminal, 'alreadyClosed': True,
+                                  'removed': True},
+            'tocCountWords': {'previousPresent': True, 'previous': True,
+                              'committed': True, 'presentAfter': True,
+                              'observedAfter': True, 'restored': True},
+        }
+
     def _case(self):
-        return {'titleLifecycle': self._phases(),
-                'titleLifecycleProof': self._proof()}
+        return {
+            'bookInfo': {'bookUrl': self.BOOK},
+            'tableOfContents': {'chapters': [
+                {'url': self.CHAPTER,
+                 'absoluteUrl': self.ORIGIN + self.CHAPTER},
+                {'url': '/chapter/2',
+                 'absoluteUrl': self.ORIGIN + '/chapter/2'},
+            ]},
+            'titleLifecycle': self._phases(),
+            'titleLifecycleProof': self._proof(),
+        }
 
     def _admit_shared(self, case, terminal=None):
         capture._admit_title_lifecycle(
@@ -632,30 +675,54 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         case['titleLifecycleProof']['bookParent']['readBack'] = False
         self._rejected(self._admit_native, case, 'readBack must be true')
         case = self._case()
-        del case['titleLifecycleProof']['guard']
-        self._rejected(self._admit_native, case, 'guard is missing')
+        del case['titleLifecycleProof']['saveObserverClose']
+        self._rejected(self._admit_native, case, 'saveObserverClose')
         case = self._case()
         case['titleLifecycleProof']['undeclared'] = True
-        self._rejected(self._admit_native, case, 'undeclared fields')
+        self._rejected(self._admit_native, case, 'fields differ')
 
-    def test_the_native_proof_rejects_an_unclosed_domain(self):
+    def test_the_actual_save_terminal_and_cached_repeat_must_agree(self):
         case = self._case()
-        case['titleLifecycleProof']['guard']['release']['removedReceivers'] = 0
+        case['titleLifecycleProof']['saveEvent']['events'] = 2
         self._rejected(self._admit_native, case,
-                       'did not remove every registration it owned')
+                       'did not observe exactly one save event')
         case = self._case()
-        case['titleLifecycleProof']['guard']['receipt']['pendingWrappers'] = 1
-        self._rejected(self._admit_native, case, 'left a wrapper registered')
+        case['titleLifecycleProof']['saveEvent']['duplicates'] = 1
+        self._rejected(self._admit_native, case, 'duplicates is not clean')
         case = self._case()
-        case['titleLifecycleProof']['guard']['receipt']['blockedDeliveries'] = 1
+        case['titleLifecycleProof']['saveEvent']['removal']['removed'] = False
+        self._rejected(self._admit_native, case, 'was not acknowledged')
+        case = self._case()
+        case['titleLifecycleProof']['saveEvent']['lastEvent']['chapterUrl'] = '/other'
+        self._rejected(self._admit_native, case, 'chapterUrl differs')
+        case = self._case()
+        case['titleLifecycleProof']['saveEvent']['lastEvent']['correlates'] = False
+        self._rejected(self._admit_native, case, 'does not correlate')
+        case = self._case()
+        case['titleLifecycleProof']['saveObserverClose']['events'] = 2
         self._rejected(self._admit_native, case,
-                       'received an external IPC attempt')
+                       'did not observe exactly one save event')
         case = self._case()
-        case['titleLifecycleProof']['guard']['receipt']['failures'] = ['x']
-        self._rejected(self._admit_native, case, 'recorded a guard failure')
+        case['titleLifecycleProof']['saveObserverClose']['alreadyClosed'] = False
+        self._rejected(self._admit_native, case, 'alreadyClosed must be true')
+
+    def test_the_observer_registration_is_the_actual_main_acknowledgement(self):
         case = self._case()
-        case['titleLifecycleProof']['saveEvent']['fence']['completed'] = False
-        self._rejected(self._admit_native, case, 'fence did not complete')
+        case['titleLifecycleProof']['saveObserver']['onMain'] = False
+        self._rejected(self._admit_native, case, 'onMain must be true')
+        case = self._case()
+        case['titleLifecycleProof']['saveObserver']['interface'] = 'other'
+        self._rejected(self._admit_native, case, 'interface differs')
+        case = self._case()
+        case['titleLifecycleProof']['saveObserver']['tag'] = 'other'
+        self._rejected(self._admit_native, case, 'tag differs')
+
+    def test_content_files_are_safe_sorted_unique_basenames(self):
+        for bad in (['a/b'], ['..'], ['.'], ['a', 'a'], ['b', 'a'], ['']):
+            case = self._case()
+            case['titleLifecycleProof']['contentFiles'] = bad
+            with self.subTest(files=bad), self.assertRaises(ValueError):
+                self._admit_native(case)
 
     def test_the_preference_restore_is_required_and_presence_aware(self):
         case = self._case()
@@ -664,6 +731,25 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         case = self._case()
         case['titleLifecycleProof']['tocCountWords']['previousPresent'] = False
         self._rejected(self._admit_native, case, 'presence differs')
+        case = self._case()
+        case['titleLifecycleProof']['tocCountWords']['previous'] = False
+        self._rejected(self._admit_native, case,
+                       'observed value differs from the actual prior value')
+        # A present false prior is a real value, not a missing default.
+        case = self._case()
+        case['titleLifecycleProof']['tocCountWords'].update(
+            {'previousPresent': True, 'previous': False,
+             'presentAfter': True, 'observedAfter': False})
+        self._admit_native(case)
+        # An absent prior reads back through the actual getBoolean default.
+        case = self._case()
+        case['titleLifecycleProof']['tocCountWords'].update(
+            {'previousPresent': False, 'previous': True,
+             'presentAfter': False, 'observedAfter': True})
+        self._admit_native(case)
+        case = self._case()
+        del case['titleLifecycleProof']['tocCountWords']['previous']
+        self._rejected(self._admit_native, case, 'fields differ')
 
     def _operations_case(self, terminal, names):
         requests = []
@@ -743,6 +829,226 @@ class TitleLifecycleAdmissionTest(unittest.TestCase):
         self.assertEqual(len(corpus['responses']), 18)
         self.assertEqual(len(corpus['cases']), 4)
         self.assertIn('titleLifecycle', corpus)
+
+
+class TitlePreflightPlanTest(unittest.TestCase):
+    """The exact retained preflight plan, not a wildcard or old-plan conversion."""
+
+    def _fixture(self, title=True):
+        name = ('reader-title-lifecycle-fixtures-selected.json' if title
+                else 'book-url-markers-fixtures-selected.json')
+        return json.loads((Path(__file__).resolve().parent / name).read_bytes())
+
+    def _preflight(self, title=True):
+        fixture = self._fixture(title)
+        references = {row['path']: {'blobSha1': row['sha1'],
+                                    'worktreeSha256': 'a' * 64}
+                      for row in fixture['frozenSources']}
+        return _synthetic_selected_preflight(
+            None, fixture, {'apkSha256': 'a' * 64}, '/synthetic/harness.apk',
+            '/synthetic/reference.apk', Path('C:/source'), Path('C:/sdk'),
+            Path('C:/java'), references, harness_dex_sha='d' * 64,
+            title=title), fixture
+
+    def test_the_actual_title_plan_is_exactly_28_commands_and_one_summary(self):
+        preflight, fixture = self._preflight()
+        self.assertEqual(len(preflight['commands']), 29)
+        self.assertEqual([row['name'] for row in preflight['commands'][:11]],
+                         list(capture.PREFLIGHT_BASE_COMMANDS))
+        self.assertEqual([row['name'] for row in preflight['commands'][11:28]],
+                         list(capture.TITLE_PREFLIGHT_ABI_COMMANDS))
+        self.assertEqual(preflight['commands'][-1]['name'],
+                         capture.PREFLIGHT_SUMMARY)
+        capture._admit_retained_preflight(preflight, '/synthetic/harness.apk',
+                                          fixture)
+
+    def test_the_old_eleven_plan_is_not_admitted_for_the_title_corpus(self):
+        preflight, fixture = self._preflight()
+        preflight['commands'] = preflight['commands'][:11]
+        preflight['reflectedAbi'] = None
+        with self.assertRaisesRegex(ValueError, 'ABI summary'):
+            capture._admit_retained_preflight(preflight, '/synthetic/harness.apk',
+                                              fixture)
+
+    def test_the_title_plan_is_not_admitted_for_an_ordinary_corpus(self):
+        preflight, fixture = self._preflight()
+        ordinary = self._fixture(title=False)
+        with self.assertRaisesRegex(ValueError, 'command order differs'):
+            capture._admit_retained_preflight(preflight, '/synthetic/harness.apk',
+                                              ordinary)
+
+    def test_missing_reordered_or_unknown_rows_are_refused(self):
+        preflight, fixture = self._preflight()
+        for mutate in (
+            lambda rows: rows.pop(11),
+            lambda rows: rows.insert(11, dict(rows[12])),
+            lambda rows: rows[11].update({'name': 'target-abi-unknown.dex'}),
+            lambda rows: rows[11].update({'command': ['dexdump', 'classes99.dex']}),
+        ):
+            changed = json.loads(json.dumps(preflight))
+            mutate(changed['commands'])
+            with self.subTest(mutation=mutate), self.assertRaises(ValueError):
+                capture._admit_retained_preflight(
+                    changed, '/synthetic/harness.apk', fixture)
+
+    def test_the_summary_is_not_a_subprocess_and_must_reconcile(self):
+        preflight, fixture = self._preflight()
+        summary = preflight['commands'][-1]
+        self.assertNotIn('command', summary)
+        for mutate in (
+            lambda item: item.update({'checked': item['checked'][:-1]}),
+            lambda item: item['checked'][0].update({'dex': 'classes99.dex'}),
+            lambda item: item.update({'status': 'unverified'}),
+            lambda item: item.update({'dexFiles': list(reversed(item['dexFiles']))}),
+        ):
+            changed = json.loads(json.dumps(preflight))
+            mutate(changed['commands'][-1])
+            with self.subTest(mutation=mutate), self.assertRaises(ValueError):
+                capture._admit_retained_preflight(
+                    changed, '/synthetic/harness.apk', fixture)
+
+    def test_fresh_title_preflight_reconciles_the_actual_plan(self):
+        retained, fixture = self._preflight()
+        fresh = json.loads(json.dumps(retained))
+        capture._reconcile_selected_preflight(retained, fresh, fixture)
+        for mutate in (
+            lambda item: item['commands'][-1]['checked'][0].update(
+                {'method': 'other'}),
+            lambda item: item['commands'][11].update(
+                {'command': ['C:/sdk/build-tools/35.0.1/dexdump.exe',
+                             'C:/Temp/other/fields-target-dex-x/classes14.dex']}),
+        ):
+            changed = json.loads(json.dumps(fresh))
+            mutate(changed)
+            with self.subTest(mutation=mutate), self.assertRaises(ValueError):
+                capture._reconcile_selected_preflight(retained, changed, fixture)
+
+    def test_early_containment_joins_the_measured_root(self):
+        root = '/data/user/0/com.legado.app.debug/cache/liber-fields-02'
+        containment = {
+            'appCtxClass': capture.GUARD_APPLICATION,
+            'activityThreadAppClass': capture.GUARD_APPLICATION,
+            'sameApplicationObject': True,
+            'guardedApplication': True,
+            'baseContextBound': True,
+            'baseContextClass': capture.SCRATCH_CONTEXT,
+            'externalFilesPath': root + '/files',
+            'filesPath': root + '/files',
+            'databasePath': root + '/databases/legado.db',
+            'scratchRoot': root,
+            'externalFilesRouted': True,
+            'filesRouted': True,
+            'databaseRouted': True,
+            'appUtilsApplicationClass': capture.GUARD_APPLICATION,
+            'appUtilsSameApplication': True,
+            'bookHelpCachePath': root + '/cache',
+            'bookHelpCacheWithinScratch': True,
+            'roomDatabasePath': root + '/databases/legado.db',
+            'roomDatabaseWithinScratch': True,
+        }
+        report = {'isolation': {
+            'scratchRoot': root,
+            'scratchFilesDir': root + '/files',
+            'scratchDatabasePath': root + '/databases/legado.db',
+            'earlyContainment': containment,
+        }}
+        manifest = {'targetPrivateRoot': '/data/user/0/com.legado.app.debug'}
+        capture._admit_title_early_containment(report, manifest)
+        for field, value in (
+            ('scratchRoot', '/data/user/0/com.legado.app.debug/cache/other'),
+            ('filesPath', '/data/user/0/com.legado.app.debug/files'),
+            ('bookHelpCachePath', '/data/user/0/com.legado.app.debug/cache'),
+            ('roomDatabasePath', '/data/user/0/com.legado.app.debug/other/legado.db'),
+            ('sameApplicationObject', False),
+            ('baseContextClass', 'other'),
+        ):
+            changed = json.loads(json.dumps(report))
+            changed['isolation']['earlyContainment'][field] = value
+            if field == 'scratchRoot':
+                changed['isolation']['scratchRoot'] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                capture._admit_title_early_containment(changed, manifest)
+
+    def _guard_report(self):
+        case = {
+            'terminal': capture.TITLE_LIFECYCLE_TERMINAL,
+            'bookInfo': {'bookUrl': 'http://127.0.0.1:18734/book/1'},
+            'tableOfContents': {'chapters': [
+                {'url': '/chapter/1'}, {'url': '/chapter/2'}]},
+        }
+        event = {
+            'events': 1, 'duplicates': 0, 'foreignEvents': 0,
+            'callbackErrors': 0, 'offMainEvents': 0, 'malformedEvents': 0,
+            'lastEvent': {'bookUrl': 'http://127.0.0.1:18734/book/1',
+                          'chapterUrl': '/chapter/1', 'correlates': True},
+            'removal': {'interface': capture.OBSERVABLE_INTERFACE,
+                        'declaringClass': capture.OBSERVABLE_INTERFACE,
+                        'onMain': True, 'removed': True},
+        }
+        return {'cases': [case], 'cleanup': {'savedContentGuard': {
+            'release': {
+                'ownedReceivers': 1, 'removedReceivers': 1,
+                'ownedLifecycleCallbacks': 1, 'removedLifecycleCallbacks': 1,
+                'removalFailures': [], 'observerClose': {},
+                'remainingOwnedReceivers': 0,
+                'remainingOwnedLifecycleCallbacks': 0, 'pendingOwnedWork': 0,
+                'closed': True,
+            },
+            'fence': {'posted': True, 'completed': True,
+                      'timeoutMillis': 5000, 'mainThread': False},
+            'receipt': {
+                'armed': True, 'ownerClass': capture.GUARD_APPLICATION,
+                'attemptedRegistrations': 2, 'successfulRegistrations': 2,
+                'receiverRegistrations': [{
+                    'overload': '3-arg', 'nativeClass': capture.LEB_RECEIVER,
+                    'wrapperClass': capture.GUARD_RECEIVER_WRAPPER, 'flags': 2,
+                    'actions': [capture.LEB_IPC_ACTION], 'registered': True,
+                }],
+                'receiverUnregistrations': [capture.GUARD_RECEIVER_WRAPPER],
+                'lifecycleRegistrations': [capture.LEB_LIFECYCLE],
+                'lifecycleUnregistrations': [capture.LEB_LIFECYCLE],
+                'inboundAttempts': [], 'failures': [],
+                'blockedDeliveries': 0, 'foreignUnregistrations': 0,
+                'pendingWrappers': 0, 'pendingOwnedWork': 0,
+                'saveEvents': 1, 'foreignEvents': 0, 'callbackErrors': 0,
+                'observing': False, 'observerClosed': True,
+                'captureFailed': False,
+                'lastEvent': event['lastEvent'],
+            },
+        }}}
+
+    def test_the_process_guard_cleanup_is_admitted_and_closed(self):
+        report = self._guard_report()
+        capture._admit_process_guard_cleanup(report, {'titleLifecycle': {}})
+        for path, value in (
+            (('release', 'closed'), False),
+            (('release', 'remainingOwnedReceivers'), 1),
+            (('release', 'removalFailures'), ['x']),
+            (('fence', 'completed'), False),
+            (('receipt', 'armed'), False),
+            (('receipt', 'attemptedRegistrations'), 1),
+            (('receipt', 'blockedDeliveries'), 1),
+            (('receipt', 'foreignUnregistrations'), 1),
+            (('receipt', 'observing'), True),
+            (('receipt', 'observerClosed'), False),
+            (('receipt', 'captureFailed'), True),
+            (('receipt', 'saveEvents'), 2),
+        ):
+            changed = json.loads(json.dumps(report))
+            guard = changed['cleanup']['savedContentGuard']
+            guard[path[0]][path[1]] = value
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                capture._admit_process_guard_cleanup(changed, {'titleLifecycle': {}})
+        changed = json.loads(json.dumps(report))
+        guard = changed['cleanup']['savedContentGuard']
+        guard['receipt']['receiverRegistrations'][0]['nativeClass'] = 'other'
+        with self.assertRaises(ValueError):
+            capture._admit_process_guard_cleanup(changed, {'titleLifecycle': {}})
+        changed = json.loads(json.dumps(report))
+        guard = changed['cleanup']['savedContentGuard']
+        guard['receipt']['lastEvent']['chapterUrl'] = '/other'
+        with self.assertRaises(ValueError):
+            capture._admit_process_guard_cleanup(changed, {'titleLifecycle': {}})
 
 
 GUARD_FAKES = {

@@ -257,17 +257,48 @@ The `four-stage-refresh` terminal is the only one that carries
 The old `four-stage` terminal keeps exactly four operations, and a record that
 carries `titleLifecycle` under any other terminal is refused.
 
-`titleLifecycle` carries the four ordered phases `beforeContent`,
-`storedAfterContent`, `refreshedChapters` and `storedAfterRefresh`, each an
-ordered list of `{index:int, title:string, variable:string|null}` rows read from
-the real chapter objects or the reference chapter DAO — never copied from the
-seed or from an in-memory title assignment. It also carries `writeContainment`
-(the resolved `BookHelp.cachePath` and database path, both proven inside the
-owner-bound scratch root before the first save), `contentFiles` (the chapter
-files the save actually wrote), and the `tocCountWords` preference state with
-its restore. A missing field is named before the extra-field check, so a missing
-`variable` is never reported as a shape error, and null stays distinct from
-missing.
+`titleLifecycle` is the shared observation only: the four ordered phases
+`beforeContent`, `storedAfterContent`, `refreshedChapters` and
+`storedAfterRefresh`, each an ordered list of
+`{index:int, title:string, variable:string|null}` rows read from the real
+chapter objects or the reference chapter DAO — never copied from the seed or
+from an in-memory title assignment. A missing field is named before the
+extra-field check, so a missing `variable` is never reported as a shape error,
+and null stays distinct from missing. The shared object is exactly those four
+phases; containment, files, preference and guard facts are not shared product
+requirements and are refused there.
+
+The native-only `titleLifecycleProof` carries the actual producer evidence for
+the saved case:
+
+| Field | Actual relationship |
+|---|---|
+| `bookParent` | `{bookUrl, stored, readBack}`; the URL is this case's `bookInfo.bookUrl`. |
+| `chapterSeed` | `{rows, inserted}`; two seeded rows, consistent with the case's chapter observations. |
+| `saveObserver` | `{tag, interface, declaringClass, onMain, registered}`; the public `Observable` registration acknowledged on MAIN. |
+| `tocCountWordsApplied` | `{name, applied, committed, observed}`; the real `tocCountWords=true` application. |
+| `saveEvent` | The counted first-end terminal: exactly one correlated event, every invalid counter zero, the actual MAIN removal acknowledgement and the case's book/first-chapter raw URL. |
+| `saveObserverClose` | The cached repeat of that terminal with `alreadyClosed:true` and `removed:true`; it must agree with the first close. |
+| `contentFiles` | Sorted unique safe basenames enumerated under the proven `BookHelp` cache root; never absolute paths or traversal text. |
+| `tocCountWords` | The restoration receipt including the actual prior Boolean; `observedAfter` must equal that prior value, and an absent prior reads back through the real `getBoolean(KEY, true)` default. |
+
+The process guard is a report cleanup fact, not a per-case receipt. The corpus
+requires `cleanup.savedContentGuard = {release, fence, receipt}` once: the
+release removes every owned receiver and lifecycle callback, leaves no pending
+work or removal failure, and reports `closed:true` while `armed:true`; the MAIN
+fence is posted and completed; the receipt carries the actual
+`LebIpcReceiver`/`ACTION_LEB_IPC`/3-arg/flags-2 and
+`AppUtils$ActivityLifecycleImpl` registration and removal observations, empty
+inbound/failure arrays, zero blocked/foreign/callback/error counts, and a closed
+observer. `saveEvents` is the latest per-case count, not a run total, and the
+final `lastEvent` joins the last saved case. A healthy final
+`release.observerClose` is empty because both case observers already closed.
+The selected runtime also joins `isolation.earlyContainment` to the measured
+target-private root: the guarded application identity, base-context binding,
+and canonical files/database/BookHelp/Room paths must all be inside that root.
+The old `four-stage` terminal keeps exactly four operations, and a record that
+carries `titleLifecycle` or `titleLifecycleProof` under any other terminal is
+refused.
 
 The saved pair re-reads its own table of contents, so the same path appears
 twice in the declared sequence. The replay server serves a path's declared
@@ -275,17 +306,23 @@ responses in declaration order only when a corpus declares more than one for
 that method and path; a corpus with one response per path keeps the original
 single answer, so every earlier corpus is unchanged.
 
-The corpus pins the reached `BookHelp.kt`, `BookChapterDao.kt`, `AppConfig.kt`
-and `ContextExtensions.kt` blobs in addition to the existing reached
-dependencies, because the saved-row path reaches them.
+The corpus pins twenty reached Git blobs: the previous sixteen plus the
+`BookDao.kt`, `AppDatabase.kt`, `EventBusExtensions.kt` and `EventBus.kt` sources
+the saved-row and event-guard path reaches. The target APK, package, fingerprint
+and initialization are the fixed selected-reference values above.
+
+The current producer's retained preflight has an exact profile-owned plan: the
+eleven base command receipts, then one `target-abi-<dex>` receipt for each
+target DEX file that actually declares a reflected class in first-use order,
+then one `reflected-abi` summary that is not a subprocess. The title corpus
+admits exactly that plan; the historical eleven-row plan remains exact for its
+own ordinary profile, and neither plan is converted into the other. The summary
+and top-level `reflectedAbi` must reconcile the same sorted DEX inventory and
+the same nineteen descriptor checks.
 
 ```text
-pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build> \
-  -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json
-python tool/result_field_oracle/capture.py --preflight-only \
-  --fixture tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json \
-  --apk <build>/field-oracle.apk --target-apk <approved-reference-apk> \
-  --frozen-source <a7-checkout> --java-home <jdk17> --android-sdk <sdk> --output <fresh-preflight>
+pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build>   -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json
+python tool/result_field_oracle/capture.py --preflight-only   --fixture tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json   --apk <build>/field-oracle.apk --target-apk <approved-reference-apk>   --frozen-source <a7-checkout> --java-home <jdk17> --android-sdk <sdk> --output <fresh-preflight>
 ```
 
 The lifecycle cases invoke the reference `WebBook` entry points and the

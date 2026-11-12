@@ -485,6 +485,22 @@
     {
       "path": "app/src/main/java/io/legado/app/utils/ContextExtensions.kt",
       "sha1": "3a2a963f93e7a4ae66512eacd79a0af4eb43ed80"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/dao/BookDao.kt",
+      "sha1": "1bbdd64cfe9ee60254837aef795a2063125cea82"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/AppDatabase.kt",
+      "sha1": "0ca00f0b6063d496a760de82718a5780385cf4df"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/EventBusExtensions.kt",
+      "sha1": "6570d948f1a2fb07697e90f89eb3096c7e9cc508"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/constant/EventBus.kt",
+      "sha1": "cc00523c4c1e09c1a6a438e6a3cc95cd5da4019a"
     }
   ],
   "hostInitialization": {

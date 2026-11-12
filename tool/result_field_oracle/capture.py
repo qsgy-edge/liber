@@ -47,7 +47,7 @@ SELECTED_CHAPTER_CORPUS_SHA256 = (
 )
 SELECTED_READER_CORPUS_SHA256 = '88eba883d045dcd73c187ecd6cb7508e37d5721ef550000f4b21b1312dc1e8e0'
 SELECTED_JSON_REPLACE_CORPUS_SHA256 = '0f87c6c775ff54164bc11a9a30efaa48e5155def31c37e9b7eb8e721bd776be9'
-SELECTED_TITLE_LIFECYCLE_CORPUS_SHA256 = '201223b0ce0700eef9baf34ae8ad9303d027cb329c251672e12b3acc67447625'
+SELECTED_TITLE_LIFECYCLE_CORPUS_SHA256 = '4ead870ef7a5951016e56915e6e249a95a94525e3f353cdd1dff9d2ebdb09c7c'
 SELECTED_CORPUS_SHA256S = (
     SELECTED_CORPUS_SHA256,
     *SELECTED_CHAPTER_CORPUS_SHA256,
@@ -62,6 +62,32 @@ SELECTED_TARGET = {
     'deviceFingerprint': 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys',
 }
 OWNED_PREFERENCE_PREFIX = 'liber_fields_02_'
+# The retained preflight receipt plan the current producer emits. The eleven
+# base receipts are fixed; a lifecycle corpus additionally disassembles the
+# exact target DEX files that carry the reflected classes, in the producer's
+# first-use order, and appends one summary that is not a subprocess.
+PREFLIGHT_BASE_COMMANDS = (
+    'java-version', 'javac-version', 'source-head', 'source-tree',
+    'source-status', 'source-blobs', 'manifest', 'harness-signature',
+    'target-signature', 'reference-dex', 'dex',
+)
+TITLE_PREFLIGHT_ABI_DEXES = (
+    'classes13.dex', 'classes14.dex', 'classes15.dex', 'classes16.dex',
+    'classes17.dex', 'classes19.dex', 'classes20.dex', 'classes22.dex',
+    'classes24.dex', 'classes25.dex', 'classes12.dex', 'classes23.dex',
+    'classes18.dex', 'classes21.dex', 'classes26.dex', 'classes33.dex',
+    'classes31.dex',
+)
+TITLE_PREFLIGHT_ABI_COMMANDS = tuple(
+    'target-abi-' + name for name in TITLE_PREFLIGHT_ABI_DEXES)
+PREFLIGHT_SUMMARY = 'reflected-abi'
+LEB_RECEIVER = 'com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver'
+LEB_IPC_ACTION = 'intent.action.ACTION_LEB_IPC'
+LEB_LIFECYCLE = 'com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl'
+OBSERVABLE_INTERFACE = 'com.jeremyliao.liveeventbus.core.Observable'
+GUARD_APPLICATION = 'io.liber.oracle.nested.GuardedReaderApplication'
+GUARD_RECEIVER_WRAPPER = GUARD_APPLICATION + '$GuardedReceiver'
+SCRATCH_CONTEXT = 'io.liber.oracle.nested.StateSessionOracle$ScratchContext'
 HISTORICAL_SOURCE_KEYS = (
     'FieldOracle.java',
     'StateSessionOracle.java',
@@ -883,7 +909,7 @@ def _admit_native_request(request, label):
         raise ValueError(label + '.receipt.error must be a string')
 
 
-def _admit_native_case(case, declared, label):
+def _admit_native_case(case, declared, label, isolation=None):
     if not isinstance(case, dict):
         raise ValueError(label + ' must be an object')
     case_id = _required_string(case, 'id', label)
@@ -935,7 +961,7 @@ def _admit_native_case(case, declared, label):
         _required_string(chapter, 'title', label + '.chapter')
         _required_string(chapter, 'text', label + '.chapter')
     _admit_title_lifecycle(case, terminal, label)
-    _admit_title_lifecycle_proof(case, terminal, label)
+    _admit_title_lifecycle_proof(case, terminal, label, isolation)
     probes = _required_map(case, 'sourceProbes', label)
     for field in ['vipProbe', 'payProbe']:
         _nullable_string(probes, field, label + '.sourceProbes')
@@ -989,28 +1015,101 @@ def _admit_title_lifecycle(case, terminal, label):
             _nullable_string(row, 'variable', row_label)
 
 
-def _admit_title_lifecycle_proof(case, terminal, label):
-    """The native producer evidence for the saved-content observation.
+def _exact_keys(mapping, expected, label):
+    if set(mapping) != set(expected):
+        missing = sorted(set(expected) - set(mapping))
+        extra = sorted(set(mapping) - set(expected))
+        raise ValueError(label + ' fields differ: missing=' + repr(missing)
+                         + ' extra=' + repr(extra))
+    return mapping
 
-    Required on the native report only. It binds the actual owner/root, the
-    recorded paths and objects, the observed save event and the successful
-    cleanup, rather than free-standing true flags.
+
+def _safe_content_basename(name, label):
+    if (not isinstance(name, str) or not name or name in ('.', '..')
+            or '/' in name or '\\' in name or chr(0) in name):
+        raise ValueError(label + ' must be a safe content basename')
+    return name
+
+
+def _admit_save_terminal(terminal, label, book_url, chapter_url, cached=False):
+    """One guard save-observation terminal, first-end or cached repeat."""
+    expected = {'events', 'duplicates', 'foreignEvents', 'callbackErrors',
+                'offMainEvents', 'malformedEvents', 'lastEvent', 'removal'}
+    if cached:
+        expected |= {'alreadyClosed', 'removed'}
+    _exact_keys(terminal, expected, label)
+    if _require_int(terminal.get('events'), label + '.events') != 1:
+        raise ValueError(label + ' did not observe exactly one save event')
+    for field in ('duplicates', 'foreignEvents', 'callbackErrors',
+                  'offMainEvents', 'malformedEvents'):
+        if _require_int(terminal.get(field), label + '.' + field) != 0:
+            raise ValueError(label + '.' + field + ' is not clean')
+    if 'failed' in terminal:
+        raise ValueError(label + ' carries a failure flag')
+    event = _required_map(terminal, 'lastEvent', label)
+    _exact_keys(event, {'bookUrl', 'chapterUrl', 'correlates'}, label + '.lastEvent')
+    if book_url is not None and _required_string(
+            event, 'bookUrl', label + '.lastEvent') != book_url:
+        raise ValueError(label + '.lastEvent.bookUrl differs from this case')
+    if chapter_url is not None and _required_string(
+            event, 'chapterUrl', label + '.lastEvent') != chapter_url:
+        raise ValueError(label + '.lastEvent.chapterUrl differs from the first chapter')
+    if _required_bool(event, 'correlates', label + '.lastEvent') is not True:
+        raise ValueError(label + '.lastEvent does not correlate')
+    removal = _required_map(terminal, 'removal', label)
+    _exact_keys(removal, {'interface', 'declaringClass', 'onMain', 'removed'},
+                label + '.removal')
+    if _required_string(removal, 'interface', label + '.removal') != OBSERVABLE_INTERFACE:
+        raise ValueError(label + '.removal.interface differs')
+    if _required_string(removal, 'declaringClass', label + '.removal') != OBSERVABLE_INTERFACE:
+        raise ValueError(label + '.removal.declaringClass differs')
+    if _required_bool(removal, 'onMain', label + '.removal') is not True:
+        raise ValueError(label + '.removal did not run on the main thread')
+    if _required_bool(removal, 'removed', label + '.removal') is not True:
+        raise ValueError(label + '.removal was not acknowledged')
+    if cached:
+        if _required_bool(terminal, 'alreadyClosed', label) is not True:
+            raise ValueError(label + '.alreadyClosed must be true')
+        if _required_bool(terminal, 'removed', label) is not True:
+            raise ValueError(label + '.removed must be true')
+    return terminal
+
+
+def _admit_title_lifecycle_proof(case, terminal, label, isolation=None):
+    """The actual native producer evidence for the saved-content observation.
+
+    Required on the native report only. It binds the case's own book and first
+    chapter, the real observer registration/removal acknowledgements, the
+    counted save event, the restored preference value and the content files to
+    the report's proven scratch root. The process guard's own closure is a
+    report cleanup fact and is admitted separately.
     """
     if terminal != TITLE_LIFECYCLE_TERMINAL:
         return
     proof = _required_map(case, 'titleLifecycleProof', label)
-    expected = {'bookParent', 'chapterSeed', 'saveEvent', 'contentFiles',
-                'tocCountWords', 'saveObserverRemoved', 'guard'}
-    if set(proof) - expected:
-        raise ValueError(label + '.titleLifecycleProof has undeclared fields: '
-                         + repr(sorted(set(proof) - expected)))
-    for field in ('bookParent', 'chapterSeed', 'saveEvent', 'contentFiles',
-                  'tocCountWords', 'guard'):
-        if field not in proof:
-            raise ValueError(label + '.titleLifecycleProof.' + field + ' is missing')
+    info = _required_map(case, 'bookInfo', label)
+    book_url = _required_string(info, 'bookUrl', label + '.bookInfo')
+    toc = _required_map(case, 'tableOfContents', label)
+    chapters = _required_list(toc, 'chapters', label + '.tableOfContents')
+    if not chapters:
+        raise ValueError(label + ' has no chapter observation')
+    first = chapters[0]
+    if not isinstance(first, dict):
+        raise ValueError(label + '.tableOfContents.chapters[0] must be an object')
+    chapter_url = _required_string(first, 'url', label + '.tableOfContents.chapters[0]')
+
+    _exact_keys(proof, {'bookParent', 'chapterSeed', 'saveObserver',
+                        'tocCountWordsApplied', 'saveEvent', 'contentFiles',
+                        'saveObserverClose', 'tocCountWords'},
+                label + '.titleLifecycleProof')
 
     parent = _required_map(proof, 'bookParent', label + '.titleLifecycleProof')
-    _required_string(parent, 'bookUrl', label + '.titleLifecycleProof.bookParent')
+    _exact_keys(parent, {'bookUrl', 'stored', 'readBack'},
+                label + '.titleLifecycleProof.bookParent')
+    if _required_string(parent, 'bookUrl',
+                        label + '.titleLifecycleProof.bookParent') != book_url:
+        raise ValueError(label + '.titleLifecycleProof.bookParent.bookUrl differs '
+                         'from this case')
     for field in ('stored', 'readBack'):
         if _required_bool(parent, field,
                           label + '.titleLifecycleProof.bookParent') is not True:
@@ -1018,73 +1117,95 @@ def _admit_title_lifecycle_proof(case, terminal, label):
                              + ' must be true')
 
     seed = _required_map(proof, 'chapterSeed', label + '.titleLifecycleProof')
-    if _require_int(seed.get('rows'), label + '.titleLifecycleProof.chapterSeed.rows') \
-            != TITLE_LIFECYCLE_CHAPTERS:
+    _exact_keys(seed, {'rows', 'inserted'}, label + '.titleLifecycleProof.chapterSeed')
+    rows = _require_int(seed.get('rows'), label + '.titleLifecycleProof.chapterSeed.rows')
+    if rows != len(chapters) or rows != TITLE_LIFECYCLE_CHAPTERS:
         raise ValueError(label + '.titleLifecycleProof.chapterSeed.rows differs')
     if _required_bool(seed, 'inserted',
                       label + '.titleLifecycleProof.chapterSeed') is not True:
         raise ValueError(label + '.titleLifecycleProof.chapterSeed.inserted must be true')
 
-    event = _required_map(proof, 'saveEvent', label + '.titleLifecycleProof')
-    if _required_string(event, 'tag', label + '.titleLifecycleProof.saveEvent') \
-            != 'saveContent':
-        raise ValueError(label + '.titleLifecycleProof.saveEvent.tag differs')
-    for field in ('delivered', 'correlates'):
-        if _required_bool(event, field,
-                          label + '.titleLifecycleProof.saveEvent') is not True:
-            raise ValueError(label + '.titleLifecycleProof.saveEvent.' + field
+    observer = _required_map(proof, 'saveObserver', label + '.titleLifecycleProof')
+    _exact_keys(observer, {'tag', 'interface', 'declaringClass', 'onMain',
+                           'registered'},
+                label + '.titleLifecycleProof.saveObserver')
+    if _required_string(observer, 'tag',
+                        label + '.titleLifecycleProof.saveObserver') != 'saveContent':
+        raise ValueError(label + '.titleLifecycleProof.saveObserver.tag differs')
+    for field in ('interface', 'declaringClass'):
+        if _required_string(observer, field,
+                            label + '.titleLifecycleProof.saveObserver') \
+                != OBSERVABLE_INTERFACE:
+            raise ValueError(label + '.titleLifecycleProof.saveObserver.' + field
+                             + ' differs')
+    for field in ('onMain', 'registered'):
+        if _required_bool(observer, field,
+                          label + '.titleLifecycleProof.saveObserver') is not True:
+            raise ValueError(label + '.titleLifecycleProof.saveObserver.' + field
                              + ' must be true')
-    fence = _required_map(event, 'fence', label + '.titleLifecycleProof.saveEvent')
-    if _required_bool(fence, 'completed',
-                      label + '.titleLifecycleProof.saveEvent.fence') is not True:
-        raise ValueError(label + '.titleLifecycleProof.saveEvent.fence did not complete')
+
+    applied = _required_map(proof, 'tocCountWordsApplied',
+                            label + '.titleLifecycleProof')
+    _exact_keys(applied, {'name', 'applied', 'committed', 'observed'},
+                label + '.titleLifecycleProof.tocCountWordsApplied')
+    if _required_string(applied, 'name',
+                        label + '.titleLifecycleProof.tocCountWordsApplied') \
+            != 'tocCountWords':
+        raise ValueError(label + '.titleLifecycleProof.tocCountWordsApplied.name differs')
+    for field in ('applied', 'committed', 'observed'):
+        if _required_bool(applied, field,
+                          label + '.titleLifecycleProof.tocCountWordsApplied') is not True:
+            raise ValueError(label + '.titleLifecycleProof.tocCountWordsApplied.'
+                             + field + ' must be true')
+
+    event = _required_map(proof, 'saveEvent', label + '.titleLifecycleProof')
+    _admit_save_terminal(event, label + '.titleLifecycleProof.saveEvent',
+                         book_url, chapter_url)
+
+    close = _required_map(proof, 'saveObserverClose', label + '.titleLifecycleProof')
+    _admit_save_terminal(close, label + '.titleLifecycleProof.saveObserverClose',
+                         book_url, chapter_url, cached=True)
+    for field in ('events', 'duplicates', 'foreignEvents', 'callbackErrors',
+                  'offMainEvents', 'malformedEvents', 'lastEvent', 'removal'):
+        if close.get(field) != event.get(field):
+            raise ValueError(label + '.titleLifecycleProof.saveObserverClose.'
+                             + field + ' differs from the first close')
 
     files = _required_list(proof, 'contentFiles', label + '.titleLifecycleProof')
     if not files:
         raise ValueError(label + '.titleLifecycleProof.contentFiles must not be empty')
-    for index, name in enumerate(files):
-        if not isinstance(name, str) or not name:
-            raise ValueError(label + '.titleLifecycleProof.contentFiles[' + str(index)
-                             + '] must be a nonempty string')
+    names = [_safe_content_basename(name, label + '.titleLifecycleProof.contentFiles['
+                                    + str(index) + ']')
+             for index, name in enumerate(files)]
+    if names != sorted(names) or len(set(names)) != len(names):
+        raise ValueError(label + '.titleLifecycleProof.contentFiles must be sorted '
+                         'unique basenames')
+    if isolation is not None:
+        containment = _required_map(isolation, 'earlyContainment',
+                                    'report.isolation')
+        cache = _required_string(containment, 'bookHelpCachePath',
+                                 'report.isolation.earlyContainment')
+        root = _required_string(isolation, 'scratchRoot', 'report.isolation')
+        _require_contained(cache, root, 'BookHelp cache path')
 
     preference = _required_map(proof, 'tocCountWords', label + '.titleLifecycleProof')
-    for field in ('previousPresent', 'committed', 'presentAfter', 'observedAfter',
-                  'restored'):
-        _required_bool(preference, field, label + '.titleLifecycleProof.tocCountWords')
+    _exact_keys(preference, {'previousPresent', 'previous', 'committed',
+                             'presentAfter', 'observedAfter', 'restored'},
+                label + '.titleLifecycleProof.tocCountWords')
+    for field in ('previousPresent', 'previous', 'committed', 'presentAfter',
+                  'observedAfter', 'restored'):
+        _required_bool(preference, field,
+                       label + '.titleLifecycleProof.tocCountWords')
     if preference['restored'] is not True:
         raise ValueError(label + '.titleLifecycleProof.tocCountWords was not restored')
+    if preference['committed'] is not True:
+        raise ValueError(label + '.titleLifecycleProof.tocCountWords restore did '
+                         'not commit')
     if preference['presentAfter'] != preference['previousPresent']:
         raise ValueError(label + '.titleLifecycleProof.tocCountWords presence differs')
-    if _required_bool(proof, 'saveObserverRemoved',
-                      label + '.titleLifecycleProof') is not True:
-        raise ValueError(label + '.titleLifecycleProof.saveObserverRemoved must be true')
-
-    guard = _required_map(proof, 'guard', label + '.titleLifecycleProof')
-    release = _required_map(guard, 'release', label + '.titleLifecycleProof.guard')
-    for field in ('ownedReceivers', 'removedReceivers', 'ownedLifecycleCallbacks',
-                  'removedLifecycleCallbacks'):
-        _require_int(release.get(field), label + '.titleLifecycleProof.guard.release.' + field)
-    if release['removedReceivers'] != release['ownedReceivers'] \
-            or release['removedLifecycleCallbacks'] != release['ownedLifecycleCallbacks']:
-        raise ValueError(label + '.titleLifecycleProof.guard did not remove every '
-                         'registration it owned')
-    guard_fence = _required_map(guard, 'fence', label + '.titleLifecycleProof.guard')
-    if _required_bool(guard_fence, 'completed',
-                      label + '.titleLifecycleProof.guard.fence') is not True:
-        raise ValueError(label + '.titleLifecycleProof.guard.fence did not complete')
-    receipt = _required_map(guard, 'receipt', label + '.titleLifecycleProof.guard')
-    if _require_int(receipt.get('blockedDeliveries'),
-                    label + '.titleLifecycleProof.guard.receipt.blockedDeliveries') != 0:
-        raise ValueError(label + '.titleLifecycleProof.guard received an external IPC attempt')
-    if _require_int(receipt.get('pendingWrappers'),
-                    label + '.titleLifecycleProof.guard.receipt.pendingWrappers') != 0:
-        raise ValueError(label + '.titleLifecycleProof.guard left a wrapper registered')
-    if _required_list(receipt, 'inboundAttempts',
-                      label + '.titleLifecycleProof.guard.receipt'):
-        raise ValueError(label + '.titleLifecycleProof.guard recorded an inbound IPC attempt')
-    if _required_list(receipt, 'failures',
-                      label + '.titleLifecycleProof.guard.receipt'):
-        raise ValueError(label + '.titleLifecycleProof.guard recorded a guard failure')
+    if preference['observedAfter'] != preference['previous']:
+        raise ValueError(label + '.titleLifecycleProof.tocCountWords observed value '
+                         'differs from the actual prior value')
 
 
 def _admit_provenance(manifest, fixture_bytes, fixture, isolation):
@@ -1246,7 +1367,220 @@ def _admit_native_operations(cases, requests, trace, fixture):
         raise ValueError('case operation spans do not cover the global sequences')
 
 
-def _admit_selected_runtime(report, fixture):
+def _canonical_path(path, label):
+    if (not isinstance(path, str) or not path.startswith('/data/')
+            or path.endswith('/') or '//' in path
+            or any(part in ('', '.', '..') for part in path.split('/')[1:])):
+        raise ValueError(label + ' is not a canonical absolute path')
+    return path
+
+
+def _require_contained(path, root, label):
+    _canonical_path(path, label)
+    _canonical_path(root, label + ' root')
+    if path != root and not path.startswith(root + '/'):
+        raise ValueError(label + ' escapes the owned scratch root')
+    return path
+
+
+def _admit_title_early_containment(report, manifest):
+    """The measured application/storage ownership emitted before first use."""
+    isolation = _required_map(report, 'isolation', 'report')
+    containment = _required_map(isolation, 'earlyContainment',
+                                'report.isolation')
+    _exact_keys(containment, {
+        'appCtxClass', 'activityThreadAppClass', 'sameApplicationObject',
+        'guardedApplication', 'baseContextBound', 'baseContextClass',
+        'externalFilesPath', 'filesPath', 'databasePath', 'scratchRoot',
+        'externalFilesRouted', 'filesRouted', 'databaseRouted',
+        'appUtilsApplicationClass', 'appUtilsSameApplication',
+        'bookHelpCachePath', 'bookHelpCacheWithinScratch',
+        'roomDatabasePath', 'roomDatabaseWithinScratch',
+    }, 'report.isolation.earlyContainment')
+    root = _canonical_path(_required_string(
+        manifest, 'targetPrivateRoot', 'manifest') + '/cache/liber-fields-02',
+        'manifest scratch root')
+    if _required_string(containment, 'scratchRoot',
+                        'report.isolation.earlyContainment') != root:
+        raise ValueError('early containment scratch root differs from the measured root')
+    if _required_string(isolation, 'scratchRoot', 'report.isolation') != root:
+        raise ValueError('report isolation scratch root differs from the measured root')
+    for field in ('appCtxClass', 'activityThreadAppClass',
+                  'appUtilsApplicationClass'):
+        if _required_string(containment, field,
+                            'report.isolation.earlyContainment') != GUARD_APPLICATION:
+            raise ValueError('early containment ' + field + ' differs')
+    if _required_string(containment, 'baseContextClass',
+                        'report.isolation.earlyContainment') != SCRATCH_CONTEXT:
+        raise ValueError('early containment base context differs')
+    for field in ('sameApplicationObject', 'guardedApplication',
+                  'baseContextBound', 'appUtilsSameApplication',
+                  'externalFilesRouted', 'filesRouted', 'databaseRouted',
+                  'bookHelpCacheWithinScratch', 'roomDatabaseWithinScratch'):
+        if _required_bool(containment, field,
+                          'report.isolation.earlyContainment') is not True:
+            raise ValueError('early containment ' + field + ' must be true')
+    for field, isolation_field in (('filesPath', 'scratchFilesDir'),
+                                   ('databasePath', 'scratchDatabasePath')):
+        value = _required_string(containment, field,
+                                 'report.isolation.earlyContainment')
+        _require_contained(value, root, 'early containment ' + field)
+        if value != _required_string(isolation, isolation_field, 'report.isolation'):
+            raise ValueError('early containment ' + field
+                             + ' differs from the bound scratch path')
+    for field in ('externalFilesPath', 'bookHelpCachePath', 'roomDatabasePath'):
+        _require_contained(_required_string(
+            containment, field, 'report.isolation.earlyContainment'), root,
+            'early containment ' + field)
+
+
+def _admit_process_guard_cleanup(report, fixture):
+    """The one process-lifetime guard release, fence and receipt."""
+    cleanup = _required_map(report, 'cleanup', 'report')
+    guard = _required_map(cleanup, 'savedContentGuard', 'report.cleanup')
+    _exact_keys(guard, {'release', 'fence', 'receipt'},
+                'report.cleanup.savedContentGuard')
+    release = _required_map(guard, 'release',
+                            'report.cleanup.savedContentGuard')
+    _exact_keys(release, {
+        'ownedReceivers', 'removedReceivers', 'ownedLifecycleCallbacks',
+        'removedLifecycleCallbacks', 'removalFailures', 'observerClose',
+        'remainingOwnedReceivers', 'remainingOwnedLifecycleCallbacks',
+        'pendingOwnedWork', 'closed',
+    }, 'report.cleanup.savedContentGuard.release')
+    owned_receivers = _require_int(release.get('ownedReceivers'),
+                                   'guard.release.ownedReceivers')
+    owned_callbacks = _require_int(release.get('ownedLifecycleCallbacks'),
+                                   'guard.release.ownedLifecycleCallbacks')
+    if owned_receivers <= 0 or owned_callbacks <= 0:
+        raise ValueError('the process guard never registered its owned resources')
+    if _require_int(release.get('removedReceivers'),
+                    'guard.release.removedReceivers') != owned_receivers:
+        raise ValueError('the process guard did not remove every receiver')
+    if _require_int(release.get('removedLifecycleCallbacks'),
+                    'guard.release.removedLifecycleCallbacks') != owned_callbacks:
+        raise ValueError('the process guard did not remove every lifecycle callback')
+    if _required_list(release, 'removalFailures', 'guard.release'):
+        raise ValueError('the process guard recorded a removal failure')
+    for field in ('remainingOwnedReceivers', 'remainingOwnedLifecycleCallbacks',
+                  'pendingOwnedWork'):
+        if _require_int(release.get(field), 'guard.release.' + field) != 0:
+            raise ValueError('the process guard left owned work behind: ' + field)
+    if _required_bool(release, 'closed', 'guard.release') is not True:
+        raise ValueError('the process guard did not close its owned domain')
+    observer_close = _required_map(release, 'observerClose', 'guard.release')
+    if observer_close:
+        _admit_save_terminal(observer_close, 'guard.release.observerClose',
+                             None, None, cached=True)
+
+    fence = _required_map(guard, 'fence', 'report.cleanup.savedContentGuard')
+    _exact_keys(fence, {'posted', 'completed', 'timeoutMillis', 'mainThread'},
+                'report.cleanup.savedContentGuard.fence')
+    for field in ('posted', 'completed'):
+        if _required_bool(fence, field,
+                          'report.cleanup.savedContentGuard.fence') is not True:
+            raise ValueError('the main-looper fence did not complete: ' + field)
+    if _require_int(fence.get('timeoutMillis'),
+                    'report.cleanup.savedContentGuard.fence.timeoutMillis') <= 0:
+        raise ValueError('the main-looper fence timeout is not positive')
+    _required_bool(fence, 'mainThread', 'report.cleanup.savedContentGuard.fence')
+
+    receipt = _required_map(guard, 'receipt', 'report.cleanup.savedContentGuard')
+    _exact_keys(receipt, {
+        'armed', 'ownerClass', 'attemptedRegistrations',
+        'successfulRegistrations', 'receiverRegistrations',
+        'receiverUnregistrations', 'lifecycleRegistrations',
+        'lifecycleUnregistrations', 'inboundAttempts', 'failures',
+        'blockedDeliveries', 'foreignUnregistrations', 'pendingWrappers',
+        'pendingOwnedWork', 'saveEvents', 'foreignEvents', 'callbackErrors',
+        'observing', 'observerClosed', 'captureFailed', 'lastEvent',
+    }, 'report.cleanup.savedContentGuard.receipt')
+    if _required_bool(receipt, 'armed', 'guard.receipt') is not True:
+        raise ValueError('the process guard was not armed for this lifetime')
+    if _required_string(receipt, 'ownerClass', 'guard.receipt') != GUARD_APPLICATION:
+        raise ValueError('the process guard owner class differs')
+    attempted = _require_int(receipt.get('attemptedRegistrations'),
+                             'guard.receipt.attemptedRegistrations')
+    successful = _require_int(receipt.get('successfulRegistrations'),
+                              'guard.receipt.successfulRegistrations')
+    if attempted != successful or successful != 2:
+        raise ValueError('the process guard registration counts are inconsistent')
+    receivers = _required_list(receipt, 'receiverRegistrations', 'guard.receipt')
+    if len(receivers) != 1 or not isinstance(receivers[0], dict):
+        raise ValueError('the process guard receiver registration is not singular')
+    registration = receivers[0]
+    _exact_keys(registration, {'overload', 'nativeClass', 'wrapperClass',
+                               'flags', 'actions', 'registered'},
+                'guard.receipt.receiverRegistrations[0]')
+    if _required_string(registration, 'overload',
+                        'guard.receipt.receiverRegistrations[0]') != '3-arg':
+        raise ValueError('the process guard used a different receiver overload')
+    if _required_string(registration, 'nativeClass',
+                        'guard.receipt.receiverRegistrations[0]') != LEB_RECEIVER:
+        raise ValueError('the process guard registered an unrelated receiver')
+    if _required_string(registration, 'wrapperClass',
+                        'guard.receipt.receiverRegistrations[0]') != GUARD_RECEIVER_WRAPPER:
+        raise ValueError('the process guard wrapper differs')
+    if _require_int(registration.get('flags'),
+                    'guard.receipt.receiverRegistrations[0].flags') != 2:
+        raise ValueError('the process guard receiver flags differ')
+    if _required_list(registration, 'actions',
+                      'guard.receipt.receiverRegistrations[0]') != [LEB_IPC_ACTION]:
+        raise ValueError('the process guard receiver action differs')
+    if _required_bool(registration, 'registered',
+                      'guard.receipt.receiverRegistrations[0]') is not True:
+        raise ValueError('the process guard receiver was not registered')
+    if _required_list(receipt, 'receiverUnregistrations',
+                      'guard.receipt') != [GUARD_RECEIVER_WRAPPER]:
+        raise ValueError('the process guard receiver removal was not acknowledged')
+    if _required_list(receipt, 'lifecycleRegistrations',
+                      'guard.receipt') != [LEB_LIFECYCLE]:
+        raise ValueError('the process guard lifecycle registration differs')
+    if _required_list(receipt, 'lifecycleUnregistrations',
+                      'guard.receipt') != [LEB_LIFECYCLE]:
+        raise ValueError('the process guard lifecycle removal was not acknowledged')
+    for field in ('inboundAttempts', 'failures'):
+        if _required_list(receipt, field, 'guard.receipt'):
+            raise ValueError('the process guard recorded a ' + field + ' fact')
+    for field in ('blockedDeliveries', 'foreignUnregistrations',
+                  'pendingWrappers', 'pendingOwnedWork', 'foreignEvents',
+                  'callbackErrors'):
+        if _require_int(receipt.get(field), 'guard.receipt.' + field) != 0:
+            raise ValueError('the process guard recorded a nonzero ' + field)
+    if _require_int(receipt.get('saveEvents'), 'guard.receipt.saveEvents') != 1:
+        raise ValueError('the process guard save-event count is not the last case')
+    for field in ('observing', 'captureFailed'):
+        if _required_bool(receipt, field, 'guard.receipt') is not False:
+            raise ValueError('the process guard ' + field + ' is not false')
+    if _required_bool(receipt, 'observerClosed', 'guard.receipt') is not True:
+        raise ValueError('the process guard observer was not closed')
+    last_event = _required_map(receipt, 'lastEvent', 'guard.receipt')
+    _exact_keys(last_event, {'bookUrl', 'chapterUrl', 'correlates'},
+                'guard.receipt.lastEvent')
+    saved = [case for case in report.get('cases', [])
+             if isinstance(case, dict)
+             and case.get('terminal') == TITLE_LIFECYCLE_TERMINAL]
+    if not saved:
+        raise ValueError('the lifecycle corpus observed no saved case')
+    last = saved[-1]
+    last_book = _required_string(_required_map(last, 'bookInfo', 'last saved case'),
+                                 'bookUrl', 'last saved case.bookInfo')
+    last_chapters = _required_list(
+        _required_map(last, 'tableOfContents', 'last saved case'),
+        'chapters', 'last saved case.tableOfContents')
+    if not last_chapters or not isinstance(last_chapters[0], dict):
+        raise ValueError('the last saved case has no chapter observation')
+    last_chapter = _required_string(last_chapters[0], 'url',
+                                    'last saved case.chapters[0]')
+    if _required_string(last_event, 'bookUrl', 'guard.receipt.lastEvent') != last_book:
+        raise ValueError('the process guard last event book differs from the last case')
+    if _required_string(last_event, 'chapterUrl', 'guard.receipt.lastEvent') != last_chapter:
+        raise ValueError('the process guard last event chapter differs from the last case')
+    if _required_bool(last_event, 'correlates', 'guard.receipt.lastEvent') is not True:
+        raise ValueError('the process guard last event does not correlate')
+
+
+def _admit_selected_runtime(report, fixture, manifest=None):
     def require(condition, detail):
         if not condition:
             raise ValueError('selected runtime ' + detail)
@@ -1295,6 +1629,9 @@ def _admit_selected_runtime(report, fixture):
                 and type(terminal.get('observedChildren')) is int and terminal['observedChildren'] >= 0
                 and type(terminal.get('launchAttempts')) is int and terminal['launchAttempts'] == 0,
                 'case terminal proof differs')
+    if isinstance(fixture.get('titleLifecycle'), dict):
+        _admit_title_early_containment(report, manifest)
+        _admit_process_guard_cleanup(report, fixture)
     cleanup = report.get('cleanup') or {}
     require(isinstance(cleanup, dict) and cleanup.get('serverClosed') is True
             and type(cleanup.get('openConnectionsAfterClose')) is int
@@ -1327,13 +1664,69 @@ def _require_selected_success(receipt, label):
         raise ValueError('selected command receipts ' + label + ' success is missing or contradicted')
 
 
-def _admit_retained_preflight(preflight, install_apk):
-    names = ['java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
-             'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex']
+def _preflight_profile(fixture):
+    return 'title' if isinstance((fixture or {}).get('titleLifecycle'), dict) else 'ordinary'
+
+
+def _preflight_command_names(profile):
+    names = list(PREFLIGHT_BASE_COMMANDS)
+    if profile == 'title':
+        names.extend(TITLE_PREFLIGHT_ABI_COMMANDS)
+    return names
+
+
+def _admit_reflected_abi_summary(summary, top_level, label):
+    """The one non-command ABI summary and its top-level mirror."""
+    _exact_keys(summary, {'name', 'dexFiles', 'checked', 'status'}, label)
+    if _required_string(summary, 'name', label) != PREFLIGHT_SUMMARY:
+        raise ValueError(label + '.name differs')
+    if _required_string(summary, 'status', label) != 'verified':
+        raise ValueError(label + '.status is not verified')
+    dex_files = _required_list(summary, 'dexFiles', label)
+    if (dex_files != sorted(TITLE_PREFLIGHT_ABI_DEXES)
+            or len(set(dex_files)) != len(dex_files)):
+        raise ValueError(label + '.dexFiles is not the exact sorted DEX inventory')
+    checked = _required_list(summary, 'checked', label)
+    expected = {(descriptor, method, signature)
+                for descriptor, methods in REFLECTED_ABI.items()
+                for method, signature in methods}
+    if len(checked) != len(expected):
+        raise ValueError(label + '.checked count differs')
+    seen = set()
+    for index, item in enumerate(checked):
+        item_label = label + '.checked[' + str(index) + ']'
+        if not isinstance(item, dict):
+            raise ValueError(item_label + ' must be an object')
+        _exact_keys(item, {'class', 'method', 'descriptor', 'dex'}, item_label)
+        triple = (_required_string(item, 'class', item_label),
+                  _required_string(item, 'method', item_label),
+                  _required_string(item, 'descriptor', item_label))
+        if triple not in expected or triple in seen:
+            raise ValueError(item_label + ' is not an expected reflected method')
+        seen.add(triple)
+        if _required_string(item, 'dex', item_label) not in dex_files:
+            raise ValueError(item_label + '.dex is outside the summary inventory')
+    if top_level is not None:
+        _exact_keys(top_level, {'dexFiles', 'checked'}, 'preflight.reflectedAbi')
+        if top_level.get('dexFiles') != dex_files or top_level.get('checked') != checked:
+            raise ValueError('preflight.reflectedAbi differs from the summary receipt')
+
+
+def _admit_retained_preflight(preflight, install_apk, fixture=None):
+    profile = _preflight_profile(fixture)
+    names = _preflight_command_names(profile)
     receipts = preflight.get('commands')
-    if not isinstance(receipts, list) or [r.get('name') if isinstance(r, dict) else None for r in receipts] != names:
+    if not isinstance(receipts, list) or any(not isinstance(r, dict) for r in receipts):
         raise ValueError('selected preflight command order differs')
-    commands = {r['name']: r.get('command') for r in receipts}
+    command_rows = receipts
+    summary = None
+    if profile == 'title':
+        if not receipts or receipts[-1].get('name') != PREFLIGHT_SUMMARY:
+            raise ValueError('selected preflight ABI summary is missing')
+        command_rows, summary = receipts[:-1], receipts[-1]
+    if [r.get('name') for r in command_rows] != names:
+        raise ValueError('selected preflight command order differs')
+    commands = {r['name']: r.get('command') for r in command_rows}
     if any(not isinstance(c, list) or not c or any(not isinstance(x, str) or not x for x in c)
            for c in commands.values()):
         raise ValueError('selected preflight command is malformed')
@@ -1383,9 +1776,23 @@ def _admit_retained_preflight(preflight, install_apk):
         if (command != [dexdump, inputs[role]] or Path(inputs[role]).name != filename
                 or not Path(inputs[role]).parent.name.startswith(prefix)):
             raise ValueError('selected preflight command DEX binding differs: ' + name)
+    if profile == 'title':
+        for name, dex_name in zip(TITLE_PREFLIGHT_ABI_COMMANDS,
+                                  TITLE_PREFLIGHT_ABI_DEXES):
+            command = commands[name]
+            if (len(command) != 2 or Path(command[0]).name.lower() != 'dexdump.exe'
+                    or Path(command[0]).resolve() != Path(dexdump).resolve()
+                    or Path(command[1]).name != dex_name
+                    or not Path(command[1]).parent.name.startswith('fields-target-dex-')):
+                raise ValueError('selected preflight target ABI command differs: ' + name)
+        _admit_reflected_abi_summary(summary, preflight.get('reflectedAbi'),
+                                     'preflight.reflectedAbiSummary')
+    else:
+        if preflight.get('reflectedAbi') is not None:
+            raise ValueError('an ordinary preflight must not claim a reflected ABI')
 
 
-def _admit_selected_commands(output, manifest, report_bytes, before, after):
+def _admit_selected_commands(output, manifest, report_bytes, before, after, fixture=None):
     """Join selected native promotion to the actual retained command receipts."""
     def fail(detail):
         raise ValueError('selected command receipts ' + detail)
@@ -1565,13 +1972,18 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after):
                 or sha256_bytes(target_archive.read('classes19.dex')) != preflight.get('referenceDexSha256')
                 or sha256_bytes(harness_archive.read('classes.dex')) != preflight.get('dexSha256')):
             fail('preflight DEX input bytes differ')
-    required_preflight = {'java-version', 'javac-version', 'source-head', 'source-tree', 'source-status',
-                          'source-blobs', 'manifest', 'harness-signature', 'target-signature', 'reference-dex', 'dex'}
+    profile = _preflight_profile(fixture)
+    required_preflight = set(_preflight_command_names(profile))
     receipts = preflight.get('commands')
-    if not isinstance(receipts, list):
+    if not isinstance(receipts, list) or not receipts:
         fail('preflight command output is missing')
+    command_receipts = receipts
+    if profile == 'title':
+        if receipts[-1].get('name') != PREFLIGHT_SUMMARY:
+            fail('preflight ABI summary is missing')
+        command_receipts = receipts[:-1]
     seen = set()
-    for receipt in receipts:
+    for receipt in command_receipts:
         if not isinstance(receipt, dict) or receipt.get('name') not in required_preflight:
             fail('preflight command output name differs')
         name = receipt['name']
@@ -1584,7 +1996,7 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after):
                 fail('preflight command output differs: ' + name)
     if seen != required_preflight:
         fail('preflight command output inventory differs')
-    _admit_retained_preflight(preflight, install[-1])
+    _admit_retained_preflight(preflight, install[-1], fixture)
     references = preflight['referenceSources']
     if (any(not isinstance(value, dict) or not re.fullmatch(r'[0-9a-f]{40}', str(value.get('blobSha1', '')))
             or not re.fullmatch(r'[0-9a-f]{64}', str(value.get('worktreeSha256', '')))
@@ -1655,8 +2067,8 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     if _required_list(report, 'serverErrors', 'report'):
         raise ValueError('the frozen run recorded a server error')
     if fixture.get('baselineCommit') == SELECTED_BASELINE:
-        _admit_selected_runtime(report, fixture)
-        _admit_selected_commands(output, manifest, report_bytes, before, after)
+        _admit_selected_runtime(report, fixture, manifest)
+        _admit_selected_commands(output, manifest, report_bytes, before, after, fixture)
     for field in ['fixtureId', 'corpusVersion', 'baselineCommit', 'entryPoint']:
         if _required(report, field, 'report') != fixture[field]:
             raise ValueError('the frozen report disagrees on ' + field)
@@ -1673,7 +2085,8 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     cases = _required_list(report, 'cases', 'report')
     observed_ids = []
     for index, case in enumerate(cases):
-        _admit_native_case(case, fixture['cases'][index], f'report.cases[{index}]')
+        _admit_native_case(case, fixture['cases'][index], f'report.cases[{index}]',
+                           report.get('isolation'))
         observed_ids.append(case['id'])
     if observed_ids != declared:
         raise ValueError('the frozen report cases are not the declared set/order')
@@ -1910,13 +2323,22 @@ def _finalize_fields_02(output, fixture, manifest, report, before, after, asset=
     manifest['status'] = 'observed'
     return {'goldenReused': golden_reused}
 
-def _reconcile_selected_preflight(retained, fresh_binding):
+def _reconcile_selected_preflight(retained, fresh_binding, fixture=None):
     for key in ('artifact', 'targetApkSha256', 'referenceSources', 'dexSha256', 'referenceDexSha256'):
         if key not in fresh_binding or fresh_binding[key] != retained.get(key):
             raise ValueError('fresh preflight differs from retained binding: ' + key)
+    profile = _preflight_profile(fixture)
+    names = _preflight_command_names(profile)
     try:
-        recorded_commands = {item['name']: item['command'] for item in retained['commands']}
-        fresh_commands = {item['name']: item['command'] for item in fresh_binding['commands']}
+        recorded_rows = retained['commands']
+        fresh_rows = fresh_binding['commands']
+        recorded_commands = {item['name']: item['command'] for item in recorded_rows
+                             if isinstance(item, dict) and 'command' in item}
+        fresh_commands = {item['name']: item['command'] for item in fresh_rows
+                          if isinstance(item, dict) and 'command' in item}
+        if (set(recorded_commands) != set(names)
+                or set(fresh_commands) != set(names)):
+            raise ValueError('fresh preflight command inventory differs')
         for name in ('java-version', 'javac-version', 'manifest', 'harness-signature',
                      'target-signature', 'reference-dex', 'dex'):
             if Path(recorded_commands[name][0]).resolve() != Path(fresh_commands[name][0]).resolve():
@@ -1924,6 +2346,34 @@ def _reconcile_selected_preflight(retained, fresh_binding):
         for name in ('harness-signature', 'target-signature'):
             if Path(recorded_commands[name][2]).resolve() != Path(fresh_commands[name][2]).resolve():
                 raise ValueError('fresh preflight signer differs: ' + name)
+        if profile == 'title':
+            for name, dex_name in zip(TITLE_PREFLIGHT_ABI_COMMANDS,
+                                      TITLE_PREFLIGHT_ABI_DEXES):
+                recorded = recorded_commands[name]
+                fresh = fresh_commands[name]
+                if (len(recorded) != 2 or len(fresh) != 2
+                        or Path(recorded[0]).resolve() != Path(fresh[0]).resolve()
+                        or Path(recorded[1]).name != dex_name
+                        or Path(fresh[1]).name != dex_name):
+                    raise ValueError('fresh preflight target ABI command differs: ' + name)
+            recorded_summary = next((item for item in recorded_rows
+                                     if isinstance(item, dict)
+                                     and item.get('name') == PREFLIGHT_SUMMARY), None)
+            fresh_summary = next((item for item in fresh_rows
+                                  if isinstance(item, dict)
+                                  and item.get('name') == PREFLIGHT_SUMMARY), None)
+            if recorded_summary is None or fresh_summary is None:
+                raise ValueError('fresh preflight ABI summary is missing')
+            _admit_reflected_abi_summary(recorded_summary, retained.get('reflectedAbi'),
+                                         'retained.preflight.reflectedAbiSummary')
+            _admit_reflected_abi_summary(fresh_summary, fresh_binding.get('reflectedAbi'),
+                                         'fresh.preflight.reflectedAbiSummary')
+            if recorded_summary != fresh_summary:
+                raise ValueError('fresh preflight ABI summary differs')
+            if retained.get('reflectedAbi') != fresh_binding.get('reflectedAbi'):
+                raise ValueError('fresh preflight reflected ABI differs')
+        elif retained.get('reflectedAbi') is not None or fresh_binding.get('reflectedAbi') is not None:
+            raise ValueError('an ordinary preflight must not claim a reflected ABI')
     except (KeyError, IndexError, TypeError) as error:
         raise ValueError('fresh preflight command binding is incomplete') from error
 
@@ -1943,7 +2393,7 @@ def verify_selected_bundle(bundle, fixture_path, apk, fresh_binding):
             or report_bytes != golden_bytes or manifest.get('goldenSha256') != sha256_bytes(golden_bytes)):
         raise ValueError('selected bundle golden or manifest differs')
     retained = _required_map(manifest, 'preflight', 'manifest')
-    _reconcile_selected_preflight(retained, fresh_binding)
+    _reconcile_selected_preflight(retained, fresh_binding, fixture)
     if (fresh_binding['targetApkSha256'] != SELECTED_TARGET['apkSha256']
             or sha256(bundle / 'frozen.apk') != fresh_binding['targetApkSha256']
             or sha256(bundle / 'installed-harness.apk') != fresh_binding['artifact']['apkSha256']
@@ -2070,7 +2520,7 @@ def main():
         if fields_02:
             if selected_reference:
                 try:
-                    _reconcile_selected_preflight(_required_map(manifest, 'preflight', 'manifest'), selected_binding)
+                    _reconcile_selected_preflight(_required_map(manifest, 'preflight', 'manifest'), selected_binding, fixture)
                 except Exception as error:
                     _write_finalize_failure(args.output, str(error), preserve_existing=True)
                     return 1
