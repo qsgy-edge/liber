@@ -1772,7 +1772,7 @@ void main() {
       const corpusPath =
           'tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json';
       final apkPath = '$root/build-title/field-oracle.apk';
-      final bundlePath = '$root/controlled/current-03/clean/bundle';
+      final bundlePath = '$root/controlled/current-04/clean/bundle';
       const libraryPath =
           'C:/Users/17945/AppData/Local/liber-evidence/spec133/'
           'phone-resume-20261020-01a15796/controller/'
@@ -1986,6 +1986,36 @@ void main() {
           'lastEvent': {
             'bookUrl': 'http://127.0.0.1:18734/book/1',
             'chapterUrl': '/chapter/1',
+            'correlates': true,
+          },
+          'removal': {
+            'interface': 'com.jeremyliao.liveeventbus.core.Observable',
+            'declaringClass': 'com.jeremyliao.liveeventbus.core.Observable',
+            'onMain': true,
+            'removed': true,
+          },
+          'alreadyClosed': true,
+          'removed': true,
+        };
+      }, 'empty observerClose');
+      expectDelegateRefusal('global-close-malformed', (report) {
+        final guard = (report['cleanup'] as Map)['savedContentGuard'] as Map;
+        (guard['release'] as Map)['observerClose'] = {
+          'lastEvent': {'bookUrl': null, 'chapterUrl': 17, 'correlates': true},
+        };
+      }, 'empty observerClose');
+      expectDelegateRefusal('global-close-foreign', (report) {
+        final guard = (report['cleanup'] as Map)['savedContentGuard'] as Map;
+        (guard['release'] as Map)['observerClose'] = {
+          'events': 1,
+          'duplicates': 0,
+          'foreignEvents': 0,
+          'callbackErrors': 0,
+          'offMainEvents': 0,
+          'malformedEvents': 0,
+          'lastEvent': {
+            'bookUrl': 'other',
+            'chapterUrl': 'other',
             'correlates': true,
           },
           'removal': {
