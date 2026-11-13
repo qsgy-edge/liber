@@ -291,8 +291,9 @@ fence is posted and completed; the receipt carries the actual
 `AppUtils$ActivityLifecycleImpl` registration and removal observations, empty
 inbound/failure arrays, zero blocked/foreign/callback/error counts, and a closed
 observer. `saveEvents` is the latest per-case count, not a run total, and the
-final `lastEvent` joins the last saved case. A healthy final
-`release.observerClose` is empty because both case observers already closed.
+final `lastEvent` joins the last saved case. The successful selected profile
+requires the final `release.observerClose` map to be empty because both case
+observers already closed; a nonempty cached terminal is refused.
 The selected runtime also joins `isolation.earlyContainment` to the measured
 target-private root: the guarded application identity and base-context binding;
 `filesPath` is `<root>/files`; `databasePath` is
@@ -331,7 +332,9 @@ neither plan is converted into the other. The summary and top-level
 target descriptor/accessibility checks (including the chapter-list DAO, Room
 open-helper/path chain, Pair, Observer, entity getters and CacheManager) and
 the thirty harness bridge/guard/scratch-context/FieldOracle checks. Missing,
-non-public or non-static required methods are refused.
+non-public or non-static required methods are refused; the required and actual
+access flags are tokenized, so a declared `public static` requirement rejects an
+instance-only declaration.
 
 ```text
 pwsh -NoProfile -File tool/result_field_oracle/build.ps1 -OutputDirectory <build>   -JavaHome <jdk17> -CorpusPath tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json

@@ -1107,7 +1107,83 @@ class TitlePreflightPlanTest(unittest.TestCase):
             with self.subTest(mutation=mutate), self.assertRaises(ValueError):
                 capture._admit_process_guard_cleanup(changed,
                                                      {'titleLifecycle': {}})
+        for close in (
+            {'events': 1, 'duplicates': 0, 'foreignEvents': 0,
+             'callbackErrors': 0, 'offMainEvents': 0, 'malformedEvents': 0,
+             'lastEvent': {'bookUrl': 'http://127.0.0.1:18734/book/1',
+                           'chapterUrl': '/chapter/1', 'correlates': True},
+             'removal': {'interface': capture.OBSERVABLE_INTERFACE,
+                         'declaringClass': capture.OBSERVABLE_INTERFACE,
+                         'onMain': True, 'removed': True},
+             'alreadyClosed': True, 'removed': True},
+            {'lastEvent': {'bookUrl': None, 'chapterUrl': 17,
+                           'correlates': True}},
+            {'events': 1, 'lastEvent': {'bookUrl': 'other',
+                                        'chapterUrl': 'other',
+                                        'correlates': True}},
+        ):
+            changed = json.loads(json.dumps(report))
+            changed['cleanup']['savedContentGuard']['release'][
+                'observerClose'] = close
+            with self.subTest(close=close), self.assertRaisesRegex(
+                    ValueError, 'empty observerClose'):
+                capture._admit_process_guard_cleanup(changed,
+                                                     {'titleLifecycle': {}})
 
+    def test_abi_declaration_parser_enforces_public_static(self):
+        descriptor = "Lcom/example/Thing;"
+        def dump(class_access="PUBLIC", method="get",
+                 signature="()Ljava/lang/String;",
+                 method_access="PUBLIC STATIC"):
+            return chr(10).join([
+                "Class #1            -",
+                "  Class descriptor  : '" + descriptor + "'",
+                "  Access flags      : 0x0001 (" + class_access + ")",
+                "  Direct methods    -",
+                "    #0              : (in " + descriptor + ")",
+                "      name          : '" + method + "'",
+                "      type          : '" + signature + "'",
+                "      access        : 0x0009 (" + method_access + ")",
+            ])
+        part = capture._abi_class_part(dump(), descriptor, "test ABI")
+        capture._abi_method_access(part, descriptor, "get",
+                                   "()Ljava/lang/String;", "public static",
+                                   "test ABI")
+        capture._abi_method_access(part, descriptor, "get",
+                                   "()Ljava/lang/String;", "public",
+                                   "test ABI")
+        with self.assertRaisesRegex(ValueError, "definition differs"):
+            capture._abi_class_part("", descriptor, "test ABI")
+        with self.assertRaisesRegex(ValueError, "class is not public"):
+            capture._abi_class_part(dump(class_access="PRIVATE"), descriptor,
+                                    "test ABI")
+        with self.assertRaisesRegex(ValueError, "method differs"):
+            capture._abi_method_access(part, descriptor, "other",
+                                       "()Ljava/lang/String;", "public",
+                                       "test ABI")
+        with self.assertRaisesRegex(ValueError, "method differs"):
+            capture._abi_method_access(part, descriptor, "get", "()I",
+                                       "public", "test ABI")
+        private = capture._abi_class_part(dump(method_access="PRIVATE STATIC"),
+                                          descriptor, "test ABI")
+        with self.assertRaisesRegex(ValueError, "method is not public"):
+            capture._abi_method_access(private, descriptor, "get",
+                                       "()Ljava/lang/String;", "public",
+                                       "test ABI")
+        # R1 regression: a declared static requirement must reject an actual
+        # instance-only declaration even though the requirement is lowercase.
+        instance = capture._abi_class_part(dump(method_access="PUBLIC"),
+                                           descriptor, "test ABI")
+        with self.assertRaisesRegex(ValueError, "method is not static"):
+            capture._abi_method_access(instance, descriptor, "get",
+                                       "()Ljava/lang/String;",
+                                       "public static", "test ABI")
+        # An unqualified public requirement does not invent an instance ban.
+        static = capture._abi_class_part(dump(method_access="PUBLIC STATIC"),
+                                         descriptor, "test ABI")
+        capture._abi_method_access(static, descriptor, "get",
+                                   "()Ljava/lang/String;", "public",
+                                   "test ABI")
 
 class TitlePhysicalEntryTest(unittest.TestCase):
     """Actual capture.main --finalize/--verify-bundle over a title bundle.

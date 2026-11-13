@@ -477,10 +477,12 @@ def _abi_method_access(part, descriptor, method, signature, required, label):
         raise ValueError(label + ' method differs: ' + descriptor + '->' + method
                          + ' ' + signature)
     actual = matches[0]
-    if 'PUBLIC' not in actual:
+    actual_tokens = set(actual.upper().split())
+    required_tokens = set(required.upper().split())
+    if 'PUBLIC' not in actual_tokens:
         raise ValueError(label + ' method is not public: ' + descriptor + '->'
                          + method)
-    if 'STATIC' in required and 'STATIC' not in actual:
+    if 'STATIC' in required_tokens and 'STATIC' not in actual_tokens:
         raise ValueError(label + ' method is not static: ' + descriptor + '->'
                          + method)
     return actual
@@ -1626,8 +1628,8 @@ def _admit_process_guard_cleanup(report, fixture):
         raise ValueError('the process guard did not close its owned domain')
     observer_close = _required_map(release, 'observerClose', 'guard.release')
     if observer_close:
-        _admit_save_terminal(observer_close, 'guard.release.observerClose',
-                             None, None, cached=True)
+        raise ValueError('the successful process guard release must carry an '
+                         'empty observerClose')
 
     fence = _required_map(guard, 'fence', 'report.cleanup.savedContentGuard')
     _exact_keys(fence, {'posted', 'completed', 'timeoutMillis', 'mainThread'},

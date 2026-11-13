@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pointycastle/export.dart';
 import 'package:liber/source/native_library.dart';
 
 import '../tool/result_field_compare.dart';
@@ -285,7 +287,11 @@ void main() {
         },
         'saveEvent': event,
         'contentFiles': ['00000-abc.nb'],
-        'saveObserverClose': {...event, 'alreadyClosed': true, 'removed': true},
+        'saveObserverClose': {
+          ...(jsonDecode(jsonEncode(event)) as Map<String, Object?>),
+          'alreadyClosed': true,
+          'removed': true,
+        },
         'tocCountWords': {
           'previousPresent': previousPresent,
           'previous': previous,
@@ -652,6 +658,7 @@ void main() {
                       )
                     : null,
               ),
+              reason: 'titleLifecycle',
             );
           }
         }
@@ -887,6 +894,7 @@ void main() {
                       }
                     : null,
               ),
+              reason: 'titleLifecycle',
             );
           }
         }
@@ -983,9 +991,7 @@ void main() {
                     ? (envelope) => entry.value(productRecord(envelope))
                     : null,
               ),
-              reason: entry.key == 'row-count' || entry.key == 'empty'
-                  ? phase
-                  : null,
+              reason: phase,
             );
           }
         }
@@ -1005,6 +1011,7 @@ void main() {
                   phase,
                 ),
           ),
+          reason: 'titleLifecycle',
         );
       }
     });
@@ -1232,13 +1239,56 @@ void main() {
               'observedAfter': false,
             }),
       }.entries) {
+        const reasons = {
+          'bookParent-bookUrl': 'bookParent.bookUrl',
+          'bookParent-stored': 'stored',
+          'bookParent-readBack': 'readBack',
+          'chapterSeed-rows': 'rows',
+          'chapterSeed-inserted': 'inserted',
+          'saveObserver-tag': 'tag',
+          'saveObserver-interface': 'interface',
+          'saveObserver-onMain': 'onMain',
+          'saveObserver-registered': 'registered',
+          'applied-name': 'name',
+          'applied-applied': 'applied',
+          'applied-committed': 'committed',
+          'applied-observed': 'observed',
+          'event-events': 'save event',
+          'event-duplicates': 'duplicates',
+          'event-foreign': 'foreignEvents',
+          'event-callback': 'callbackErrors',
+          'event-offMain': 'offMainEvents',
+          'event-malformed': 'malformedEvents',
+          'event-failed': 'failed',
+          'event-last-book': 'lastEvent',
+          'event-last-chapter': 'lastEvent',
+          'event-last-correlates': 'lastEvent',
+          'event-removal-interface': 'removal',
+          'event-removal-class': 'removal',
+          'event-removal-onMain': 'removal',
+          'event-removal-removed': 'removal',
+          'close-events': 'saveObserverClose',
+          'close-alreadyClosed': 'alreadyClosed',
+          'close-removed': 'removed',
+          'close-lastEvent': 'saveObserverClose.lastEvent',
+          'files-empty': 'contentFiles',
+          'files-traversal': 'contentFiles',
+          'files-slash': 'contentFiles',
+          'files-backslash': 'contentFiles',
+          'files-duplicate': 'contentFiles',
+          'files-order': 'contentFiles',
+          'preference-restored': 'restored',
+          'preference-committed': 'commit',
+          'preference-present': 'presence',
+          'preference-previous': 'observed value',
+          'preference-observed': 'observed value',
+          'preference-absent-false': 'absent prior',
+        };
         expectRefused(
           () => pair(
             damageNative: (envelope) => entry.value(nativeProof(envelope)),
           ),
-          reason: entry.key.startsWith('preference-absent-false')
-              ? 'absent prior must read back the actual default true'
-              : null,
+          reason: reasons[entry.key],
         );
       }
     });
@@ -1277,10 +1327,21 @@ void main() {
           ((record['operations'] as List).last as Map)['name'] = 'content';
         },
       }.entries) {
+        const reasons = {
+          'missing-operation': 'operation set differs',
+          'extra-operation': 'operation set differs',
+          'wrong-name': 'name is not the declared term',
+          'wrong-outcome': 'did not complete',
+          'overlap': 'spans are not contiguous',
+          'gap': 'spans are not contiguous',
+          'outside': 'outside its producer',
+          'wrong-stage': 'name is not the declared term',
+        };
         expectRefused(
           () => pair(
             damageProduct: (envelope) => entry.value(productRecord(envelope)),
           ),
+          reason: reasons[entry.key],
         );
       }
       final wrongPath = pair(
@@ -1460,16 +1521,16 @@ void main() {
             'overlap': (envelope) {
               final records =
                   (envelope[product ? 'caseRecords' : 'cases'] as List);
-              (((records[1] as Map)['operations'] as List).first
-                      as Map)['requestStart'] =
-                  4;
+              (((records[1] as Map)['operations'] as List).first as Map)
+                ..['requestStart'] = 4
+                ..['traceStart'] = 4;
             },
             'gap': (envelope) {
               final records =
                   (envelope[product ? 'caseRecords' : 'cases'] as List);
-              (((records[1] as Map)['operations'] as List).first
-                      as Map)['requestStart'] =
-                  6;
+              (((records[1] as Map)['operations'] as List).first as Map)
+                ..['requestStart'] = 6
+                ..['traceStart'] = 6;
             },
             'stale': (envelope) {
               final records =
@@ -1495,7 +1556,31 @@ void main() {
           }.entries) {
             final damaged = multiCase(product: product);
             damage.value(damaged);
-            expectRefused(() => _compare(multiCase(), damaged, multiCorpus()));
+            final golden = product ? multiCase() : damaged;
+            final productEnvelope = product
+                ? damaged
+                : multiCase(product: true);
+            final reasons = product
+                ? const {
+                    'overlap': 'unrelated trace stage',
+                    'gap': 'skip or overlap',
+                    'stale': 'unrelated trace stage',
+                    'mixed-order': 'chronological',
+                    'missing-case': 'chronological',
+                    'extra-request': 'cover',
+                  }
+                : const {
+                    'overlap': 'unrelated request stage',
+                    'gap': 'skip or overlap',
+                    'stale': 'unrelated request stage',
+                    'mixed-order': 'chronological',
+                    'missing-case': 'chronological',
+                    'extra-request': 'cover',
+                  };
+            expectRefused(
+              () => _compare(golden, productEnvelope, multiCorpus()),
+              reason: reasons[damage.key],
+            );
           }
           final wrongTarget = multiCase(product: product);
           ((wrongTarget['stageTrace'] as List).last as Map)['path'] =
@@ -1511,13 +1596,415 @@ void main() {
             );
           } else {
             expectRefused(
-              () => _compare(multiCase(), wrongTarget, multiCorpus()),
+              () => _compare(
+                wrongTarget,
+                multiCase(product: true),
+                multiCorpus(),
+              ),
+              reason: 'target',
             );
           }
         }
       },
     );
+    test(
+      'nested proof leaves reject missing, null, wrong type and unknown fields',
+      () {
+        for (final leaf in <List<String>>[
+          ['tocCountWords', 'committed'],
+          ['tocCountWords', 'previousPresent'],
+          ['tocCountWords', 'observedAfter'],
+          ['tocCountWordsApplied', 'observed'],
+          ['saveObserver', 'registered'],
+          ['saveEvent', 'events'],
+          ['saveEvent', 'duplicates'],
+          ['saveEvent', 'foreignEvents'],
+          ['saveEvent', 'callbackErrors'],
+          ['saveEvent', 'offMainEvents'],
+          ['saveEvent', 'malformedEvents'],
+        ]) {
+          for (final damage in <String, void Function(Map<String, dynamic>)>{
+            'missing': (proof) {
+              final map = Map<String, Object?>.from(proof[leaf[0]] as Map);
+              map.remove(leaf[1]);
+              proof[leaf[0]] = map;
+            },
+            'null': (proof) {
+              final map = Map<String, Object?>.from(proof[leaf[0]] as Map);
+              map[leaf[1]] = null;
+              proof[leaf[0]] = map;
+            },
+            'wrong-type': (proof) {
+              final map = Map<String, Object?>.from(proof[leaf[0]] as Map);
+              map[leaf[1]] = 'x';
+              proof[leaf[0]] = map;
+            },
+          }.entries) {
+            expectRefused(
+              () => pair(
+                damageNative: (envelope) {
+                  damage.value(nativeProof(envelope));
+                },
+              ),
+              reason: leaf[1],
+            );
+          }
+        }
+        expectRefused(
+          () => pair(
+            damageNative: (envelope) {
+              (nativeProof(envelope)['saveEvent'] as Map)['unknown'] = true;
+            },
+          ),
+          reason: 'saveEvent',
+        );
+        expectRefused(
+          () => pair(
+            damageNative: (envelope) {
+              (nativeProof(envelope)['saveEvent'] as Map)['failed'] = true;
+            },
+          ),
+          reason: 'failed',
+        );
+      },
+    );
+
+    test('whitespace-only variable differences are named', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        for (final side in ['native', 'product']) {
+          final report = pair(
+            damageNative: side == 'native'
+                ? (envelope) {
+                    final rows =
+                        (nativeRecord(envelope)['titleLifecycle'] as Map)[phase]
+                            as List;
+                    (rows[0] as Map)['variable'] = ' toc-a ';
+                  }
+                : null,
+            damageProduct: side == 'product'
+                ? (envelope) {
+                    final rows =
+                        (productRecord(envelope)['titleLifecycle']
+                                as Map)[phase]
+                            as List;
+                    (rows[0] as Map)['variable'] = ' toc-a ';
+                  }
+                : null,
+          );
+          expect(report['status'], 'fail', reason: '$phase/$side');
+          expect(
+            (report['differences'] as List).cast<Map>().any(
+              (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+            ),
+            isTrue,
+            reason: '$phase/$side',
+          );
+        }
+      }
+    });
+
+    test('native-null versus product-string and reverse are named', () {
+      for (final phase in [
+        'beforeContent',
+        'storedAfterContent',
+        'refreshedChapters',
+        'storedAfterRefresh',
+      ]) {
+        for (final side in ['native-null', 'product-null']) {
+          final report = pair(
+            damageNative: side == 'native-null'
+                ? (envelope) {
+                    final rows =
+                        (nativeRecord(envelope)['titleLifecycle'] as Map)[phase]
+                            as List;
+                    (rows[0] as Map)['variable'] = null;
+                  }
+                : null,
+            damageProduct: side == 'product-null'
+                ? (envelope) {
+                    final rows =
+                        (productRecord(envelope)['titleLifecycle']
+                                as Map)[phase]
+                            as List;
+                    (rows[0] as Map)['variable'] = null;
+                  }
+                : null,
+          );
+          expect(report['status'], 'fail', reason: '$phase/$side');
+          expect(
+            (report['differences'] as List).cast<Map>().any(
+              (row) => row['field'] == 'titleLifecycle.$phase[0].variable',
+            ),
+            isTrue,
+            reason: '$phase/$side',
+          );
+        }
+      }
+    });
+
+    test('cached close mutation does not alias the first event', () {
+      expectRefused(
+        () => pair(
+          damageNative: (envelope) {
+            final proof = nativeProof(envelope);
+            final first = jsonDecode(jsonEncode(proof['saveEvent']));
+            ((proof['saveObserverClose'] as Map)['lastEvent']
+                    as Map)['bookUrl'] =
+                'other';
+            expect(proof['saveEvent'], first);
+          },
+        ),
+        reason: 'saveObserverClose.lastEvent',
+      );
+    });
   });
+
+  test(
+    'current title selected physical admission delegates through the public comparator',
+    () {
+      const root =
+          'C:/Temp/l138-stage-b-review-repair-20261114-01a1cf9d/writer/prospective';
+      const corpusPath =
+          'tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json';
+      final apkPath = '$root/build-title/field-oracle.apk';
+      final bundlePath = '$root/controlled/current-03/clean/bundle';
+      const libraryPath =
+          'C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+          'phone-resume-20261020-01a15796/controller/'
+          'implement-spec-resume-20261101/ticket-137/'
+          'controller-final-validation-20261102-075728/native-final/fjs.dll';
+      for (final path in [
+        corpusPath,
+        apkPath,
+        '$bundlePath/golden.json',
+        '$bundlePath/manifest.json',
+        '$bundlePath/field-oracle.json',
+        '$bundlePath/frozen.apk',
+        '$bundlePath/installed-harness.apk',
+        libraryPath,
+      ]) {
+        expect(File(path).existsSync(), isTrue, reason: 'required input $path');
+      }
+      final corpusBytes = File(corpusPath).readAsBytesSync();
+      final corpus =
+          jsonDecode(utf8.decode(corpusBytes)) as Map<String, dynamic>;
+      final corpusSha256 = _sha256(corpusBytes);
+      final corpusSha256Lf = _sha256(
+        corpusBytes.where((byte) => byte != 13).toList(),
+      );
+      final golden =
+          jsonDecode(File('$bundlePath/golden.json').readAsStringSync())
+              as Map<String, dynamic>;
+      final manifest =
+          jsonDecode(File('$bundlePath/manifest.json').readAsStringSync())
+              as Map<String, dynamic>;
+      final inspected = inspectSelectedHarnessApk(apkPath);
+      final apkSha256 = inspected['apkSha256'] as String;
+      final provenance = inspected['provenance'] as Map<String, dynamic>;
+      final provenanceSha256 = inspected['provenanceSha256'] as String;
+      final librarySha256 = _sha256(File(libraryPath).readAsBytesSync());
+      const productPaths = [
+        'lib/source/book_source_pipeline.dart',
+        'lib/source/html_source_pipeline.dart',
+        'lib/source/json_source_pipeline.dart',
+        'lib/source/html_rule_adapter.dart',
+        'lib/source/json_source_rules.dart',
+        'lib/source/http_source_transport.dart',
+        'lib/source/source_host_state.dart',
+        'lib/source/js_source_runtime.dart',
+        'lib/source/source_url_rules.dart',
+      ];
+      final productSources = <String, String>{
+        for (final path in productPaths)
+          path: _sha256(File(path).readAsBytesSync()),
+      };
+      Map<String, dynamic> productCase(Map<String, dynamic> source) {
+        final record = jsonDecode(jsonEncode(source)) as Map<String, dynamic>;
+        record.remove('titleLifecycleProof');
+        final toc = record['tableOfContents'] as Map<String, dynamic>;
+        for (final chapter in (toc['chapters'] as List).cast<Map>()) {
+          final absolute = chapter['absoluteUrl'] as String;
+          final raw = chapter['url'] as String;
+          chapter['url'] = absolute;
+          chapter['address'] = raw;
+          chapter['rawAddress'] = raw;
+          chapter['storeKey'] = absolute;
+          chapter['persistedAddress'] = absolute;
+          chapter.remove('absoluteUrl');
+          chapter.remove('bookUrl');
+        }
+        return record;
+      }
+
+      final product = <String, dynamic>{
+        'fixtureId': corpus['fixtureId'],
+        'corpusVersion': corpus['corpusVersion'],
+        'baselineCommit': corpus['baselineCommit'],
+        'entryPoint': corpus['entryPoint'],
+        'fixturesBytes': corpusBytes.length,
+        'fixturesSha256': corpusSha256,
+        'fixturesSha256Lf': corpusSha256Lf,
+        'fixturesPath': corpusPath,
+        'productSources': productSources,
+        'libraryPath': libraryPath,
+        'librarySha256': librarySha256,
+        'platform': 'windows',
+        'oracle': 'not-run',
+        'cleanup': {'serverClosed': true},
+        'analysisFailure': null,
+        'caseFailures': <String, Object?>{},
+        'caseRecords': [
+          for (final value in (golden['cases'] as List).cast<Map>())
+            productCase(value.cast<String, dynamic>()),
+        ],
+        'requests': golden['requests'],
+        'stageTrace': golden['stageTrace'],
+        'unmatchedRequests': <Object?>[],
+        'serverErrors': <Object?>[],
+      };
+
+      Map<String, dynamic> run(
+        Map<String, dynamic> goldenData,
+        Map<String, dynamic> manifestData,
+        String goldenPath,
+      ) => compareBookUrlMarkers(
+        golden: goldenData,
+        liber: product,
+        goldenPath: goldenPath,
+        liberPath: '$bundlePath/product.json',
+        corpus: corpus,
+        corpusSha256: corpusSha256,
+        corpusSha256Lf: corpusSha256Lf,
+        corpusByteCount: corpusBytes.length,
+        expectedHarnessApkSha256: apkSha256,
+        expectedHarnessAssetSha256: corpusSha256,
+        expectedProvenanceSha256: provenanceSha256,
+        expectedProvenance: provenance,
+        expectedLibrarySha256: librarySha256,
+        expectedProductSources: productSources,
+        externalManifest: manifestData,
+        selectedFixturePath: corpusPath,
+        selectedHarnessApkPath: apkPath,
+      );
+
+      final report = run(golden, manifest, '$bundlePath/golden.json');
+      expect(
+        report['status'],
+        'pass',
+        reason: jsonEncode(report['differences']),
+      );
+
+      final temporary = Directory.systemTemp.createTempSync('title-delegate-');
+      addTearDown(() => temporary.deleteSync(recursive: true));
+      Map<String, dynamic> mutatedBundle(
+        String name,
+        void Function(Map<String, dynamic>) mutate,
+      ) {
+        final directory = Directory('${temporary.path}/$name')..createSync();
+        final source = Directory(bundlePath);
+        for (final entity in source.listSync(recursive: true)) {
+          final relative = entity.path.substring(source.path.length + 1);
+          final target = '${directory.path}/$relative';
+          if (entity is Directory) {
+            Directory(target).createSync(recursive: true);
+          } else if (entity is File) {
+            entity.copySync(target);
+          }
+        }
+        final report =
+            jsonDecode(
+                  File(
+                    '${directory.path}/field-oracle.json',
+                  ).readAsStringSync(),
+                )
+                as Map<String, dynamic>;
+        mutate(report);
+        final data = '${const JsonEncoder.withIndent('  ').convert(report)}\n';
+        File('${directory.path}/field-oracle.json').writeAsStringSync(data);
+        File('${directory.path}/pull-report.log').writeAsStringSync(data);
+        File('${directory.path}/golden.json').writeAsStringSync(data);
+        final manifest =
+            jsonDecode(
+                  File('${directory.path}/manifest.json').readAsStringSync(),
+                )
+                as Map<String, dynamic>;
+        manifest['goldenSha256'] = _sha256(utf8.encode(data));
+        File('${directory.path}/manifest.json').writeAsStringSync(
+          '${const JsonEncoder.withIndent('  ').convert(manifest)}\n',
+        );
+        return {
+          'golden': jsonDecode(data) as Map<String, dynamic>,
+          'manifest': manifest,
+          'path': '${directory.path}/golden.json',
+        };
+      }
+
+      void expectDelegateRefusal(
+        String name,
+        void Function(Map<String, dynamic>) mutate,
+        String reason,
+      ) {
+        final bundle = mutatedBundle(name, mutate);
+        expect(
+          () => run(
+            bundle['golden'] as Map<String, dynamic>,
+            bundle['manifest'] as Map<String, dynamic>,
+            bundle['path'] as String,
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => '$error',
+              'message',
+              contains(reason),
+            ),
+          ),
+          reason: name,
+        );
+      }
+
+      expectDelegateRefusal('external-fallback', (report) {
+        final root = report['isolation']['scratchRoot'] as String;
+        final containment =
+            (report['isolation'] as Map)['earlyContainment'] as Map;
+        containment['externalFilesPath'] = '$root/files';
+        containment['bookHelpCachePath'] = '$root/files/book_cache';
+      }, 'externalFilesPath');
+      expectDelegateRefusal('global-close', (report) {
+        final guard = (report['cleanup'] as Map)['savedContentGuard'] as Map;
+        (guard['release'] as Map)['observerClose'] = {
+          'events': 1,
+          'duplicates': 0,
+          'foreignEvents': 0,
+          'callbackErrors': 0,
+          'offMainEvents': 0,
+          'malformedEvents': 0,
+          'lastEvent': {
+            'bookUrl': 'http://127.0.0.1:18734/book/1',
+            'chapterUrl': '/chapter/1',
+            'correlates': true,
+          },
+          'removal': {
+            'interface': 'com.jeremyliao.liveeventbus.core.Observable',
+            'declaringClass': 'com.jeremyliao.liveeventbus.core.Observable',
+            'onMain': true,
+            'removed': true,
+          },
+          'alreadyClosed': true,
+          'removed': true,
+        };
+      }, 'empty observerClose');
+      expectDelegateRefusal('event-count', (report) {
+        final proof =
+            ((report['cases'] as List)[2] as Map)['titleLifecycleProof'] as Map;
+        (proof['saveEvent'] as Map)['events'] = 2;
+      }, 'save event');
+    },
+  );
 
   test('chronological case ids cannot be swapped under a coherent set', () {
     final corpus = _twoCaseCorpus();
@@ -2668,3 +3155,9 @@ Map<String, dynamic> _request(Map<String, dynamic> envelope) =>
 
 Map<String, dynamic> _clone(Map<String, dynamic> value) =>
     jsonDecode(jsonEncode(value)) as Map<String, dynamic>;
+
+String _sha256(List<int> bytes) {
+  final digest = SHA256Digest();
+  final value = digest.process(Uint8List.fromList(bytes));
+  return value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+}
