@@ -1751,7 +1751,7 @@ void main() {
           ['tocCountWords', 'observedAfter'],
           ['tocCountWords', 'restored'],
         ];
-        void damagePath(
+        (Type, Type) damagePath(
           Map<String, dynamic> proof,
           List<String> path,
           String mode,
@@ -1763,13 +1763,28 @@ void main() {
             parent = child;
           }
           final key = path.last;
+          final baseline = parent[key];
+          final baselineType = baseline.runtimeType;
           if (mode == 'missing') {
             parent.remove(key);
           } else if (mode == 'null') {
             parent[key] = null;
           } else {
-            parent[key] = 'x';
+            parent[key] = switch (baseline) {
+              String() => 7,
+              bool() => 'not-a-bool',
+              int() => true,
+              Map() => 7,
+              _ => throw StateError(
+                  'unexpected baseline type $baselineType at $path'),
+            };
           }
+          return (baselineType, parent[key].runtimeType);
+        }
+
+        void assertWrongType((Type, Type) types, List<String> path) {
+          expect(types.$2, isNot(types.$1),
+              reason: 'wrong-type subject for $path retained ${types.$2}');
         }
 
         for (final leaf in leaves) {
@@ -1777,7 +1792,10 @@ void main() {
             expectRefused(
               () => pair(
                 damageNative: (envelope) {
-                  damagePath(nativeProof(envelope), leaf, mode);
+                  final types = damagePath(nativeProof(envelope), leaf, mode);
+                  if (mode == 'wrong-type') {
+                    assertWrongType(types, leaf);
+                  }
                 },
               ),
               reason: leaf.last,
@@ -1794,7 +1812,10 @@ void main() {
             expectRefused(
               () => pair(
                 damageNative: (envelope) {
-                  damagePath(nativeProof(envelope), nested, mode);
+                  final types = damagePath(nativeProof(envelope), nested, mode);
+                  if (mode == 'wrong-type') {
+                    assertWrongType(types, nested);
+                  }
                 },
               ),
               reason: nested.last,
