@@ -8139,10 +8139,10 @@ class GuardedReaderApplicationHostTest(unittest.TestCase):
         """The real producer receipt carries the actual prior Boolean.
 
         The current source is green for present-true, present-false and absent
-        default; the original missing-serialization source and a controlled
-        inverted-emission source are red at the same assertion. This is the
-        actual FieldOracle.TocCountWordsLifetime seam, not a fabricated proof
-        object, and it does not run any original guard driver mode.
+        default. A clearly labelled controlled missing-emission subject derived
+        from the current source and a controlled inverted-emission subject are
+        red at the same assertion. The exact historical producer source is
+        qualified externally, not from a private path in this mandatory test.
         """
         java = self._java_home()
         android = self._android_jar()
@@ -8296,18 +8296,19 @@ public final class TocCountWordsLifetimeProbe {
             self.assertEqual(current['absent']['restored']['previous'], True)
             self.assertEqual(current['absent']['restored']['presentAfter'], False)
 
-            old_source = Path('C:/Temp/l138-stage-b-20261112-01a1cf9d/source-before/'
-                              'tool/result_field_oracle/FieldOracle.java')
-            self.assertTrue(old_source.is_file(), 'the original missing-serialization source must exist')
-            old = compile_and_run(old_source, 'old')
-            self.assertNotIn('previous', old['present-true']['restored'])
-            self.assertNotIn('previous', old['present-false']['restored'])
-            self.assertNotIn('previous', old['absent']['restored'])
-
             current_text = (repo / 'tool/result_field_oracle/FieldOracle.java').read_text(
                 encoding='utf-8')
             marker = '.put("previous", prior.getBoolean("previous"))'
             self.assertEqual(current_text.count(marker), 1)
+            missing = root / 'missing/FieldOracle.java'
+            missing.parent.mkdir()
+            missing.write_text(current_text.replace(marker + chr(10), ''),
+                               encoding='utf-8')
+            missing_result = compile_and_run(missing, 'missing')
+            self.assertNotIn('previous', missing_result['present-true']['restored'])
+            self.assertNotIn('previous', missing_result['present-false']['restored'])
+            self.assertNotIn('previous', missing_result['absent']['restored'])
+
             incorrect = root / 'incorrect/FieldOracle.java'
             incorrect.parent.mkdir()
             incorrect.write_text(

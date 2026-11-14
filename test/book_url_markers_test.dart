@@ -750,14 +750,16 @@ void main() {
           damageNative: (envelope) =>
               nativeRecord(envelope).remove('titleLifecycleProof'),
         ),
+        reason: 'titleLifecycleProof',
       );
       expectRefused(
         () => pair(
           damageProduct: (envelope) =>
               productRecord(envelope)['titleLifecycleProof'] = proof(),
         ),
+        reason: 'native producer evidence',
       );
-      for (final damage in <void Function(Map<String, dynamic>)>[
+      final proofDamages = <void Function(Map<String, dynamic>)>[
         (proof) => proof.remove('saveObserverClose'),
         (proof) => proof['undeclared'] = true,
         (proof) => (proof['bookParent'] as Map)['bookUrl'] = 'other',
@@ -784,9 +786,35 @@ void main() {
         (proof) => (proof['tocCountWords'] as Map)['restored'] = false,
         (proof) => (proof['tocCountWords'] as Map)['previous'] = false,
         (proof) => (proof['tocCountWords'] as Map).remove('previous'),
-      ]) {
+      ];
+      const proofReasons = [
+        'saveObserverClose',
+        'undeclared',
+        'bookParent.bookUrl',
+        'readBack',
+        'rows',
+        'onMain',
+        'tag',
+        'applied',
+        'save event',
+        'duplicates',
+        'removal',
+        'lastEvent',
+        'lastEvent',
+        'saveObserverClose',
+        'alreadyClosed',
+        'contentFiles',
+        'contentFiles',
+        'contentFiles',
+        'restored',
+        'observed value',
+        'tocCountWords',
+      ];
+      for (var index = 0; index < proofDamages.length; index++) {
+        final damage = proofDamages[index];
         expectRefused(
           () => pair(damageNative: (envelope) => damage(nativeProof(envelope))),
+          reason: proofReasons[index],
         );
       }
       // A present false prior and an absent prior read back through the actual
@@ -841,6 +869,7 @@ void main() {
             (record['operations'] as List).removeLast();
           },
         ),
+        reason: 'operation set differs',
       );
       expectRefused(
         () => pair(
@@ -849,6 +878,7 @@ void main() {
             ((record['operations'] as List).last as Map)['requestStart'] = 3;
           },
         ),
+        reason: 'span count differs',
       );
       expectRefused(
         () => pair(
@@ -857,6 +887,7 @@ void main() {
                 'http://127.0.0.1:18733/wrong';
           },
         ),
+        reason: 'unrelated request target',
       );
     });
 
@@ -1357,6 +1388,68 @@ void main() {
       );
     });
 
+    test('native-side five-operation failures are refused or named', () {
+      for (final entry in <String, void Function(Map<String, dynamic>)>{
+        'missing-operation': (record) {
+          (record['operations'] as List).removeLast();
+        },
+        'extra-operation': (record) {
+          (record['operations'] as List).add({
+            'name': 'search',
+            'outcome': 'completed',
+            'requestStart': 4,
+            'requestEnd': 5,
+            'traceStart': 4,
+            'traceEnd': 5,
+          });
+        },
+        'wrong-name': (record) {
+          ((record['operations'] as List).first as Map)['name'] = 'bookInfo';
+        },
+        'wrong-outcome': (record) {
+          ((record['operations'] as List).first as Map)['outcome'] = 'error';
+        },
+        'overlap': (record) {
+          ((record['operations'] as List)[1] as Map)['requestStart'] = 0;
+        },
+        'gap': (record) {
+          ((record['operations'] as List)[1] as Map)['requestStart'] = 2;
+        },
+        'outside': (record) {
+          ((record['operations'] as List).last as Map)['requestEnd'] = 99;
+        },
+        'wrong-stage': (record) {
+          ((record['operations'] as List).last as Map)['name'] = 'content';
+        },
+      }.entries) {
+        const reasons = {
+          'missing-operation': 'operation set differs',
+          'extra-operation': 'operation set differs',
+          'wrong-name': 'name is not the declared term',
+          'wrong-outcome': 'did not complete',
+          'overlap': 'span count differs',
+          'gap': 'span count differs',
+          'outside': 'outside its producer',
+          'wrong-stage': 'name is not the declared term',
+        };
+        expectRefused(
+          () => pair(
+            damageNative: (envelope) => entry.value(nativeRecord(envelope)),
+          ),
+          reason: reasons[entry.key],
+        );
+      }
+      expectRefused(
+        () => pair(
+          damageNative: (envelope) {
+            ((envelope['stageTrace'] as List).last as Map)['path'] =
+                'http://127.0.0.1:18733/wrong';
+          },
+        ),
+        reason: 'unrelated request target',
+      );
+    });
+
     Map<String, dynamic> multiCorpus() {
       final base = _syntheticCorpus();
       base['cases'] = [
@@ -1608,43 +1701,103 @@ void main() {
     test(
       'nested proof leaves reject missing, null, wrong type and unknown fields',
       () {
-        for (final leaf in <List<String>>[
-          ['tocCountWords', 'committed'],
-          ['tocCountWords', 'previousPresent'],
-          ['tocCountWords', 'observedAfter'],
-          ['tocCountWordsApplied', 'observed'],
+        final leaves = <List<String>>[
+          ['bookParent', 'bookUrl'],
+          ['bookParent', 'stored'],
+          ['bookParent', 'readBack'],
+          ['chapterSeed', 'rows'],
+          ['chapterSeed', 'inserted'],
+          ['saveObserver', 'tag'],
+          ['saveObserver', 'interface'],
+          ['saveObserver', 'declaringClass'],
+          ['saveObserver', 'onMain'],
           ['saveObserver', 'registered'],
+          ['tocCountWordsApplied', 'name'],
+          ['tocCountWordsApplied', 'applied'],
+          ['tocCountWordsApplied', 'committed'],
+          ['tocCountWordsApplied', 'observed'],
           ['saveEvent', 'events'],
           ['saveEvent', 'duplicates'],
           ['saveEvent', 'foreignEvents'],
           ['saveEvent', 'callbackErrors'],
           ['saveEvent', 'offMainEvents'],
           ['saveEvent', 'malformedEvents'],
-        ]) {
-          for (final damage in <String, void Function(Map<String, dynamic>)>{
-            'missing': (proof) {
-              final map = Map<String, Object?>.from(proof[leaf[0]] as Map);
-              map.remove(leaf[1]);
-              proof[leaf[0]] = map;
-            },
-            'null': (proof) {
-              final map = Map<String, Object?>.from(proof[leaf[0]] as Map);
-              map[leaf[1]] = null;
-              proof[leaf[0]] = map;
-            },
-            'wrong-type': (proof) {
-              final map = Map<String, Object?>.from(proof[leaf[0]] as Map);
-              map[leaf[1]] = 'x';
-              proof[leaf[0]] = map;
-            },
-          }.entries) {
+          ['saveEvent', 'lastEvent', 'bookUrl'],
+          ['saveEvent', 'lastEvent', 'chapterUrl'],
+          ['saveEvent', 'lastEvent', 'correlates'],
+          ['saveEvent', 'removal', 'interface'],
+          ['saveEvent', 'removal', 'declaringClass'],
+          ['saveEvent', 'removal', 'onMain'],
+          ['saveEvent', 'removal', 'removed'],
+          ['saveObserverClose', 'events'],
+          ['saveObserverClose', 'duplicates'],
+          ['saveObserverClose', 'foreignEvents'],
+          ['saveObserverClose', 'callbackErrors'],
+          ['saveObserverClose', 'offMainEvents'],
+          ['saveObserverClose', 'malformedEvents'],
+          ['saveObserverClose', 'alreadyClosed'],
+          ['saveObserverClose', 'removed'],
+          ['saveObserverClose', 'lastEvent', 'bookUrl'],
+          ['saveObserverClose', 'lastEvent', 'chapterUrl'],
+          ['saveObserverClose', 'lastEvent', 'correlates'],
+          ['saveObserverClose', 'removal', 'interface'],
+          ['saveObserverClose', 'removal', 'declaringClass'],
+          ['saveObserverClose', 'removal', 'onMain'],
+          ['saveObserverClose', 'removal', 'removed'],
+          ['tocCountWords', 'previousPresent'],
+          ['tocCountWords', 'previous'],
+          ['tocCountWords', 'committed'],
+          ['tocCountWords', 'presentAfter'],
+          ['tocCountWords', 'observedAfter'],
+          ['tocCountWords', 'restored'],
+        ];
+        void damagePath(
+          Map<String, dynamic> proof,
+          List<String> path,
+          String mode,
+        ) {
+          Map<String, Object?> parent = proof;
+          for (var index = 0; index < path.length - 1; index++) {
+            final child = Map<String, Object?>.from(parent[path[index]] as Map);
+            parent[path[index]] = child;
+            parent = child;
+          }
+          final key = path.last;
+          if (mode == 'missing') {
+            parent.remove(key);
+          } else if (mode == 'null') {
+            parent[key] = null;
+          } else {
+            parent[key] = 'x';
+          }
+        }
+
+        for (final leaf in leaves) {
+          for (final mode in ['missing', 'null', 'wrong-type']) {
             expectRefused(
               () => pair(
                 damageNative: (envelope) {
-                  damage.value(nativeProof(envelope));
+                  damagePath(nativeProof(envelope), leaf, mode);
                 },
               ),
-              reason: leaf[1],
+              reason: leaf.last,
+            );
+          }
+        }
+        for (final nested in <List<String>>[
+          ['saveEvent', 'lastEvent'],
+          ['saveEvent', 'removal'],
+          ['saveObserverClose', 'lastEvent'],
+          ['saveObserverClose', 'removal'],
+        ]) {
+          for (final mode in ['missing', 'null', 'wrong-type']) {
+            expectRefused(
+              () => pair(
+                damageNative: (envelope) {
+                  damagePath(nativeProof(envelope), nested, mode);
+                },
+              ),
+              reason: nested.last,
             );
           }
         }
@@ -1666,6 +1819,21 @@ void main() {
         );
       },
     );
+
+    test('cached close removal mutation does not alias the first event', () {
+      expectRefused(
+        () => pair(
+          damageNative: (envelope) {
+            final proof = nativeProof(envelope);
+            final first = jsonDecode(jsonEncode(proof['saveEvent']));
+            ((proof['saveObserverClose'] as Map)['removal'] as Map)['removed'] =
+                false;
+            expect(proof['saveEvent'], first);
+          },
+        ),
+        reason: 'saveObserverClose.removal',
+      );
+    });
 
     test('whitespace-only variable differences are named', () {
       for (final phase in [
