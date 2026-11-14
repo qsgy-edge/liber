@@ -1776,15 +1776,19 @@ void main() {
               int() => true,
               Map() => 7,
               _ => throw StateError(
-                  'unexpected baseline type $baselineType at $path'),
+                'unexpected baseline type $baselineType at $path',
+              ),
             };
           }
           return (baselineType, parent[key].runtimeType);
         }
 
         void assertWrongType((Type, Type) types, List<String> path) {
-          expect(types.$2, isNot(types.$1),
-              reason: 'wrong-type subject for $path retained ${types.$2}');
+          expect(
+            types.$2,
+            isNot(types.$1),
+            reason: 'wrong-type subject for $path retained ${types.$2}',
+          );
         }
 
         for (final leaf in leaves) {
