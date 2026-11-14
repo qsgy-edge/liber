@@ -1841,6 +1841,45 @@ void main() {
       },
     );
 
+    test(
+      'nested proof unknown, error and failed-success domains are refused',
+      () {
+        final domains = <List<String>>[
+          <String>[],
+          ['bookParent'],
+          ['chapterSeed'],
+          ['saveObserver'],
+          ['tocCountWordsApplied'],
+          ['saveEvent'],
+          ['saveEvent', 'lastEvent'],
+          ['saveEvent', 'removal'],
+          ['saveObserverClose'],
+          ['saveObserverClose', 'lastEvent'],
+          ['saveObserverClose', 'removal'],
+          ['tocCountWords'],
+        ];
+        for (final domain in domains) {
+          final label = domain.isEmpty
+              ? 'titleLifecycleProof'
+              : domain.join('.');
+          for (final key in ['unknown', 'error', 'failed']) {
+            expectRefused(
+              () => pair(
+                damageNative: (envelope) {
+                  Map<String, dynamic> target = nativeProof(envelope);
+                  for (final part in domain) {
+                    target = (target[part] as Map).cast<String, dynamic>();
+                  }
+                  target[key] = true;
+                },
+              ),
+              reason: label,
+            );
+          }
+        }
+      },
+    );
+
     test('cached close removal mutation does not alias the first event', () {
       expectRefused(
         () => pair(
