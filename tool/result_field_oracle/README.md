@@ -176,7 +176,19 @@ python tool/result_field_oracle/capture.py --preflight-only \
 
 The preflight joins the raw corpus, source/tree, target and harness APKs,
 manifest, signer, DEX and current public four-stage ABI; it does not create a
-golden. Capture additionally requires the approved serial `5615f742`, the same
+golden.
+
+The WebView environment is profile-exact. Both the live capture and the retained
+command admission require exactly one `Current WebView package (name, version)`
+line naming `com.google.android.webview` with the version that profile runs on:
+`159.0.8154.4` for the title-lifecycle corpus and `158.0.8127.2` for every other
+selected corpus, whose retained evidence was captured on it. The version comes
+from the fixture's own profile, never from a request flag or from a packet's
+self-declared value. An available-provider mention is not a current-provider
+line; a missing, duplicated, other-provider or other-version current line is
+refused, so neither version is admitted for the other profile.
+
+Capture additionally requires the approved serial `5615f742`, the same
 preflight arguments and `--asset <build>/assets/field-fixtures.json`; it refuses
 preexisting state and binds the typed snapshots, exact owned cleanup and raw
 commands. Selected offline-finalize failure receipts are append-only: the first

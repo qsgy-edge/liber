@@ -62,6 +62,11 @@ SELECTED_TARGET = {
     'deviceFingerprint': 'Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys',
 }
 OWNED_PREFERENCE_PREFIX = 'liber_fields_02_'
+# The exact WebView environment each selected profile runs on: the ordinary
+# profiles keep the 158 provider their retained evidence was captured with, and
+# the title-lifecycle profile runs on the currently approved 159 provider.
+SELECTED_WEBVIEW_PACKAGE = 'com.google.android.webview'
+SELECTED_WEBVIEW_VERSIONS = {'ordinary': '158.0.8127.2', 'title': '159.0.8154.4'}
 # The retained preflight receipt plan the current producer emits. The eleven
 # base receipts are fixed; a lifecycle corpus additionally disassembles the
 # exact target DEX files that carry the reflected classes, in the producer's
@@ -1807,9 +1812,19 @@ def _admit_selected_runtime(report, fixture, manifest=None):
             'cleanup differs')
 
 
-def _require_selected_webview(text):
-    pattern = r'(?m)^\s*Current WebView package \(name, version\): \(com\.google\.android\.webview, 158\.0\.8127\.2\)\s*$'
-    if len(re.findall(pattern, text)) != 1:
+def _require_selected_webview(text, profile='ordinary'):
+    """Exactly one current-provider line, carrying this profile's version.
+
+    The ordinary/non-title profiles keep the provider their retained historical
+    evidence was captured with; the title-lifecycle profile runs on the currently
+    approved provider. A current line of any other provider or version is
+    refused, so neither version is admitted for the other profile.
+    """
+    current = re.findall(
+        r'(?m)^\s*Current WebView package \(name, version\): \(([^()]*)\)\s*$',
+        text)
+    if current != [SELECTED_WEBVIEW_PACKAGE + ', '
+                   + SELECTED_WEBVIEW_VERSIONS[profile]]:
         raise ValueError('selected WebView provider or version differs')
 
 
@@ -1987,6 +2002,7 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
     """Join selected native promotion to the actual retained command receipts."""
     def fail(detail):
         raise ValueError('selected command receipts ' + detail)
+    profile = _preflight_profile(fixture)
     commands = manifest.get('commands')
     if not isinstance(commands, list) or manifest.get('serial') != '5615f742':
         fail('are missing or have the wrong serial')
@@ -2144,7 +2160,8 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
         fail('fingerprint differs')
     if (output / 'sdk.log').read_text(encoding='utf-8').strip() != '37':
         fail('API differs')
-    _require_selected_webview((output / 'webview.log').read_text(encoding='utf-8'))
+    _require_selected_webview((output / 'webview.log').read_text(encoding='utf-8'),
+                              profile)
     _require_selected_success((output / 'install.log').read_bytes(), 'install')
     _require_selected_success((output / 'remove-harness.log').read_bytes(), 'uninstall')
     removed = subprocess.CompletedProcess(indexed['harness-removed-check.log']['command'], 0,
@@ -2164,7 +2181,6 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
                 or sha256_bytes(target_archive.read('classes19.dex')) != preflight.get('referenceDexSha256')
                 or sha256_bytes(harness_archive.read('classes.dex')) != preflight.get('dexSha256')):
             fail('preflight DEX input bytes differ')
-    profile = _preflight_profile(fixture)
     required_preflight = set(_preflight_command_names(profile))
     receipts = preflight.get('commands')
     if not isinstance(receipts, list) or not receipts:
@@ -3109,7 +3125,7 @@ def main():
             if manifest['sdk'] != '37':
                 raise ValueError('selected device API differs')
             webview = adb('webview', 'shell', 'dumpsys', 'webviewupdate').stdout.decode(errors='strict')
-            _require_selected_webview(webview)
+            _require_selected_webview(webview, _preflight_profile(fixture))
         baseline = adb(
             'baseline-path', 'shell', 'pm', 'path', target_package).stdout.decode().strip()
         if selected_reference and not re.fullmatch(r'package:[^\r\n]+', baseline):

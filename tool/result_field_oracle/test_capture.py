@@ -422,13 +422,30 @@ class SelectedCorpusTest(unittest.TestCase):
                 capture._selected_private_root(bad)
 
     def test_selected_webview_must_be_the_current_provider_and_version(self):
-        good = 'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'
-        capture._require_selected_webview(good)
+        ordinary = 'Current WebView package (name, version): (com.google.android.webview, 158.0.8127.2)\n'
+        title = 'Current WebView package (name, version): (com.google.android.webview, 159.0.8154.4)\n'
+        capture._require_selected_webview(ordinary)
+        capture._require_selected_webview(ordinary, 'ordinary')
+        capture._require_selected_webview(title, 'title')
         for bad in ('Available: com.google.android.webview 158.0.8127.2\n'
                     'Current WebView package (name, version): (other, 1)\n',
-                    good + good):
+                    ordinary + ordinary,
+                    ordinary + title):
             with self.assertRaisesRegex(ValueError, 'WebView'):
                 capture._require_selected_webview(bad)
+        for text, profile in ((title, 'ordinary'), (ordinary, 'title')):
+            with self.subTest(profile=profile), self.assertRaisesRegex(ValueError, 'WebView'):
+                capture._require_selected_webview(text, profile)
+
+    def test_the_selected_webview_environment_follows_the_actual_fixture_profile(self):
+        directory = Path(__file__).resolve().parent
+        title = json.loads((directory / 'reader-title-lifecycle-fixtures-selected.json').read_bytes())
+        ordinary = json.loads((directory / 'reader-followthrough-fixtures-selected.json').read_bytes())
+        self.assertEqual(capture._preflight_profile(title), 'title')
+        self.assertEqual(capture._preflight_profile(ordinary), 'ordinary')
+        self.assertEqual(sorted(capture.SELECTED_WEBVIEW_VERSIONS), ['ordinary', 'title'])
+        self.assertEqual(capture.SELECTED_WEBVIEW_VERSIONS['title'], '159.0.8154.4')
+        self.assertEqual(capture.SELECTED_WEBVIEW_VERSIONS['ordinary'], '158.0.8127.2')
 
     def test_selected_install_and_uninstall_success_must_not_conflict(self):
         capture._require_selected_success(b'Success\n', 'install')
@@ -1551,7 +1568,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         add('sdk', ['shell', 'getprop', 'ro.build.version.sdk'], b'37\n')
         add('webview', ['shell', 'dumpsys', 'webviewupdate'],
             b'Current WebView package (name, version): '
-            b'(com.google.android.webview, 158.0.8127.2)\n')
+            b'(com.google.android.webview, 159.0.8154.4)\n')
         add('baseline-path', ['shell', 'pm', 'path',
                               capture.SELECTED_TARGET['package']],
             b'package:/target.apk\n')
@@ -1676,6 +1693,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             'operation': 'operation', 'artifact': 'harness',
             'duplicate': 'duplicate', 'preflight-summary': 'reflected',
             'profile': 'target ABI command', 'raw-ledger': 'raw report differs',
+            'webview-version': 'WebView', 'webview-provider': 'WebView',
         }[label]
         if label == 'duplicate':
             data = (b'{"fixtureId":"FIELDS-02",'
@@ -1689,6 +1707,16 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         if label == 'raw-ledger':
             (root / 'pull-report.log').write_bytes(
                 (root / 'field-oracle.json').read_bytes() + b' ')
+            return expected
+        if label == 'webview-version':
+            (root / 'webview.log').write_bytes(
+                b'Current WebView package (name, version): '
+                b'(com.google.android.webview, 158.0.8127.2)\n')
+            return expected
+        if label == 'webview-provider':
+            (root / 'webview.log').write_bytes(
+                b'Current WebView package (name, version): '
+                b'(com.android.chrome, 159.0.8154.4)\n')
             return expected
         if label == 'preflight-summary':
             manifest['preflight']['commands'][-1]['checked'][0]['method'] = 'other'
@@ -1764,7 +1792,8 @@ class TitlePhysicalEntryTest(unittest.TestCase):
     def test_both_entry_paths_refuse_each_intended_domain(self):
         labels = ('owner', 'root', 'external-path', 'observer', 'process',
                   'preference', 'operation', 'artifact', 'duplicate',
-                  'preflight-summary', 'profile', 'raw-ledger')
+                  'preflight-summary', 'profile', 'raw-ledger',
+                  'webview-version', 'webview-provider')
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             clean, fixture, binding, harness_apk, target_apk, _ = \
@@ -1837,6 +1866,96 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                              accepted['golden.json'][1])
             self.assertEqual(accepted['golden.json'],
                              mutated['golden.json'])
+
+    def test_live_capture_admits_the_current_title_provider_only(self):
+        """The recorded blocker: the live seam refused the current 159 provider.
+
+        The real `capture.main` capture entry runs with the project's actual
+        title fixture and public arguments; only the device/git transport is
+        faked, so the two runs differ in nothing but the reported current-provider
+        line. Both stop at the first step after the WebView check, which is the
+        pinned target's APK path.
+        """
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        corpus = (Path(__file__).resolve().parent
+                  / 'reader-title-lifecycle-fixtures-selected.json')
+        fixture = self._fixture()
+        target_apk = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+                          'phone-resume-20261020-01a15796/controller/'
+                          'team-baseline-migration-01/reference-stage/artifacts/'
+                          'legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+        if not target_apk.is_file():
+            self.fail('the pinned target APK is required for the live entry test')
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            harness_apk = self._harness_apk(base, corpus.read_bytes(), fixture)
+            frozen = base / 'frozen'
+            for row in fixture['frozenSources']:
+                path = frozen / row['path']
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'frozen-source-context')
+            binding = _synthetic_selected_preflight(
+                None, fixture, {'apkSha256': capture.sha256(harness_apk)},
+                harness_apk, target_apk, frozen, Path('C:/sdk'),
+                Path('C:/java'),
+                {row['path']: {'blobSha1': row['sha1'],
+                               'worktreeSha256': capture.sha256(frozen / row['path'])}
+                 for row in fixture['frozenSources']}, title=True)
+
+            def live(name, current_line):
+                output = base / name
+                argv = ['capture.py', '--serial', '5615f742',
+                        '--fixture', str(corpus), '--apk', str(harness_apk),
+                        '--target-apk', str(target_apk),
+                        '--frozen-source', str(frozen), '--java-home', 'C:/java',
+                        '--android-sdk', 'C:/sdk', '--asset', str(corpus),
+                        '--output', str(output)]
+
+                def fake_run(command, **kwargs):
+                    stdout, code = b'', 0
+                    if command[0] == 'git':
+                        if 'rev-parse' in command:
+                            stdout = (fixture['baselineCommit'] + '\n').encode()
+                        elif 'hash-object' in command:
+                            stdout = ('\n'.join(row['sha1'] for row in
+                                                fixture['frozenSources'])
+                                      + '\n').encode()
+                    elif 'ro.build.fingerprint' in command:
+                        stdout = (fixture['target']['deviceFingerprint']
+                                  + '\n').encode()
+                    elif 'ro.build.version.sdk' in command:
+                        stdout = b'37\n'
+                    elif 'webviewupdate' in command:
+                        stdout = current_line
+                    return subprocess.CompletedProcess(command, code, stdout, b'')
+
+                with patch.object(sys, 'argv', argv), \
+                        patch.object(capture, 'selected_preflight',
+                                     return_value=binding), \
+                        patch.object(capture.subprocess, 'run', fake_run), \
+                        patch.object(capture.tempfile, 'mkdtemp',
+                                     lambda **kwargs: str(base / 'scratch')), \
+                        redirect_stdout(io.StringIO()):
+                    code = capture.main()
+                return code, json.loads((output / 'manifest.json').read_bytes())
+
+            code, manifest = live(
+                'current-159',
+                b'Current WebView package (name, version): '
+                b'(com.google.android.webview, 159.0.8154.4)\n')
+            self.assertEqual(code, 1)
+            self.assertEqual(manifest['status'], 'failed')
+            self.assertEqual(manifest['error'],
+                             'installed target APK path is ambiguous')
+            code, manifest = live(
+                'current-158',
+                b'Current WebView package (name, version): '
+                b'(com.google.android.webview, 158.0.8127.2)\n')
+            self.assertEqual(code, 1)
+            self.assertEqual(manifest['status'], 'failed')
+            self.assertEqual(manifest['error'],
+                             'selected WebView provider or version differs')
 
 
 GUARD_FAKES = {
