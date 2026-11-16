@@ -10302,5 +10302,611 @@ class FinalizeContractTest(unittest.TestCase):
                 self.assertFalse((output / 'golden.json').exists())
 
 
+EARLY_CONTAINMENT_SUBSTITUTES = {
+    'android/app/Instrumentation.java': r'''package android.app;
+
+import android.content.Context;
+
+/** Test-only SDK-signature-faithful Instrumentation: the two bound contexts. */
+public class Instrumentation {
+    public Context targetContext;
+    public Context appContext;
+
+    public Context getTargetContext() {
+        return targetContext;
+    }
+
+    public Context getContext() {
+        return appContext;
+    }
+}
+''',
+    'android/app/Application.java': r'''package android.app;
+
+import android.content.Context;
+import android.content.ContextWrapper;
+
+/** Test-only Application: the bound base context is the scratch. */
+public class Application extends ContextWrapper {
+    public Application(Context base) {
+        super(base);
+    }
+}
+''',
+    'android/app/ActivityThread.java': r'''package android.app;
+
+/** Test-only ActivityThread: one controlled application instance. */
+public final class ActivityThread {
+    public static Application application;
+
+    public static ActivityThread currentActivityThread() {
+        return new ActivityThread();
+    }
+
+    public Application getApplication() {
+        return application;
+    }
+}
+''',
+    'android/content/Context.java': r'''package android.content;
+
+import java.io.File;
+
+/** Test-only SDK-signature-faithful Context: only the members this fixture uses. */
+public abstract class Context {
+    public abstract File getCacheDir();
+
+    public abstract File getFilesDir();
+
+    public abstract File getExternalFilesDir(String type);
+
+    public abstract File getDatabasePath(String name);
+
+    public abstract SharedPreferences getSharedPreferences(String name, int mode);
+
+    public ClassLoader getClassLoader() {
+        return Context.class.getClassLoader();
+    }
+
+    public android.content.pm.ApplicationInfo getApplicationInfo() {
+        android.content.pm.ApplicationInfo info = new android.content.pm.ApplicationInfo();
+        File cache = getCacheDir();
+        info.dataDir = cache == null ? null : cache.getParent();
+        return info;
+    }
+
+    public Object getSystemService(String name) {
+        return null;
+    }
+}
+''',
+    'android/content/ContextWrapper.java': r'''package android.content;
+
+import java.io.File;
+
+/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */
+public abstract class ContextWrapper extends Context {
+    private final Context base;
+
+    public ContextWrapper(Context base) {
+        this.base = base;
+    }
+
+    public Context getBaseContext() {
+        return base;
+    }
+
+    @Override
+    public File getCacheDir() {
+        return base.getCacheDir();
+    }
+
+    @Override
+    public File getFilesDir() {
+        return base.getFilesDir();
+    }
+
+    @Override
+    public File getExternalFilesDir(String type) {
+        return base.getExternalFilesDir(type);
+    }
+
+    @Override
+    public File getDatabasePath(String name) {
+        return base.getDatabasePath(name);
+    }
+
+    @Override
+    public SharedPreferences getSharedPreferences(String name, int mode) {
+        return base.getSharedPreferences(name, mode);
+    }
+
+    @Override
+    public ClassLoader getClassLoader() {
+        return base.getClassLoader();
+    }
+
+    @Override
+    public android.content.pm.ApplicationInfo getApplicationInfo() {
+        return base.getApplicationInfo();
+    }
+
+    @Override
+    public Object getSystemService(String name) {
+        return base.getSystemService(name);
+    }
+}
+''',
+    'android/content/pm/ApplicationInfo.java': r'''package android.content.pm;
+
+/** Test-only data holder: the one field the scratch registration reads. */
+public class ApplicationInfo {
+    public String dataDir;
+}
+''',
+    'splitties/init/AppCtxKt.java': r'''package splitties.init;
+
+import android.content.Context;
+
+/** Test-only splitties AppCtx: the one controlled application instance. */
+public final class AppCtxKt {
+    public static Context appCtx;
+
+    public static Context getAppCtx() {
+        return appCtx;
+    }
+}
+''',
+    'io/legado/app/help/book/BookHelp.java': r'''package io.legado.app.help.book;
+
+/** Test-only BookHelp: the one controlled cache path. */
+public final class BookHelp {
+    public static final BookHelp INSTANCE = new BookHelp();
+
+    public static String cachePath;
+
+    public String getCachePath() {
+        return cachePath;
+    }
+}
+''',
+    'io/legado/app/data/AppDatabaseKt.java': r'''package io.legado.app.data;
+
+/** Test-only AppDatabase accessor: the one controlled database handle. */
+public final class AppDatabaseKt {
+    public static Object appDb;
+
+    public static Object getAppDb() {
+        return appDb;
+    }
+}
+''',
+    'com/jeremyliao/liveeventbus/utils/AppUtils.java': r'''package com.jeremyliao.liveeventbus.utils;
+
+/** Test-only AppUtils: the one controlled application instance. */
+public final class AppUtils {
+    public static Object app;
+
+    public static Object getApp() {
+        return app;
+    }
+}
+''',
+    'io/liber/oracle/nested/GuardedReaderApplication.java': r'''package io.liber.oracle.nested;
+
+import android.app.Application;
+import android.content.Context;
+
+/** Test-only guard identity: the class name the producer's own check reads. */
+public class GuardedReaderApplication extends Application {
+    public GuardedReaderApplication(Context base) {
+        super(base);
+    }
+}
+''',
+    'io/liber/oracle/nested/SelectedFieldHostBridge.java': r'''package io.liber.oracle.nested;
+
+import android.app.Application;
+
+/** Test-only bridge: the guard arm is out of scope for this producer fixture. */
+public final class SelectedFieldHostBridge {
+    public static boolean armed;
+
+    public static void arm(Application application, ClassLoader loader) {
+        armed = true;
+    }
+}
+''',
+}
+
+EARLY_CONTAINMENT_FIXTURE = r'''package io.liber.oracle.fields;
+
+import android.app.ActivityThread;
+import android.app.Application;
+import android.content.Context;
+import android.content.SharedPreferences;
+import io.legado.app.data.AppDatabaseKt;
+import io.legado.app.help.book.BookHelp;
+import io.liber.oracle.nested.GuardedReaderApplication;
+import io.liber.oracle.nested.StateSessionOracle;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.file.Files;
+import org.json.JSONObject;
+
+/**
+ * Actual early-containment coordinate controls.
+ *
+ * <p>Drives the production {@code FieldOracle.earlyContainment} body over a real
+ * {@code StateSessionOracle.ScratchContext} whose bound root carries a divergent
+ * absolute and canonical spelling. The bounded substitutes on this fixture's
+ * classpath cover only the classes that method touches, and the guard arm is a
+ * no-op stub, so no guard, Android, device or native behaviour is claimed.
+ */
+public final class EarlyContainmentFixture {
+    static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static void set(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    static void deleteTree(File file) {
+        File[] children = file.listFiles();
+        if (children != null) for (File child : children) deleteTree(child);
+        file.delete();
+    }
+
+    /** The controlled base Context: a real cache directory with a divergent spelling. */
+    static class BaseContext extends Context {
+        final File cacheDir;
+
+        BaseContext(File cacheDir) {
+            this.cacheDir = cacheDir;
+        }
+
+        @Override public File getCacheDir() { return cacheDir; }
+
+        @Override public File getFilesDir() { return null; }
+
+        @Override public File getExternalFilesDir(String type) { return null; }
+
+        @Override public File getDatabasePath(String name) { return null; }
+
+        @Override public SharedPreferences getSharedPreferences(String name, int mode) {
+            return null;
+        }
+    }
+
+    /** The controlled target/harness Context: only the loader is read here. */
+    static final class LoaderContext extends BaseContext {
+        private final ClassLoader loader;
+
+        LoaderContext(ClassLoader loader) {
+            super(null);
+            this.loader = loader;
+        }
+
+        @Override public ClassLoader getClassLoader() { return loader; }
+    }
+
+    /** An application whose external-files route is unavailable. */
+    static final class FallbackApplication extends GuardedReaderApplication {
+        FallbackApplication(Context base) { super(base); }
+
+        @Override public File getExternalFilesDir(String type) { return null; }
+    }
+
+    /** An application whose files route is a controlled File. */
+    static final class FilesApplication extends GuardedReaderApplication {
+        private final File files;
+
+        FilesApplication(Context base, File files) {
+            super(base);
+            this.files = files;
+        }
+
+        @Override public File getFilesDir() { return files; }
+    }
+
+    /** The real Room open-helper/writable-handle shape the producer reflects on. */
+    public static final class RoomDatabase {
+        private final String path;
+
+        RoomDatabase(String path) { this.path = path; }
+
+        public Object getOpenHelper() { return new OpenHelper(path); }
+    }
+
+    public static final class OpenHelper {
+        private final String path;
+
+        OpenHelper(String path) { this.path = path; }
+
+        public Object getWritableDatabase() { return new WritableDatabase(path); }
+    }
+
+    public static final class WritableDatabase {
+        private final String path;
+
+        WritableDatabase(String path) { this.path = path; }
+
+        public String getPath() { return path; }
+    }
+
+    static StateSessionOracle.ScratchContext scratch(File cacheDir) {
+        return new StateSessionOracle.ScratchContext(
+            new BaseContext(cacheDir), "liber-fields-02", "liber_fields_02_");
+    }
+
+    static JSONObject drive(StateSessionOracle.ScratchContext scratch, Context app,
+            Application threadApp, boolean selectedReference, boolean lifecycle)
+            throws Exception {
+        ClassLoader loader = EarlyContainmentFixture.class.getClassLoader();
+        FieldOracle oracle = new FieldOracle();
+        oracle.targetContext = new LoaderContext(loader);
+        oracle.appContext = new LoaderContext(loader);
+        set(oracle, "scratch", scratch);
+        set(oracle, "selectedReference", selectedReference);
+        set(oracle, "corpus", lifecycle
+            ? new JSONObject().put("titleLifecycle", new JSONObject()) : new JSONObject());
+        ActivityThread.application = threadApp;
+        splitties.init.AppCtxKt.appCtx = app;
+        com.jeremyliao.liveeventbus.utils.AppUtils.app = app;
+        Method method = FieldOracle.class.getDeclaredMethod(
+            "earlyContainment", JSONObject.class);
+        method.setAccessible(true);
+        return (JSONObject) method.invoke(oracle, new JSONObject());
+    }
+
+    static JSONObject positive(boolean lifecycle) throws Exception {
+        File base = Files.createTempDirectory("l138-early-coordinate-").toFile();
+        try {
+            File cacheDir = new File(base,
+                "a" + File.separator + ".." + File.separator + "a");
+            StateSessionOracle.ScratchContext scratch = scratch(cacheDir);
+            File external = scratch.getExternalFilesDir(null);
+            File cache = new File(external, "book_cache");
+            File database = scratch.getDatabasePath("legado.db");
+            BookHelp.cachePath = cache.getAbsolutePath();
+            AppDatabaseKt.appDb = new RoomDatabase(database.getAbsolutePath());
+            GuardedReaderApplication app = new GuardedReaderApplication(scratch);
+            JSONObject receipt = drive(scratch, app, app, true, lifecycle);
+            JSONObject expected = new JSONObject()
+                .put("scratchRoot", scratch.root.getAbsolutePath())
+                .put("externalFilesPath", external.getAbsolutePath())
+                .put("filesPath", scratch.getFilesDir().getAbsolutePath())
+                .put("databasePath", database.getAbsolutePath());
+            JSONObject canonical = new JSONObject()
+                .put("scratchRoot", scratch.root.getCanonicalPath())
+                .put("externalFilesPath", external.getCanonicalPath())
+                .put("filesPath", scratch.getFilesDir().getCanonicalPath())
+                .put("databasePath", database.getCanonicalPath());
+            if (lifecycle) {
+                expected.put("bookHelpCachePath", cache.getAbsolutePath())
+                    .put("roomDatabasePath", database.getAbsolutePath());
+                canonical.put("bookHelpCachePath", cache.getCanonicalPath())
+                    .put("roomDatabasePath", database.getCanonicalPath());
+            }
+            return new JSONObject()
+                .put("divergent", !scratch.root.getAbsolutePath()
+                    .equals(scratch.root.getCanonicalPath()))
+                .put("receipt", receipt).put("expected", expected)
+                .put("canonical", canonical);
+        } finally {
+            deleteTree(base);
+        }
+    }
+
+    static String rejection(String name) throws Exception {
+        File base = Files.createTempDirectory("l138-early-negative-").toFile();
+        try {
+            File cacheDir = new File(base,
+                "a" + File.separator + ".." + File.separator + "a");
+            StateSessionOracle.ScratchContext scratch = scratch(cacheDir);
+            File external = scratch.getExternalFilesDir(null);
+            File database = scratch.getDatabasePath("legado.db");
+            BookHelp.cachePath = new File(external, "book_cache").getAbsolutePath();
+            AppDatabaseKt.appDb = new RoomDatabase(database.getAbsolutePath());
+            GuardedReaderApplication app = new GuardedReaderApplication(scratch);
+            Application threadApp = app;
+            Context subject = app;
+            boolean selected = true;
+            if ("external-files-fallback".equals(name)) {
+                subject = new FallbackApplication(scratch);
+                selected = false;
+            } else if ("canonical-escape".equals(name)) {
+                subject = new FilesApplication(scratch, new File(scratch.root,
+                    ".." + File.separator + "escape" + File.separator + "files"));
+                selected = false;
+            } else if ("sibling-files-route".equals(name)) {
+                subject = new FilesApplication(scratch, new File(scratch.root, "files2"));
+                selected = false;
+            } else if ("traversal-files-route".equals(name)) {
+                subject = new FilesApplication(scratch, new File(scratch.root,
+                    "files" + File.separator + ".." + File.separator + ".."
+                        + File.separator + "escape"));
+                selected = false;
+            } else if ("wrong-bookhelp-cache".equals(name)) {
+                BookHelp.cachePath = new File(external, "other_cache").getAbsolutePath();
+            } else if ("wrong-room-database".equals(name)) {
+                AppDatabaseKt.appDb = new RoomDatabase(
+                    new File(database.getParentFile(), "other.db").getAbsolutePath());
+            } else if ("foreign-base-context".equals(name)) {
+                subject = new GuardedReaderApplication(scratch(cacheDir));
+                threadApp = (Application) subject;
+            } else if ("foreign-application-object".equals(name)) {
+                threadApp = new GuardedReaderApplication(scratch);
+            } else {
+                throw new IllegalArgumentException(name);
+            }
+            try {
+                drive(scratch, subject, threadApp, selected, true);
+            } catch (InvocationTargetException error) {
+                Throwable cause = error.getTargetException();
+                return cause.getMessage() == null
+                    ? cause.getClass().getName() : cause.getMessage();
+            }
+            throw new AssertionError(name + " was admitted");
+        } finally {
+            deleteTree(base);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        String control = args[0];
+        JSONObject result;
+        if ("title-lifecycle".equals(control) || "ordinary".equals(control)) {
+            result = positive("title-lifecycle".equals(control));
+        } else {
+            result = new JSONObject().put("rejected", rejection(control));
+        }
+        System.out.println(result);
+    }
+}
+'''
+
+
+class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
+    """The actual producer's early-containment serialization coordinate.
+
+    The subject is the committed `FieldOracle.earlyContainment` body, compiled
+    from source against the real android-35 SDK and executed in a fresh JVM over
+    a real `StateSessionOracle.ScratchContext` whose bound root carries a
+    divergent absolute and canonical spelling. The bounded substitutes emitted
+    from this module cover only the classes that method touches, and the guard
+    arm is a no-op stub, so no guard, Android, device or native behaviour is
+    claimed here.
+    """
+
+    _java_home = GuardedReaderApplicationHostTest._java_home
+    _android_jar = GuardedReaderApplicationHostTest._android_jar
+    _json_jar = GuardedReaderApplicationHostTest._json_jar
+    _repo = GuardedReaderApplicationHostTest._repo
+    _run = GuardedReaderApplicationHostTest._run
+
+    REJECTIONS = (
+        ('external-files-fallback',
+         'the target application or its storage is not this bound scratch'),
+        ('canonical-escape',
+         'the target application or its storage is not this bound scratch'),
+        ('sibling-files-route',
+         'the target application or its storage is not this bound scratch'),
+        ('traversal-files-route',
+         'the target application or its storage is not this bound scratch'),
+        ('wrong-bookhelp-cache',
+         'the BookHelp write root escapes the owned scratch'),
+        ('wrong-room-database',
+         'the Room database escapes the owned scratch'),
+        ('foreign-base-context',
+         'the target application or its storage is not this bound scratch'),
+        ('foreign-application-object',
+         'the target application or its storage is not this bound scratch'),
+    )
+
+    def _classpath(self, root):
+        repo = self._repo()
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        root = Path(root)
+        actual = root / 'actual-classes'
+        actual.mkdir()
+        compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(actual),
+             str(repo / 'tool/nested_oracle/StateSessionOracle.java'),
+             str(repo / 'tool/nested_oracle/HostRuntimeInit.java'),
+             str(repo / 'tool/nested_oracle/ShortcutStartupGuard.java'),
+             str(repo / 'tool/result_field_oracle/FieldOracle.java'),
+             str(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java'),
+             str(repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java')], repo)
+        self.assertEqual(compiled.returncode, 0,
+                         compiled.stderr.decode(errors='replace'))
+        overlay = root / 'overlay-classes'
+        overlay.mkdir()
+        sources = []
+        for name, text in EARLY_CONTAINMENT_SUBSTITUTES.items():
+            path = root / 'overlay-src' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding='utf-8')
+            sources.append(path)
+        substituted = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(overlay)]
+            + [str(path) for path in sources], repo)
+        self.assertEqual(substituted.returncode, 0,
+                         substituted.stderr.decode(errors='replace'))
+        fixture = root / 'EarlyContainmentFixture.java'
+        fixture.write_text(EARLY_CONTAINMENT_FIXTURE, encoding='utf-8')
+        fixture_classes = root / 'fixture-classes'
+        fixture_classes.mkdir()
+        compile_cp = os.pathsep.join([str(overlay), str(actual), str(jar), str(android)])
+        built = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', compile_cp, '-d', str(fixture_classes),
+             str(fixture)], repo)
+        self.assertEqual(built.returncode, 0, built.stderr.decode(errors='replace'))
+        return java, os.pathsep.join([str(overlay), str(fixture_classes),
+                                      str(actual), str(jar), str(android)])
+
+    def _control(self, java, classpath, name):
+        run = self._run(
+            [str(java / 'bin' / 'java.exe'), '-cp', classpath,
+             'io.liber.oracle.fields.EarlyContainmentFixture', name], self._repo())
+        output = run.stdout.decode(errors='replace').strip()
+        self.assertEqual(run.returncode, 0,
+                         output + run.stderr.decode(errors='replace'))
+        return json.loads(output.splitlines()[-1])
+
+    def test_the_actual_early_containment_emits_the_bound_coordinate(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-coordinate-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            title = self._control(java, classpath, 'title-lifecycle')
+            self.assertTrue(title['divergent'],
+                            'the fixture must exercise divergent coordinates')
+            receipt = title['receipt']
+            for field, expected in title['expected'].items():
+                self.assertEqual(receipt[field], expected, field)
+            for field, canonical in title['canonical'].items():
+                self.assertNotEqual(receipt[field], canonical, field)
+            for flag in ('sameApplicationObject', 'guardedApplication',
+                         'baseContextBound', 'externalFilesRouted', 'filesRouted',
+                         'databaseRouted', 'bookHelpCacheWithinScratch',
+                         'roomDatabaseWithinScratch'):
+                self.assertIs(receipt[flag], True, flag)
+            self.assertEqual(receipt['appCtxClass'], capture.GUARD_APPLICATION)
+            self.assertEqual(receipt['baseContextClass'], capture.SCRATCH_CONTEXT)
+            self.assertEqual(receipt['roomDatabasePath'], receipt['databasePath'])
+
+    def test_a_non_lifecycle_corpus_keeps_its_canonical_serialization(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-ordinary-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            ordinary = self._control(java, classpath, 'ordinary')
+            self.assertTrue(ordinary['divergent'])
+            receipt = ordinary['receipt']
+            for field, canonical in ordinary['canonical'].items():
+                self.assertEqual(receipt[field], canonical, field)
+            self.assertNotIn('bookHelpCachePath', receipt)
+            self.assertNotIn('roomDatabasePath', receipt)
+            for flag in ('sameApplicationObject', 'guardedApplication',
+                         'baseContextBound', 'externalFilesRouted', 'filesRouted',
+                         'databaseRouted'):
+                self.assertIs(receipt[flag], True, flag)
+
+    def test_each_wrong_route_is_rejected_by_the_actual_producer(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-negative-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            for name, fragment in self.REJECTIONS:
+                with self.subTest(control=name):
+                    outcome = self._control(java, classpath, name)
+                    self.assertIn(fragment, outcome['rejected'], name)
+
+
 if __name__ == '__main__':
     unittest.main()

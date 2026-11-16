@@ -321,6 +321,19 @@ positive numbers. The old `four-stage` terminal keeps exactly four operations,
 and a record that carries `titleLifecycle` or `titleLifecycleProof` under any
 other terminal is refused.
 
+The producer proves each of those routes before it publishes it: it queries the
+actual application directories, the native BookHelp cache and the real Room
+writable handle, requires each canonical path to equal the corresponding scratch
+route's canonical form, and keeps the canonical containment test. The
+title-lifecycle corpus then emits the proven route in the bound scratch's own
+absolute coordinate — the coordinate the measured `run-as` root, the ordinary
+isolation, the owner receipt and the cleanup already use — so one corpus has a
+single path coordinate. A corpus without the lifecycle observation keeps the
+canonical serialization it has always emitted. A canonical escape, an
+external-files fallback, a sibling or traversal route, a different BookHelp
+directory and a different Room database are all refused before any receipt is
+published.
+
 The saved pair re-reads its own table of contents, so the same path appears
 twice in the declared sequence. The replay server serves a path's declared
 responses in declaration order only when a corpus declares more than one for

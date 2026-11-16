@@ -1188,6 +1188,21 @@ public final class FieldOracle extends Instrumentation {
         boolean filesRouted = canonicalFiles.equals(scratch.getFilesDir().getCanonicalPath());
         boolean databaseRouted = canonicalDatabase
             .equals(scratch.getDatabasePath("legado.db").getCanonicalPath());
+        // The bound scratch is the operational coordinate of the title-lifecycle
+        // corpus: the measured run-as root, the ordinary isolation, the owner
+        // receipt and the cleanup all use its absolute spelling. Each canonical
+        // path above is proven equal to the corresponding scratch route before it
+        // is published, so the proven route is emitted in that same coordinate
+        // instead of the platform's canonical alias. A corpus without the
+        // lifecycle observation keeps its existing canonical serialization.
+        boolean boundCoordinate = lifecycleCorpus();
+        String emittedRoot = boundCoordinate ? scratch.root.getAbsolutePath() : root;
+        String emittedExternal = boundCoordinate
+            ? scratch.getExternalFilesDir(null).getAbsolutePath() : canonicalExternal;
+        String emittedFiles = boundCoordinate
+            ? scratch.getFilesDir().getAbsolutePath() : canonicalFiles;
+        String emittedDatabase = boundCoordinate
+            ? scratch.getDatabasePath("legado.db").getAbsolutePath() : canonicalDatabase;
         JSONObject containment = new JSONObject()
             .put("appCtxClass", appCtxValue.getClass().getName())
             .put("activityThreadAppClass", threadApp == null
@@ -1197,10 +1212,10 @@ public final class FieldOracle extends Instrumentation {
             .put("baseContextBound", baseContextBound)
             .put("baseContextClass", baseContext == null
                 ? JSONObject.NULL : baseContext.getClass().getName())
-            .put("externalFilesPath", canonicalExternal)
-            .put("filesPath", canonicalFiles)
-            .put("databasePath", canonicalDatabase)
-            .put("scratchRoot", root)
+            .put("externalFilesPath", emittedExternal)
+            .put("filesPath", emittedFiles)
+            .put("databasePath", emittedDatabase)
+            .put("scratchRoot", emittedRoot)
             .put("externalFilesRouted", externalRouted)
             .put("filesRouted", filesRouted)
             .put("databaseRouted", databaseRouted);
@@ -1230,9 +1245,12 @@ public final class FieldOracle extends Instrumentation {
             String cachePath = (String) bookHelp.getMethod("getCachePath")
                 .invoke(bookHelp.getField("INSTANCE").get(null));
             String canonicalCache = new File(cachePath).getCanonicalPath();
-            containment.put("bookHelpCachePath", canonicalCache)
-                .put("bookHelpCacheWithinScratch", within(canonicalCache, root));
-            if (!within(canonicalCache, root)) {
+            File expectedCache = new File(scratch.getExternalFilesDir(null), "book_cache");
+            boolean cacheRouted = within(canonicalCache, root)
+                && canonicalCache.equals(expectedCache.getCanonicalPath());
+            containment.put("bookHelpCachePath", expectedCache.getAbsolutePath())
+                .put("bookHelpCacheWithinScratch", cacheRouted);
+            if (!cacheRouted) {
                 throw new IllegalStateException(
                     "the BookHelp write root escapes the owned scratch: " + containment);
             }
@@ -1247,9 +1265,12 @@ public final class FieldOracle extends Instrumentation {
             Object database = dao.getClass().getMethod("getWritableDatabase").invoke(dao);
             String roomPath = new File((String) database.getClass().getMethod("getPath")
                 .invoke(database)).getCanonicalPath();
-            containment.put("roomDatabasePath", roomPath)
-                .put("roomDatabaseWithinScratch", within(roomPath, root));
-            if (!within(roomPath, root)) {
+            File expectedRoom = scratch.getDatabasePath("legado.db");
+            boolean roomRouted = within(roomPath, root)
+                && roomPath.equals(expectedRoom.getCanonicalPath());
+            containment.put("roomDatabasePath", expectedRoom.getAbsolutePath())
+                .put("roomDatabaseWithinScratch", roomRouted);
+            if (!roomRouted) {
                 throw new IllegalStateException(
                     "the Room database escapes the owned scratch: " + containment);
             }
