@@ -98,6 +98,8 @@ ROOT_INSTALL_RECEIPT_KEYS = INSTALL_RECEIPT_KEYS | {
     'stdin', 'installCompletion', 'stdoutSha256', 'stderrSha256'}
 # The two raw streams the root transport keeps beside the combined install log.
 INSTALL_STREAM_SUFFIXES = ('.stdout.log', '.stderr.log')
+# The one owned copy of the built harness an opt-in root invocation authorizes and sends.
+HARNESS_SNAPSHOT_NAME = 'harness-snapshot.apk'
 LEB_RECEIVER = 'com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver'
 LEB_IPC_ACTION = 'intent.action.ACTION_LEB_IPC'
 LEB_LIFECYCLE = 'com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl'
@@ -171,6 +173,85 @@ def _partial_streams(error):
     return stdout, stderr
 
 
+def _capture_harness_snapshot(apk_path, output):
+    """One checked harness buffer plus its exclusive snapshot in this evidence directory.
+
+    The built harness is read exactly once. The snapshot is created exclusively at the
+    fixed bundle-relative name and then read back against that buffer, so the preflight's
+    ZIP, manifest, signer and DEX reads and the privileged send all use the owned copy
+    instead of the external build path.
+    """
+    data = Path(apk_path).read_bytes()
+    if not data:
+        raise ValueError('the built harness APK is empty')
+    snapshot = Path(output) / HARNESS_SNAPSHOT_NAME
+    try:
+        with snapshot.open('xb') as stream:
+            stream.write(data)
+    except FileExistsError as error:
+        raise ValueError('the harness snapshot already exists; refusing to replace'
+                         ' it') from error
+    staged = snapshot.read_bytes()
+    if staged != data or sha256_bytes(staged) != sha256_bytes(data):
+        raise ValueError('the staged harness snapshot differs from the checked bytes')
+    return data, snapshot
+
+
+def _require_checked_snapshot(snapshot, apk_bytes, approved):
+    """The staged snapshot still has to be the exact bytes this invocation will send."""
+    staged = Path(snapshot).read_bytes()
+    if staged != apk_bytes:
+        raise ValueError('the staged harness snapshot changed before the send')
+    if sha256_bytes(staged) != approved:
+        raise ValueError('the staged harness snapshot digest differs before the send')
+    return approved
+
+
+def _snapshot_preflight(preflight):
+    """Whether this retained binding ran the preflight against the owned snapshot."""
+    inputs = preflight.get('inputs') if isinstance(preflight, dict) else None
+    recorded = inputs.get('harnessApk') if isinstance(inputs, dict) else None
+    return isinstance(recorded, str) and Path(recorded).name == HARNESS_SNAPSHOT_NAME
+
+
+PM_REFUSAL = re.compile(rb'Failure \[[A-Z][A-Z0-9_]*\]')
+
+
+def _root_install_refusal(stdout, stderr):
+    """The one narrow, determinate Package Manager refusal line, or None.
+
+    Only a single terminal `Failure [REASON]` line on exactly one stream is a refusal.
+    Extra text, diagnostics, connection interruptions and contradictory output are not.
+    """
+    stdout_lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    stderr_lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    for lines, other in ((stdout_lines, stderr_lines), (stderr_lines, stdout_lines)):
+        if len(lines) == 1 and not other and PM_REFUSAL.fullmatch(lines[0]):
+            return lines[0].decode(errors='replace')
+    return None
+
+
+def _root_install_outcome(stdout, stderr, exit_code):
+    """What one returned root send established, never more than its streams show.
+
+    A zero exit with the exact success streams is a confirmed success; a nonzero exit with
+    the narrow refusal line is a determinate refusal. Everything else, including
+    contradictory zero output and a transport failure, is an unknown completion that keeps
+    only its actual exit and streams.
+    """
+    if exit_code == 0:
+        try:
+            _require_root_install_success(stdout, stderr, 'install')
+        except ValueError:
+            return {'installCompletion': 'unknown', 'outcome': 'unconfirmed'}
+        return {'installCompletion': 'complete', 'outcome': 'success'}
+    refusal = _root_install_refusal(stdout, stderr)
+    if refusal is not None:
+        return {'installCompletion': 'complete', 'outcome': 'refused',
+                'refusal': refusal}
+    return {'installCompletion': 'unknown', 'outcome': 'unconfirmed'}
+
+
 def _require_root_install_success(stdout, stderr, label):
     """The opt-in root transport's own unambiguous success: one stdout terminal line.
 
@@ -235,7 +316,8 @@ def root_install(apk_bytes, serial, expected_sha256, run):
     try:
         return run(command, 'install', timeout=ROOT_INSTALL_TIMEOUT, checked=False,
                    stdin=data, receipt={'stdin': {'bytes': size, 'sha256': digest}},
-                   retain_timeout={'installCompletion': 'unknown'})
+                   retain_timeout={'installCompletion': 'unknown'},
+                   classify=_root_install_outcome)
     except subprocess.TimeoutExpired as error:
         raise ValueError('the root install did not finish within '
                          + str(ROOT_INSTALL_TIMEOUT) + 's; its completion is unknown'
@@ -2219,6 +2301,8 @@ def _admit_auxiliary_commands(indexed, output, preflight, adb_prefix, fail):
         item = indexed.get(name + '.log')
         if item is None:
             continue
+        if set(item) != {'command', 'exitCode', 'log'}:
+            fail(name + ' receipt shape differs')
         if (item.get('command') != command or type(item.get('exitCode')) is not int
                 or item['exitCode'] != 0 or not (output / (name + '.log')).is_file()):
             fail(name + ' command differs')
@@ -2327,6 +2411,14 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
     installed_input = _admit_install_receipt(
         install_item, profile, manifest, pulled.stat().st_size, adb_prefix)
     if installed_input is None:
+        snapshot = output / HARNESS_SNAPSHOT_NAME
+        if not _snapshot_preflight(preflight) or not snapshot.is_file():
+            fail('root harness snapshot is missing')
+        snapshot_bytes = snapshot.read_bytes()
+        sent = install_item['stdin']
+        if (len(snapshot_bytes) != sent['bytes']
+                or sha256_bytes(snapshot_bytes) != sent['sha256']):
+            fail('root harness snapshot differs from the sent bytes')
         stdout_log, stderr_log = _install_stream_names('install')
         if not (output / stdout_log).is_file() or not (output / stderr_log).is_file():
             fail('root install streams are missing')
@@ -2960,13 +3052,27 @@ def main():
     selected_reference = fields_02 and fixture.get('baselineCommit') == SELECTED_BASELINE
     target_package = SELECTED_TARGET['package'] if selected_reference else TARGET_PACKAGE
     selected_binding = None
+    harness_bytes = None
+    harness_snapshot = None
     if selected_reference:
         if args.serial != '5615f742' or not all((args.apk, args.target_apk, args.frozen_source, args.java_home)):
             raise SystemExit('selected capture requires the approved serial, --apk, --target-apk, --frozen-source and --java-home')
         if not args.finalize:
             args.output.mkdir(parents=True, exist_ok=False)
+        if args.root_install:
+            # The opt-in root invocation authorizes and sends one owned snapshot: the
+            # preflight's ZIP, manifest, signer and DEX reads all use that copy.
+            try:
+                harness_bytes, harness_snapshot = _capture_harness_snapshot(
+                    args.apk, args.output)
+            except Exception as error:
+                (args.output / 'preflight-failure.json').write_text(
+                    json.dumps({'status': 'failed', 'error': str(error)}, indent=2)
+                    + '\n', encoding='utf-8')
+                raise SystemExit(str(error)) from error
         try:
-            selected_binding = selected_preflight(args.apk, args.target_apk, fixture_path,
+            selected_binding = selected_preflight(harness_snapshot or args.apk,
+                args.target_apk, fixture_path,
                 args.frozen_source, args.android_sdk, args.java_home,
                 evidence=None if args.finalize else args.output)
         except Exception as error:
@@ -2984,7 +3090,12 @@ def main():
     if args.finalize:
         try:
             report = json.loads((args.output / 'field-oracle.json').read_text(encoding='utf-8'))
-            manifest = json.loads((args.output / 'manifest.json').read_text(encoding='utf-8'))
+            manifest_text = (args.output / 'manifest.json').read_text(encoding='utf-8')
+            # A selected manifest is decoded strictly so a duplicate member (including one
+            # inside a command row) cannot collapse before the root evidence is checked.
+            # The historical/default parser is unchanged.
+            manifest = (_strict_json(manifest_text) if selected_reference
+                        else json.loads(manifest_text))
             report_bytes = (args.output / 'field-oracle.json').read_bytes()
         except Exception as error:
             if not selected_reference:
@@ -3066,7 +3177,8 @@ def main():
             raise SystemExit('the built asset raw hash differs from the selected corpus')
         if sha256_bytes(lf_bytes(asset_bytes)) != corpus_sha256_lf:
             raise SystemExit('the built asset LF hash differs from the selected corpus')
-        artifact = inspect_selected_apk(args.apk, fixture_path, fixture,
+        artifact = inspect_selected_apk(harness_snapshot or args.apk, fixture_path,
+                                        fixture,
                                         harness_source_hashes(selected=selected_reference))
     if not selected_reference:
         args.output.mkdir(parents=True, exist_ok=False)
@@ -3092,7 +3204,8 @@ def main():
                     'served bytes and the committed blob hash to the same value, which '
                     'is also the hash the Liber-side observation records (fixturesSha256).',
         },
-        'harnessApkSha256': sha256(args.apk),
+        'harnessApkSha256': (sha256_bytes(harness_bytes) if harness_bytes is not None
+                             else sha256(args.apk)),
         'serial': args.serial,
         'commands': [],
         'harnessSources': harness_source_hashes(selected=selected_reference),
@@ -3109,7 +3222,7 @@ def main():
     installed = False
 
     def run(command, name, timeout=60, checked=True, stdin=None, receipt=None,
-            retain_timeout=None):
+            retain_timeout=None, classify=None):
         """Record one command; only the opt-in root send is recorded before its wait.
 
         `retain_timeout` is passed by the root install alone, because its send may
@@ -3155,9 +3268,13 @@ def main():
         else:
             _write_install_streams(args.output, name, result.stdout, result.stderr)
             attempt.update({'exitCode': result.returncode,
-                            'installCompletion': 'complete',
                             'stdoutSha256': sha256_bytes(result.stdout),
                             'stderrSha256': sha256_bytes(result.stderr)})
+            if classify is None:
+                attempt['installCompletion'] = 'complete'
+            else:
+                attempt.update(classify(result.stdout, result.stderr,
+                                        result.returncode))
         if checked and result.returncode:
             raise RuntimeError(f'{name} exited {result.returncode}; see raw log')
         return result
@@ -3466,38 +3583,69 @@ def main():
             before = adb('private-before', 'shell', 'run-as', 'io.legado.app.debug',
                          'sh', '-c', snapshot)
         if args.root_install:
-            # The approved root transport: the exact built APK bytes on stdin, one
+            # The approved root transport: the exact checked snapshot bytes on stdin, one
             # command, one attempt. The buffer is bound to the digest this invocation's
-            # successful signed preflight measured, before anything is sent; a refused
-            # or ambiguous send returns below, is never retried and is never instrumented.
-            harness_bytes = args.apk.read_bytes()
+            # successful signed preflight measured, and the staged snapshot is compared
+            # again before launch; a refused or ambiguous send returns below, is never
+            # retried, probed or instrumented.
             approved = _bind_signed_apk(harness_bytes, selected_binding,
                                         manifest.get('artifact'),
                                         manifest.get('harnessApkSha256'))
+            _require_checked_snapshot(harness_snapshot, harness_bytes, approved)
             installed_result = root_install(harness_bytes, args.serial, approved, run)
+            root_outcome = _root_install_outcome(installed_result.stdout,
+                                                 installed_result.stderr,
+                                                 installed_result.returncode)
+            if root_outcome['outcome'] == 'refused':
+                manifest['status'] = 'blocked'
+                manifest['blocker'] = root_outcome['refusal']
+                if fields_02:
+                    partial = adb('partial-harness', 'shell', 'pm', 'list', 'packages',
+                                  PACKAGE, checked=False)
+                    try:
+                        partial_present = _package_is_present(
+                            partial, PACKAGE, 'partial-harness')
+                    except ValueError as error:
+                        manifest['status'] = 'failed'
+                        manifest['error'] = ('install was refused and package state is '
+                                             'ambiguous; preserving it for inspection: '
+                                             + str(error))
+                    else:
+                        if partial_present:
+                            manifest['status'] = 'failed'
+                            manifest['error'] = ('install was refused and package state is '
+                                                 'ambiguous; preserving it for inspection')
+                return 2 if manifest['status'] == 'blocked' else 1
+            if root_outcome['outcome'] != 'success':
+                manifest['status'] = 'failed'
+                manifest['error'] = ('the root install completion is not confirmed (exit '
+                                     + str(installed_result.returncode)
+                                     + '); its streams are retained, no package state is'
+                                     ' inferred and nothing else is sent')
+                return 1
         else:
             installed_result = adb('install', 'install', '-r', str(args.apk), checked=False,
                                    timeout=180)
-        if installed_result.returncode:
-            manifest['status'] = 'blocked'
-            manifest['blocker'] = installed_result.stderr.decode(errors='replace')
-            if fields_02:
-                partial = adb('partial-harness', 'shell', 'pm', 'list', 'packages',
-                              PACKAGE, checked=False)
-                try:
-                    partial_present = _package_is_present(
-                        partial, PACKAGE, 'partial-harness')
-                except ValueError as error:
-                    manifest['status'] = 'failed'
-                    manifest['error'] = ('install returned nonzero and package state is '
-                                         'ambiguous; preserving it for inspection: '
-                                         + str(error))
-                else:
-                    if partial_present:
+            if installed_result.returncode:
+                manifest['status'] = 'blocked'
+                manifest['blocker'] = installed_result.stderr.decode(errors='replace')
+                if fields_02:
+                    partial = adb('partial-harness', 'shell', 'pm', 'list', 'packages',
+                                  PACKAGE, checked=False)
+                    try:
+                        partial_present = _package_is_present(
+                            partial, PACKAGE, 'partial-harness')
+                    except ValueError as error:
                         manifest['status'] = 'failed'
                         manifest['error'] = ('install returned nonzero and package state is '
-                                             'ambiguous; preserving it for inspection')
-            return 2 if manifest['status'] == 'blocked' else 1
+                                             'ambiguous; preserving it for inspection: '
+                                             + str(error))
+                    else:
+                        if partial_present:
+                            manifest['status'] = 'failed'
+                            manifest['error'] = ('install returned nonzero and package state is '
+                                                 'ambiguous; preserving it for inspection')
+                return 2 if manifest['status'] == 'blocked' else 1
         installed = True
         if selected_reference:
             if args.root_install:

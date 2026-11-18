@@ -226,16 +226,35 @@ absence, private snapshot) runs first, and only the one install command differs.
 The root transport sends the exact built APK bytes from Python on the child's
 stdin, with no TTY and no text pipe, and asks the device only for
 `pm install --user 0 -r`. The command carries no other text, name or path, and
-`su` is never asked for another helper, package, setting or shell. Before
-anything is sent, that one in-memory buffer is bound to the digest this
-invocation's successful signed preflight measured (the preflight itself checks
-its artifact digest is unchanged across its manifest, signer and ABI reads), and
-the later artifact inspection and manifest digest have to agree with it; a
-missing, malformed or changed binding fails closed with zero sends and the
-default install keeps its byte-for-byte path. The recorded `install` receipt for
-the root shape adds the `stdin` byte length and SHA-256, an explicit completion,
-and the SHA-256 of each raw stream; the default receipt keeps exactly its
-original `{command, exitCode, log}` shape, so every retained bundle stays valid.
+`su` is never asked for another helper, package, setting or shell.
+
+A live opt-in invocation authorizes and sends one owned **checked snapshot**: the
+built harness is read once, the copy is created exclusively at
+`<capture>/harness-snapshot.apk`, and that copy is what the preflight's ZIP,
+manifest, signer and DEX reads inspect (the raw records name that path). The
+in-memory buffer is bound to the digest that successful signed preflight
+measured, the snapshot is compared with the buffer and digest again immediately
+before launch, and a missing, malformed or changed binding fails closed with
+zero sends. The external build path is never re-read after the snapshot. The
+default install keeps its byte-for-byte path, and the installed readback is
+still required.
+
+The recorded `install` receipt for the root shape adds the `stdin` byte length
+and SHA-256, an explicit completion, an outcome, and the SHA-256 of each raw
+stream; the default receipt keeps exactly its original
+`{command, exitCode, log}` shape, so every retained bundle stays valid.
+
+A returned root result is classified only from its own exit and streams: a zero
+exit with the exact success streams is a confirmed success; a nonzero exit whose
+single terminal `Failure [REASON]` line is the only output on one stream is a
+determinate Package Manager refusal, and only that case may take the existing
+read-only package state check. Every other returned outcome, including a
+transport failure and contradictory zero output, keeps its actual integer exit
+and both streams with completion unknown and sends no later device command (no
+retry, fallback, probe, instrumentation or cleanup). Timeout and host
+interruption keep the known command, the supplied stdin binding and whatever
+streams exist, with no fabricated exit or transfer length. The default path is
+unchanged.
 
 Admission accepts exactly one of the two shapes and never a hybrid: the default
 command with a stdin record, the root command without one, an edited command, a
@@ -243,22 +262,22 @@ different `-S` length, a stdin length that differs from the pulled APK, a stdin
 digest that differs from the measured artifact, or a missing/incomplete
 completion is refused. The root shape is admitted only for the selected title
 profile, and the exact size and digest join the preflight artifact to the pulled
-`installed-harness.apk` byte identity, the original owner-only cleanup and the
-private before/after equality. Retained root evidence keeps the combined
-`install.log` and the two raw `install.stdout.log`/`install.stderr.log` streams:
-admission requires the recorded stream digests to match those files and the
-combined log to equal their composition, and it applies the root-only success
-check (exactly one `Success` stdout line and no stderr output) to the raw
-streams. The auxiliary rows are pinned to their one real invocation, so a second
-install or another privileged command cannot masquerade under an auxiliary log
-name. A nonzero or ambiguous install result stops the run before instrumentation,
-without retry or fallback. A timed-out root install preserves the command, the
-supplied stdin length and hash, and the available output, with no exit code and
-completion marked unknown; a catchable host interruption preserves the attempted
-command and stdin binding with no fabricated exit, status or transfer length.
-Neither receipt can qualify a bundle. The root transport is non-incremental and
-does not pass the `idsig` to the installer; offline artifact verification still
-includes the `idsig`.
+`installed-harness.apk` byte identity, the bundle's own
+`harness-snapshot.apk` copy, the original owner-only cleanup and the private
+before/after equality. Retained root evidence keeps the combined `install.log`
+and the two raw `install.stdout.log`/`install.stderr.log` streams: admission
+requires the recorded stream digests to match those files and the combined log
+to equal their composition, and it applies the root-only success check (exactly
+one `Success` stdout line and no stderr output) to the raw streams. The six
+root-only auxiliary rows are pinned to their one real invocation and to exactly
+the producer's `{command, exitCode, log}` keys, so a second install, another
+privileged command or a mixed receipt cannot masquerade there. Selected
+`--finalize` decodes the manifest with the duplicate-rejecting decoder that
+`--verify-bundle` already used, so a repeated member cannot collapse before the
+root evidence is checked; the historical/default parser is unchanged. Neither an
+unknown-completion nor a refused receipt can qualify a bundle. The root transport
+is non-incremental and does not pass the `idsig` to the installer; offline
+artifact verification still includes the `idsig`.
 
 ### Reader follow-through selected corpus
 

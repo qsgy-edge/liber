@@ -1315,7 +1315,9 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                                     'worktreeSha256': 'a' * 64}
                       for row in fixture['frozenSources']}
         binding = _synthetic_selected_preflight(
-            root, fixture, artifact, harness_apk, target_apk,
+            root, fixture, artifact,
+            root / capture.HARNESS_SNAPSHOT_NAME if root_install else harness_apk,
+            target_apk,
             Path('C:/source'), Path('C:/sdk'), Path('C:/java'), references,
             reference_dex_sha=reference_dex_sha,
             harness_dex_sha=capture.sha256_bytes(b'synthetic-harness-dex'),
@@ -1614,6 +1616,31 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             self.TARGET_ROOT)), before)
         if root_install:
             install_bytes = harness_apk.read_bytes()
+            # The opt-in root invocation authorizes and sends the bundle's own snapshot.
+            (root / capture.HARNESS_SNAPSHOT_NAME).write_bytes(install_bytes)
+            # The six root-only auxiliary rows, in the producer's own invocation shape.
+            source_input = binding['inputs']['source']
+            frozen_paths = list(binding['referenceSources'])
+            for name, command, data in (
+                    ('source-head', ['git', '-C', source_input, 'rev-parse', 'HEAD'],
+                     (fixture['baselineCommit'] + '\n').encode()),
+                    ('frozen-source-hashes',
+                     ['git', '-C', source_input, 'hash-object', *frozen_paths],
+                     (' '.join(row['sha1'] for row in fixture['frozenSources'])
+                      + '\n').encode()),
+                    ('frozen-source-status',
+                     ['git', '-C', source_input, 'status', '--porcelain', '--',
+                      *frozen_paths], b''),
+                    ('android-release', ['shell', 'getprop',
+                                         'ro.build.version.release'], b'17\n'),
+                    ('model', ['shell', 'getprop', 'ro.product.model'], b'myron\n'),
+                    ('logcat-field-oracle', ['logcat', '-d', '-s', 'FieldOracle'], b'')):
+                log = name + '.log'
+                (root / log).write_bytes(data)
+                manifest['commands'].append({
+                    'command': (command if command[0] == 'git'
+                                else prefix + command),
+                    'exitCode': 0, 'log': log})
             (root / 'install.stdout.log').write_bytes(b'Success\n')
             (root / 'install.stderr.log').write_bytes(b'')
             add('install', ['shell', '-T',
@@ -2018,10 +2045,11 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             row['stdoutSha256'] = capture.sha256_bytes(b'other')
 
         def auxiliary_install(manifest, row, root_dir):
-            duplicate = dict(row, log='model.log')
+            # A second privileged send masquerading under an existing auxiliary row.
+            target = next(item for item in manifest['commands']
+                          if item['log'] == 'model.log')
+            target['command'] = list(row['command'])
             (Path(root_dir) / 'model.log').write_bytes(b'Success\n')
-            manifest['commands'].insert(
-                manifest['commands'].index(row) + 1, duplicate)
 
         def auxiliary_privileged(manifest, row, root_dir):
             manifest['commands'].append({
@@ -2029,6 +2057,13 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                             capture._root_install_command(3)],
                 'exitCode': 0, 'log': 'scan-extra.log'})
             (Path(root_dir) / 'scan-extra.log').write_bytes(b'Success\n')
+
+        def auxiliary_hybrid(name):
+            def mutate(manifest, row, root_dir):
+                target = next(item for item in manifest['commands']
+                              if item['log'] == name + '.log')
+                target['stdin'] = {'bytes': 3, 'sha256': 'a' * 64}
+            return mutate
 
         mutations = (
             ('hybrid', replace_command, 'install receipt shape differs'),
@@ -2051,7 +2086,12 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             ('auxiliary-install', auxiliary_install, 'model command differs'),
             ('auxiliary-privileged', auxiliary_privileged,
              'unrecognized commands'),
-        )
+        ) + tuple(
+            ('auxiliary-hybrid-' + name, auxiliary_hybrid(name),
+             name + ' receipt shape differs')
+            for name in ('source-head', 'frozen-source-hashes',
+                         'frozen-source-status', 'android-release', 'model',
+                         'logcat-field-oracle'))
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             clean, fixture, binding, harness_apk, target_apk, _ = \
@@ -2092,6 +2132,67 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                         self.assertTrue(receipt.is_file(), label)
                         self.assertIn(expected, receipt.read_text(
                             encoding='utf-8'), label)
+                        self.assertEqual(self._inventory(copy), before, label)
+
+    def test_both_entry_paths_reject_duplicate_manifest_members(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            clean, fixture, binding, harness_apk, target_apk, _ = \
+                self._bundle(base / 'dup-clean', root_install=True, portable=True)
+            code, stdout, stderr = self._pinned_main(
+                'finalize', clean, clean, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            original = (clean / 'manifest.json').read_text(encoding='utf-8')
+
+            def duplicate_line(payload, needle):
+                lines = payload.split('\n')
+                hits = [index for index, line in enumerate(lines) if needle in line]
+                assert len(hits) == 1, (needle, hits)
+                index = hits[0]
+                original_line = lines[index]
+                if not original_line.rstrip().endswith(','):
+                    lines[index] = original_line + ','
+                lines.insert(index + 1, original_line)
+                return '\n'.join(lines)
+
+            # One benign top-level member and one inside a command row, each repeated
+            # with its own value, so a plain decoder sees exactly the accepted manifest.
+            top_level = duplicate_line(original, '"serial": "5615f742",')
+            row_duplicate = duplicate_line(top_level, '"log": "source-head.log"')
+            self.assertEqual(json.loads(top_level), json.loads(original))
+            self.assertEqual(json.loads(row_duplicate), json.loads(original))
+            for label, payload in (('top-level', top_level),
+                                   ('command-row', row_duplicate)):
+                for mode in ('finalize', 'verify'):
+                    copy = self._copy(clean, base / (label + '-' + mode))
+                    (copy / 'manifest.json').write_text(payload, encoding='utf-8')
+                    before = self._inventory(copy)
+                    if mode == 'finalize':
+                        code, stdout, stderr = self._pinned_main(
+                            'finalize', copy, copy, binding, fixture, harness_apk,
+                            target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        failures = sorted(copy.glob('finalize-failure*.json'))
+                        self.assertTrue(failures, label)
+                        self.assertIn('duplicate JSON key',
+                                      failures[-1].read_text(encoding='utf-8'), label)
+                        after = self._inventory(copy)
+                        added = {path for path in after if path not in before}
+                        self.assertTrue(all('finalize-failure' in path
+                                            for path in added), (label, added))
+                        for path, value in before.items():
+                            self.assertEqual(after[path], value, (label, path))
+                    else:
+                        output = base / (label + '-' + mode + '-out')
+                        code, stdout, stderr = self._pinned_main(
+                            'verify', copy, output, binding, fixture, harness_apk,
+                            target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        receipt = output / 'verification-failure.json'
+                        self.assertTrue(receipt.is_file(), label)
+                        self.assertIn('duplicate JSON key',
+                                      receipt.read_text(encoding='utf-8'), label)
                         self.assertEqual(self._inventory(copy), before, label)
 
     def test_failed_finalize_preserves_all_preexisting_accepted_bytes(self):
@@ -9346,10 +9447,12 @@ class RootInstallTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'out'
+            harness = Path(directory) / 'harness.apk'
+            harness.write_bytes(b'benign harness bytes')
             argv = ['capture.py', '--root-install', '--serial', self.SERIAL,
                     '--output', str(output),
                     '--fixture', self._fixture(self.TITLE),
-                    '--apk', 'C:/build/field-oracle.apk',
+                    '--apk', str(harness),
                     '--target-apk', str(Path(directory) / 'target.apk'),
                     '--asset', self._fixture(self.TITLE),
                     '--frozen-source', 'C:/source', '--java-home', 'C:/java',
@@ -9374,8 +9477,9 @@ class RootInstallTest(unittest.TestCase):
             rows = []
 
             def run(command, name, timeout, checked=True, stdin=None, receipt=None,
-                    retain_timeout=None):
+                    retain_timeout=None, classify=None):
                 self.assertEqual(command[0], 'adb')
+                self.assertIs(classify, capture._root_install_outcome)
                 argued = subprocess.run(
                     [sys.executable, '-B', str(recorder), str(child), *command[1:]],
                     input=stdin, capture_output=True)
@@ -9811,6 +9915,29 @@ class RootInstallTimeoutTest(unittest.TestCase):
                                    or row['command'][3:5] == ['shell', 'am'])])
 
 
+ROOT_SEND_CHILD = (
+    "import sys\n"
+    "data = sys.stdin.buffer.read()\n"
+    "mode = sys.argv[1]\n"
+    "if mode == 'success':\n"
+    "    sys.stdout.buffer.write(b'Success\\n')\n"
+    "    sys.exit(0)\n"
+    "if mode == 'refused':\n"
+    "    sys.stderr.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\n')\n"
+    "    sys.exit(5)\n"
+    "if mode == 'transport':\n"
+    "    sys.stderr.buffer.write(b'error: closed\\n')\n"
+    "    sys.exit(7)\n"
+    "if mode == 'diagnostic':\n"
+    "    sys.stdout.buffer.write(b'Success\\n')\n"
+    "    sys.stderr.buffer.write(b'Unexpected diagnostic on stderr\\n')\n"
+    "    sys.exit(0)\n"
+    "if mode == 'non-success':\n"
+    "    sys.stdout.buffer.write(b'partial output\\n')\n"
+    "    sys.exit(0)\n"
+    "raise SystemExit(9)\n")
+
+
 class RootSendBoundaryTest(unittest.TestCase):
     """The live privileged boundary: signed-preflight binding, strict success, interruption.
 
@@ -9854,12 +9981,6 @@ class RootSendBoundaryTest(unittest.TestCase):
                 return digest
 
             digest = pin
-            if mode == 'binding-digest-conflict':
-                def digest(path):
-                    if Path(path) == harness:
-                        return '1' * 64
-                    return pin(path)
-
             binding = {'artifact': {'apkSha256': approved}}
             if mode == 'binding-absent':
                 binding = {}
@@ -9871,8 +9992,14 @@ class RootSendBoundaryTest(unittest.TestCase):
             ledger = []
             sends = []
             after = []
-            stop_after = mode in ('positive', 'diagnostic', 'non-success', 'interrupt')
+            tampers = []
+            stop_after = mode in ('positive', 'transport', 'diagnostic', 'non-success',
+                                  'interrupt')
+            real_run = subprocess.run
             device = helper._device(fixture, target, exact, ledger)
+            child_mode = {'positive': 'success', 'refused': 'refused',
+                          'transport': 'transport', 'diagnostic': 'diagnostic',
+                          'non-success': 'non-success'}.get(mode)
 
             def run(command, *, capture_output, timeout, input=None):
                 if command[:1] == ['adb'] and command[3:] == ['shell', '-T', exact]:
@@ -9880,17 +10007,14 @@ class RootSendBoundaryTest(unittest.TestCase):
                     sends.append({'command': list(command), 'bytes': input})
                     if mode == 'interrupt':
                         raise KeyboardInterrupt
-                    if mode == 'refused':
-                        return subprocess.CompletedProcess(
-                            command, 5, b'',
-                            b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n')
-                    if mode == 'diagnostic':
-                        return subprocess.CompletedProcess(
-                            command, 0, b'Success\n',
-                            b'Unexpected diagnostic on stderr\n')
-                    if mode == 'non-success':
-                        return subprocess.CompletedProcess(command, 0, b'partial\n', b'')
-                    return subprocess.CompletedProcess(command, 0, b'Success\n', b'')
+                    # Every returned result is a real local child at this seam.
+                    return real_run(
+                        [sys.executable, '-B', '-c', ROOT_SEND_CHILD, child_mode],
+                        capture_output=capture_output, timeout=timeout, input=input)
+                if mode == 'snapshot-tamper' and not tampers:
+                    # The staged copy changes after creation, before the privileged send.
+                    tampers.append(True)
+                    (output / capture.HARNESS_SNAPSHOT_NAME).write_bytes(b'tampered')
                 if sends and stop_after:
                     ledger.append(list(command))
                     after.append(list(command))
@@ -9932,6 +10056,10 @@ class RootSendBoundaryTest(unittest.TestCase):
                 'files': sorted(path.name for path in output.iterdir()),
             }
 
+    def _install_row(self, result):
+        return next(row for row in result['manifest']['commands']
+                    if row['log'] == 'install.log')
+
     def _refused_before_send(self, result, expected):
         self.assertEqual(result['sends'], [], result['mode'])
         self.assertEqual(result['afterSend'], [], result['mode'])
@@ -9945,12 +10073,13 @@ class RootSendBoundaryTest(unittest.TestCase):
                                   'signed preflight artifact digest is malformed')
         self._refused_before_send(self._drive('binding-changed'),
                                   'bytes differ from their signed preflight')
-        self._refused_before_send(self._drive('binding-digest-conflict'),
-                                  'manifest APK digest differs from its signed preflight')
+        self._refused_before_send(self._drive('snapshot-tamper'),
+                                  'staged harness snapshot changed before the send')
 
     def test_the_bound_positive_reaches_only_the_one_send_with_the_exact_bytes(self):
         result = self._drive('positive')
-        self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(len(result['sends']), 1, result['manifest'].get('error'))
+        self.assertEqual(result['sends'][0]['bytes'], result['harnessBytes'])
         send = result['sends'][0]
         self.assertEqual(send['command'],
                          ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', '-T',
@@ -9974,30 +10103,63 @@ class RootSendBoundaryTest(unittest.TestCase):
     def test_a_contradictory_exit_zero_install_fails_before_any_later_command(self):
         result = self._drive('diagnostic')
         self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(result['sends'][0]['bytes'], result['harnessBytes'])
         self.assertEqual(result['afterSend'], [])
         self.assertEqual(result['manifest']['status'], 'failed')
-        self.assertIn('contradictory stderr output', result['manifest']['error'])
+        self.assertIn('completion is not confirmed', result['manifest']['error'])
+        install = self._install_row(result)
+        self.assertEqual(install['exitCode'], 0)
+        self.assertEqual(install['installCompletion'], 'unknown')
+        self.assertEqual(install['outcome'], 'unconfirmed')
+        self.assertEqual(install['stdoutSha256'], capture.sha256_bytes(b'Success\n'))
+        self.assertEqual(install['stderrSha256'], capture.sha256_bytes(
+            b'Unexpected diagnostic on stderr\n'))
         self.assertNotIn('instrumentation.log', result['files'])
         unsaid = self._drive('non-success')
         self.assertEqual(len(unsaid['sends']), 1)
         self.assertEqual(unsaid['afterSend'], [])
-        self.assertIn('success is missing', unsaid['manifest']['error'])
+        self.assertEqual(unsaid['manifest']['status'], 'failed')
+        self.assertIn('completion is not confirmed', unsaid['manifest']['error'])
+        self.assertEqual(self._install_row(unsaid)['installCompletion'], 'unknown')
 
     def test_a_real_refusal_keeps_its_receipt_and_starts_nothing_else(self):
         result = self._drive('refused')
         self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(result['sends'][0]['bytes'], result['harnessBytes'])
         self.assertEqual(result['manifest']['status'], 'blocked')
-        self.assertIn('INSTALL_FAILED_USER_RESTRICTED', result['manifest']['blocker'])
-        install, = [row for row in result['manifest']['commands']
-                    if row['log'] == 'install.log']
+        self.assertEqual(result['manifest']['blocker'],
+                         'Failure [INSTALL_FAILED_USER_RESTRICTED]')
+        install = self._install_row(result)
         self.assertEqual(install['exitCode'], 5)
         self.assertEqual(install['installCompletion'], 'complete')
+        self.assertEqual(install['outcome'], 'refused')
+        self.assertEqual(install['refusal'],
+                         'Failure [INSTALL_FAILED_USER_RESTRICTED]')
+        self.assertEqual(install['stderrSha256'], capture.sha256_bytes(
+            b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n'))
         self.assertEqual(result['ledger'][-1], 'partial-harness.log')
+        self.assertEqual(result['afterSend'], [], 'no command beyond the existing probe')
         for absent in ('installed-harness-path.log', 'installed-harness-pull.log',
                        'instrumentation.log', 'remove-harness.log'):
             self.assertNotIn(absent, result['ledger'])
-        attempt = [row for row in result['sends']]
-        self.assertEqual(len(attempt), 1)
+
+    def test_an_unknown_nonzero_transport_result_keeps_its_streams_and_stops(self):
+        result = self._drive('transport')
+        self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(result['sends'][0]['bytes'], result['harnessBytes'])
+        self.assertEqual(result['afterSend'], [])
+        self.assertEqual(result['manifest']['status'], 'failed')
+        self.assertIn('completion is not confirmed', result['manifest']['error'])
+        install = self._install_row(result)
+        self.assertEqual(install['exitCode'], 7)
+        self.assertEqual(install['installCompletion'], 'unknown')
+        self.assertEqual(install['outcome'], 'unconfirmed')
+        self.assertNotIn('refusal', install)
+        self.assertEqual(install['stderrSha256'], capture.sha256_bytes(b'error: closed\n'))
+        self.assertEqual(install['log'], 'install.log')
+        self.assertNotIn('partial-harness.log', result['ledger'])
+        self.assertNotIn('instrumentation.log', result['files'])
+        self.assertNotIn('installed-harness-pull.log', result['files'])
 
     def test_a_catchable_interruption_keeps_the_attempt_and_fabricates_nothing(self):
         result = self._drive('interrupt')
@@ -10021,6 +10183,309 @@ class RootSendBoundaryTest(unittest.TestCase):
                        'instrumentation.log', 'installed-harness-pull.log',
                        'remove-harness.log'):
             self.assertNotIn(absent, result['files'])
+
+
+SELECTED_MANIFEST_XMLTREE = (
+    'N: android=http://schemas.android.com/apk/res/android\n'
+    '  E: manifest (line=1)\n'
+    '    A: package="io.liber.oracle.fields" (Raw: "io.liber.oracle.fields")\n'
+    '    E: instrumentation (line=3)\n'
+    '      A: android:name(0x01010003)="io.liber.oracle.fields.FieldOracle"'
+    ' (Raw: "io.liber.oracle.fields.FieldOracle")\n'
+    '      A: android:targetPackage(0x01010021)="com.legado.app.debug"'
+    ' (Raw: "com.legado.app.debug")\n')
+
+SELECTED_SIGNER_TEXT = ('Signer #1 certificate DN: CN=fixture\n'
+                        'Signer #1 certificate SHA-256 digest: '
+                        + capture.SELECTED_SIGNER + '\n')
+
+
+def _dex_dump(classes):
+    """A synthetic dexdump body in the shape the producer's ABI readers expect."""
+    parts = []
+    for index, (descriptor, methods) in enumerate(classes):
+        lines = ['Class #%d -' % index,
+                 "  Class descriptor  : '%s'" % descriptor,
+                 '    Access flags      : 0x0001 (PUBLIC)']
+        for name, signature, access in methods:
+            lines += ["    name          : '%s'" % name,
+                      "    type          : '%s'" % signature,
+                      '    access        : 0x%s (%s)'
+                      % ('0019' if 'static' in access else '0011',
+                         'PUBLIC STATIC FINAL' if 'static' in access else 'PUBLIC FINAL')]
+        parts.append('\n'.join(lines))
+    return '\n'.join(parts) + '\n'
+
+
+WEB_BOOK_DUMP = _dex_dump([(
+    'Lio/legado/app/model/webBook/WebBook;',
+    [('searchBookAwait', '(Lio/legado/app/data/entities/BookSource;Ljava/lang/String;'
+                         'Ljava/lang/Integer;Lkotlin/jvm/functions/Function3;'
+                         'Lkotlin/jvm/functions/Function1;'
+                         'Lkotlin/coroutines/Continuation;)Ljava/lang/Object;', 'public'),
+     ('getBookInfoAwait', '(Lio/legado/app/data/entities/BookSource;'
+                          'Lio/legado/app/data/entities/Book;Z'
+                          'Lkotlin/coroutines/Continuation;)Ljava/lang/Object;', 'public'),
+     ('getChapterListAwait-yxL6bBk', '(Lio/legado/app/data/entities/BookSource;'
+                                     'Lio/legado/app/data/entities/Book;ZZ'
+                                     'Lkotlin/coroutines/Continuation;)Ljava/lang/Object;',
+      'public'),
+     ('getContentAwait', '(Lio/legado/app/data/entities/BookSource;'
+                         'Lio/legado/app/data/entities/Book;'
+                         'Lio/legado/app/data/entities/BookChapter;Ljava/lang/String;Z'
+                         'Lkotlin/coroutines/Continuation;)Ljava/lang/Object;', 'public')])])
+
+HARNESS_DUMP = _dex_dump(list(capture.HARNESS_ABI.items()))
+
+
+class RootSnapshotTest(unittest.TestCase):
+    """The opt-in root invocation's one checked APK snapshot.
+
+    The real `selected_preflight`, the real live opt-in flow, the real transport and the
+    real recorder run here. Only the external tool children are controlled: they answer
+    like the real JDK/SDK tools and record the path or bytes they were given, so the
+    control can show the manifest, signer and DEX reads and the send all use the owned
+    snapshot even after the external build path changes.
+    """
+
+    TITLE = 'reader-title-lifecycle-fixtures-selected.json'
+    BOUND = 30
+
+    def _drive(self, mode):
+        from unittest.mock import patch
+        helper = RootInstallTimeoutTest()
+        fixture_path = Path(__file__).resolve().with_name(self.TITLE)
+        corpus_bytes = fixture_path.read_bytes()
+        fixture = json.loads(corpus_bytes)
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            output = base / 'out'
+            build = base / 'build'
+            build.mkdir()
+            original = helper._harness_apk(build, corpus_bytes).read_bytes()
+            harness = build / 'field-oracle.apk'
+            harness.write_bytes(original)
+            tampered = b'benign replacement bytes'
+            snapshot = output / capture.HARNESS_SNAPSHOT_NAME
+            exact = capture._root_install_command(len(original))
+            source = base / 'source'
+            for row in fixture['frozenSources']:
+                path = source / row['path']
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'source\n')
+            target = base / 'target.apk'
+            target.write_bytes(_SYNTHETIC_TARGET_APK)
+            real_sha = capture.sha256
+            pinned = fixture['target']['apkSha256']
+            target_digest = real_sha(target)
+
+            def pin(path):
+                digest = real_sha(path)
+                if Path(path) in (target, output / 'frozen.apk'):
+                    self.assertEqual(digest, target_digest)
+                    return pinned
+                return digest
+
+            ledger = []
+            tool_paths = {}
+            tool_bytes = {}
+            sends = []
+            mutated = []
+            device = helper._device(fixture, target, exact, ledger)
+            real_run = subprocess.run
+
+            def done(command, stdout=b'', stderr=b'', code=0):
+                return subprocess.CompletedProcess(command, code, stdout, stderr)
+
+            def run(command, *, capture_output, timeout, input=None, **kwargs):
+                if command[:1] == ['adb']:
+                    if command[3:] == ['shell', '-T', exact]:
+                        ledger.append(list(command))
+                        sends.append({'command': list(command), 'bytes': input})
+                        return real_run([sys.executable, '-B', '-c', ROOT_SEND_CHILD,
+                                         'success'], capture_output=capture_output,
+                                        timeout=timeout, input=input)
+                    if mode == 'snapshot-tamper' and not mutated:
+                        mutated.append(True)
+                        snapshot.write_bytes(tampered)
+                    if sends:
+                        ledger.append(list(command))
+                        raise SystemExit('stop after the one send')
+                    return device.run(command, capture_output=capture_output,
+                                      timeout=timeout, input=input)
+                if '-version' in command:
+                    if Path(command[0]).name.lower().startswith('javac'):
+                        return done(command, b'javac 17.0.20\n')
+                    return done(command, b'', b'openjdk version "17.0.20" '
+                                b'Temurin-17.0.20+8\n')
+                if 'HEAD^{tree}' in command:
+                    return done(command,
+                                b'0f69dc7004012a969551ce271dc4e11051637d32\n')
+                if 'xmltree' in command:
+                    tool_paths['manifest'] = command[3]
+                    if mode == 'source-change' and not mutated:
+                        mutated.append(True)
+                        harness.write_bytes(tampered)
+                    tool_bytes['manifest'] = Path(command[3]).read_bytes()
+                    return done(command, SELECTED_MANIFEST_XMLTREE.encode())
+                if '--print-certs' in command:
+                    name = ('harness-signature' if Path(command[-1]) == snapshot
+                            else 'target-signature')
+                    tool_paths[name] = command[-1]
+                    tool_bytes[name] = Path(command[-1]).read_bytes()
+                    return done(command, SELECTED_SIGNER_TEXT.encode())
+                if len(command) == 2 and Path(command[0]).name.lower().startswith('dexdump'):
+                    body = Path(command[1]).read_bytes()
+                    if Path(command[1]).name == 'classes19.dex':
+                        tool_bytes['reference-dex'] = body
+                        return done(command, WEB_BOOK_DUMP.encode())
+                    tool_bytes['dex'] = body
+                    return done(command, HARNESS_DUMP.encode())
+                return device.run(command, capture_output=capture_output,
+                                  timeout=timeout, input=input)
+
+            arrangement = {}
+            # The real preflight only requires the android-35 platform to exist here.
+            android_sdk = GuardedReaderApplicationHostTest()._android_jar().parents[2]
+
+            def abstract_abi(target_apk, tools, recorder, receipts, harness_checked):
+                arrangement['targetApk'] = str(target_apk)
+                arrangement['harness'] = len(harness_checked)
+                return {'dexFiles': sorted(capture.TITLE_PREFLIGHT_ABI_DEXES),
+                        'checked': harness_checked, 'harness': harness_checked}
+
+            argv = ['capture.py', '--root-install', '--serial',
+                    capture.ROOT_INSTALL_SERIAL, '--output', str(output),
+                    '--fixture', str(fixture_path), '--apk', str(harness),
+                    '--target-apk', str(target), '--asset', str(fixture_path),
+                    '--frozen-source', str(source), '--java-home', 'C:/java',
+                    '--android-sdk', str(android_sdk)]
+            raised = None
+            code = None
+            try:
+                with patch.object(sys, 'argv', argv), \
+                        patch.object(capture, 'sha256', side_effect=pin), \
+                        patch.object(capture.subprocess, 'run', run), \
+                        patch.object(capture, '_admit_reflected_abi', abstract_abi), \
+                        patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
+                    code = capture.main()
+            except BaseException as error:  # noqa: BLE001 - the control records the stop
+                raised = error
+            manifest = (json.loads((output / 'manifest.json').read_bytes())
+                        if (output / 'manifest.json').is_file() else {})
+            return {
+                'mode': mode,
+                'code': code,
+                'raised': type(raised).__name__ if raised is not None else None,
+                'raisedText': str(raised) if raised is not None else None,
+                'sends': sends,
+                'toolPaths': tool_paths,
+                'toolBytes': tool_bytes,
+                'arrangement': arrangement,
+                'snapshotPath': str(snapshot),
+                'snapshotBytes': snapshot.read_bytes() if snapshot.is_file() else None,
+                'original': original,
+                'tampered': tampered,
+                'harnessNow': harness.read_bytes(),
+                'manifestRow': next((row for row in manifest.get('commands', [])
+                                     if row['log'] == 'install.log'), None),
+                'manifestStatus': manifest.get('status'),
+                'manifestError': manifest.get('error'),
+                'preflightInput': (manifest.get('preflight') or {}).get('inputs', {})
+                    .get('harnessApk'),
+                'files': sorted(path.name for path in output.iterdir()),
+            }
+
+    def test_the_snapshot_is_the_one_input_after_the_source_path_changes(self):
+        result = self._drive('source-change')
+        self.assertEqual(result['harnessNow'], result['tampered'],
+                         'the external build path must have changed')
+        snapshot = result['snapshotPath']
+        self.assertEqual(result['snapshotBytes'], result['original'])
+        self.assertEqual(result['preflightInput'], snapshot)
+        self.assertEqual(result['toolPaths']['manifest'], snapshot)
+        self.assertEqual(result['toolPaths']['harness-signature'], snapshot)
+        self.assertEqual(result['toolBytes']['manifest'], result['original'])
+        self.assertEqual(result['toolBytes']['harness-signature'], result['original'])
+        self.assertEqual(result['toolBytes'].get('reference-dex'),
+                         b'synthetic-reference-dex')
+        self.assertEqual(result['toolBytes']['dex'], b'synthetic-harness-dex')
+        self.assertEqual(result['arrangement']['harness'], len([
+            (descriptor, method) for descriptor, methods in capture.HARNESS_ABI.items()
+            for method, signature, access in methods]))
+        self.assertEqual(len(result['sends']), 1, result['manifestError'])
+        self.assertEqual(result['sends'][0]['bytes'], result['original'])
+        self.assertEqual(result['raised'], 'SystemExit')
+        row = result['manifestRow']
+        self.assertEqual(row['installCompletion'], 'complete')
+        self.assertEqual(row['outcome'], 'success')
+        self.assertEqual(row['stdin'],
+                         {'bytes': len(result['original']),
+                          'sha256': capture.sha256_bytes(result['original'])})
+
+    def test_a_snapshot_that_changes_before_the_send_is_never_sent(self):
+        result = self._drive('snapshot-tamper')
+        self.assertEqual(result['sends'], [])
+        self.assertEqual(result['manifestStatus'], 'failed')
+        self.assertIn('staged harness snapshot changed before the send',
+                      result['manifestError'])
+        self.assertEqual(result['snapshotBytes'], result['tampered'])
+        self.assertIsNone(result['manifestRow'])
+
+    def test_a_missing_or_mismatched_retained_snapshot_is_refused_by_both_paths(self):
+        case = TitlePhysicalEntryTest(
+            'test_the_root_install_receipt_is_consumed_by_both_entry_paths')
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, fixture, binding, harness_apk, target_apk, _ = case._bundle(
+                base / 'root', root_install=True, portable=True)
+            code, stdout, stderr = case._pinned_main(
+                'finalize', root, root, binding, fixture, harness_apk, target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            for label, expected in (
+                    ('snapshot-missing', 'root harness snapshot is missing'),
+                    ('snapshot-mismatch',
+                     'root harness snapshot differs from the sent bytes'),
+                    ('snapshot-not-recorded', 'root harness snapshot is missing')):
+                for mode in ('finalize', 'verify'):
+                    copy = case._copy(root, base / (label + '-' + mode))
+                    if label == 'snapshot-missing':
+                        (copy / capture.HARNESS_SNAPSHOT_NAME).unlink()
+                    elif label == 'snapshot-mismatch':
+                        (copy / capture.HARNESS_SNAPSHOT_NAME).write_bytes(
+                            b'benign replacement bytes')
+                    else:
+                        manifest = json.loads((copy / 'manifest.json').read_bytes())
+                        manifest['preflight']['inputs']['harnessApk'] = str(
+                            copy / 'harness.apk')
+                        case._write_manifest(copy, manifest)
+                    before = case._inventory(copy)
+                    if mode == 'finalize':
+                        code, stdout, stderr = case._pinned_main(
+                            'finalize', copy, copy, binding, fixture, harness_apk,
+                            target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        failures = sorted(copy.glob('finalize-failure*.json'))
+                        self.assertTrue(failures, label)
+                        self.assertIn(expected, failures[-1].read_text(
+                            encoding='utf-8'), label)
+                        after = case._inventory(copy)
+                        added = {path for path in after if path not in before}
+                        self.assertTrue(all('finalize-failure' in path
+                                            for path in added), (label, added))
+                        for path, value in before.items():
+                            self.assertEqual(after[path], value, (label, path))
+                    else:
+                        output = base / (label + '-' + mode + '-out')
+                        code, stdout, stderr = case._pinned_main(
+                            'verify', copy, output, binding, fixture, harness_apk,
+                            target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        receipt = output / 'verification-failure.json'
+                        self.assertTrue(receipt.is_file(), label)
+                        self.assertIn(expected, receipt.read_text(encoding='utf-8'),
+                                      label)
+                        self.assertEqual(case._inventory(copy), before, label)
 
 
 class SelectedReceiptTest(unittest.TestCase):
@@ -13646,9 +14111,6 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
             self.assertEqual(ordinary['appDbLookups'], 0)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 class TitleBindingOrderTest(unittest.TestCase):
     """The title startup proof is required at the real scratch binding boundary.
 
@@ -13740,3 +14202,7 @@ class TitleBindingOrderTest(unittest.TestCase):
             self.assertEqual(positive['receiptCallsAfterEmit'], 1)
             self.assertEqual(positive['bookHelpLookups'], 1)
             self.assertEqual(positive['appDbLookups'], 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
