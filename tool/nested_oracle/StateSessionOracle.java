@@ -1577,8 +1577,8 @@ public class StateSessionOracle extends Instrumentation {
      * title corpus only.
      *
      * <p>The target starts {@code FirebaseInitProvider} before the harness binds its
-     * scratch: {@code onCreate → FirebaseApp.initializeApp → FirebaseOptions.fromResource →
-     * StringResourceValueReader.<init> → Context.getResources}. Resolving the options there
+     * scratch: {@code onCreate -> FirebaseApp.initializeApp -> FirebaseOptions.fromResource ->
+     * StringResourceValueReader.<init> -> Context.getResources}. Resolving the options there
      * is what makes Play Services queue its measurement registration on a worker thread,
      * which this harness refuses as an unexpected external caller. The read is therefore
      * interrupted before the registration is queued. Only that exact read is refused: the
