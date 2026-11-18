@@ -10758,7 +10758,7 @@ class RootSnapshotTest(unittest.TestCase):
                             'dex': dex_files[0]}
                            for descriptor, methods in capture.REFLECTED_ABI.items()
                            for method, signature, access in methods]
-                abi_dir = base / 'synthetic-target-dex'
+                abi_dir = base / 'fields-target-dex-controlled'
                 for name, dex_name in zip(capture.TITLE_PREFLIGHT_ABI_COMMANDS,
                                           capture.TITLE_PREFLIGHT_ABI_DEXES):
                     recorder(name, [tools / 'dexdump.exe',
