@@ -9948,6 +9948,26 @@ ROOT_SEND_CHILD = (
     "if mode == 'refused':\n"
     "    sys.stderr.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\n')\n"
     "    sys.exit(5)\n"
+    "if mode == 'refused-crlf':\n"
+    "    sys.stderr.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\r\\n')\n"
+    "    sys.exit(5)\n"
+    "if mode == 'refused-no-newline':\n"
+    "    sys.stderr.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]')\n"
+    "    sys.exit(5)\n"
+    "if mode == 'refused-padded':\n"
+    "    sys.stderr.buffer.write(b' Failure [INSTALL_FAILED_USER_RESTRICTED] \\n')\n"
+    "    sys.exit(5)\n"
+    "if mode == 'refused-blank-line':\n"
+    "    sys.stderr.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\n\\n')\n"
+    "    sys.exit(5)\n"
+    "if mode == 'refused-opposite-blank':\n"
+    "    sys.stdout.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\n')\n"
+    "    sys.stderr.buffer.write(b'\\n')\n"
+    "    sys.exit(5)\n"
+    "if mode == 'refused-both-streams':\n"
+    "    sys.stdout.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\n')\n"
+    "    sys.stderr.buffer.write(b'Failure [INSTALL_FAILED_USER_RESTRICTED]\\n')\n"
+    "    sys.exit(5)\n"
     "if mode == 'transport':\n"
     "    sys.stderr.buffer.write(b'error: closed\\n')\n"
     "    sys.exit(7)\n"
@@ -10016,11 +10036,16 @@ class RootSendBoundaryTest(unittest.TestCase):
             sends = []
             after = []
             tampers = []
-            stop_after = mode in ('positive', 'transport', 'diagnostic', 'non-success',
-                                  'interrupt')
+            stop_after = mode not in ('refused', 'refused-crlf', 'refused-no-newline')
             real_run = subprocess.run
             device = helper._device(fixture, target, exact, ledger)
             child_mode = {'positive': 'success', 'refused': 'refused',
+                          'refused-crlf': 'refused-crlf',
+                          'refused-no-newline': 'refused-no-newline',
+                          'refused-padded': 'refused-padded',
+                          'refused-blank-line': 'refused-blank-line',
+                          'refused-opposite-blank': 'refused-opposite-blank',
+                          'refused-both-streams': 'refused-both-streams',
                           'transport': 'transport', 'diagnostic': 'diagnostic',
                           'non-success': 'non-success'}.get(mode)
 
@@ -10077,11 +10102,20 @@ class RootSendBoundaryTest(unittest.TestCase):
                 'harnessDigest': approved,
                 'harnessBytes': harness_bytes,
                 'files': sorted(path.name for path in output.iterdir()),
+                'streams': {
+                    name: ((output / name).read_bytes()
+                           if (output / name).is_file() else None)
+                    for name in ('install.log', 'install.stdout.log',
+                                 'install.stderr.log')},
             }
 
     def _install_row(self, result):
         return next(row for row in result['manifest']['commands']
                     if row['log'] == 'install.log')
+
+    def _row(self, result, log):
+        return next(row for row in result['manifest']['commands']
+                    if row['log'] == log)
 
     def _refused_before_send(self, result, expected):
         self.assertEqual(result['sends'], [], result['mode'])
@@ -10162,9 +10196,16 @@ class RootSendBoundaryTest(unittest.TestCase):
         self.assertEqual(install['outcome'], 'refused')
         self.assertEqual(install['refusal'],
                          'Failure [INSTALL_FAILED_USER_RESTRICTED]')
-        self.assertEqual(install['stderrSha256'], capture.sha256_bytes(
-            b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n'))
+        refusal = b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n'
+        self.assertEqual(result['streams']['install.stdout.log'], b'')
+        self.assertEqual(result['streams']['install.stderr.log'], refusal)
+        self.assertEqual(result['streams']['install.log'], refusal)
+        self.assertEqual(install['stdoutSha256'], capture.sha256_bytes(b''))
+        self.assertEqual(install['stderrSha256'], capture.sha256_bytes(refusal))
         self.assertEqual(result['ledger'][-1], 'partial-harness.log')
+        self.assertEqual(self._row(result, 'partial-harness.log')['command'],
+                         ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', 'pm',
+                          'list', 'packages', capture.PACKAGE])
         self.assertEqual(result['afterSend'], [], 'no command beyond the existing probe')
         for absent in ('installed-harness-path.log', 'installed-harness-pull.log',
                        'instrumentation.log', 'remove-harness.log'):
@@ -10182,11 +10223,61 @@ class RootSendBoundaryTest(unittest.TestCase):
         self.assertEqual(install['installCompletion'], 'unknown')
         self.assertEqual(install['outcome'], 'unconfirmed')
         self.assertNotIn('refusal', install)
+        self.assertEqual(result['streams']['install.stdout.log'], b'')
+        self.assertEqual(result['streams']['install.stderr.log'], b'error: closed\n')
+        self.assertEqual(result['streams']['install.log'], b'error: closed\n')
+        self.assertEqual(install['stdoutSha256'], capture.sha256_bytes(b''))
         self.assertEqual(install['stderrSha256'], capture.sha256_bytes(b'error: closed\n'))
         self.assertEqual(install['log'], 'install.log')
         self.assertNotIn('partial-harness.log', result['ledger'])
         self.assertNotIn('instrumentation.log', result['files'])
         self.assertNotIn('installed-harness-pull.log', result['files'])
+
+    def test_only_the_exact_raw_refusal_is_determinate(self):
+        for mode, stream in (
+                ('refused-crlf',
+                 b'Failure [INSTALL_FAILED_USER_RESTRICTED]\r\n'),
+                ('refused-no-newline',
+                 b'Failure [INSTALL_FAILED_USER_RESTRICTED]')):
+            with self.subTest(mode=mode):
+                result = self._drive(mode)
+                self.assertEqual(len(result['sends']), 1)
+                self.assertEqual(result['manifest']['status'], 'blocked')
+                install = self._install_row(result)
+                self.assertEqual(install['outcome'], 'refused')
+                self.assertEqual(result['streams']['install.stdout.log'], b'')
+                self.assertEqual(result['streams']['install.stderr.log'], stream)
+                self.assertEqual(result['streams']['install.log'], stream)
+                self.assertEqual(result['ledger'][-1], 'partial-harness.log')
+
+    def test_padded_or_extra_raw_output_is_an_unknown_completion(self):
+        cases = (
+            ('refused-padded', b'', b' Failure [INSTALL_FAILED_USER_RESTRICTED] \n'),
+            ('refused-blank-line', b'', b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n\n'),
+            ('refused-opposite-blank',
+             b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n', b'\n'),
+            ('refused-both-streams',
+             b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n',
+             b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n'),
+        )
+        for mode, stdout, stderr in cases:
+            with self.subTest(mode=mode):
+                result = self._drive(mode)
+                self.assertEqual(len(result['sends']), 1)
+                self.assertEqual(result['afterSend'], [])
+                self.assertEqual(result['manifest']['status'], 'failed')
+                self.assertIn('completion is not confirmed', result['manifest']['error'])
+                install = self._install_row(result)
+                self.assertEqual(install['exitCode'], 5)
+                self.assertEqual(install['installCompletion'], 'unknown')
+                self.assertEqual(install['outcome'], 'unconfirmed')
+                self.assertNotIn('refusal', install)
+                self.assertEqual(result['streams']['install.stdout.log'], stdout)
+                self.assertEqual(result['streams']['install.stderr.log'], stderr)
+                self.assertEqual(result['streams']['install.log'], stdout + stderr)
+                self.assertEqual(install['stdoutSha256'], capture.sha256_bytes(stdout))
+                self.assertEqual(install['stderrSha256'], capture.sha256_bytes(stderr))
+                self.assertNotIn('partial-harness.log', result['ledger'])
 
     def test_a_catchable_interruption_keeps_the_attempt_and_fabricates_nothing(self):
         result = self._drive('interrupt')
@@ -10458,6 +10549,288 @@ class RootSnapshotTest(unittest.TestCase):
                       result['manifestError'])
         self.assertEqual(result['snapshotBytes'], result['tampered'])
         self.assertIsNone(result['manifestRow'])
+
+    def test_the_live_capture_finalizes_from_the_checked_snapshot(self):
+        """The real live opt-in flow, from snapshot acquisition to the strict golden.
+
+        The disposable build path is replaced with different benign APK bytes after the
+        snapshot is staged, and the whole real pipeline runs: preflight, the one send, the
+        installed readback, instrumentation, the report/owner/cleanup commands, the shared
+        finalizer and a read-only bundle verification. Only the device and the external
+        tool children are controlled.
+        """
+        import io
+        import shutil
+        from unittest.mock import patch
+        helper = RootInstallTimeoutTest()
+        case = TitlePhysicalEntryTest(
+            'test_the_root_install_receipt_is_consumed_by_both_entry_paths')
+        fixture_path = Path(__file__).resolve().with_name(self.TITLE)
+        corpus_bytes = fixture_path.read_bytes()
+        fixture = json.loads(corpus_bytes)
+        base = Path(tempfile.mkdtemp(prefix='l138-live-capture-'))
+        try:
+            source_bundle = case._bundle(base / 'recorded', root_install=True,
+                                         portable=True)[0]
+            recorded_inventory = case._inventory(source_bundle)
+            harness_bytes = (source_bundle / 'harness.apk').read_bytes()
+            report_bytes = (source_bundle / 'field-oracle.json').read_bytes()
+            owner = json.loads((source_bundle / 'manifest.json').read_bytes())[
+                'scratchOwner']
+            owner_bytes = json.dumps(owner).encode()
+            before = (source_bundle / 'private-before.log').read_bytes()
+            self.assertEqual(before, (source_bundle / 'private-after.log').read_bytes())
+            output = base / 'out'
+            build = base / 'build'
+            build.mkdir()
+            harness = build / 'field-oracle.apk'
+            harness.write_bytes(harness_bytes)
+            # A benign but different APK: a pathname ZIP read would see foreign provenance.
+            decoy = io.BytesIO()
+            with zipfile.ZipFile(decoy, 'w') as archive:
+                archive.writestr('assets/field-fixtures.json', corpus_bytes)
+                archive.writestr('assets/field-provenance.json', json.dumps({
+                    'schemaVersion': 1, 'fixtureId': 'FIELDS-02',
+                    'corpus': {'asset': 'field-fixtures.json',
+                               'bytes': len(corpus_bytes),
+                               'sha256': capture.sha256_bytes(corpus_bytes),
+                               'sha256Lf': capture.sha256_bytes(
+                                   capture.lf_bytes(corpus_bytes)),
+                               'fixtureId': 'FIELDS-02', 'corpusVersion': 1},
+                    'sources': {name: '0' * 64
+                                for name in capture.SELECTED_SOURCE_KEYS}}))
+                archive.writestr('classes.dex', b'synthetic-harness-dex')
+            decoy_bytes = decoy.getvalue()
+            self.assertNotEqual(decoy_bytes, harness_bytes)
+            exact = capture._root_install_command(len(harness_bytes))
+            source = base / 'source'
+            for row in fixture['frozenSources']:
+                path = source / row['path']
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'source\n')
+            target = base / 'target.apk'
+            target.write_bytes(_SYNTHETIC_TARGET_APK)
+            snapshot = output / capture.HARNESS_SNAPSHOT_NAME
+            real_sha = capture.sha256
+            pinned = fixture['target']['apkSha256']
+            target_digest = real_sha(target)
+
+            def pin(path):
+                digest = real_sha(path)
+                if Path(path) in (target, output / 'frozen.apk'):
+                    self.assertEqual(digest, target_digest)
+                    return pinned
+                return digest
+
+            target_root = case.TARGET_ROOT
+            ledger = []
+            tool_paths = {}
+            tool_bytes = {}
+            sends = []
+            moved = []
+            real_run = subprocess.run
+
+            def done(command, stdout=b'', stderr=b'', code=0):
+                return subprocess.CompletedProcess(command, code, stdout, stderr)
+
+            def device_run(command, tail):
+                if tail == ['shell', 'getprop', 'ro.build.fingerprint']:
+                    return done(command, (capture.SELECTED_TARGET['deviceFingerprint']
+                                          + '\n').encode())
+                if tail == ['shell', 'getprop', 'ro.build.version.release']:
+                    return done(command, b'17\n')
+                if tail == ['shell', 'getprop', 'ro.build.version.sdk']:
+                    return done(command, b'37\n')
+                if tail == ['shell', 'getprop', 'ro.product.model']:
+                    return done(command, b'myron\n')
+                if tail == ['shell', 'dumpsys', 'webviewupdate']:
+                    return done(command, b'Current WebView package (name, version): '
+                                b'(com.google.android.webview, 159.0.8154.4)\n')
+                if tail == ['shell', 'pm', 'path', capture.SELECTED_TARGET['package']]:
+                    return done(command, b'package:/target.apk\n')
+                if tail == ['shell', 'pm', 'path', capture.PACKAGE]:
+                    return done(command, b'package:/installed.apk\n')
+                if tail[:1] == ['pull']:
+                    payload = (harness_bytes if Path(tail[2]).name
+                               == 'installed-harness.apk' else target.read_bytes())
+                    Path(tail[2]).write_bytes(payload)
+                    return done(command, b'')
+                if tail == ['shell', 'pm', 'list', 'packages', capture.PACKAGE]:
+                    return done(command, b'')
+                if tail[:2] == ['shell', 'pidof']:
+                    return done(command, b'', code=1)
+                if tail == ['shell', 'run-as', capture.SELECTED_TARGET['package'], 'pwd']:
+                    return done(command, (target_root + '\n').encode())
+                if (tail[:2] == ['exec-out', 'run-as']
+                        and tail[-1].endswith('/field-oracle.json')):
+                    return done(command, report_bytes)
+                if (tail[:2] == ['exec-out', 'run-as']
+                        and tail[-1].endswith('/owner.json')):
+                    return done(command, owner_bytes)
+                if tail == ['shell', 'am', 'instrument', '-w', '-r',
+                            capture.INSTRUMENTATION]:
+                    return done(command, b'INSTRUMENTATION_CODE: -1\n')
+                if tail == ['logcat', '-d', '-s', 'FieldOracle']:
+                    return done(command, b'')
+                if tail == ['shell', 'am', 'force-stop',
+                            capture.SELECTED_TARGET['package']]:
+                    return done(command, b'')
+                if tail == ['uninstall', capture.PACKAGE]:
+                    return done(command, b'Success\n')
+                if tail[:4] == ['shell', 'run-as', capture.SELECTED_TARGET['package'],
+                                'sh']:
+                    script = tail[-1]
+                    if 'find . -type f' in script:
+                        return done(command, before)
+                    if 'then echo PRESENT' in script and 'probe.xml' not in script:
+                        return done(command, b'ABSENT\n')
+                    return done(command, b'')
+                raise AssertionError(' '.join(str(item) for item in command))
+
+            def run(command, *, capture_output, timeout, input=None, **kwargs):
+                if command[:1] == ['adb']:
+                    tail = command[3:]
+                    if tail == ['shell', '-T', exact]:
+                        ledger.append(list(command))
+                        sends.append({'command': list(command), 'bytes': input})
+                        return real_run([sys.executable, '-B', '-c', ROOT_SEND_CHILD,
+                                         'success'], capture_output=capture_output,
+                                        timeout=timeout, input=input)
+                    ledger.append(list(command))
+                    return device_run(command, tail)
+                if '-version' in command:
+                    if Path(command[0]).name.lower().startswith('javac'):
+                        return done(command, b'javac 17.0.20\n')
+                    return done(command, b'', b'openjdk version "17.0.20" '
+                                b'Temurin-17.0.20+8\n')
+                if command[:1] == ['git'] and 'rev-parse' in command:
+                    if 'HEAD^{tree}' in command:
+                        return done(command,
+                                    b'0f69dc7004012a969551ce271dc4e11051637d32\n')
+                    return done(command, (fixture['baselineCommit'] + '\n').encode())
+                if command[:1] == ['git'] and 'hash-object' in command:
+                    return done(command, (' '.join(
+                        row['sha1'] for row in fixture['frozenSources'])
+                        + '\n').encode())
+                if command[:1] == ['git'] and 'status' in command:
+                    return done(command, b'')
+                if 'xmltree' in command:
+                    tool_paths['manifest'] = command[3]
+                    if not moved:
+                        # The disposable build path changes once it is staged.
+                        moved.append(True)
+                        harness.write_bytes(decoy_bytes)
+                    tool_bytes['manifest'] = Path(command[3]).read_bytes()
+                    return done(command, SELECTED_MANIFEST_XMLTREE.encode())
+                if '--print-certs' in command:
+                    name = ('harness-signature' if Path(command[-1]) == snapshot
+                            else 'target-signature')
+                    tool_paths[name] = command[-1]
+                    tool_bytes[name] = Path(command[-1]).read_bytes()
+                    return done(command, SELECTED_SIGNER_TEXT.encode())
+                if len(command) == 2 and Path(command[0]).name.lower().startswith(
+                        'dexdump'):
+                    path = Path(command[1])
+                    if not path.is_file():
+                        # The controlled ABI plan names DEX files without staging them.
+                        return done(command, WEB_BOOK_DUMP.encode())
+                    body = path.read_bytes()
+                    if path.name == 'classes19.dex':
+                        tool_bytes['reference-dex'] = body
+                        return done(command, WEB_BOOK_DUMP.encode())
+                    tool_bytes['dex'] = body
+                    return done(command, HARNESS_DUMP.encode())
+                raise AssertionError(' '.join(str(item) for item in command))
+
+            def abstract_abi(target_apk, tools, recorder, receipts, harness_checked):
+                # The controlled ABI seam emits the producer's own plan: one recorded
+                # target-ABI command per DEX name plus the one non-command summary.
+                dex_files = sorted(capture.TITLE_PREFLIGHT_ABI_DEXES)
+                checked = [{'class': descriptor, 'method': method,
+                            'descriptor': signature, 'access': access,
+                            'dex': dex_files[0]}
+                           for descriptor, methods in capture.REFLECTED_ABI.items()
+                           for method, signature, access in methods]
+                abi_dir = Path(tempfile.mkdtemp(prefix='fields-target-dex-'))
+                for name, dex_name in zip(capture.TITLE_PREFLIGHT_ABI_COMMANDS,
+                                          capture.TITLE_PREFLIGHT_ABI_DEXES):
+                    recorder(name, [tools / 'dexdump.exe',
+                                    str(abi_dir / dex_name)])
+                receipts.append({'name': capture.PREFLIGHT_SUMMARY,
+                                 'dexFiles': dex_files, 'checked': checked,
+                                 'harness': harness_checked, 'status': 'verified'})
+                return {'dexFiles': dex_files, 'checked': checked,
+                        'harness': harness_checked}
+
+            android_sdk = GuardedReaderApplicationHostTest()._android_jar().parents[2]
+            argv = ['capture.py', '--root-install', '--serial',
+                    capture.ROOT_INSTALL_SERIAL, '--output', str(output),
+                    '--fixture', str(fixture_path), '--apk', str(harness),
+                    '--target-apk', str(target), '--asset', str(fixture_path),
+                    '--frozen-source', str(source), '--java-home', 'C:/java',
+                    '--android-sdk', str(android_sdk)]
+            raised = None
+            code = None
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(capture, 'sha256', side_effect=pin), \
+                    patch.object(capture.subprocess, 'run', run), \
+                    patch.object(capture, '_admit_reflected_abi', abstract_abi), \
+                    patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
+                try:
+                    code = capture.main()
+                except BaseException as error:  # noqa: BLE001 - the control records it
+                    raised = error
+
+            def read_or_none(name):
+                path = output / name
+                return path.read_bytes() if path.is_file() else None
+
+            manifest_bytes = read_or_none('manifest.json')
+            manifest = json.loads(manifest_bytes) if manifest_bytes else {}
+            accepted = case._inventory(output)
+            self.assertIsNone(raised, str(raised))
+            self.assertEqual(code, 0, manifest.get('error'))
+            self.assertEqual(manifest.get('status'), 'observed')
+            self.assertEqual(read_or_none('golden.json'), report_bytes)
+            self.assertEqual(read_or_none(capture.HARNESS_SNAPSHOT_NAME),
+                             harness_bytes)
+            self.assertEqual(harness.read_bytes(), decoy_bytes,
+                             'the external build path must no longer be the harness')
+            self.assertEqual(read_or_none('installed-harness.apk'), harness_bytes)
+            self.assertEqual(len(sends), 1)
+            self.assertEqual(sends[0]['bytes'], harness_bytes)
+            self.assertEqual(tool_bytes['manifest'], harness_bytes)
+            self.assertEqual(tool_bytes['harness-signature'], harness_bytes)
+            self.assertEqual(tool_bytes['dex'], b'synthetic-harness-dex')
+            self.assertEqual(tool_paths.get('manifest'), str(snapshot))
+            self.assertEqual(read_or_none('private-before.log'),
+                             read_or_none('private-after.log'))
+            self.assertEqual(read_or_none('private-before.log'), before)
+            for name in ('remove-harness', 'harness-removed-check',
+                         'scratch-remove-root', 'scratch-absent-root', 'poststop',
+                         'poststop-check', 'installed-harness-pull', 'pull-report',
+                         'scratch-owner', 'private-after'):
+                self.assertIn(name + '.log',
+                              [row['log'] for row in manifest.get('commands', [])])
+            self.assertEqual(case._inventory(source_bundle), recorded_inventory)
+
+            # Re-run the real signed preflight over the bundle's own snapshot, then let the
+            # read-only bundle verification re-admit the accepted evidence.
+            with patch.object(capture, 'sha256', side_effect=pin), \
+                    patch.object(capture.subprocess, 'run', run), \
+                    patch.object(capture, '_admit_reflected_abi', abstract_abi):
+                binding = capture.selected_preflight(
+                    snapshot, target, fixture_path, source, android_sdk,
+                    Path('C:/java'), apk_bytes=read_or_none(
+                        capture.HARNESS_SNAPSHOT_NAME))
+                verified = capture.verify_selected_bundle(
+                    output, fixture_path, Path(str(source_bundle / 'harness.apk')),
+                    binding)
+            self.assertEqual(verified['status'], 'verified-bundle')
+            self.assertEqual(case._inventory(output), accepted,
+                             'read-only verification must not rewrite the bundle')
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
     def test_a_missing_or_mismatched_retained_snapshot_is_refused_by_both_paths(self):
         case = TitlePhysicalEntryTest(

@@ -12,6 +12,7 @@ Usage:
 import argparse
 import copy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -218,16 +219,23 @@ PM_REFUSAL = re.compile(rb'Failure \[[A-Z][A-Z0-9_]*\]')
 
 
 def _root_install_refusal(stdout, stderr):
-    """The one narrow, determinate Package Manager refusal line, or None.
+    """The exact raw terminal Package Manager refusal, or None.
 
-    Only a single terminal `Failure [REASON]` line on exactly one stream is a refusal.
-    Extra text, diagnostics, connection interruptions and contradictory output are not.
+    Exactly one stream must be the sole `Failure [REASON]` line with at most the single
+    trailing LF or CRLF this transport can add, and the other stream must be exactly empty.
+    Padding, extra blank lines, whitespace on the other stream, diagnostics or any other
+    output make the outcome unknown instead.
     """
-    stdout_lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    stderr_lines = [line.strip() for line in stderr.splitlines() if line.strip()]
-    for lines, other in ((stdout_lines, stderr_lines), (stderr_lines, stdout_lines)):
-        if len(lines) == 1 and not other and PM_REFUSAL.fullmatch(lines[0]):
-            return lines[0].decode(errors='replace')
+    for stream, other in ((stdout, stderr), (stderr, stdout)):
+        if other:
+            continue
+        body = stream
+        if body.endswith(b'\r\n'):
+            body = body[:-2]
+        elif body.endswith(b'\n'):
+            body = body[:-1]
+        if PM_REFUSAL.fullmatch(body):
+            return body.decode(errors='replace')
     return None
 
 
@@ -462,9 +470,16 @@ def _admit_selected_shape(fixture, label):
     return fixture
 
 
-def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
-    """Read the actual selected APK zip and bind its corpus/provenance bytes."""
-    apk_bytes = Path(apk_path).read_bytes()
+def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources,
+                          apk_bytes=None):
+    """Bind the selected APK's ZIP evidence to the exact bytes that were hashed.
+
+    `apk_bytes` lets one invocation supply the owned image it already holds; the hash and
+    both ZIP members then come from those bytes, and the path is not opened again. When it
+    is absent the path is read exactly once for both.
+    """
+    if apk_bytes is None:
+        apk_bytes = Path(apk_path).read_bytes()
     apk_sha = sha256_bytes(apk_bytes)
     fixture_sha = sha256_bytes(fixture_bytes)
     fixture_sha_lf = sha256_bytes(lf_bytes(fixture_bytes))
@@ -478,7 +493,7 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
         raise ValueError('the selected fixture has no cases')
     if _require_int(fixture.get('corpusVersion'), 'fixture.corpusVersion') != 1:
         raise ValueError('the selected fixture version is not integer 1')
-    with zipfile.ZipFile(Path(apk_path)) as archive:
+    with zipfile.ZipFile(io.BytesIO(apk_bytes)) as archive:
         names = archive.namelist()
         for required in ('assets/field-fixtures.json', 'assets/field-provenance.json'):
             if names.count(required) != 1:
@@ -531,9 +546,11 @@ def _inspect_selected_apk(apk_path, fixture_bytes, fixture, expected_sources):
     }
 
 
-def inspect_selected_apk(apk_path, fixture_path, fixture, expected_sources):
+def inspect_selected_apk(apk_path, fixture_path, fixture, expected_sources,
+                         apk_bytes=None):
     return _inspect_selected_apk(
-        apk_path, Path(fixture_path).read_bytes(), fixture, expected_sources)
+        apk_path, Path(fixture_path).read_bytes(), fixture, expected_sources,
+        apk_bytes=apk_bytes)
 
 
 def _check_selected_manifest(text):
@@ -814,8 +831,15 @@ def _admit_reflected_abi(target_apk, tools, run, receipts, harness_checked):
             'harness': harness_checked}
 
 
-def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidence=None):
-    """Inspect the selected artifact without contacting any device."""
+def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidence=None,
+                       apk_bytes=None):
+    """Inspect the selected artifact without contacting any device.
+
+    `apk_bytes` supplies the invocation's owned image: the artifact hash, both embedded ZIP
+    members and the harness DEX then derive from those bytes, while the external aapt and
+    apksigner commands still run against the real staged path and the final stability check
+    still compares that path with the artifact digest.
+    """
     if not target_apk.is_file() or sha256(target_apk) != SELECTED_TARGET['apkSha256']:
         raise ValueError('selected target APK is missing or differs')
     data = fixture_path.read_bytes()
@@ -880,7 +904,9 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
     blobs = run('source-blobs', ['git', '-C', source, 'hash-object', *paths]).split()
     if blobs != [row['sha1'] for row in fixture['frozenSources']]:
         raise ValueError('selected source blob differs')
-    artifact = inspect_selected_apk(apk, fixture_path, fixture, harness_source_hashes(selected=True))
+    artifact = inspect_selected_apk(apk, fixture_path, fixture,
+                                    harness_source_hashes(selected=True),
+                                    apk_bytes=apk_bytes)
     tools = sdk / 'build-tools' / '35.0.1'
     manifest = run('manifest', [tools / 'aapt.exe', 'dump', 'xmltree', apk, 'AndroidManifest.xml'])
     _check_selected_manifest(manifest)
@@ -913,7 +939,8 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
         pattern = r"name\s+: '" + re.escape(method) + r"'\s+type\s+: '" + re.escape(signature) + r"'\s+access\s+: 0x0011 \(PUBLIC FINAL\)"
         if len(re.findall(pattern, webbooks[0])) != 1:
             raise ValueError('selected native ABI differs: ' + method)
-    with zipfile.ZipFile(apk) as archive:
+    harness_archive = (io.BytesIO(apk_bytes) if apk_bytes is not None else apk)
+    with zipfile.ZipFile(harness_archive) as archive:
         names = archive.namelist()
         if names.count('classes.dex') != 1 or [n for n in names if re.fullmatch(r'classes\d*\.dex', n)] != ['classes.dex']:
             raise ValueError('selected APK DEX inventory differs')
@@ -3076,7 +3103,8 @@ def main():
             selected_binding = selected_preflight(harness_snapshot or args.apk,
                 args.target_apk, fixture_path,
                 args.frozen_source, args.android_sdk, args.java_home,
-                evidence=None if args.finalize else args.output)
+                evidence=None if args.finalize else args.output,
+                apk_bytes=harness_bytes)
         except Exception as error:
             if args.finalize:
                 if ((isinstance(error, subprocess.TimeoutExpired) and hasattr(error, 'fields_preflight_timeout'))
@@ -3184,7 +3212,8 @@ def main():
             raise SystemExit('the built asset LF hash differs from the selected corpus')
         artifact = inspect_selected_apk(harness_snapshot or args.apk, fixture_path,
                                         fixture,
-                                        harness_source_hashes(selected=selected_reference))
+                                        harness_source_hashes(selected=selected_reference),
+                                        apk_bytes=harness_bytes)
     if not selected_reference:
         args.output.mkdir(parents=True, exist_ok=False)
     # The pulled baseline APK is a ~50 MB copy of the installed artifact; it is
@@ -3705,10 +3734,13 @@ def main():
             installed = False
             before = (args.output / 'private-before.log').read_bytes()
             after = remote_script('private-after', snapshot_script).stdout
+            # The live root capture finalizes from its owned snapshot: the mutable built
+            # input is not opened again after staging. The offline entries keep their own
+            # independent fresh --apk qualification.
             finalize(args.output, fixture, manifest, report, before, after,
                      asset=args.asset, scratch_cleanup=manifest['scratchCleanup'],
                      fixture_bytes=corpus_bytes, report_bytes=pulled.stdout,
-                     original_apk=args.apk)
+                     original_apk=harness_snapshot or args.apk)
         else:
             pull = adb('pull-report', 'pull', REPORT_REMOTE,
                        str(args.output / 'field-oracle.json'), checked=False)

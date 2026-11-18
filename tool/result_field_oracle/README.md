@@ -230,14 +230,19 @@ stdin, with no TTY and no text pipe, and asks the device only for
 
 A live opt-in invocation authorizes and sends one owned **checked snapshot**: the
 built harness is read once, the copy is created exclusively at
-`<capture>/harness-snapshot.apk`, and that copy is what the preflight's ZIP,
-manifest, signer and DEX reads inspect (the raw records name that path). The
-in-memory buffer is bound to the digest that successful signed preflight
+`<capture>/harness-snapshot.apk`, and one immutable byte image carries the
+invocation from then on. The artifact hash, both embedded corpus/provenance ZIP
+members and the harness DEX all derive from those bytes; the external `aapt` and
+`apksigner` commands still run against the staged snapshot path with their exact
+recorded argv. The manifest and signer records name that snapshot, the
+in-memory buffer is bound to the digest the successful signed preflight
 measured, the snapshot is compared with the buffer and digest again immediately
 before launch, and a missing, malformed or changed binding fails closed with
-zero sends. The external build path is never re-read after the snapshot. The
-default install keeps its byte-for-byte path, and the installed readback is
-still required.
+zero sends. The live capture then finalizes from the owned snapshot too: the
+mutable built input is never opened again after staging. The two offline entries
+(`--finalize` and `--verify-bundle`) still independently requalify the `--apk`
+they are given, and the default install keeps its byte-for-byte path. The
+installed readback is still required.
 
 The recorded `install` receipt for the root shape adds the `stdin` byte length
 and SHA-256, an explicit completion, an outcome, and the SHA-256 of each raw
@@ -245,16 +250,17 @@ stream; the default receipt keeps exactly its original
 `{command, exitCode, log}` shape, so every retained bundle stays valid.
 
 A returned root result is classified only from its own exit and streams: a zero
-exit with the exact success streams is a confirmed success; a nonzero exit whose
-single terminal `Failure [REASON]` line is the only output on one stream is a
-determinate Package Manager refusal, and only that case may take the existing
-read-only package state check. Every other returned outcome, including a
-transport failure and contradictory zero output, keeps its actual integer exit
-and both streams with completion unknown and sends no later device command (no
-retry, fallback, probe, instrumentation or cleanup). Timeout and host
-interruption keep the known command, the supplied stdin binding and whatever
-streams exist, with no fabricated exit or transfer length. The default path is
-unchanged.
+exit with the exact success streams is a confirmed success. A nonzero exit is a
+determinate Package Manager refusal only when one stream is exactly the single
+`Failure [REASON]` line with at most one trailing LF or CRLF and the other
+stream is exactly empty; only that case may take the existing read-only package
+state check. Padding, extra blank lines, whitespace or any other text on either
+stream, a transport failure and contradictory zero output all keep their actual
+integer exit and both raw streams with completion unknown and send no later
+device command (no retry, fallback, probe, instrumentation or cleanup). Timeout
+and host interruption keep the known command, the supplied stdin binding and
+whatever streams exist, with no fabricated exit or transfer length. The default
+path is unchanged.
 
 Admission accepts exactly one of the two shapes and never a hybrid: the default
 command with a stdin record, the root command without one, an edited command, a
