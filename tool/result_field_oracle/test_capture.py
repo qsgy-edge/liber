@@ -10464,8 +10464,10 @@ public final class BookHelp {
     public static final BookHelp INSTANCE = new BookHelp();
 
     public static String cachePath;
+    public static int lookups;
 
     public String getCachePath() {
+        lookups++;
         return cachePath;
     }
 }
@@ -10475,8 +10477,10 @@ public final class BookHelp {
 /** Test-only AppDatabase accessor: the one controlled database handle. */
 public final class AppDatabaseKt {
     public static Object appDb;
+    public static int lookups;
 
     public static Object getAppDb() {
+        lookups++;
         return appDb;
     }
 }
@@ -10511,13 +10515,64 @@ import android.app.Application;
 /** Test-only bridge: the guard arm is out of scope for this producer fixture. */
 public final class SelectedFieldHostBridge {
     public static boolean armed;
+    public static int armCalls;
 
     public static void arm(Application application, ClassLoader loader) {
         armed = true;
+        armCalls++;
     }
 }
 ''',
 }
+
+EARLY_CONTAINMENT_CONTROLLED_SCRATCH = r'''package io.liber.oracle.nested;
+
+import android.content.Context;
+import android.content.ContextWrapper;
+import java.io.File;
+
+/**
+ * Test-only controlled ScratchContext route substitution.
+ *
+ * <p>Used only in the equality-true/outside JVM so the files and database
+ * getters can name freshly owned outside directories while the scratch root
+ * stays the real constructed root. This is a controlled route value, not a
+ * physical link escape.
+ */
+public final class StateSessionOracle {
+    public static final class ScratchContext extends ContextWrapper {
+        public final File root;
+        private File filesRoute;
+        private File databaseRoute;
+
+        public ScratchContext(Context base, String rootName, String preferencesPrefix) {
+            super(base);
+            this.root = new File(base.getCacheDir(), rootName);
+            this.filesRoute = new File(root, "files");
+            this.databaseRoute = new File(new File(root, "databases"), "legado.db");
+        }
+
+        /** Installed by the fixture only; the real ScratchContext has no such method. */
+        public void setControlledRoutes(File files, File database) {
+            this.filesRoute = files;
+            this.databaseRoute = database;
+        }
+
+        @Override public File getFilesDir() {
+            return filesRoute;
+        }
+
+        @Override public File getExternalFilesDir(String type) {
+            return new File(root, "external-files");
+        }
+
+        @Override public File getDatabasePath(String name) {
+            return "legado.db".equals(name) ? databaseRoute
+                : new File(new File(root, "databases"), name);
+        }
+    }
+}
+'''
 
 EARLY_CONTAINMENT_FIXTURE = r'''package io.liber.oracle.fields;
 
@@ -10537,13 +10592,15 @@ import java.nio.file.Files;
 import org.json.JSONObject;
 
 /**
- * Actual early-containment coordinate controls.
+ * Actual early-containment controls.
  *
- * <p>Drives the production {@code FieldOracle.earlyContainment} body over a real
- * {@code StateSessionOracle.ScratchContext} whose bound root carries a divergent
- * absolute and canonical spelling. The bounded substitutes on this fixture's
- * classpath cover only the classes that method touches, and the guard arm is a
- * no-op stub, so no guard, Android, device or native behaviour is claimed.
+ * <p>Drives the production {@code FieldOracle.earlyContainment} body over a
+ * constructed and attached {@code StateSessionOracle.ScratchContext}; this
+ * fixture does not owner-bind the scratch. The bounded substitutes on this
+ * fixture's classpath cover only the classes that method touches, and the guard
+ * arm is a no-op stub, so no guard, Android, device or native behaviour is
+ * claimed. The equality-true/outside cases use the separately labelled
+ * controlled ScratchContext getter substitution and are not physical links.
  */
 public final class EarlyContainmentFixture {
     static void require(boolean condition, String message) {
@@ -10560,6 +10617,28 @@ public final class EarlyContainmentFixture {
         File[] children = file.listFiles();
         if (children != null) for (File child : children) deleteTree(child);
         file.delete();
+    }
+
+    static JSONObject diagnostic(Throwable cause) throws Exception {
+        String message = cause.getMessage() == null
+            ? cause.getClass().getName() : cause.getMessage();
+        JSONObject result = new JSONObject().put("message", message);
+        int brace = message.indexOf('{');
+        if (brace >= 0) {
+            try {
+                result.put("diagnostic", new JSONObject(message.substring(brace)));
+            } catch (Exception ignored) {
+                // The message is still returned when it carries no parseable receipt.
+            }
+        }
+        return result;
+    }
+
+    static void resetStages() {
+        io.liber.oracle.nested.SelectedFieldHostBridge.armed = false;
+        io.liber.oracle.nested.SelectedFieldHostBridge.armCalls = 0;
+        BookHelp.lookups = 0;
+        AppDatabaseKt.lookups = 0;
     }
 
     /** The controlled base Context: a real cache directory with a divergent spelling. */
@@ -10614,6 +10693,20 @@ public final class EarlyContainmentFixture {
         @Override public File getFilesDir() { return files; }
     }
 
+    /** An application whose legado.db route is a controlled File. */
+    static final class DatabaseApplication extends GuardedReaderApplication {
+        private final File database;
+
+        DatabaseApplication(Context base, File database) {
+            super(base);
+            this.database = database;
+        }
+
+        @Override public File getDatabasePath(String name) {
+            return "legado.db".equals(name) ? database : super.getDatabasePath(name);
+        }
+    }
+
     /** The real Room open-helper/writable-handle shape the producer reflects on. */
     public static final class RoomDatabase {
         private final String path;
@@ -10644,6 +10737,24 @@ public final class EarlyContainmentFixture {
             new BaseContext(cacheDir), "liber-fields-02", "liber_fields_02_");
     }
 
+    static boolean withinRoot(String path, String root) {
+        return path.equals(root) || path.startsWith(root + File.separator);
+    }
+
+    /** Installs the test-only controlled getter routes; the real scratch has no such method. */
+    static void setControlledRoutes(StateSessionOracle.ScratchContext scratch,
+            File files, File database) {
+        try {
+            Method method = scratch.getClass().getMethod(
+                "setControlledRoutes", File.class, File.class);
+            method.invoke(scratch, files, database);
+        } catch (NoSuchMethodException unexpectedRealScratch) {
+            throw new AssertionError("controlled scratch substitution is absent");
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
+    }
+
     static JSONObject drive(StateSessionOracle.ScratchContext scratch, Context app,
             Application threadApp, boolean selectedReference, boolean lifecycle)
             throws Exception {
@@ -10658,6 +10769,7 @@ public final class EarlyContainmentFixture {
         ActivityThread.application = threadApp;
         splitties.init.AppCtxKt.appCtx = app;
         com.jeremyliao.liveeventbus.utils.AppUtils.app = app;
+        resetStages();
         Method method = FieldOracle.class.getDeclaredMethod(
             "earlyContainment", JSONObject.class);
         method.setAccessible(true);
@@ -10703,7 +10815,7 @@ public final class EarlyContainmentFixture {
         }
     }
 
-    static String rejection(String name) throws Exception {
+    static JSONObject rejection(String name, boolean lifecycle) throws Exception {
         File base = Files.createTempDirectory("l138-early-negative-").toFile();
         try {
             File cacheDir = new File(base,
@@ -10732,27 +10844,90 @@ public final class EarlyContainmentFixture {
                     "files" + File.separator + ".." + File.separator + ".."
                         + File.separator + "escape"));
                 selected = false;
+            } else if ("wrong-app-database-route".equals(name)) {
+                subject = new DatabaseApplication(scratch, new File(
+                    new File(scratch.root, "databases"), "other.db"));
+                selected = false;
             } else if ("wrong-bookhelp-cache".equals(name)) {
                 BookHelp.cachePath = new File(external, "other_cache").getAbsolutePath();
+            } else if ("escaped-bookhelp-cache".equals(name)) {
+                File escaped = new File(base, "escaped-cache");
+                escaped.mkdirs();
+                BookHelp.cachePath = escaped.getAbsolutePath();
             } else if ("wrong-room-database".equals(name)) {
                 AppDatabaseKt.appDb = new RoomDatabase(
                     new File(database.getParentFile(), "other.db").getAbsolutePath());
+            } else if ("escaped-room-database".equals(name)) {
+                AppDatabaseKt.appDb = new RoomDatabase(
+                    new File(base, "escaped.db").getAbsolutePath());
             } else if ("foreign-base-context".equals(name)) {
                 subject = new GuardedReaderApplication(scratch(cacheDir));
-                threadApp = (Application) subject;
             } else if ("foreign-application-object".equals(name)) {
                 threadApp = new GuardedReaderApplication(scratch);
             } else {
                 throw new IllegalArgumentException(name);
             }
+            if (!"foreign-application-object".equals(name)) {
+                threadApp = (Application) subject;
+            }
             try {
-                drive(scratch, subject, threadApp, selected, true);
+                drive(scratch, subject, threadApp, selected, lifecycle);
             } catch (InvocationTargetException error) {
-                Throwable cause = error.getTargetException();
-                return cause.getMessage() == null
-                    ? cause.getClass().getName() : cause.getMessage();
+                return new JSONObject().put("rejection",
+                    diagnostic(error.getTargetException()))
+                    .put("armCalls", io.liber.oracle.nested.SelectedFieldHostBridge.armCalls)
+                    .put("bookHelpLookups", BookHelp.lookups)
+                    .put("appDbLookups", AppDatabaseKt.lookups);
             }
             throw new AssertionError(name + " was admitted");
+        } finally {
+            deleteTree(base);
+        }
+    }
+
+    static JSONObject equalityRoute(String route, boolean lifecycle) throws Exception {
+        File base = Files.createTempDirectory("l138-early-equal-").toFile();
+        try {
+            File cacheDir = new File(base,
+                "a" + File.separator + ".." + File.separator + "a");
+            StateSessionOracle.ScratchContext scratch = scratch(cacheDir);
+            File outside = new File(base, "outside");
+            File outsideFiles = new File(outside, "files");
+            File outsideDatabase = new File(new File(outside, "databases"), "legado.db");
+            Files.createDirectories(outsideFiles.toPath());
+            Files.createDirectories(outsideDatabase.getParentFile().toPath());
+            File files = "files".equals(route) ? outsideFiles
+                : new File(scratch.root, "files");
+            File database = "database".equals(route) ? outsideDatabase
+                : new File(new File(scratch.root, "databases"), "legado.db");
+            setControlledRoutes(scratch, files, database);
+            File external = scratch.getExternalFilesDir(null);
+            BookHelp.cachePath = new File(external, "book_cache").getAbsolutePath();
+            AppDatabaseKt.appDb = new RoomDatabase(database.getAbsolutePath());
+            GuardedReaderApplication app = new GuardedReaderApplication(scratch);
+            String root = scratch.root.getCanonicalPath();
+            String expectedFiles = scratch.getFilesDir().getCanonicalPath();
+            String expectedDatabase = scratch.getDatabasePath("legado.db").getCanonicalPath();
+            String expectedExternal = scratch.getExternalFilesDir(null).getCanonicalPath();
+            JSONObject result = new JSONObject()
+                .put("route", route)
+                .put("rootCanonical", root)
+                .put("expectedFiles", expectedFiles)
+                .put("expectedDatabase", expectedDatabase)
+                .put("expectedExternal", expectedExternal)
+                .put("filesWithin", withinRoot(expectedFiles, root))
+                .put("databaseWithin", withinRoot(expectedDatabase, root));
+            try {
+                JSONObject receipt = drive(scratch, app, app, false, lifecycle);
+                result.put("admitted", true).put("receipt", receipt);
+            } catch (InvocationTargetException error) {
+                result.put("admitted", false)
+                    .put("rejection", diagnostic(error.getTargetException()));
+            }
+            result.put("armCalls", io.liber.oracle.nested.SelectedFieldHostBridge.armCalls)
+                .put("bookHelpLookups", BookHelp.lookups)
+                .put("appDbLookups", AppDatabaseKt.lookups);
+            return result;
         } finally {
             deleteTree(base);
         }
@@ -10763,8 +10938,18 @@ public final class EarlyContainmentFixture {
         JSONObject result;
         if ("title-lifecycle".equals(control) || "ordinary".equals(control)) {
             result = positive("title-lifecycle".equals(control));
+        } else if ("equal-files-route-outside-title".equals(control)) {
+            result = equalityRoute("files", true);
+        } else if ("equal-files-route-outside-ordinary".equals(control)) {
+            result = equalityRoute("files", false);
+        } else if ("equal-database-route-outside-title".equals(control)) {
+            result = equalityRoute("database", true);
+        } else if ("equal-database-route-outside-ordinary".equals(control)) {
+            result = equalityRoute("database", false);
+        } else if ("ordinary-sibling-files-route".equals(control)) {
+            result = rejection("sibling-files-route", false);
         } else {
-            result = new JSONObject().put("rejected", rejection(control));
+            result = rejection(control, true);
         }
         System.out.println(result);
     }
@@ -10773,15 +10958,18 @@ public final class EarlyContainmentFixture {
 
 
 class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
-    """The actual producer's early-containment serialization coordinate.
+    """The actual producer's early-containment serialization and refusal gates.
 
     The subject is the committed `FieldOracle.earlyContainment` body, compiled
     from source against the real android-35 SDK and executed in a fresh JVM over
-    a real `StateSessionOracle.ScratchContext` whose bound root carries a
-    divergent absolute and canonical spelling. The bounded substitutes emitted
-    from this module cover only the classes that method touches, and the guard
-    arm is a no-op stub, so no guard, Android, device or native behaviour is
-    claimed here.
+    a constructed and attached `StateSessionOracle.ScratchContext`; the fixture
+    does not owner-bind the scratch. The bounded substitutes emitted from this
+    module cover only the classes that method touches, and the guard arm is a
+    no-op stub, so no guard, Android, device or native behaviour is claimed.
+    The equality-true/outside cases use a separately labelled controlled
+    ScratchContext route substitution; they are not physical link executions.
+    A prior immutable producer can be selected with `L138_FIELD_ORACLE_SOURCE`
+    for the recorded RED run only.
     """
 
     _java_home = GuardedReaderApplicationHostTest._java_home
@@ -10789,32 +10977,115 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
     _json_jar = GuardedReaderApplicationHostTest._json_jar
     _repo = GuardedReaderApplicationHostTest._repo
     _run = GuardedReaderApplicationHostTest._run
+    _field_oracle_source = os.environ.get('L138_FIELD_ORACLE_SOURCE')
 
-    REJECTIONS = (
-        ('external-files-fallback',
-         'the target application or its storage is not this bound scratch'),
-        ('canonical-escape',
-         'the target application or its storage is not this bound scratch'),
-        ('sibling-files-route',
-         'the target application or its storage is not this bound scratch'),
-        ('traversal-files-route',
-         'the target application or its storage is not this bound scratch'),
-        ('wrong-bookhelp-cache',
-         'the BookHelp write root escapes the owned scratch'),
-        ('wrong-room-database',
-         'the Room database escapes the owned scratch'),
-        ('foreign-base-context',
-         'the target application or its storage is not this bound scratch'),
-        ('foreign-application-object',
-         'the target application or its storage is not this bound scratch'),
+    STORAGE_REJECTIONS = (
+        ('external-files-fallback', {
+            'externalFilesRouted': False,
+            'filesRouted': True,
+            'databaseRouted': True,
+        }),
+        ('canonical-escape', {
+            'externalFilesRouted': True,
+            'filesRouted': False,
+            'databaseRouted': True,
+        }),
+        ('sibling-files-route', {
+            'externalFilesRouted': True,
+            'filesRouted': False,
+            'databaseRouted': True,
+        }),
+        ('traversal-files-route', {
+            'externalFilesRouted': True,
+            'filesRouted': False,
+            'databaseRouted': True,
+        }),
+        ('wrong-app-database-route', {
+            'externalFilesRouted': True,
+            'filesRouted': True,
+            'databaseRouted': False,
+        }),
     )
 
-    def _classpath(self, root):
+    IDENTITY_REJECTIONS = (
+        ('foreign-base-context', {
+            'sameApplicationObject': True,
+            'baseContextBound': False,
+            'externalFilesRouted': True,
+            'filesRouted': True,
+            'databaseRouted': True,
+        }),
+        ('foreign-application-object', {
+            'sameApplicationObject': False,
+            'baseContextBound': True,
+            'externalFilesRouted': True,
+            'filesRouted': True,
+            'databaseRouted': True,
+        }),
+    )
+
+    ROUTE_DIAGNOSTICS = (
+        ('external-files-fallback', {
+            'filesExpectedMatch': True,
+            'filesWithinScratch': True,
+            'databaseExpectedMatch': True,
+            'databaseWithinScratch': True,
+        }),
+        ('canonical-escape', {
+            'filesExpectedMatch': False,
+            'filesWithinScratch': False,
+            'databaseExpectedMatch': True,
+            'databaseWithinScratch': True,
+        }),
+        ('sibling-files-route', {
+            'filesExpectedMatch': False,
+            'filesWithinScratch': True,
+            'databaseExpectedMatch': True,
+            'databaseWithinScratch': True,
+        }),
+        ('traversal-files-route', {
+            'filesExpectedMatch': False,
+            'filesWithinScratch': False,
+            'databaseExpectedMatch': True,
+            'databaseWithinScratch': True,
+        }),
+        ('wrong-app-database-route', {
+            'filesExpectedMatch': True,
+            'filesWithinScratch': True,
+            'databaseExpectedMatch': False,
+            'databaseWithinScratch': True,
+        }),
+    )
+
+    REJECTION_FRAGMENTS = (
+        ('external-files-fallback', 'the target application or its storage'),
+        ('canonical-escape', 'the target application or its storage'),
+        ('sibling-files-route', 'the target application or its storage'),
+        ('traversal-files-route', 'the target application or its storage'),
+        ('wrong-app-database-route', 'the target application or its storage'),
+        ('wrong-bookhelp-cache', 'the BookHelp write root'),
+        ('wrong-room-database', 'the Room database'),
+        ('escaped-bookhelp-cache', 'the BookHelp write root'),
+        ('escaped-room-database', 'the Room database'),
+        ('foreign-base-context', 'the target application or its storage'),
+        ('foreign-application-object', 'the target application or its storage'),
+    )
+
+    ORIGINAL_DIAGNOSTIC_KEYS = {
+        'appCtxClass', 'activityThreadAppClass', 'sameApplicationObject',
+        'guardedApplication', 'baseContextBound', 'baseContextClass',
+        'externalFilesPath', 'filesPath', 'databasePath', 'scratchRoot',
+        'externalFilesRouted', 'filesRouted', 'databaseRouted',
+    }
+
+    def _classpath(self, root, controlled_scratch=False):
         repo = self._repo()
         java = self._java_home()
         android = self._android_jar()
         jar = self._json_jar()
         root = Path(root)
+        oracle_source = (Path(self._field_oracle_source) if self._field_oracle_source
+                         else repo / 'tool/result_field_oracle/FieldOracle.java')
         actual = root / 'actual-classes'
         actual.mkdir()
         compiled = self._run(
@@ -10823,15 +11094,19 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
              str(repo / 'tool/nested_oracle/StateSessionOracle.java'),
              str(repo / 'tool/nested_oracle/HostRuntimeInit.java'),
              str(repo / 'tool/nested_oracle/ShortcutStartupGuard.java'),
-             str(repo / 'tool/result_field_oracle/FieldOracle.java'),
+             str(oracle_source),
              str(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java'),
              str(repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java')], repo)
         self.assertEqual(compiled.returncode, 0,
                          compiled.stderr.decode(errors='replace'))
         overlay = root / 'overlay-classes'
         overlay.mkdir()
+        overlay_sources = dict(EARLY_CONTAINMENT_SUBSTITUTES)
+        if controlled_scratch:
+            overlay_sources['io/liber/oracle/nested/StateSessionOracle.java'] = \
+                EARLY_CONTAINMENT_CONTROLLED_SCRATCH
         sources = []
-        for name, text in EARLY_CONTAINMENT_SUBSTITUTES.items():
+        for name, text in overlay_sources.items():
             path = root / 'overlay-src' / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding='utf-8')
@@ -10864,6 +11139,12 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
                          output + run.stderr.decode(errors='replace'))
         return json.loads(output.splitlines()[-1])
 
+    def _rejection(self, outcome, control):
+        self.assertIn('rejection', outcome, control)
+        self.assertIn('message', outcome['rejection'], control)
+        self.assertIn('diagnostic', outcome['rejection'], control)
+        return outcome['rejection']['message'], outcome['rejection']['diagnostic']
+
     def test_the_actual_early_containment_emits_the_bound_coordinate(self):
         with tempfile.TemporaryDirectory(prefix='l138-early-coordinate-') as directory:
             java, classpath = self._classpath(Path(directory))
@@ -10883,6 +11164,11 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
             self.assertEqual(receipt['appCtxClass'], capture.GUARD_APPLICATION)
             self.assertEqual(receipt['baseContextClass'], capture.SCRATCH_CONTEXT)
             self.assertEqual(receipt['roomDatabasePath'], receipt['databasePath'])
+            for absent in ('failedCheck', 'filesExpectedPath', 'filesWithinScratch',
+                           'databaseExpectedPath', 'databaseWithinScratch',
+                           'bookHelpCacheObservedPath', 'bookHelpCacheExpectedPath',
+                           'roomDatabaseObservedPath', 'roomDatabaseExpectedPath'):
+                self.assertNotIn(absent, receipt)
 
     def test_a_non_lifecycle_corpus_keeps_its_canonical_serialization(self):
         with tempfile.TemporaryDirectory(prefix='l138-early-ordinary-') as directory:
@@ -10898,14 +11184,212 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
                          'baseContextBound', 'externalFilesRouted', 'filesRouted',
                          'databaseRouted'):
                 self.assertIs(receipt[flag], True, flag)
+            for absent in ('failedCheck', 'filesExpectedPath', 'filesWithinScratch',
+                           'databaseExpectedPath', 'databaseWithinScratch'):
+                self.assertNotIn(absent, receipt)
 
     def test_each_wrong_route_is_rejected_by_the_actual_producer(self):
-        with tempfile.TemporaryDirectory(prefix='l138-early-negative-') as directory:
+        with tempfile.TemporaryDirectory(prefix='l138-early-rejected-') as directory:
             java, classpath = self._classpath(Path(directory))
-            for name, fragment in self.REJECTIONS:
+            for name, fragment in self.REJECTION_FRAGMENTS:
                 with self.subTest(control=name):
                     outcome = self._control(java, classpath, name)
-                    self.assertIn(fragment, outcome['rejected'], name)
+                    message, _ = self._rejection(outcome, name)
+                    self.assertIn(fragment, message, name)
+
+    def test_ordinary_failure_keeps_the_original_error_format(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-ordinary-fail-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            outcome = self._control(java, classpath, 'ordinary-sibling-files-route')
+            message, diagnostic = self._rejection(outcome, 'ordinary-sibling-files-route')
+            self.assertTrue(message.startswith(
+                'the target application or its storage is not this bound scratch:'),
+                message)
+            self.assertEqual(set(diagnostic), self.ORIGINAL_DIAGNOSTIC_KEYS)
+            self.assertIs(diagnostic['externalFilesRouted'], True)
+            self.assertIs(diagnostic['filesRouted'], False)
+            self.assertIs(diagnostic['databaseRouted'], True)
+            self.assertTrue(diagnostic['filesPath'].endswith(os.sep + 'files2'))
+
+    def test_route_diagnostics_distinguish_match_and_containment(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-diagnostics-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            for name, expected in self.ROUTE_DIAGNOSTICS:
+                with self.subTest(control=name):
+                    outcome = self._control(java, classpath, name)
+                    _, diagnostic = self._rejection(outcome, name)
+                    for flag, value in expected.items():
+                        self.assertIs(diagnostic[flag], value, (name, flag))
+                    for key in ('filesPath', 'filesExpectedPath',
+                                'databasePath', 'databaseExpectedPath'):
+                        self.assertIn(key, diagnostic, (name, key))
+
+    def test_storage_route_controls_isolate_the_intended_flag(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-negative-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            for name, expected in self.STORAGE_REJECTIONS:
+                with self.subTest(control=name):
+                    outcome = self._control(java, classpath, name)
+                    message, diagnostic = self._rejection(outcome, name)
+                    self.assertTrue(message.startswith(
+                        'the target application or its storage is not this bound scratch:'),
+                        message)
+                    for flag in ('sameApplicationObject', 'guardedApplication',
+                                 'baseContextBound'):
+                        self.assertIs(diagnostic[flag], True, (name, flag))
+                    for flag, value in expected.items():
+                        self.assertIs(diagnostic[flag], value, (name, flag))
+
+    def test_identity_controls_remain_separate(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-identity-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            for name, expected in self.IDENTITY_REJECTIONS:
+                with self.subTest(control=name):
+                    outcome = self._control(java, classpath, name)
+                    message, diagnostic = self._rejection(outcome, name)
+                    self.assertTrue(message.startswith(
+                        'the target application or its storage is not this bound scratch:'),
+                        message)
+                    self.assertIs(diagnostic['guardedApplication'], True, name)
+                    for flag, value in expected.items():
+                        self.assertIs(diagnostic[flag], value, (name, flag))
+
+    def test_wrong_in_root_bookhelp_and_room_keep_observed_and_expected(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-route-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            for name in ('wrong-bookhelp-cache', 'wrong-room-database'):
+                with self.subTest(control=name):
+                    outcome = self._control(java, classpath, name)
+                    message, diagnostic = self._rejection(outcome, name)
+                    self.assertIn('not the owned scratch route', message, name)
+                    self.assertNotIn('escapes the owned scratch', message, name)
+                    if name == 'wrong-bookhelp-cache':
+                        self.assertEqual(diagnostic['failedCheck'], 'bookHelpCache')
+                        observed = diagnostic['bookHelpCacheObservedPath']
+                        expected = diagnostic['bookHelpCacheExpectedPath']
+                        self.assertIs(diagnostic['bookHelpCacheWithinScratch'], True)
+                        self.assertIs(diagnostic['bookHelpCacheExpectedMatch'], False)
+                        self.assertNotEqual(observed, expected)
+                        root = diagnostic['scratchRoot']
+                        self.assertEqual(expected, os.path.join(
+                            root, 'external-files', 'book_cache'))
+                        self.assertEqual(observed, os.path.join(
+                            root, 'external-files', 'other_cache'))
+                        self.assertEqual(outcome['armCalls'], 1)
+                        self.assertEqual(outcome['bookHelpLookups'], 1)
+                        self.assertEqual(outcome['appDbLookups'], 0)
+                    else:
+                        self.assertEqual(diagnostic['failedCheck'], 'roomDatabase')
+                        observed = diagnostic['roomDatabaseObservedPath']
+                        expected = diagnostic['roomDatabaseExpectedPath']
+                        self.assertIs(diagnostic['roomDatabaseWithinScratch'], True)
+                        self.assertIs(diagnostic['roomDatabaseExpectedMatch'], False)
+                        self.assertNotEqual(observed, expected)
+                        root = diagnostic['scratchRoot']
+                        self.assertEqual(expected, os.path.join(
+                            root, 'databases', 'legado.db'))
+                        self.assertEqual(observed, os.path.join(
+                            root, 'databases', 'other.db'))
+                        self.assertEqual(outcome['armCalls'], 1)
+                        self.assertEqual(outcome['bookHelpLookups'], 1)
+                        self.assertEqual(outcome['appDbLookups'], 1)
+                    self.assertNotIn('bookHelpCachePath', diagnostic)
+                    self.assertNotIn('roomDatabasePath', diagnostic)
+
+    def test_out_of_root_bookhelp_and_room_are_distinguished(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-escape-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            for name in ('escaped-bookhelp-cache', 'escaped-room-database'):
+                with self.subTest(control=name):
+                    outcome = self._control(java, classpath, name)
+                    message, diagnostic = self._rejection(outcome, name)
+                    self.assertIn('escapes the owned scratch', message, name)
+                    self.assertNotIn('not the owned scratch route', message, name)
+                    if name == 'escaped-bookhelp-cache':
+                        self.assertEqual(diagnostic['failedCheck'], 'bookHelpCache')
+                        self.assertIs(diagnostic['bookHelpCacheWithinScratch'], False)
+                        self.assertIs(diagnostic['bookHelpCacheExpectedMatch'], False)
+                        self.assertNotEqual(diagnostic['bookHelpCacheObservedPath'],
+                                            diagnostic['bookHelpCacheExpectedPath'])
+                        self.assertFalse(diagnostic['bookHelpCacheObservedPath'].startswith(
+                            diagnostic['scratchRoot'] + '/'))
+                        self.assertEqual(outcome['bookHelpLookups'], 1)
+                        self.assertEqual(outcome['appDbLookups'], 0)
+                    else:
+                        self.assertEqual(diagnostic['failedCheck'], 'roomDatabase')
+                        self.assertIs(diagnostic['roomDatabaseWithinScratch'], False)
+                        self.assertIs(diagnostic['roomDatabaseExpectedMatch'], False)
+                        self.assertNotEqual(diagnostic['roomDatabaseObservedPath'],
+                                            diagnostic['roomDatabaseExpectedPath'])
+                        self.assertFalse(diagnostic['roomDatabaseObservedPath'].startswith(
+                            diagnostic['scratchRoot'] + '/'))
+                        self.assertEqual(outcome['bookHelpLookups'], 1)
+                        self.assertEqual(outcome['appDbLookups'], 1)
+
+    def test_equal_routes_outside_are_title_only(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-equal-') as directory:
+            java, classpath = self._classpath(Path(directory), controlled_scratch=True)
+            for route in ('files', 'database'):
+                with self.subTest(route=route):
+                    title = self._control(
+                        java, classpath, 'equal-' + route + '-route-outside-title')
+                    self.assertFalse(title['admitted'], route)
+                    message, diagnostic = self._rejection(title, route + '-title')
+                    self.assertTrue(message.startswith(
+                        'the target application or its storage is not this bound scratch:'),
+                        message)
+                    if route == 'files':
+                        self.assertEqual(diagnostic['failedCheck'], 'filesRouted')
+                        self.assertIs(diagnostic['filesExpectedMatch'], True)
+                        self.assertIs(diagnostic['filesWithinScratch'], False)
+                        self.assertIs(diagnostic['databaseExpectedMatch'], True)
+                        self.assertIs(diagnostic['databaseWithinScratch'], True)
+                    else:
+                        self.assertEqual(diagnostic['failedCheck'], 'databaseRouted')
+                        self.assertIs(diagnostic['databaseExpectedMatch'], True)
+                        self.assertIs(diagnostic['databaseWithinScratch'], False)
+                        self.assertIs(diagnostic['filesExpectedMatch'], True)
+                        self.assertIs(diagnostic['filesWithinScratch'], True)
+                    self.assertIs(diagnostic['externalFilesRouted'], True)
+                    self.assertIs(diagnostic['sameApplicationObject'], True)
+                    self.assertIs(diagnostic['guardedApplication'], True)
+                    self.assertIs(diagnostic['baseContextBound'], True)
+                    self.assertEqual(diagnostic['scratchRoot'], title['rootCanonical'])
+                    self.assertEqual(diagnostic['externalFilesPath'],
+                                     title['expectedExternal'])
+                    self.assertEqual(diagnostic['filesPath'], title['expectedFiles'])
+                    self.assertEqual(diagnostic['filesExpectedPath'],
+                                     title['expectedFiles'])
+                    self.assertEqual(diagnostic['databasePath'],
+                                     title['expectedDatabase'])
+                    self.assertEqual(diagnostic['databaseExpectedPath'],
+                                     title['expectedDatabase'])
+                    self.assertFalse(title['filesWithin'] if route == 'files'
+                                     else title['databaseWithin'])
+                    self.assertEqual(title['armCalls'], 0)
+                    self.assertEqual(title['bookHelpLookups'], 0)
+                    self.assertEqual(title['appDbLookups'], 0)
+
+                    ordinary = self._control(
+                        java, classpath, 'equal-' + route + '-route-outside-ordinary')
+                    self.assertTrue(ordinary['admitted'], route)
+                    receipt = ordinary['receipt']
+                    self.assertEqual(receipt['scratchRoot'], ordinary['rootCanonical'])
+                    self.assertEqual(receipt['externalFilesPath'],
+                                     ordinary['expectedExternal'])
+                    self.assertEqual(receipt['filesPath'], ordinary['expectedFiles'])
+                    self.assertEqual(receipt['databasePath'],
+                                     ordinary['expectedDatabase'])
+                    self.assertIs(receipt['externalFilesRouted'], True)
+                    self.assertIs(receipt['filesRouted'], True)
+                    self.assertIs(receipt['databaseRouted'], True)
+                    self.assertNotIn('bookHelpCachePath', receipt)
+                    self.assertNotIn('roomDatabasePath', receipt)
+                    self.assertFalse(ordinary['filesWithin'] if route == 'files'
+                                     else ordinary['databaseWithin'])
+                    self.assertEqual(ordinary['armCalls'], 0)
+                    self.assertEqual(ordinary['bookHelpLookups'], 0)
+                    self.assertEqual(ordinary['appDbLookups'], 0)
 
 
 if __name__ == '__main__':
