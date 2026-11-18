@@ -8482,10 +8482,14 @@ import android.content.Context;
 
 /** Test-only provider frame: the measured FirebaseApp.initializeApp. */
 public final class FirebaseApp {
+    /** Arms the intervening-frame control: the same frame, one unrelated relay deep. */
+    public static boolean throughRelay;
+
     private FirebaseApp() {
     }
 
     public static boolean initializeApp(Context context) {
+        if (throughRelay) return io.liber.oracle.fields.TitleStartupFixture.Relay.relay(context);
         return FirebaseOptions.fromResource(context);
     }
 }
@@ -8557,6 +8561,13 @@ public final class TitleStartupFixture {
         }
     }
 
+    /** The unrelated frame the intervening-stack control puts inside the measured run. */
+    public static final class Relay {
+        public static boolean relay(Context context) {
+            return com.google.firebase.FirebaseOptions.fromResource(context);
+        }
+    }
+
     static JSONObject identity() throws Exception {
         return new JSONObject()
             .put("fixtureId", "FIELDS-02")
@@ -8615,10 +8626,16 @@ public final class TitleStartupFixture {
             require(title.getResources() == null, "a plain resource read passes through");
             require(receiptRefusal(title).contains("intercepted=0"),
                 "a plain read is not the startup proof");
-        } else if ("mixed-stack".equals(control)) {
+        } else if ("partial-stack".equals(control)) {
             UnrelatedCaller.read(new AppWrapper(title));
             require(receiptRefusal(title).contains("intercepted=0"),
                 "an unrelated caller reaching the options is not the provider read");
+        } else if ("intervening-stack".equals(control)) {
+            com.google.firebase.FirebaseApp.throughRelay = true;
+            require(providerRead(title) == null,
+                "all four frames with an intervening frame are not the measured run");
+            require(receiptRefusal(title).contains("intercepted=0"),
+                "an intervening frame is not this containment");
         } else if ("ordinary-scratch".equals(control)) {
             require(providerRead(ordinary) == null, "the ordinary scratch reads resources");
             require(!SelectedFieldHostBridge.handleFirebaseStartupException(ordinary, null,
@@ -8672,6 +8689,25 @@ public final class TitleStartupFixture {
                 "a post-binding read is never success");
             require(receiptRefusal(title).contains("beforeBinding=false"),
                 "a post-binding read is not the startup phase: " + receiptRefusal(title));
+        } else if ("late-ack".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(marker instanceof IllegalStateException, "the read is the owned one");
+            title.bind("seed", identity());
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "an acknowledgement after the binding is never success");
+            require(receiptRefusal(title).contains("handled=false"),
+                "a late acknowledgement leaves no containment: " + receiptRefusal(title));
+        } else if ("off-main-ack".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(marker instanceof IllegalStateException, "the read is the owned one");
+            Looper.CURRENT = new Looper();
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "an acknowledgement off the main thread is never success");
+            Looper.CURRENT = Looper.MAIN;
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the same marker is still consumable once on the main thread");
+            title.bind("seed", identity());
+            SelectedFieldHostBridge.firebaseStartupReceipt(title);
         } else if ("off-main".equals(control)) {
             Looper.CURRENT = new Looper();
             Throwable marker = providerRead(title);
@@ -8708,14 +8744,16 @@ class FirebaseStartupIsolationHostTest(unittest.TestCase):
     against the real android-35 SDK and executed with only the OS signatures this
     fixture reaches substituted. The provider call order, the owned marker, the
     framework acknowledgement and the receipt are the real methods; the controls
-    cover the exact read, ordinary resource access, an unrelated caller, the
-    ordinary scratch, forged/wrapped/unknown/duplicate acknowledgements and the
-    later, second and off-main phases.
+    cover the exact contiguous read, a partial and an intervening call chain,
+    ordinary resource access, the ordinary scratch, forged/wrapped/unknown/duplicate
+    acknowledgements, the later and second read phases, and acknowledgements that
+    move only after the binding or off the main thread.
     """
 
-    CONTROLS = ('exact', 'unbound', 'plain-resource', 'mixed-stack',
-                'ordinary-scratch', 'forged', 'wrapped', 'receiver', 'duplicate',
-                'second-read', 'late-read', 'off-main')
+    CONTROLS = ('exact', 'unbound', 'plain-resource', 'partial-stack',
+                'intervening-stack', 'ordinary-scratch', 'forged', 'wrapped',
+                'receiver', 'duplicate', 'second-read', 'late-read', 'off-main',
+                'late-ack', 'off-main-ack')
 
     def _java_home(self):
         candidates = []

@@ -1581,15 +1581,18 @@ public class StateSessionOracle extends Instrumentation {
      * StringResourceValueReader.<init> → Context.getResources}. Resolving the options there
      * is what makes Play Services queue its measurement registration on a worker thread,
      * which this harness refuses as an unexpected external caller. The read is therefore
-     * interrupted before the registration is queued. Only that exact ordered read is
-     * refused: every other resource read reaches the base context, and no other Firebase
-     * caller or SDK registration is suppressed.
+     * interrupted before the registration is queued. Only that exact read is refused: the
+     * four measured frames have to be the one contiguous run they were observed as
+     * (logcat-field-oracle.log:6-9), so an intervening, reordered or partial call chain is
+     * not this containment, every other resource read reaches the base context, and no
+     * other Firebase caller or SDK registration is suppressed.
      *
-     * <p>The marker is owned. Only the one instance this guard issued, once, on the main
-     * thread, before the scratch was bound, may be consumed by the instrumentation
-     * exception seam. A forged, wrapped, foreign, repeated, off-main or post-binding
-     * acknowledgement is refused, so an unrelated exception is never this containment and
-     * a later phase is never success.
+     * <p>The marker is owned and both acknowledgement conditions are enforced at
+     * acknowledgement: only the one instance this guard issued, once, on the main thread,
+     * before the scratch was bound, may be consumed by the instrumentation exception seam.
+     * A forged, wrapped, foreign, repeated, off-main or post-binding acknowledgement is
+     * refused, so an unrelated exception is never this containment and a later phase is
+     * never success.
      */
     static final class FirebaseStartupIsolation {
         private static final String PROVIDER = "com.google.firebase.provider.FirebaseInitProvider";
@@ -1637,12 +1640,15 @@ public class StateSessionOracle extends Instrumentation {
 
         /**
          * Consumes exactly the issued marker, once, for the start-up exception the framework
-         * caught. Every other receiver, wrapper, marker or repeat stays the caller's own
-         * exception.
+         * caught, and only while that acknowledgement is itself on the main thread and before
+         * the binding. Every other receiver, wrapper, marker, repeat, off-main or
+         * post-binding delivery stays the caller's own exception.
          */
-        synchronized boolean handle(Object object, Throwable error) {
+        synchronized boolean handle(Object object, Throwable error, boolean bound,
+                boolean mainThread) {
             if (object != null || issued == null || error != issued || handled
-                    || intercepted != 1 || !beforeBinding || !optionsRead(error)) {
+                    || intercepted != 1 || !beforeBinding || bound || !mainThread
+                    || !optionsRead(error)) {
                 return false;
             }
             handled = true;
@@ -1666,17 +1672,23 @@ public class StateSessionOracle extends Instrumentation {
                 .put("beforeBinding", true);
         }
 
-        /** Whether the measured provider options resolution produced this throwable. */
+        /**
+         * Whether the measured provider options resolution produced this throwable: the four
+         * named frames have to appear as one contiguous run, in order, exactly as the device
+         * capture observed them.
+         */
         private static boolean optionsRead(Throwable error) {
-            int index = 0;
-            for (StackTraceElement frame : error.getStackTrace()) {
-                if (index < READ_CLASSES.length
-                        && READ_CLASSES[index].equals(frame.getClassName())
-                        && READ_METHODS[index].equals(frame.getMethodName())) {
-                    index++;
+            StackTraceElement[] frames = error.getStackTrace();
+            for (int start = 0; start + READ_CLASSES.length <= frames.length; start++) {
+                int offset = 0;
+                while (offset < READ_CLASSES.length
+                        && READ_CLASSES[offset].equals(frames[start + offset].getClassName())
+                        && READ_METHODS[offset].equals(frames[start + offset].getMethodName())) {
+                    offset++;
                 }
+                if (offset == READ_CLASSES.length) return true;
             }
-            return index == READ_CLASSES.length;
+            return false;
         }
     }
 
@@ -1751,6 +1763,10 @@ public class StateSessionOracle extends Instrumentation {
             return super.getSystemService(name);
         }
 
+        private static boolean onMainThread() {
+            return Looper.myLooper() == Looper.getMainLooper();
+        }
+
         /**
          * The title profile's one startup refusal and nothing else: a resource read that is
          * not the measured Firebase provider options resolution reaches the base context
@@ -1759,8 +1775,7 @@ public class StateSessionOracle extends Instrumentation {
         @Override
         public Resources getResources() {
             if (firebaseStartupIsolation != null) {
-                firebaseStartupIsolation.intercept(isBound(),
-                    Looper.myLooper() == Looper.getMainLooper());
+                firebaseStartupIsolation.intercept(isBound(), onMainThread());
             }
             return super.getResources();
         }
@@ -1770,8 +1785,8 @@ public class StateSessionOracle extends Instrumentation {
         }
 
         boolean handleFirebaseStartupException(Object object, Throwable error) {
-            return firebaseStartupIsolation != null
-                && firebaseStartupIsolation.handle(object, error);
+            return firebaseStartupIsolation != null && firebaseStartupIsolation.handle(
+                object, error, isBound(), onMainThread());
         }
 
         JSONObject shortcutReceipt() throws JSONException {
