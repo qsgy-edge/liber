@@ -1183,14 +1183,18 @@ public final class FieldOracle extends Instrumentation {
         String canonicalFiles = app.getFilesDir().getCanonicalPath();
         String canonicalDatabase = app.getDatabasePath("legado.db").getCanonicalPath();
         String root = scratch.root.getCanonicalPath();
+        boolean boundCoordinate = lifecycleCorpus();
         boolean externalRouted = within(canonicalExternal, root)
             && canonicalExternal.equals(scratch.getExternalFilesDir(null).getCanonicalPath());
-        // The files route must be canonically contained, not merely equal to its scratch route.
-        boolean filesRouted = within(canonicalFiles, root)
-            && canonicalFiles.equals(scratch.getFilesDir().getCanonicalPath());
-        // The database route must be canonically contained as well.
-        boolean databaseRouted = within(canonicalDatabase, root)
-            && canonicalDatabase.equals(scratch.getDatabasePath("legado.db").getCanonicalPath());
+        // The files route keeps its original canonical equality for every corpus and is
+        // additionally required to be canonically contained for the title-lifecycle corpus.
+        boolean filesRouted = canonicalFiles.equals(scratch.getFilesDir().getCanonicalPath())
+            && (!boundCoordinate || within(canonicalFiles, root));
+        // The database route keeps its original canonical equality and the same title-only
+        // containment requirement.
+        boolean databaseRouted = canonicalDatabase
+            .equals(scratch.getDatabasePath("legado.db").getCanonicalPath())
+            && (!boundCoordinate || within(canonicalDatabase, root));
         // The bound scratch is the operational coordinate of the title-lifecycle
         // corpus: the measured run-as root, the ordinary isolation, the owner
         // receipt and the cleanup all use its absolute spelling. Each canonical
@@ -1198,7 +1202,6 @@ public final class FieldOracle extends Instrumentation {
         // is published, so the proven route is emitted in that same coordinate
         // instead of the platform's canonical alias. A corpus without the
         // lifecycle observation keeps its existing canonical serialization.
-        boolean boundCoordinate = lifecycleCorpus();
         String emittedRoot = boundCoordinate ? scratch.root.getAbsolutePath() : root;
         String emittedExternal = boundCoordinate
             ? scratch.getExternalFilesDir(null).getAbsolutePath() : canonicalExternal;

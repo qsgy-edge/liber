@@ -323,19 +323,22 @@ other terminal is refused.
 
 The producer proves each of those routes before it publishes it: it queries the
 actual application directories, the native BookHelp cache and the real Room
-writable handle, requires every canonical path to be contained in the scratch
-root as well as equal to the corresponding scratch route's canonical form, and
-keeps the canonical containment test. The files and database routes carry that
-containment requirement explicitly, so neither is accepted merely because it is
-equal to its own scratch route while canonicalizing outside the root. The
-title-lifecycle corpus then emits the proven route in the bound scratch's own
-absolute coordinate — the coordinate the measured `run-as` root, the ordinary
-isolation, the owner receipt and the cleanup already use — so one corpus has a
-single path coordinate. A corpus without the lifecycle observation keeps the
-canonical serialization it has always emitted. A canonical escape, an
-external-files fallback, a sibling or traversal route, a different BookHelp
-directory and a different Room database are all refused before any receipt is
-published.
+writable handle, and requires each canonical path to equal the corresponding
+scratch route's canonical form. The external route always requires canonical
+containment. The files and database routes keep that equality for every corpus;
+the title-lifecycle corpus additionally requires them to be canonically
+contained in the scratch root, so neither is accepted merely because it is equal
+to its own scratch route while canonicalizing outside the root. The BookHelp
+cache and the Room handle are proven against their exact scratch routes, with
+canonical containment, in that same title-lifecycle corpus. The title-lifecycle
+corpus then emits the proven route in the bound scratch's own absolute
+coordinate — the coordinate the measured `run-as` root, the ordinary isolation,
+the owner receipt and the cleanup already use — so one corpus has a single path
+coordinate. A corpus without the lifecycle observation keeps its canonical
+serialization and its original files/database equality checks. For the
+title-lifecycle corpus, a canonical escape, an external-files fallback, a
+sibling or traversal route, a different BookHelp directory and a different Room
+database are all refused before any receipt is published.
 
 The saved pair re-reads its own table of contents, so the same path appears
 twice in the declared sequence. The replay server serves a path's declared
