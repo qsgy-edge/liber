@@ -1185,9 +1185,12 @@ public final class FieldOracle extends Instrumentation {
         String root = scratch.root.getCanonicalPath();
         boolean externalRouted = within(canonicalExternal, root)
             && canonicalExternal.equals(scratch.getExternalFilesDir(null).getCanonicalPath());
-        boolean filesRouted = canonicalFiles.equals(scratch.getFilesDir().getCanonicalPath());
-        boolean databaseRouted = canonicalDatabase
-            .equals(scratch.getDatabasePath("legado.db").getCanonicalPath());
+        // The files route must be canonically contained, not merely equal to its scratch route.
+        boolean filesRouted = within(canonicalFiles, root)
+            && canonicalFiles.equals(scratch.getFilesDir().getCanonicalPath());
+        // The database route must be canonically contained as well.
+        boolean databaseRouted = within(canonicalDatabase, root)
+            && canonicalDatabase.equals(scratch.getDatabasePath("legado.db").getCanonicalPath());
         // The bound scratch is the operational coordinate of the title-lifecycle
         // corpus: the measured run-as root, the ordinary isolation, the owner
         // receipt and the cleanup all use its absolute spelling. Each canonical

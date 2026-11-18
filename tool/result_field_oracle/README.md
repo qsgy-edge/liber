@@ -323,8 +323,11 @@ other terminal is refused.
 
 The producer proves each of those routes before it publishes it: it queries the
 actual application directories, the native BookHelp cache and the real Room
-writable handle, requires each canonical path to equal the corresponding scratch
-route's canonical form, and keeps the canonical containment test. The
+writable handle, requires every canonical path to be contained in the scratch
+root as well as equal to the corresponding scratch route's canonical form, and
+keeps the canonical containment test. The files and database routes carry that
+containment requirement explicitly, so neither is accepted merely because it is
+equal to its own scratch route while canonicalizing outside the root. The
 title-lifecycle corpus then emits the proven route in the bound scratch's own
 absolute coordinate — the coordinate the measured `run-as` root, the ordinary
 isolation, the owner receipt and the cleanup already use — so one corpus has a
