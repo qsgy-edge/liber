@@ -1910,6 +1910,12 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                 b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n')
             (Path(root_dir) / 'instrumentation.log').unlink()
 
+        def unknown_completion(manifest, row, root_dir):
+            row['exitCode'] = None
+            row['status'] = 'timeout'
+            row['timeoutSeconds'] = capture.ROOT_INSTALL_TIMEOUT
+            row['installCompletion'] = 'unknown'
+
         mutations = (
             ('hybrid', replace_command, 'install receipt shape differs'),
             ('no-stdin', drop_stdin, 'install receipt shape differs'),
@@ -1918,6 +1924,8 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             ('size-command', wrong_size_command, 'root install command differs'),
             ('edited-command', edited_command, 'root install command differs'),
             ('refused', refused_install, 'record failure: install'),
+            ('unknown-completion', unknown_completion,
+             'root install completion is unknown'),
         )
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -9236,7 +9244,8 @@ class RootInstallTest(unittest.TestCase):
             digest = capture.sha256_bytes(data)
             rows = []
 
-            def run(command, name, timeout, checked=True, stdin=None, receipt=None):
+            def run(command, name, timeout, checked=True, stdin=None, receipt=None,
+                    retain_timeout=None):
                 self.assertEqual(command[0], 'adb')
                 argued = subprocess.run(
                     [sys.executable, '-B', str(recorder), str(child), *command[1:]],
@@ -9244,7 +9253,8 @@ class RootInstallTest(unittest.TestCase):
                 self.assertEqual(argued.returncode, 0,
                                  argued.stderr.decode(errors='replace'))
                 rows.append({'command': command, 'name': name, 'timeout': timeout,
-                             'checked': checked, 'stdin': stdin, 'receipt': receipt})
+                             'checked': checked, 'stdin': stdin, 'receipt': receipt,
+                             'retainTimeouts': retain_timeout})
                 return argued
 
             result = capture.root_install(data, self.SERIAL, digest, run)
@@ -9259,6 +9269,8 @@ class RootInstallTest(unittest.TestCase):
             self.assertEqual(row['timeout'], 180)
             self.assertFalse(row['checked'])
             self.assertEqual(row['stdin'], data)
+            self.assertEqual(row['retainTimeouts'],
+                             {'installCompletion': 'unknown'})
             self.assertEqual(row['receipt'], {'stdin': {'bytes': len(data),
                                                        'sha256': digest}})
             recorded = json.loads(child.read_bytes())
@@ -9340,6 +9352,266 @@ class RootInstallTest(unittest.TestCase):
             with self.subTest(label=label), \
                     self.assertRaisesRegex(ValueError, expected):
                 capture._admit_install_receipt(item, profile, manifest, size, prefix)
+
+
+ROOT_INSTALL_PARTIAL_CHILD = (
+    "import sys, time\n"
+    "sys.stdout.buffer.write(b'partial install output')\n"
+    "sys.stdout.flush()\n"
+    "sys.stderr.buffer.write(b'partial install error')\n"
+    "sys.stderr.flush()\n"
+    "time.sleep(30)\n")
+
+
+class RootInstallTimeoutTest(unittest.TestCase):
+    """The opt-in install's ambiguous send: its retained record and the stopped flow.
+
+    The real nested recorder, the real transport and the real live driver are
+    exercised here; only the executable is mapped to a bounded child that emits partial
+    streams and outlives the bound, and the bound itself is shortened.
+    """
+
+    TITLE = 'reader-title-lifecycle-fixtures-selected.json'
+    TARGET_APK = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+                      'phone-resume-20261020-01a15796/controller/'
+                      'team-baseline-migration-01/reference-stage/artifacts/'
+                      'legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+    TARGET_ROOT = '/data/user/0/' + capture.SELECTED_TARGET['package']
+    BOUND = 0.8
+
+    def _recorder(self, output, runner):
+        """The actual nested `run` from capture.main, bound to real files and a runner."""
+        import ast
+        module = ast.parse(Path(capture.__file__).read_bytes())
+        main = next(node for node in module.body
+                    if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        run = next(node for node in main.body
+                   if isinstance(node, ast.FunctionDef) and node.name == 'run')
+
+        class Args:
+            pass
+
+        args = Args()
+        args.output = Path(output)
+        namespace = {'manifest': {'commands': []}, 'args': args,
+                     'sha256_bytes': capture.sha256_bytes, 'subprocess': runner}
+        exec(compile(ast.Module(body=[run], type_ignores=[]), capture.__file__,
+                     'exec'), namespace)
+        return namespace['run'], namespace['manifest']
+
+    def _bounded_runner(self, calls):
+        import types
+
+        def bounded_run(command, *, capture_output, timeout, input=None):
+            calls.append({'command': list(command), 'timeout': timeout,
+                          'bytes': len(input or b'')})
+            return subprocess.run([sys.executable, '-B', '-c',
+                                   ROOT_INSTALL_PARTIAL_CHILD],
+                                  capture_output=capture_output,
+                                  timeout=timeout, input=input)
+
+        return types.SimpleNamespace(run=bounded_run,
+                                     TimeoutExpired=subprocess.TimeoutExpired)
+
+    def test_the_ambiguous_root_install_keeps_its_record_and_partial_streams(self):
+        import time
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            calls = []
+            run, manifest = self._recorder(output, self._bounded_runner(calls))
+            data = b'exact harness apk bytes'
+            digest = capture.sha256_bytes(data)
+            started = time.monotonic()
+            with patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
+                with self.assertRaisesRegex(ValueError, 'completion is unknown'):
+                    capture.root_install(data, capture.ROOT_INSTALL_SERIAL,
+                                         digest, run)
+            self.assertLess(time.monotonic() - started, 10,
+                            'the real child must be bounded')
+            self.assertEqual(len(calls), 1, 'the send is never retried')
+            self.assertEqual(calls[0]['command'],
+                             ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell',
+                              '-T', capture._root_install_command(len(data))])
+            self.assertEqual(calls[0]['timeout'], self.BOUND)
+            self.assertEqual(calls[0]['bytes'], len(data))
+            entry, = manifest['commands']
+            self.assertEqual(entry['command'], calls[0]['command'])
+            self.assertIsNone(entry['exitCode'], 'a timeout is not an exit code')
+            self.assertEqual(entry['status'], 'timeout')
+            self.assertEqual(entry['timeoutSeconds'], self.BOUND)
+            self.assertEqual(entry['installCompletion'], 'unknown')
+            self.assertEqual(entry['stdin'], {'bytes': len(data), 'sha256': digest})
+            preserved = (output / 'install.log').read_bytes()
+            self.assertEqual(preserved,
+                             b'partial install outputpartial install error')
+            self.assertEqual(entry['stdoutSha256'],
+                             capture.sha256_bytes(b'partial install output'))
+            self.assertEqual(entry['stderrSha256'],
+                             capture.sha256_bytes(b'partial install error'))
+
+    def test_a_default_command_timeout_keeps_the_original_behaviour(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            calls = []
+            run, manifest = self._recorder(output, self._bounded_runner(calls))
+            with self.assertRaises(subprocess.TimeoutExpired):
+                run(['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'install', '-r',
+                     'C:/build/field-oracle.apk'], 'install', timeout=self.BOUND,
+                    checked=False)
+            self.assertEqual(manifest['commands'], [])
+            self.assertFalse((output / 'install.log').exists())
+
+    def _harness_apk(self, root, corpus_bytes):
+        provenance = {
+            'schemaVersion': 1, 'fixtureId': 'FIELDS-02',
+            'corpus': {'asset': 'field-fixtures.json', 'bytes': len(corpus_bytes),
+                       'sha256': capture.sha256_bytes(corpus_bytes),
+                       'sha256Lf': capture.sha256_bytes(
+                           capture.lf_bytes(corpus_bytes)),
+                       'fixtureId': 'FIELDS-02', 'corpusVersion': 1},
+            'sources': capture.harness_source_hashes(selected=True),
+        }
+        apk = root / 'harness.apk'
+        with zipfile.ZipFile(apk, 'w') as archive:
+            archive.writestr('assets/field-fixtures.json', corpus_bytes)
+            archive.writestr('assets/field-provenance.json', json.dumps(provenance))
+            archive.writestr('classes.dex', b'synthetic-harness-dex')
+        return apk
+
+    def _device(self, fixture, target_apk, install_command, ledger):
+        """Answer the pre-install device and source commands; bound the install."""
+        real_run = subprocess.run
+        target_root = self.TARGET_ROOT
+
+        def done(command, stdout, code=0):
+            return subprocess.CompletedProcess(command, code, stdout, b'')
+
+        class Device:
+            def run(self, command, *, capture_output, timeout, input=None):
+                ledger.append(list(command))
+                text = ' '.join(str(item) for item in command)
+                if command[0] != 'adb':
+                    if 'rev-parse' in command:
+                        return done(command, (fixture['baselineCommit']
+                                              + '\n').encode())
+                    if 'hash-object' in command:
+                        return done(command, (' '.join(
+                            row['sha1'] for row in fixture['frozenSources'])
+                            + '\n').encode())
+                    if 'status' in command:
+                        return done(command, b'')
+                    raise AssertionError(text)
+                tail = command[3:]
+                if tail == ['shell', '-T', install_command]:
+                    return real_run([sys.executable, '-B', '-c',
+                                     ROOT_INSTALL_PARTIAL_CHILD],
+                                    capture_output=capture_output, timeout=timeout,
+                                    input=input)
+                if tail == ['shell', 'getprop', 'ro.build.fingerprint']:
+                    return done(command, (capture.SELECTED_TARGET['deviceFingerprint']
+                                          + '\n').encode())
+                if tail == ['shell', 'getprop', 'ro.build.version.release']:
+                    return done(command, b'17\n')
+                if tail == ['shell', 'getprop', 'ro.build.version.sdk']:
+                    return done(command, b'37\n')
+                if tail == ['shell', 'getprop', 'ro.product.model']:
+                    return done(command, b'myron\n')
+                if tail == ['shell', 'dumpsys', 'webviewupdate']:
+                    return done(command, b'Current WebView package (name, version): '
+                                 b'(com.google.android.webview, 159.0.8154.4)\n')
+                if tail == ['shell', 'pm', 'path', capture.SELECTED_TARGET['package']]:
+                    return done(command, b'package:/target.apk\n')
+                if tail[:1] == ['pull']:
+                    try:
+                        os.link(target_apk, tail[2])
+                    except OSError:
+                        import shutil
+                        shutil.copyfile(target_apk, tail[2])
+                    return done(command, b'')
+                if tail == ['shell', 'pm', 'list', 'packages', capture.PACKAGE]:
+                    return done(command, b'')
+                if tail[:2] == ['shell', 'pidof']:
+                    return done(command, b'', 1)
+                if tail == ['shell', 'run-as', capture.SELECTED_TARGET['package'],
+                            'pwd']:
+                    return done(command, (target_root + '\n').encode())
+                if (tail[:4] == ['shell', 'run-as',
+                                 capture.SELECTED_TARGET['package'], 'sh']):
+                    script = tail[-1]
+                    if 'then echo PRESENT' in script and 'probe.xml' not in script:
+                        return done(command, b'ABSENT\n')
+                    return done(command, b'')
+                raise AssertionError(text)
+        return Device()
+
+    def test_the_live_opt_in_flow_stops_without_another_install_or_instrumentation(self):
+        from unittest.mock import patch
+        if not self.TARGET_APK.is_file():
+            self.skipTest('the pinned target APK is required for the live-flow control')
+        fixture_path = Path(__file__).resolve().with_name(self.TITLE)
+        corpus_bytes = fixture_path.read_bytes()
+        fixture = json.loads(corpus_bytes)
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            output = base / 'out'
+            harness = self._harness_apk(base, corpus_bytes)
+            install_command = capture._root_install_command(len(harness.read_bytes()))
+            source = base / 'source'
+            for row in fixture['frozenSources']:
+                path = source / row['path']
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'source\n')
+            ledger = []
+            device = self._device(fixture, self.TARGET_APK, install_command, ledger)
+            argv = ['capture.py', '--root-install', '--serial',
+                    capture.ROOT_INSTALL_SERIAL, '--output', str(output),
+                    '--fixture', str(fixture_path), '--apk', str(harness),
+                    '--target-apk', str(self.TARGET_APK),
+                    '--asset', str(fixture_path), '--frozen-source', str(source),
+                    '--java-home', 'C:/java', '--android-sdk', 'C:/sdk']
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(capture, 'selected_preflight',
+                                 return_value={'synthetic': True}), \
+                    patch.object(capture.subprocess, 'run', device.run), \
+                    patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
+                code = capture.main()
+            self.assertEqual(code, 1)
+            manifest = json.loads((output / 'manifest.json').read_bytes())
+            self.assertEqual(manifest['status'], 'failed')
+            self.assertIn('completion is unknown', manifest['error'])
+            installs = [row for row in manifest['commands'] if row['log'] == 'install.log']
+            self.assertEqual(len(installs), 1, 'the send is never repeated')
+            entry = installs[0]
+            self.assertEqual(entry['command'],
+                             ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell',
+                              '-T', install_command])
+            self.assertIsNone(entry['exitCode'])
+            self.assertEqual(entry['status'], 'timeout')
+            self.assertEqual(entry['timeoutSeconds'], self.BOUND)
+            self.assertEqual(entry['installCompletion'], 'unknown')
+            harness_bytes = harness.read_bytes()
+            self.assertEqual(entry['stdin'],
+                             {'bytes': len(harness_bytes),
+                              'sha256': capture.sha256_bytes(harness_bytes)})
+            self.assertEqual((output / 'install.log').read_bytes(),
+                             b'partial install outputpartial install error')
+            self.assertEqual(manifest['commands'][-1]['log'], 'install.log',
+                             'nothing runs after the ambiguous send')
+            sending = [row for row in manifest['commands']
+                       if row['command'][0] == 'adb'
+                       and row['command'][3:5] in (['install', '-r'],
+                                                   ['shell', '-T'])]
+            self.assertEqual(sending, [entry])
+            for name in ('instrumentation.log', 'installed-harness-path.log',
+                         'installed-harness-pull.log', 'remove-harness.log',
+                         'logcat-field-oracle.log', 'pull-report.log',
+                         'private-after.log'):
+                self.assertFalse((output / name).exists(), name)
+            self.assertFalse([row for row in manifest['commands']
+                              if row['command'][0] == 'adb'
+                              and (row['command'][3:4] == ['uninstall']
+                                   or row['command'][3:5] == ['shell', 'am'])])
 
 
 class SelectedReceiptTest(unittest.TestCase):

@@ -92,6 +92,7 @@ FIREBASE_PROVIDER = 'com.google.firebase.provider.FirebaseInitProvider'
 # capture on the approved handset only. The default `adb install -r` path keeps its
 # exact receipt and every retained bundle keeps its original shape.
 ROOT_INSTALL_SERIAL = '5615f742'
+ROOT_INSTALL_TIMEOUT = 180
 INSTALL_RECEIPT_KEYS = {'command', 'exitCode', 'log'}
 ROOT_INSTALL_RECEIPT_KEYS = INSTALL_RECEIPT_KEYS | {'stdin'}
 LEB_RECEIVER = 'com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver'
@@ -153,6 +154,12 @@ def root_install(apk_bytes, serial, expected_sha256, run):
     from this process, with no TTY and no text pipe; the recorded receipt carries the
     actual byte length and digest. Nothing is retried: the caller's single result
     decides the run, and no other package, helper or shell command is involved.
+
+    A send that outlives `ROOT_INSTALL_TIMEOUT` may already have been applied, so the
+    recorder keeps its command, its stdin binding and the partial streams with no exit
+    code and an explicit unknown completion, and this function raises the named
+    ambiguity instead of a result. The caller therefore never reaches instrumentation,
+    an uninstall or another attempt.
     """
     if serial != ROOT_INSTALL_SERIAL:
         raise ValueError('the root install requires the approved title serial')
@@ -164,8 +171,19 @@ def root_install(apk_bytes, serial, expected_sha256, run):
         raise ValueError('the root install bytes differ from the measured harness APK')
     size = len(data)
     command = ['adb', '-s', serial, 'shell', '-T', _root_install_command(size)]
-    return run(command, 'install', timeout=180, checked=False, stdin=data,
-               receipt={'stdin': {'bytes': size, 'sha256': digest}})
+    try:
+        return run(command, 'install', timeout=ROOT_INSTALL_TIMEOUT, checked=False,
+                   stdin=data, receipt={'stdin': {'bytes': size, 'sha256': digest}},
+                   retain_timeout={'installCompletion': 'unknown'})
+    except subprocess.TimeoutExpired as error:
+        raise ValueError('the root install did not finish within '
+                         + str(ROOT_INSTALL_TIMEOUT) + 's; its completion is unknown'
+                         ' and nothing is retried') from error
+
+
+def _install_completion_unknown(item):
+    """Whether an install receipt records a send whose completion is not known."""
+    return item.get('status') == 'timeout' or item.get('installCompletion') == 'unknown'
 
 
 def _admit_install_receipt(item, profile, manifest, installed_bytes, adb_prefix):
@@ -177,6 +195,8 @@ def _admit_install_receipt(item, profile, manifest, installed_bytes, adb_prefix)
     pulled APK. A hybrid of the two shapes, an edited command, another size or
     digest, or a root shape outside the selected title profile is refused.
     """
+    if _install_completion_unknown(item):
+        raise ValueError('root install completion is unknown')
     keys = set(item)
     command = item.get('command')
     root_command = (isinstance(command, list) and len(command) == 6
@@ -2166,6 +2186,8 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
         item = indexed.get(name + '.log')
         if item is None or not (output / (name + '.log')).is_file():
             fail('are incomplete: ' + name)
+        if name == 'install' and _install_completion_unknown(item):
+            fail('root install completion is unknown')
         if type(item.get('exitCode')) is not int or (item['exitCode'] != 0 and name not in ('target-process', 'owned-pid', 'poststop-check')):
             fail('record failure: ' + name)
         command = item.get('command')
@@ -2967,9 +2989,33 @@ def main():
         manifest['artifact'] = artifact
     installed = False
 
-    def run(command, name, timeout=60, checked=True, stdin=None, receipt=None):
-        result = subprocess.run(command, capture_output=True, timeout=timeout,
-                                input=stdin)
+    def run(command, name, timeout=60, checked=True, stdin=None, receipt=None,
+            retain_timeout=None):
+        """Record one command; only an opted-in ambiguous send survives its timeout.
+
+        `retain_timeout` is passed by the root install alone, because its send may
+        already have been applied when the child outlives the bound. That record keeps
+        the command, the stdin binding and the partial streams with no exit code and an
+        explicit unknown completion; the timeout is still raised, so nothing is retried.
+        Every other command keeps the original behaviour and writes nothing on timeout.
+        """
+        try:
+            result = subprocess.run(command, capture_output=True, timeout=timeout,
+                                    input=stdin)
+        except subprocess.TimeoutExpired as error:
+            if retain_timeout is None:
+                raise
+            partial_stdout = error.stdout if isinstance(error.stdout, bytes) else b''
+            partial_stderr = error.stderr if isinstance(error.stderr, bytes) else b''
+            (args.output / (name + '.log')).write_bytes(partial_stdout + partial_stderr)
+            entry = {'command': command, 'exitCode': None, 'log': name + '.log',
+                     'status': 'timeout', 'timeoutSeconds': timeout,
+                     'stdoutSha256': sha256_bytes(partial_stdout),
+                     'stderrSha256': sha256_bytes(partial_stderr)}
+            entry.update(receipt or {})
+            entry.update(retain_timeout)
+            manifest['commands'].append(entry)
+            raise
         (args.output / (name + '.log')).write_bytes(result.stdout + result.stderr)
         entry = {'command': command, 'exitCode': result.returncode, 'log': name + '.log'}
         if receipt is not None:
