@@ -9372,10 +9372,6 @@ class RootInstallTimeoutTest(unittest.TestCase):
     """
 
     TITLE = 'reader-title-lifecycle-fixtures-selected.json'
-    TARGET_APK = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/'
-                      'phone-resume-20261020-01a15796/controller/'
-                      'team-baseline-migration-01/reference-stage/artifacts/'
-                      'legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
     TARGET_ROOT = '/data/user/0/' + capture.SELECTED_TARGET['package']
     BOUND = 0.8
 
@@ -9547,8 +9543,6 @@ class RootInstallTimeoutTest(unittest.TestCase):
 
     def test_the_live_opt_in_flow_stops_without_another_install_or_instrumentation(self):
         from unittest.mock import patch
-        if not self.TARGET_APK.is_file():
-            self.skipTest('the pinned target APK is required for the live-flow control')
         fixture_path = Path(__file__).resolve().with_name(self.TITLE)
         corpus_bytes = fixture_path.read_bytes()
         fixture = json.loads(corpus_bytes)
@@ -9562,17 +9556,30 @@ class RootInstallTimeoutTest(unittest.TestCase):
                 path = source / row['path']
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'source\n')
+            target = base / 'target.apk'
+            target.write_bytes(b'synthetic installed target')
+            real_sha256 = capture.sha256
+            target_digest = real_sha256(target)
+
+            def selected_target_digest(path):
+                digest = real_sha256(path)
+                if Path(path) in (target, output / 'frozen.apk'):
+                    self.assertEqual(digest, target_digest)
+                    return fixture['target']['apkSha256']
+                return digest
+
             ledger = []
-            device = self._device(fixture, self.TARGET_APK, install_command, ledger)
+            device = self._device(fixture, target, install_command, ledger)
             argv = ['capture.py', '--root-install', '--serial',
                     capture.ROOT_INSTALL_SERIAL, '--output', str(output),
                     '--fixture', str(fixture_path), '--apk', str(harness),
-                    '--target-apk', str(self.TARGET_APK),
+                    '--target-apk', str(target),
                     '--asset', str(fixture_path), '--frozen-source', str(source),
                     '--java-home', 'C:/java', '--android-sdk', 'C:/sdk']
             with patch.object(sys, 'argv', argv), \
                     patch.object(capture, 'selected_preflight',
                                  return_value={'synthetic': True}), \
+                    patch.object(capture, 'sha256', selected_target_digest), \
                     patch.object(capture.subprocess, 'run', device.run), \
                     patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
                 code = capture.main()
