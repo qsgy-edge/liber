@@ -1182,12 +1182,18 @@ public final class FieldOracle extends Instrumentation {
         String canonicalExternal = externalOrFiles.getCanonicalPath();
         String canonicalFiles = app.getFilesDir().getCanonicalPath();
         String canonicalDatabase = app.getDatabasePath("legado.db").getCanonicalPath();
-        String root = scratch.root.getCanonicalPath();
+        File scratchRootFile = scratch.root;
+        String root = scratchRootFile.getCanonicalPath();
         boolean boundCoordinate = lifecycleCorpus();
-        String expectedExternal = scratch.getExternalFilesDir(null).getCanonicalPath();
-        String expectedFiles = scratch.getFilesDir().getCanonicalPath();
-        String expectedDatabase = scratch.getDatabasePath("legado.db").getCanonicalPath();
-        boolean externalRouted = within(canonicalExternal, root)
+        boolean externalWithin = within(canonicalExternal, root);
+        File expectedExternalFile = externalWithin ? scratch.getExternalFilesDir(null) : null;
+        String expectedExternal = expectedExternalFile == null
+            ? null : expectedExternalFile.getCanonicalPath();
+        File expectedFilesFile = scratch.getFilesDir();
+        String expectedFiles = expectedFilesFile.getCanonicalPath();
+        File expectedDatabaseFile = scratch.getDatabasePath("legado.db");
+        String expectedDatabase = expectedDatabaseFile.getCanonicalPath();
+        boolean externalRouted = externalWithin
             && canonicalExternal.equals(expectedExternal);
         // The files route keeps its original canonical equality for every corpus and is
         // additionally required to be canonically contained for the title-lifecycle corpus.
@@ -1227,7 +1233,9 @@ public final class FieldOracle extends Instrumentation {
                     : !externalRouted ? "externalFilesRouted"
                     : !filesRouted ? "filesRouted" : "databaseRouted";
                 containment.put("failedCheck", failedCheck)
-                    .put("externalFilesExpectedPath", expectedExternal)
+                    .put("externalFilesExpectedPath", expectedExternal == null
+                        ? JSONObject.NULL : expectedExternal)
+                    .put("externalFilesWithinScratch", externalWithin)
                     .put("filesExpectedPath", expectedFiles)
                     .put("filesExpectedMatch", filesExpectedMatch)
                     .put("filesWithinScratch", filesWithin)
@@ -1304,10 +1312,10 @@ public final class FieldOracle extends Instrumentation {
                         ? "the Room database is not the owned scratch route: "
                         : "the Room database escapes the owned scratch: ") + containment);
             }
-            containment.put("scratchRoot", scratch.root.getAbsolutePath())
-                .put("externalFilesPath", scratch.getExternalFilesDir(null).getAbsolutePath())
-                .put("filesPath", scratch.getFilesDir().getAbsolutePath())
-                .put("databasePath", scratch.getDatabasePath("legado.db").getAbsolutePath())
+            containment.put("scratchRoot", scratchRootFile.getAbsolutePath())
+                .put("externalFilesPath", expectedExternalFile.getAbsolutePath())
+                .put("filesPath", expectedFilesFile.getAbsolutePath())
+                .put("databasePath", expectedDatabaseFile.getAbsolutePath())
                 .put("bookHelpCachePath", expectedCache.getAbsolutePath())
                 .put("bookHelpCacheWithinScratch", true)
                 .put("roomDatabasePath", expectedRoom.getAbsolutePath())

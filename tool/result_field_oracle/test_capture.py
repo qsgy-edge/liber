@@ -10542,6 +10542,7 @@ import java.io.File;
 public final class StateSessionOracle {
     public static final class ScratchContext extends ContextWrapper {
         public final File root;
+        public int externalLookups;
         private File filesRoute;
         private File databaseRoute;
 
@@ -10562,7 +10563,13 @@ public final class StateSessionOracle {
             return filesRoute;
         }
 
+        /** Cleared by the fixture before the external-outside control runs. */
+        public void resetExternalLookups() {
+            externalLookups = 0;
+        }
+
         @Override public File getExternalFilesDir(String type) {
+            externalLookups++;
             return new File(root, "external-files");
         }
 
@@ -10707,6 +10714,18 @@ public final class EarlyContainmentFixture {
         }
     }
 
+    /** An application whose observed external-files route is a controlled File. */
+    static final class ExternalApplication extends GuardedReaderApplication {
+        private final File external;
+
+        ExternalApplication(Context base, File external) {
+            super(base);
+            this.external = external;
+        }
+
+        @Override public File getExternalFilesDir(String type) { return external; }
+    }
+
     /** The real Room open-helper/writable-handle shape the producer reflects on. */
     public static final class RoomDatabase {
         private final String path;
@@ -10750,6 +10769,23 @@ public final class EarlyContainmentFixture {
             method.invoke(scratch, files, database);
         } catch (NoSuchMethodException unexpectedRealScratch) {
             throw new AssertionError("controlled scratch substitution is absent");
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
+    }
+
+    static void resetExternalLookups(StateSessionOracle.ScratchContext scratch) {
+        try {
+            scratch.getClass().getMethod("resetExternalLookups").invoke(scratch);
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
+    }
+
+    static int externalLookups(StateSessionOracle.ScratchContext scratch) {
+        try {
+            Field field = scratch.getClass().getField("externalLookups");
+            return ((Integer) field.get(scratch)).intValue();
         } catch (Exception error) {
             throw new AssertionError(error);
         }
@@ -10933,6 +10969,45 @@ public final class EarlyContainmentFixture {
         }
     }
 
+    static JSONObject externalOutside(boolean lifecycle) throws Exception {
+        File base = Files.createTempDirectory("l138-early-external-").toFile();
+        try {
+            File cacheDir = new File(base,
+                "a" + File.separator + ".." + File.separator + "a");
+            StateSessionOracle.ScratchContext scratch = scratch(cacheDir);
+            File outside = new File(base, "outside-external");
+            Files.createDirectories(outside.toPath());
+            File expectedExternal = new File(scratch.root, "external-files");
+            File database = new File(new File(scratch.root, "databases"), "legado.db");
+            BookHelp.cachePath = new File(expectedExternal, "book_cache").getAbsolutePath();
+            AppDatabaseKt.appDb = new RoomDatabase(database.getAbsolutePath());
+            ExternalApplication app = new ExternalApplication(scratch, outside);
+            resetExternalLookups(scratch);
+            String root = scratch.root.getCanonicalPath();
+            JSONObject result = new JSONObject()
+                .put("rootCanonical", root)
+                .put("outsideCanonical", outside.getCanonicalPath())
+                .put("expectedExternalCanonical", expectedExternal.getCanonicalPath())
+                .put("filesCanonical", scratch.getFilesDir().getCanonicalPath())
+                .put("databaseCanonical",
+                    scratch.getDatabasePath("legado.db").getCanonicalPath());
+            try {
+                JSONObject receipt = drive(scratch, app, app, false, lifecycle);
+                result.put("admitted", true).put("receipt", receipt);
+            } catch (InvocationTargetException error) {
+                result.put("admitted", false)
+                    .put("rejection", diagnostic(error.getTargetException()));
+            }
+            result.put("externalLookups", externalLookups(scratch))
+                .put("armCalls", io.liber.oracle.nested.SelectedFieldHostBridge.armCalls)
+                .put("bookHelpLookups", BookHelp.lookups)
+                .put("appDbLookups", AppDatabaseKt.lookups);
+            return result;
+        } finally {
+            deleteTree(base);
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         String control = args[0];
         JSONObject result;
@@ -10946,6 +11021,10 @@ public final class EarlyContainmentFixture {
             result = equalityRoute("database", true);
         } else if ("equal-database-route-outside-ordinary".equals(control)) {
             result = equalityRoute("database", false);
+        } else if ("external-outside-route-title".equals(control)) {
+            result = externalOutside(true);
+        } else if ("external-outside-route-ordinary".equals(control)) {
+            result = externalOutside(false);
         } else if ("ordinary-sibling-files-route".equals(control)) {
             result = rejection("sibling-files-route", false);
         } else {
@@ -11390,6 +11469,45 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
                     self.assertEqual(ordinary['armCalls'], 0)
                     self.assertEqual(ordinary['bookHelpLookups'], 0)
                     self.assertEqual(ordinary['appDbLookups'], 0)
+
+    def test_external_outside_refuses_without_expected_getter(self):
+        with tempfile.TemporaryDirectory(prefix='l138-early-external-') as directory:
+            java, classpath = self._classpath(Path(directory), controlled_scratch=True)
+            title = self._control(java, classpath, 'external-outside-route-title')
+            self.assertFalse(title['admitted'], 'title external outside was admitted')
+            message, diagnostic = self._rejection(title, 'external-outside-route-title')
+            self.assertTrue(message.startswith(
+                'the target application or its storage is not this bound scratch:'),
+                message)
+            self.assertEqual(diagnostic['failedCheck'], 'externalFilesRouted')
+            self.assertIs(diagnostic['externalFilesRouted'], False)
+            self.assertEqual(title['externalLookups'], 0)
+            self.assertIsNone(diagnostic['externalFilesExpectedPath'])
+            self.assertIs(diagnostic['externalFilesWithinScratch'], False)
+            self.assertEqual(diagnostic['externalFilesPath'], title['outsideCanonical'])
+            self.assertIs(diagnostic['filesRouted'], True)
+            self.assertIs(diagnostic['databaseRouted'], True)
+            self.assertIs(diagnostic['sameApplicationObject'], True)
+            self.assertIs(diagnostic['baseContextBound'], True)
+            self.assertEqual(title['armCalls'], 0)
+            self.assertEqual(title['bookHelpLookups'], 0)
+            self.assertEqual(title['appDbLookups'], 0)
+
+            ordinary = self._control(java, classpath, 'external-outside-route-ordinary')
+            self.assertFalse(ordinary['admitted'], 'ordinary external outside was admitted')
+            message, diagnostic = self._rejection(ordinary, 'external-outside-route-ordinary')
+            self.assertTrue(message.startswith(
+                'the target application or its storage is not this bound scratch:'),
+                message)
+            self.assertEqual(set(diagnostic), self.ORIGINAL_DIAGNOSTIC_KEYS)
+            self.assertIs(diagnostic['externalFilesRouted'], False)
+            self.assertIs(diagnostic['filesRouted'], True)
+            self.assertIs(diagnostic['databaseRouted'], True)
+            self.assertEqual(diagnostic['externalFilesPath'], ordinary['outsideCanonical'])
+            self.assertEqual(ordinary['externalLookups'], 0)
+            self.assertEqual(ordinary['armCalls'], 0)
+            self.assertEqual(ordinary['bookHelpLookups'], 0)
+            self.assertEqual(ordinary['appDbLookups'], 0)
 
 
 if __name__ == '__main__':

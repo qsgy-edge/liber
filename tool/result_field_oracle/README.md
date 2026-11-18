@@ -339,9 +339,10 @@ serialization and its original files/database equality checks. For the
 title-lifecycle corpus, a canonical escape, an external-files fallback, a
 sibling or traversal route, a different BookHelp directory and a different Room
 database are all refused before any receipt is published. A title-lifecycle
-refusal records the observed canonical route and the expected canonical scratch
-route for the affected storage; the proven absolute values are published only
-in the successful receipt.
+refusal records the observed canonical route and, when measured, the expected
+canonical scratch route for the affected storage; an out-of-root external
+observation records the expected route as unmeasured. The proven absolute
+values are published only in the successful receipt.
 
 The saved pair re-reads its own table of contents, so the same path appears
 twice in the declared sequence. The replay server serves a path's declared
