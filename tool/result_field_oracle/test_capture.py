@@ -11224,6 +11224,14 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
         self.assertIn('diagnostic', outcome['rejection'], control)
         return outcome['rejection']['message'], outcome['rejection']['diagnostic']
 
+    @staticmethod
+    def _within_or_equal(path, root):
+        try:
+            Path(path).relative_to(root)
+        except ValueError:
+            return False
+        return True
+
     def test_the_actual_early_containment_emits_the_bound_coordinate(self):
         with tempfile.TemporaryDirectory(prefix='l138-early-coordinate-') as directory:
             java, classpath = self._classpath(Path(directory))
@@ -11390,8 +11398,9 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
                         self.assertIs(diagnostic['bookHelpCacheExpectedMatch'], False)
                         self.assertNotEqual(diagnostic['bookHelpCacheObservedPath'],
                                             diagnostic['bookHelpCacheExpectedPath'])
-                        self.assertFalse(diagnostic['bookHelpCacheObservedPath'].startswith(
-                            diagnostic['scratchRoot'] + '/'))
+                        self.assertFalse(self._within_or_equal(
+                            diagnostic['bookHelpCacheObservedPath'],
+                            diagnostic['scratchRoot']))
                         self.assertEqual(outcome['bookHelpLookups'], 1)
                         self.assertEqual(outcome['appDbLookups'], 0)
                     else:
@@ -11400,8 +11409,9 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
                         self.assertIs(diagnostic['roomDatabaseExpectedMatch'], False)
                         self.assertNotEqual(diagnostic['roomDatabaseObservedPath'],
                                             diagnostic['roomDatabaseExpectedPath'])
-                        self.assertFalse(diagnostic['roomDatabaseObservedPath'].startswith(
-                            diagnostic['scratchRoot'] + '/'))
+                        self.assertFalse(self._within_or_equal(
+                            diagnostic['roomDatabaseObservedPath'],
+                            diagnostic['scratchRoot']))
                         self.assertEqual(outcome['bookHelpLookups'], 1)
                         self.assertEqual(outcome['appDbLookups'], 1)
 
@@ -11419,12 +11429,16 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
                         message)
                     if route == 'files':
                         self.assertEqual(diagnostic['failedCheck'], 'filesRouted')
+                        self.assertIs(diagnostic['filesRouted'], False)
+                        self.assertIs(diagnostic['databaseRouted'], True)
                         self.assertIs(diagnostic['filesExpectedMatch'], True)
                         self.assertIs(diagnostic['filesWithinScratch'], False)
                         self.assertIs(diagnostic['databaseExpectedMatch'], True)
                         self.assertIs(diagnostic['databaseWithinScratch'], True)
                     else:
                         self.assertEqual(diagnostic['failedCheck'], 'databaseRouted')
+                        self.assertIs(diagnostic['filesRouted'], True)
+                        self.assertIs(diagnostic['databaseRouted'], False)
                         self.assertIs(diagnostic['databaseExpectedMatch'], True)
                         self.assertIs(diagnostic['databaseWithinScratch'], False)
                         self.assertIs(diagnostic['filesExpectedMatch'], True)
