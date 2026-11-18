@@ -1646,7 +1646,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             add('install', ['shell', '-T',
                             capture._root_install_command(len(install_bytes))],
                 b'Success\n',
-                installCompletion='complete',
+                installCompletion='complete', outcome='success',
                 stdoutSha256=capture.sha256_bytes(b'Success\n'),
                 stderrSha256=capture.sha256_bytes(b''),
                 stdin={'bytes': len(install_bytes),
@@ -2011,6 +2011,9 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             row['timeoutSeconds'] = capture.ROOT_INSTALL_TIMEOUT
             row['installCompletion'] = 'unknown'
 
+        def contradictory_outcome(manifest, row, root_dir):
+            row['outcome'] = 'refused'
+
         def contradictory_stdout(manifest, row, root_dir):
             root = Path(root_dir)
             (root / 'install.stdout.log').write_bytes(b'Success\nUnexpected output\n')
@@ -2075,6 +2078,8 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             ('refused', refused_install, 'record failure: install'),
             ('unknown-completion', unknown_completion,
              'root install completion is unknown'),
+            ('contradictory-outcome', contradictory_outcome,
+             'root install outcome differs'),
             ('contradictory-stdout', contradictory_stdout,
              'success is missing or carries unexpected output'),
             ('stderr-text', stderr_text, 'contradictory stderr output'),
@@ -9390,7 +9395,7 @@ class FirebaseStartupIsolationAdmissionTest(unittest.TestCase):
 def root_install_receipt(command, size=3, digest='a' * 64, **extra):
     """One complete opt-in root receipt: the command, its stdin and both raw streams."""
     row = {'command': command, 'exitCode': 0, 'log': 'install.log',
-           'installCompletion': 'complete',
+           'installCompletion': 'complete', 'outcome': 'success',
            'stdoutSha256': capture.sha256_bytes(b'Success\n'),
            'stderrSha256': capture.sha256_bytes(b''),
            'stdin': {'bytes': size, 'sha256': digest}}
@@ -9569,7 +9574,7 @@ class RootInstallTest(unittest.TestCase):
             ('default-with-stdin', dict(default, stdin={'bytes': 3, 'sha256': 'a' * 64}),
              'title', 3, 'install receipt shape differs'),
             ('root-without-stdin', {key: root[key] for key in (
-                'command', 'exitCode', 'log', 'installCompletion',
+                'command', 'exitCode', 'log', 'installCompletion', 'outcome',
                 'stdoutSha256', 'stderrSha256')}, 'title', 3,
              'install receipt shape differs'),
             ('extra-field', dict(root, attempt=1), 'title', 3,
@@ -10112,9 +10117,13 @@ class RootSendBoundaryTest(unittest.TestCase):
                     if row['log'] == 'install.log']
         self.assertEqual(install['exitCode'], 0)
         self.assertEqual(install['installCompletion'], 'complete')
+        self.assertEqual(install['outcome'], 'success')
         self.assertEqual(install['stdin'],
                          {'bytes': len(send['bytes']),
                           'sha256': result['harnessDigest']})
+        self.assertIsNone(capture._admit_install_receipt(
+            install, 'title', result['manifest'], len(send['bytes']),
+            ['adb', '-s', capture.ROOT_INSTALL_SERIAL]))
         self.assertIn('install.stdout.log', result['files'])
         self.assertIn('install.stderr.log', result['files'])
 

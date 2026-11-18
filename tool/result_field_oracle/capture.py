@@ -95,7 +95,7 @@ ROOT_INSTALL_SERIAL = '5615f742'
 ROOT_INSTALL_TIMEOUT = 180
 INSTALL_RECEIPT_KEYS = {'command', 'exitCode', 'log'}
 ROOT_INSTALL_RECEIPT_KEYS = INSTALL_RECEIPT_KEYS | {
-    'stdin', 'installCompletion', 'stdoutSha256', 'stderrSha256'}
+    'stdin', 'installCompletion', 'outcome', 'stdoutSha256', 'stderrSha256'}
 # The two raw streams the root transport keeps beside the combined install log.
 INSTALL_STREAM_SUFFIXES = ('.stdout.log', '.stderr.log')
 # The one owned copy of the built harness an opt-in root invocation authorizes and sends.
@@ -361,6 +361,8 @@ def _admit_install_receipt(item, profile, manifest, installed_bytes, adb_prefix)
                          ' title corpus')
     if item.get('installCompletion') != 'complete':
         raise ValueError('root install completion is unknown')
+    if item.get('outcome') != 'success':
+        raise ValueError('root install outcome differs')
     for field in ('stdoutSha256', 'stderrSha256'):
         value = item.get(field)
         if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):

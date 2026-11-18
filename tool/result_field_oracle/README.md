@@ -259,8 +259,9 @@ unchanged.
 Admission accepts exactly one of the two shapes and never a hybrid: the default
 command with a stdin record, the root command without one, an edited command, a
 different `-S` length, a stdin length that differs from the pulled APK, a stdin
-digest that differs from the measured artifact, or a missing/incomplete
-completion is refused. The root shape is admitted only for the selected title
+digest that differs from the measured artifact, or a root receipt without
+`installCompletion: complete` and `outcome: success` is refused. The root shape
+is admitted only for the selected title
 profile, and the exact size and digest join the preflight artifact to the pulled
 `installed-harness.apk` byte identity, the bundle's own
 `harness-snapshot.apk` copy, the original owner-only cleanup and the private
