@@ -178,11 +178,10 @@ def _require_root_install_success(stdout, stderr, label):
     other stdout text and any stderr output are contradictions. Only the root shape uses
     this: the default install keeps its historical combined-output check.
     """
-    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
-    if lines != [b'Success']:
+    if stdout not in (b'Success', b'Success\n', b'Success\r\n'):
         raise ValueError('root install ' + label
                          + ' success is missing or carries unexpected output')
-    if stderr.strip():
+    if stderr:
         raise ValueError('root install ' + label + ' carried contradictory stderr output')
 
 
@@ -2382,7 +2381,8 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
          for operation in ('remove', 'absent') for index in range(1, len(names) + 1)}
     if set(indexed) - allowed:
         fail('contain unrecognized commands')
-    _admit_auxiliary_commands(indexed, output, preflight, adb_prefix, fail)
+    if installed_input is None:
+        _admit_auxiliary_commands(indexed, output, preflight, adb_prefix, fail)
     pid = _require_int(owner.get('seedPid'), 'owner.seedPid')
     pid_receipt = (output / 'owned-pid.log').read_bytes().strip()
     if not ((indexed['owned-pid.log']['exitCode'] == 1 and not pid_receipt)
@@ -2408,7 +2408,8 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
         fail('API differs')
     _require_selected_webview((output / 'webview.log').read_text(encoding='utf-8'),
                               profile)
-    _require_selected_success((output / 'install.log').read_bytes(), 'install')
+    if installed_input is not None:
+        _require_selected_success((output / 'install.log').read_bytes(), 'install')
     _require_selected_success((output / 'remove-harness.log').read_bytes(), 'uninstall')
     removed = subprocess.CompletedProcess(indexed['harness-removed-check.log']['command'], 0,
         (output / 'harness-removed-check.log').read_bytes(), b'')

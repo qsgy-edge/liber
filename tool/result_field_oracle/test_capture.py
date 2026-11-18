@@ -1899,6 +1899,28 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                         self.assertIn(expected, detail, label)
                         self.assertEqual(self._inventory(copy), before, label)
 
+    def test_default_bundle_keeps_optional_logcat_failure_compatibility(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, fixture, binding, harness_apk, target_apk, _ = \
+                self._bundle(base / 'default', portable=True)
+            manifest = json.loads((root / 'manifest.json').read_bytes())
+            manifest['commands'].append({
+                'command': ['adb', '-s', '5615f742', 'logcat', '-d', '-s', 'FieldOracle'],
+                'exitCode': 1, 'log': 'logcat-field-oracle.log'})
+            (root / 'logcat-field-oracle.log').write_bytes(b'logcat unavailable\n')
+            self._write_manifest(root, manifest)
+            code, stdout, stderr = self._pinned_main(
+                'finalize', root, root, binding, fixture, harness_apk, target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertTrue((root / 'golden.json').is_file())
+            before = self._inventory(root)
+            code, stdout, stderr = self._pinned_main(
+                'verify', root, base / 'default-verify', binding, fixture,
+                harness_apk, target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertEqual(self._inventory(root), before)
+
     def test_the_root_install_receipt_is_consumed_by_both_entry_paths(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -9502,6 +9524,9 @@ class RootInstallTest(unittest.TestCase):
                 (b'prefix\nSuccess\n', b'', 'unexpected output'),
                 (b'Success\nSuccess\n', b'', 'unexpected output'),
                 (b'not a success\n', b'', 'missing'),
+                (b' Success\n', b'', 'unexpected output'),
+                (b'\nSuccess\n', b'', 'unexpected output'),
+                (b'Success\n', b'\r\n', 'contradictory stderr'),
                 (b'Success\n', b'Unexpected diagnostic\n', 'contradictory stderr')):
             with self.subTest(stdout=stdout, stderr=stderr), \
                     self.assertRaisesRegex(ValueError, expected):
