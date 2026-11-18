@@ -2134,6 +2134,23 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                             encoding='utf-8'), label)
                         self.assertEqual(self._inventory(copy), before, label)
 
+    def test_default_finalize_keeps_the_historical_manifest_decoder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, fixture, binding, harness_apk, target_apk, _ = \
+                self._bundle(Path(directory) / 'default', portable=True)
+            manifest = root / 'manifest.json'
+            original = manifest.read_text(encoding='utf-8')
+            serial = '  "serial": "5615f742",\n'
+            self.assertEqual(original.count(serial), 1)
+            payload = original.replace(serial, serial + serial, 1)
+            self.assertEqual(json.loads(payload), json.loads(original))
+            manifest.write_text(payload, encoding='utf-8')
+            code, stdout, stderr = self._pinned_main(
+                'finalize', root, root, binding, fixture, harness_apk, target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertEqual(json.loads(manifest.read_bytes())['status'], 'observed')
+            self.assertTrue((root / 'golden.json').is_file())
+
     def test_both_entry_paths_reject_duplicate_manifest_members(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -2159,11 +2176,12 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             # One benign top-level member and one inside a command row, each repeated
             # with its own value, so a plain decoder sees exactly the accepted manifest.
             top_level = duplicate_line(original, '"serial": "5615f742",')
-            row_duplicate = duplicate_line(top_level, '"log": "source-head.log"')
+            row_duplicate = duplicate_line(original, '"log": "source-head.log"')
             self.assertEqual(json.loads(top_level), json.loads(original))
             self.assertEqual(json.loads(row_duplicate), json.loads(original))
-            for label, payload in (('top-level', top_level),
-                                   ('command-row', row_duplicate)):
+            for label, payload, key in (('top-level', top_level, 'serial'),
+                                        ('command-row', row_duplicate, 'log')):
+                expected = 'duplicate JSON key: ' + key
                 for mode in ('finalize', 'verify'):
                     copy = self._copy(clean, base / (label + '-' + mode))
                     (copy / 'manifest.json').write_text(payload, encoding='utf-8')
@@ -2175,7 +2193,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                         self.assertEqual(code, 1, label + ' ' + stdout + stderr)
                         failures = sorted(copy.glob('finalize-failure*.json'))
                         self.assertTrue(failures, label)
-                        self.assertIn('duplicate JSON key',
+                        self.assertIn(expected,
                                       failures[-1].read_text(encoding='utf-8'), label)
                         after = self._inventory(copy)
                         added = {path for path in after if path not in before}
@@ -2191,7 +2209,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                         self.assertEqual(code, 1, label + ' ' + stdout + stderr)
                         receipt = output / 'verification-failure.json'
                         self.assertTrue(receipt.is_file(), label)
-                        self.assertIn('duplicate JSON key',
+                        self.assertIn(expected,
                                       receipt.read_text(encoding='utf-8'), label)
                         self.assertEqual(self._inventory(copy), before, label)
 

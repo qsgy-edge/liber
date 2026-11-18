@@ -3091,10 +3091,13 @@ def main():
         try:
             report = json.loads((args.output / 'field-oracle.json').read_text(encoding='utf-8'))
             manifest_text = (args.output / 'manifest.json').read_text(encoding='utf-8')
-            # A selected manifest is decoded strictly so a duplicate member (including one
-            # inside a command row) cannot collapse before the root evidence is checked.
-            # The historical/default parser is unchanged.
-            manifest = (_strict_json(manifest_text) if selected_reference
+            # Root artifacts identify the bundle before any manifest member is decoded.
+            # Admitting a root receipt also requires these artifacts.
+            root_artifacts = (HARNESS_SNAPSHOT_NAME, *_install_stream_names('install'))
+            root_bundle = (selected_reference and _preflight_profile(fixture) == 'title'
+                           and any((args.output / name).exists()
+                                   for name in root_artifacts))
+            manifest = (_strict_json(manifest_text) if root_bundle
                         else json.loads(manifest_text))
             report_bytes = (args.output / 'field-oracle.json').read_bytes()
         except Exception as error:

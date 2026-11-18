@@ -271,11 +271,10 @@ to equal their composition, and it applies the root-only success check (exactly
 one `Success` stdout line and no stderr output) to the raw streams. The six
 root-only auxiliary rows are pinned to their one real invocation and to exactly
 the producer's `{command, exitCode, log}` keys, so a second install, another
-privileged command or a mixed receipt cannot masquerade there. Selected
-`--finalize` decodes the manifest with the duplicate-rejecting decoder that
-`--verify-bundle` already used, so a repeated member cannot collapse before the
-root evidence is checked; the historical/default parser is unchanged. Neither an
-unknown-completion nor a refused receipt can qualify a bundle. The root transport
+privileged command or a mixed receipt cannot masquerade there. For selected title
+bundles with root artifacts, `--finalize` rejects duplicate manifest keys just
+as `--verify-bundle` does. The default finalization parser is unchanged. Neither
+an unknown-completion nor a refused receipt can qualify a bundle. The root transport
 is non-incremental and does not pass the `idsig` to the installer; offline
 artifact verification still includes the `idsig`.
 
