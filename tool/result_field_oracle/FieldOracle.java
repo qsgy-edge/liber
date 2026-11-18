@@ -101,6 +101,8 @@ public final class FieldOracle extends Instrumentation {
     private boolean selectedReference;
     /** Whether this selection is the one title-lifecycle corpus, known before startup. */
     private boolean titleLifecycleSelection;
+    /** The title-only startup proof, taken once at the scratch binding boundary. */
+    private JSONObject firebaseStartupIsolationProof;
     private Object rootJob;
     private Method jobChildren, jobCompleted, jobActive, sequenceIterator;
     private Object selectedDatabase;
@@ -571,11 +573,8 @@ public final class FieldOracle extends Instrumentation {
                 report.put("startupContainment", bridge.getMethod("shortcutReceipt",
                     StateSessionOracle.ScratchContext.class).invoke(null, scratch));
                 if (titleLifecycleSelection) {
-                    // The title-only startup proof is enforced here, before the host
-                    // initialisation, the database and the replay server are reached.
-                    report.put("firebaseStartupIsolation", bridge.getMethod(
-                        "firebaseStartupReceipt", StateSessionOracle.ScratchContext.class)
-                        .invoke(null, scratch));
+                    // Emitted from the binding boundary's own receipt, never queried again.
+                    emitTitleStartupProof(report);
                 }
                 ClassLoader loader = getTargetContext().getClassLoader();
                 report.put("hostInitialization", bridge.getMethod("initialize",
@@ -1113,6 +1112,12 @@ public final class FieldOracle extends Instrumentation {
             throw new IllegalStateException("selected installed target differs");
         }
         scratch.bind("seed", identity);
+        if (titleLifecycleSelection) {
+            // The title proof is taken at the real binding boundary: a missing or
+            // unconsumed marker fails here, before the application guard, BookHelp or
+            // the writable Room open below. The same receipt is emitted into the report.
+            firebaseStartupIsolationProof = titleStartupProof();
+        }
         // The application and storage ownership proof runs here, before the first
         // search can initialise BookHelp (BookList formats the book name through
         // it), so this is the real pre-initialisation boundary rather than a late
@@ -1155,6 +1160,30 @@ public final class FieldOracle extends Instrumentation {
             .put("preferencesPrefix", scratch.preferencesPrefix())
             .put("preferenceProbe", probe)
             .put("earlyContainment", earlyContainment);
+    }
+
+    /** The title-only startup proof, taken once at the binding boundary. */
+    private JSONObject titleStartupProof() throws Exception {
+        Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
+        try {
+            return (JSONObject) bridge.getMethod("firebaseStartupReceipt",
+                StateSessionOracle.ScratchContext.class).invoke(null, scratch);
+        } catch (InvocationTargetException error) {
+            // Surface the guard's own refusal instead of the reflective wrapper.
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception) throw (Exception) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw error;
+        }
+    }
+
+    /** Emits the proof taken at the binding boundary; never queries the guard again. */
+    private void emitTitleStartupProof(JSONObject report) throws JSONException {
+        if (firebaseStartupIsolationProof == null) {
+            throw new IllegalStateException(
+                "the title startup proof was not taken at the binding boundary");
+        }
+        report.put("firebaseStartupIsolation", firebaseStartupIsolationProof);
     }
 
     /** Whether a canonical path lies inside the owned scratch root. */

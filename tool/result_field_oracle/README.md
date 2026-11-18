@@ -226,24 +226,39 @@ absence, private snapshot) runs first, and only the one install command differs.
 The root transport sends the exact built APK bytes from Python on the child's
 stdin, with no TTY and no text pipe, and asks the device only for
 `pm install --user 0 -r`. The command carries no other text, name or path, and
-`su` is never asked for another helper, package, setting or shell. The recorded
-`install` receipt for that shape adds one `stdin` record with the actual byte
-length and SHA-256; the default receipt keeps exactly its original
-`{command, exitCode, log}` shape, so every retained bundle stays valid.
+`su` is never asked for another helper, package, setting or shell. Before
+anything is sent, that one in-memory buffer is bound to the digest this
+invocation's successful signed preflight measured (the preflight itself checks
+its artifact digest is unchanged across its manifest, signer and ABI reads), and
+the later artifact inspection and manifest digest have to agree with it; a
+missing, malformed or changed binding fails closed with zero sends and the
+default install keeps its byte-for-byte path. The recorded `install` receipt for
+the root shape adds the `stdin` byte length and SHA-256, an explicit completion,
+and the SHA-256 of each raw stream; the default receipt keeps exactly its
+original `{command, exitCode, log}` shape, so every retained bundle stays valid.
 
 Admission accepts exactly one of the two shapes and never a hybrid: the default
 command with a stdin record, the root command without one, an edited command, a
-different `-S` length, a stdin length that differs from the pulled APK, or a
-stdin digest that differs from the measured artifact is refused. The root shape
-is admitted only for the selected title profile, and the exact size and digest
-join the preflight artifact to the pulled `installed-harness.apk` byte identity,
-the original owner-only cleanup and the private before/after equality. A nonzero
-or ambiguous install result stops the run before instrumentation, without retry
-or fallback. A timed-out root install preserves the command, the supplied stdin
-length and hash, and the available output, with no exit code and completion
-marked unknown. That receipt cannot qualify a bundle. The root transport is
-non-incremental and does not pass the `idsig` to the installer; offline artifact
-verification still includes the `idsig`.
+different `-S` length, a stdin length that differs from the pulled APK, a stdin
+digest that differs from the measured artifact, or a missing/incomplete
+completion is refused. The root shape is admitted only for the selected title
+profile, and the exact size and digest join the preflight artifact to the pulled
+`installed-harness.apk` byte identity, the original owner-only cleanup and the
+private before/after equality. Retained root evidence keeps the combined
+`install.log` and the two raw `install.stdout.log`/`install.stderr.log` streams:
+admission requires the recorded stream digests to match those files and the
+combined log to equal their composition, and it applies the root-only success
+check (exactly one `Success` stdout line and no stderr output) to the raw
+streams. The auxiliary rows are pinned to their one real invocation, so a second
+install or another privileged command cannot masquerade under an auxiliary log
+name. A nonzero or ambiguous install result stops the run before instrumentation,
+without retry or fallback. A timed-out root install preserves the command, the
+supplied stdin length and hash, and the available output, with no exit code and
+completion marked unknown; a catchable host interruption preserves the attempted
+command and stdin binding with no fabricated exit, status or transfer length.
+Neither receipt can qualify a bundle. The root transport is non-incremental and
+does not pass the `idsig` to the installer; offline artifact verification still
+includes the `idsig`.
 
 ### Reader follow-through selected corpus
 
@@ -358,17 +373,23 @@ Play Services measurement registration this harness rejects. The fact is exactly
 `{provider: com.google.firebase.provider.FirebaseInitProvider, intercepted: 1,
 handled: true, beforeBinding: true}`: one owned marker issued on the MAIN thread
 before the binding, consumed once by the instrumentation exception seam. It is
-enforced before host initialisation, the database and the replay server, and an
+taken immediately after the scratch binds and emitted from that same receipt, so
+it is required before the application guard, `BookHelp` and the writable Room
+open, and before host initialisation, the database and the replay server. An
 absent, malformed or non-exact fact is refused by both live finalization and
 offline verification. Every other resource read, every other Firebase caller,
 and a non-title selected corpus' report, exception handling and public output
 are unchanged; a corpus without the lifecycle observation may not carry the
 fact. The focused controls run the production scratch/bridge bytes against
 android-35: the exact read, a plain resource read, an unrelated caller, the
-ordinary scratch, forged/wrapped/unknown/duplicate acknowledgements and the
-later, second and off-main phases (`FirebaseStartupIsolationHostTest`), plus the
-real admission for a valid proof, each absent/malformed/non-exact variant and
-an ordinary corpus that cannot claim it (`FirebaseStartupIsolationAdmissionTest`).
+ordinary scratch, a genuine foreign-owner marker, forged/wrapped/unknown/duplicate
+acknowledgements and the later, second, off-main and late/off-main acknowledgement
+phases (`FirebaseStartupIsolationHostTest`), plus the real admission for a valid
+proof, each absent/malformed/non-exact variant and an ordinary corpus that cannot
+claim it (`FirebaseStartupIsolationAdmissionTest`). `TitleBindingOrderTest` drives
+the real `bindScratch` over a bound scratch and proves the missing proof fails
+before the guard arm, `BookHelp` or the Room open, while the positive emits the
+one receipt taken at that boundary.
 
 The selected runtime also joins `isolation.earlyContainment` to the measured
 target-private root: the guarded application identity and base-context binding;

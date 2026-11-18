@@ -494,6 +494,11 @@ _SYNTHETIC_TARGET_APK = _synthetic_dex_archive('classes19.dex', b'synthetic-refe
 _SYNTHETIC_HARNESS_APK = _synthetic_dex_archive('classes.dex', b'synthetic-harness-dex')
 
 
+def _jdk_launcher(java, name):
+    """The configured JDK's launcher for this platform."""
+    return Path(java) / 'bin' / (name + ('.exe' if os.name == 'nt' else ''))
+
+
 def _synthetic_selected_preflight(output, fixture, artifact, apk, target, source, sdk, java, references,
                                   reference_dex_sha=None, harness_dex_sha=None, title=False):
     tools = sdk / 'build-tools' / '35.0.1'
@@ -1274,7 +1279,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         return _snapshot_bytes(capture.FROZEN_APP_STORE,
                                ['.', 'cache', 'databases', 'shared_prefs', 'files'])
 
-    def _bundle(self, root, root_install=False):
+    def _bundle(self, root, root_install=False, portable=False):
         root = Path(root)
         root.mkdir(parents=True, exist_ok=True)
         fixture = self._fixture()
@@ -1283,15 +1288,24 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         raw = capture.sha256_bytes(corpus_bytes)
         lf = capture.sha256_bytes(capture.lf_bytes(corpus_bytes))
         harness_apk = self._harness_apk(root, corpus_bytes, fixture)
-        target_apk = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/'
-                          'phone-resume-20261020-01a15796/controller/'
-                          'team-baseline-migration-01/reference-stage/artifacts/'
-                          'legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
-        if not target_apk.is_file():
-            self.fail('the pinned target APK is required for the physical entry test')
-        target_sha = capture.sha256(target_apk)
-        with zipfile.ZipFile(target_apk) as archive:
-            reference_dex_sha = capture.sha256_bytes(archive.read('classes19.dex'))
+        if portable:
+            # The repository's own synthetic target keeps this packet off the pinned
+            # handset APK; the fixed target identity is supplied by the pin double.
+            target_apk = root / 'target.apk'
+            target_apk.write_bytes(_synthetic_dex_archive(
+                'classes19.dex', b'synthetic-reference-dex'))
+            target_sha = fixture['target']['apkSha256']
+            reference_dex_sha = None
+        else:
+            target_apk = Path('C:/Users/17945/AppData/Local/liber-evidence/spec133/'
+                              'phone-resume-20261020-01a15796/controller/'
+                              'team-baseline-migration-01/reference-stage/artifacts/'
+                              'legado-3.26101819-a7d37f1-appDebug-minsdk26.apk')
+            if not target_apk.is_file():
+                self.fail('the pinned target APK is required for the physical entry test')
+            target_sha = capture.sha256(target_apk)
+            with zipfile.ZipFile(target_apk) as archive:
+                reference_dex_sha = capture.sha256_bytes(archive.read('classes19.dex'))
         artifact = capture.inspect_selected_apk(
             harness_apk,
             Path(__file__).resolve().parent
@@ -1600,9 +1614,14 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             self.TARGET_ROOT)), before)
         if root_install:
             install_bytes = harness_apk.read_bytes()
+            (root / 'install.stdout.log').write_bytes(b'Success\n')
+            (root / 'install.stderr.log').write_bytes(b'')
             add('install', ['shell', '-T',
                             capture._root_install_command(len(install_bytes))],
                 b'Success\n',
+                installCompletion='complete',
+                stdoutSha256=capture.sha256_bytes(b'Success\n'),
+                stderrSha256=capture.sha256_bytes(b''),
                 stdin={'bytes': len(install_bytes),
                        'sha256': capture.sha256_bytes(install_bytes)})
         else:
@@ -1693,6 +1712,28 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         (Path(root) / 'manifest.json').write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + '\n',
             encoding='utf-8')
+
+    def _pinned_main(self, mode, root, output, binding, fixture, harness_apk,
+                     target_apk):
+        """Both entry paths under the repository's fixed-target pin double.
+
+        The portable synthetic target keeps the fixed target identity through this
+        double, so these controls never read the operator's pinned handset APK.
+        """
+        from unittest.mock import patch
+        real = capture.sha256
+        pinned = capture.SELECTED_TARGET['apkSha256']
+        synthetic = Path(target_apk)
+
+        def pin(path):
+            path = Path(path)
+            if path.name == 'frozen.apk' or path == synthetic:
+                return pinned
+            return real(path)
+
+        with patch.object(capture, 'sha256', side_effect=pin):
+            return self._main(mode, root, output, binding, fixture, harness_apk,
+                              target_apk)
 
     def _mutate(self, root, label):
         root = Path(root)
@@ -1862,20 +1903,25 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             root, fixture, binding, harness_apk, target_apk, _ = \
-                self._bundle(base / 'root', root_install=True)
-            code, stdout, stderr = self._main(
+                self._bundle(base / 'root', root_install=True, portable=True)
+            before = self._inventory(root)
+            code, stdout, stderr = self._pinned_main(
                 'finalize', root, root, binding, fixture, harness_apk,
                 target_apk)
             self.assertEqual(code, 0, stdout + stderr)
             self.assertTrue((root / 'golden.json').is_file())
+            accepted = self._inventory(root)
             verify = base / 'root-verify'
-            code, stdout, stderr = self._main(
+            code, stdout, stderr = self._pinned_main(
                 'verify', root, verify, binding, fixture, harness_apk,
                 target_apk)
             self.assertEqual(code, 0, stdout + stderr)
             self.assertEqual(
                 json.loads((verify / 'verification.json').read_bytes())['status'],
                 'verified-bundle')
+            self.assertEqual(self._inventory(root), accepted,
+                             'verify must not rewrite an accepted bundle')
+            self.assertEqual(set(accepted) - set(before), {'golden.json'})
 
     def test_both_entry_paths_refuse_hybrid_or_refused_root_install_receipts(self):
         def install_row(root_dir):
@@ -1912,9 +1958,55 @@ class TitlePhysicalEntryTest(unittest.TestCase):
 
         def unknown_completion(manifest, row, root_dir):
             row['exitCode'] = None
-            row['status'] = 'timeout'
+            row['outcome'] = 'timeout'
             row['timeoutSeconds'] = capture.ROOT_INSTALL_TIMEOUT
             row['installCompletion'] = 'unknown'
+
+        def contradictory_stdout(manifest, row, root_dir):
+            root = Path(root_dir)
+            (root / 'install.stdout.log').write_bytes(b'Success\nUnexpected output\n')
+            (root / 'install.log').write_bytes(
+                b'Success\nUnexpected output\n' + (root / 'install.stderr.log').read_bytes())
+            row['stdoutSha256'] = capture.sha256_bytes(b'Success\nUnexpected output\n')
+
+        def stderr_text(manifest, row, root_dir):
+            root = Path(root_dir)
+            (root / 'install.stderr.log').write_bytes(b'Permission denied\n')
+            (root / 'install.log').write_bytes(
+                (root / 'install.stdout.log').read_bytes() + b'Permission denied\n')
+            row['stderrSha256'] = capture.sha256_bytes(b'Permission denied\n')
+
+        def missing_terminal(manifest, row, root_dir):
+            root = Path(root_dir)
+            (root / 'install.stdout.log').write_bytes(b'')
+            (root / 'install.log').write_bytes(
+                (root / 'install.stderr.log').read_bytes())
+            row['stdoutSha256'] = capture.sha256_bytes(b'')
+
+        def missing_stream(manifest, row, root_dir):
+            (Path(root_dir) / 'install.stdout.log').unlink()
+
+        def composition(manifest, row, root_dir):
+            root = Path(root_dir)
+            (root / 'install.log').write_bytes(
+                (root / 'install.stdout.log').read_bytes()
+                + (root / 'install.stderr.log').read_bytes() + b'\n')
+
+        def stream_digest(manifest, row, root_dir):
+            row['stdoutSha256'] = capture.sha256_bytes(b'other')
+
+        def auxiliary_install(manifest, row, root_dir):
+            duplicate = dict(row, log='model.log')
+            (Path(root_dir) / 'model.log').write_bytes(b'Success\n')
+            manifest['commands'].insert(
+                manifest['commands'].index(row) + 1, duplicate)
+
+        def auxiliary_privileged(manifest, row, root_dir):
+            manifest['commands'].append({
+                'command': ['adb', '-s', '5615f742', 'shell', '-T',
+                            capture._root_install_command(3)],
+                'exitCode': 0, 'log': 'scan-extra.log'})
+            (Path(root_dir) / 'scan-extra.log').write_bytes(b'Success\n')
 
         mutations = (
             ('hybrid', replace_command, 'install receipt shape differs'),
@@ -1926,12 +2018,23 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             ('refused', refused_install, 'record failure: install'),
             ('unknown-completion', unknown_completion,
              'root install completion is unknown'),
+            ('contradictory-stdout', contradictory_stdout,
+             'success is missing or carries unexpected output'),
+            ('stderr-text', stderr_text, 'contradictory stderr output'),
+            ('missing-terminal', missing_terminal,
+             'success is missing or carries unexpected output'),
+            ('missing-stream', missing_stream, 'root install streams are missing'),
+            ('composition', composition, 'stream composition differs'),
+            ('stream-digest', stream_digest, 'stream digests differ'),
+            ('auxiliary-install', auxiliary_install, 'model command differs'),
+            ('auxiliary-privileged', auxiliary_privileged,
+             'unrecognized commands'),
         )
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             clean, fixture, binding, harness_apk, target_apk, _ = \
-                self._bundle(base / 'root-clean', root_install=True)
-            code, stdout, stderr = self._main(
+                self._bundle(base / 'root-clean', root_install=True, portable=True)
+            code, stdout, stderr = self._pinned_main(
                 'finalize', clean, clean, binding, fixture, harness_apk,
                 target_apk)
             self.assertEqual(code, 0, stdout + stderr)
@@ -1943,7 +2046,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                     self._write_manifest(copy, manifest)
                     before = self._inventory(copy)
                     if mode == 'finalize':
-                        code, stdout, stderr = self._main(
+                        code, stdout, stderr = self._pinned_main(
                             'finalize', copy, copy, binding, fixture,
                             harness_apk, target_apk)
                         self.assertEqual(code, 1, label + ' ' + stdout + stderr)
@@ -1959,7 +2062,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                             self.assertEqual(after[path], value, (label, path))
                     else:
                         output = base / (label + '-verify-out')
-                        code, stdout, stderr = self._main(
+                        code, stdout, stderr = self._pinned_main(
                             'verify', copy, output, binding, fixture,
                             harness_apk, target_apk)
                         self.assertEqual(code, 1, label + ' ' + stdout + stderr)
@@ -8828,6 +8931,27 @@ public final class TitleStartupFixture {
                 "the same marker is still consumable once on the main thread");
             title.bind("seed", identity());
             SelectedFieldHostBridge.firebaseStartupReceipt(title);
+        } else if ("foreign-owner".equals(control)) {
+            StateSessionOracle.ScratchContext other = SelectedFieldHostBridge.titleScratch(
+                new Base(cache), "title-other", "l138_title_fixture_");
+            Throwable local = providerRead(title);
+            Throwable foreign = providerRead(other);
+            require(local instanceof IllegalStateException
+                && foreign instanceof IllegalStateException,
+                "both eligible scratches issue their own marker");
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null,
+                foreign), "another owner's genuine marker is not this containment");
+            require(receiptRefusal(title).contains("handled=false"),
+                "the foreign acknowledgement does not consume the local marker: "
+                    + receiptRefusal(title));
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, local),
+                "the local owned marker still consumes once");
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(other, null, foreign),
+                "the other scratch still consumes its own marker once");
+            title.bind("seed", identity());
+            other.bind("seed", identity());
+            SelectedFieldHostBridge.firebaseStartupReceipt(title);
+            SelectedFieldHostBridge.firebaseStartupReceipt(other);
         } else if ("off-main".equals(control)) {
             Looper.CURRENT = new Looper();
             Throwable marker = providerRead(title);
@@ -8871,42 +8995,14 @@ class FirebaseStartupIsolationHostTest(unittest.TestCase):
     """
 
     CONTROLS = ('exact', 'unbound', 'plain-resource', 'partial-stack',
-                'intervening-stack', 'ordinary-scratch', 'forged', 'wrapped',
-                'receiver', 'duplicate', 'second-read', 'late-read', 'off-main',
-                'late-ack', 'off-main-ack')
+                'intervening-stack', 'ordinary-scratch', 'foreign-owner', 'forged',
+                'wrapped', 'receiver', 'duplicate', 'second-read', 'late-read',
+                'off-main', 'late-ack', 'off-main-ack')
 
-    def _java_home(self):
-        candidates = []
-        if os.environ.get('JAVA_HOME'):
-            candidates.append(Path(os.environ['JAVA_HOME']))
-        candidates.append(Path.home() / '.cache/wayfinder/temurin-17/jdk-17.0.20+8')
-        candidates.append(Path('C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8'))
-        for candidate in candidates:
-            if (candidate / 'bin' / 'javac.exe').is_file():
-                return candidate
-        raise unittest.SkipTest('no pinned JDK is discoverable')
-
-    def _android_jar(self):
-        roots = [Path(os.environ.get('ANDROID_HOME', '')),
-                 Path(os.environ.get('ANDROID_SDK_ROOT', '')),
-                 Path(os.environ.get('LOCALAPPDATA', '')) / 'Android/Sdk',
-                 Path('C:/Users/17945/AppData/Local/Android/Sdk')]
-        for root in roots:
-            jar = root / 'platforms/android-35/android.jar'
-            if jar.is_file():
-                return jar
-        raise unittest.SkipTest('no android-35 SDK platform is discoverable')
-
-    def _json_jar(self):
-        for root in (Path.home() / '.gradle/caches',
-                     Path('C:/Users/17945/.gradle/caches')):
-            found = sorted(root.glob('**/instrumented-json-20180813.jar'))
-            if found:
-                return found[0]
-        raise unittest.SkipTest('no installed org.json jar is discoverable')
-
-    def _run(self, argv, cwd):
-        return subprocess.run(argv, cwd=str(cwd), capture_output=True, timeout=600)
+    _java_home = GuardedReaderApplicationHostTest._java_home
+    _android_jar = GuardedReaderApplicationHostTest._android_jar
+    _json_jar = GuardedReaderApplicationHostTest._json_jar
+    _run = GuardedReaderApplicationHostTest._run
 
     def _producer_classpath(self, repo, java, android, jar, root):
         """SDK-first sources, then the substituted OS/provider seam, then the driver."""
@@ -8914,7 +9010,7 @@ class FirebaseStartupIsolationHostTest(unittest.TestCase):
         sdk_classes = root / 'sdk-classes'
         sdk_classes.mkdir()
         sdk_compiled = self._run(
-            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+            [str(_jdk_launcher(java, 'javac')), '-source', '8', '-target', '8',
              '-nowarn', '-encoding', 'UTF-8', '-cp', str(android), '-d', str(sdk_classes),
              str(repo / 'tool/nested_oracle/StateSessionOracle.java'),
              str(repo / 'tool/nested_oracle/HostRuntimeInit.java'),
@@ -8934,7 +9030,7 @@ class FirebaseStartupIsolationHostTest(unittest.TestCase):
         overlay_classes = root / 'overlay-classes'
         overlay_classes.mkdir()
         overlay_compiled = self._run(
-            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+            [str(_jdk_launcher(java, 'javac')), '-source', '8', '-target', '8',
              '-nowarn', '-encoding', 'UTF-8', '-cp',
              os.pathsep.join([str(jar), str(sdk_classes)]), '-d', str(overlay_classes)]
             + [str(path) for path in overlay_sources],
@@ -8956,7 +9052,7 @@ class FirebaseStartupIsolationHostTest(unittest.TestCase):
             outcomes = {}
             for control in self.CONTROLS:
                 run = self._run(
-                    [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                    [str(_jdk_launcher(java, 'java')), '-cp', run_cp,
                      'io.liber.oracle.fields.TitleStartupFixture', control],
                     repo)
                 stdout = run.stdout.decode(errors='replace').strip()
@@ -9150,6 +9246,17 @@ class FirebaseStartupIsolationAdmissionTest(unittest.TestCase):
                 self._manifest())
 
 
+def root_install_receipt(command, size=3, digest='a' * 64, **extra):
+    """One complete opt-in root receipt: the command, its stdin and both raw streams."""
+    row = {'command': command, 'exitCode': 0, 'log': 'install.log',
+           'installCompletion': 'complete',
+           'stdoutSha256': capture.sha256_bytes(b'Success\n'),
+           'stderrSha256': capture.sha256_bytes(b''),
+           'stdin': {'bytes': size, 'sha256': digest}}
+    row.update(extra)
+    return row
+
+
 ROOT_INSTALL_RECORDER = r'''"""Record the argv tail and the exact stdin bytes of one child run."""
 import hashlib
 import json
@@ -9302,10 +9409,8 @@ class RootInstallTest(unittest.TestCase):
         self.assertEqual(
             capture._admit_install_receipt(default, 'title', manifest, 3, prefix),
             'C:/build/field-oracle.apk')
-        root = {'command': prefix + ['shell', '-T',
-                                     capture._root_install_command(3)],
-                'exitCode': 0, 'log': 'install.log', 'stdin': {'bytes': 3,
-                                                               'sha256': 'a' * 64}}
+        root = root_install_receipt(prefix + ['shell', '-T',
+                                             capture._root_install_command(3)])
         self.assertIsNone(
             capture._admit_install_receipt(root, 'title', manifest, 3, prefix))
 
@@ -9315,16 +9420,28 @@ class RootInstallTest(unittest.TestCase):
         default = {'command': prefix + ['install', '-r', 'C:/build/field-oracle.apk'],
                    'exitCode': 0, 'log': 'install.log'}
         root_command = ['shell', '-T', capture._root_install_command(3)]
-        root = {'command': prefix + root_command, 'exitCode': 0,
-                'log': 'install.log', 'stdin': {'bytes': 3, 'sha256': 'a' * 64}}
+        root = root_install_receipt(prefix + root_command)
         cases = (
             ('default-with-stdin', dict(default, stdin={'bytes': 3, 'sha256': 'a' * 64}),
              'title', 3, 'install receipt shape differs'),
             ('root-without-stdin', {key: root[key] for key in (
-                'command', 'exitCode', 'log')}, 'title', 3,
+                'command', 'exitCode', 'log', 'installCompletion',
+                'stdoutSha256', 'stderrSha256')}, 'title', 3,
              'install receipt shape differs'),
             ('extra-field', dict(root, attempt=1), 'title', 3,
              'install receipt shape differs'),
+            ('pending', dict(root, installCompletion='pending'), 'title', 3,
+             'completion is unknown'),
+            ('unknown', dict(root, installCompletion='unknown'), 'title', 3,
+             'completion is unknown'),
+            ('timeout-outcome', dict(root, installCompletion='unknown',
+                                     outcome='timeout', timeoutSeconds=180),
+             'title', 3, 'completion is unknown'),
+            ('stream-digest-missing', {key: value for key, value in root.items()
+                                       if key != 'stderrSha256'}, 'title', 3,
+             'install receipt shape differs'),
+            ('stream-digest-shape', dict(root, stdoutSha256='not-a-digest'), 'title', 3,
+             'root install stream receipt differs'),
             ('wrong-serial', dict(root, command=['adb', '-s', '0123456789'] + root_command),
              'title', 3, 'root install command differs'),
             ('wrong-session', dict(root, command=prefix + ['shell', '-T',
@@ -9352,6 +9469,43 @@ class RootInstallTest(unittest.TestCase):
             with self.subTest(label=label), \
                     self.assertRaisesRegex(ValueError, expected):
                 capture._admit_install_receipt(item, profile, manifest, size, prefix)
+
+    def test_the_signed_preflight_binding_is_required_and_exact(self):
+        data = b'signed harness bytes'
+        digest = capture.sha256_bytes(data)
+        capture._bind_signed_apk(data, {'artifact': {'apkSha256': digest}})
+        capture._bind_signed_apk(data, {'artifact': {'apkSha256': digest}},
+                                 {'apkSha256': digest}, digest)
+        cases = (
+            ({}, {}, None, 'binding is missing'),
+            ({'artifact': {}}, None, None, 'digest is malformed'),
+            ({'artifact': {'apkSha256': 'not-a-digest'}}, None, None,
+             'digest is malformed'),
+            ({'artifact': {'apkSha256': '0' * 64}}, None, None,
+             'bytes differ from their signed preflight'),
+            ({'artifact': {'apkSha256': digest}}, {'apkSha256': '0' * 64}, None,
+             'inspected artifact differs'),
+            ({'artifact': {'apkSha256': digest}}, None, '1' * 64,
+             'manifest APK digest differs'),
+        )
+        for binding, artifact, measured, expected in cases:
+            with self.subTest(expected=expected), \
+                    self.assertRaisesRegex(ValueError, expected):
+                capture._bind_signed_apk(data, binding, artifact, measured)
+
+    def test_the_root_success_check_is_unambiguous(self):
+        capture._require_root_install_success(b'Success\n', b'', 'install')
+        capture._require_root_install_success(b'Success\r\n', b'', 'install')
+        for stdout, stderr, expected in (
+                (b'', b'', 'missing'),
+                (b'Success\npartial output\n', b'', 'unexpected output'),
+                (b'prefix\nSuccess\n', b'', 'unexpected output'),
+                (b'Success\nSuccess\n', b'', 'unexpected output'),
+                (b'not a success\n', b'', 'missing'),
+                (b'Success\n', b'Unexpected diagnostic\n', 'contradictory stderr')):
+            with self.subTest(stdout=stdout, stderr=stderr), \
+                    self.assertRaisesRegex(ValueError, expected):
+                capture._require_root_install_success(stdout, stderr, 'install')
 
 
 ROOT_INSTALL_PARTIAL_CHILD = (
@@ -9390,7 +9544,9 @@ class RootInstallTimeoutTest(unittest.TestCase):
         args = Args()
         args.output = Path(output)
         namespace = {'manifest': {'commands': []}, 'args': args,
-                     'sha256_bytes': capture.sha256_bytes, 'subprocess': runner}
+                     'sha256_bytes': capture.sha256_bytes, 'subprocess': runner,
+                     '_partial_streams': capture._partial_streams,
+                     '_write_install_streams': capture._write_install_streams}
         exec(compile(ast.Module(body=[run], type_ignores=[]), capture.__file__,
                      'exec'), namespace)
         return namespace['run'], namespace['manifest']
@@ -9434,13 +9590,17 @@ class RootInstallTimeoutTest(unittest.TestCase):
             entry, = manifest['commands']
             self.assertEqual(entry['command'], calls[0]['command'])
             self.assertIsNone(entry['exitCode'], 'a timeout is not an exit code')
-            self.assertEqual(entry['status'], 'timeout')
+            self.assertEqual(entry['outcome'], 'timeout')
             self.assertEqual(entry['timeoutSeconds'], self.BOUND)
             self.assertEqual(entry['installCompletion'], 'unknown')
             self.assertEqual(entry['stdin'], {'bytes': len(data), 'sha256': digest})
             preserved = (output / 'install.log').read_bytes()
             self.assertEqual(preserved,
                              b'partial install outputpartial install error')
+            self.assertEqual((output / 'install.stdout.log').read_bytes(),
+                             b'partial install output')
+            self.assertEqual((output / 'install.stderr.log').read_bytes(),
+                             b'partial install error')
             self.assertEqual(entry['stdoutSha256'],
                              capture.sha256_bytes(b'partial install output'))
             self.assertEqual(entry['stderrSha256'],
@@ -9576,9 +9736,10 @@ class RootInstallTimeoutTest(unittest.TestCase):
                     '--target-apk', str(target),
                     '--asset', str(fixture_path), '--frozen-source', str(source),
                     '--java-home', 'C:/java', '--android-sdk', 'C:/sdk']
+            approved = capture.sha256_bytes(harness.read_bytes())
             with patch.object(sys, 'argv', argv), \
                     patch.object(capture, 'selected_preflight',
-                                 return_value={'synthetic': True}), \
+                                 return_value={'artifact': {'apkSha256': approved}}), \
                     patch.object(capture, 'sha256', selected_target_digest), \
                     patch.object(capture.subprocess, 'run', device.run), \
                     patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
@@ -9594,7 +9755,7 @@ class RootInstallTimeoutTest(unittest.TestCase):
                              ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell',
                               '-T', install_command])
             self.assertIsNone(entry['exitCode'])
-            self.assertEqual(entry['status'], 'timeout')
+            self.assertEqual(entry['outcome'], 'timeout')
             self.assertEqual(entry['timeoutSeconds'], self.BOUND)
             self.assertEqual(entry['installCompletion'], 'unknown')
             harness_bytes = harness.read_bytes()
@@ -9603,6 +9764,10 @@ class RootInstallTimeoutTest(unittest.TestCase):
                               'sha256': capture.sha256_bytes(harness_bytes)})
             self.assertEqual((output / 'install.log').read_bytes(),
                              b'partial install outputpartial install error')
+            self.assertEqual((output / 'install.stdout.log').read_bytes(),
+                             b'partial install output')
+            self.assertEqual((output / 'install.stderr.log').read_bytes(),
+                             b'partial install error')
             self.assertEqual(manifest['commands'][-1]['log'], 'install.log',
                              'nothing runs after the ambiguous send')
             sending = [row for row in manifest['commands']
@@ -9619,6 +9784,218 @@ class RootInstallTimeoutTest(unittest.TestCase):
                               if row['command'][0] == 'adb'
                               and (row['command'][3:4] == ['uninstall']
                                    or row['command'][3:5] == ['shell', 'am'])])
+
+
+class RootSendBoundaryTest(unittest.TestCase):
+    """The live privileged boundary: signed-preflight binding, strict success, interruption.
+
+    Portable: the controlled device double and the repository's fixed-target pin keep this
+    control off the operator's pinned APK and handset. The real `capture.main` opt-in flow,
+    the real transport, the real recorder and the real binding/success checks run here.
+    """
+
+    TITLE = 'reader-title-lifecycle-fixtures-selected.json'
+    BOUND = 0.8
+
+    def _drive(self, mode):
+        from unittest.mock import patch
+        helper = RootInstallTimeoutTest()
+        fixture_path = Path(__file__).resolve().with_name(self.TITLE)
+        corpus_bytes = fixture_path.read_bytes()
+        fixture = json.loads(corpus_bytes)
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            output = base / 'out'
+            harness = helper._harness_apk(base, corpus_bytes)
+            harness_bytes = harness.read_bytes()
+            approved = capture.sha256_bytes(harness_bytes)
+            exact = capture._root_install_command(len(harness_bytes))
+            source = base / 'source'
+            for row in fixture['frozenSources']:
+                path = source / row['path']
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'source\n')
+            target = base / 'target.apk'
+            target.write_bytes(b'synthetic installed target')
+            real_sha = capture.sha256
+            pinned = fixture['target']['apkSha256']
+            target_digest = real_sha(target)
+
+            def pin(path):
+                digest = real_sha(path)
+                if Path(path) in (target, output / 'frozen.apk'):
+                    self.assertEqual(digest, target_digest)
+                    return pinned
+                return digest
+
+            digest = pin
+            if mode == 'binding-digest-conflict':
+                def digest(path):
+                    if Path(path) == harness:
+                        return '1' * 64
+                    return pin(path)
+
+            binding = {'artifact': {'apkSha256': approved}}
+            if mode == 'binding-absent':
+                binding = {}
+            elif mode == 'binding-malformed':
+                binding = {'artifact': {'apkSha256': 'not-a-digest'}}
+            elif mode == 'binding-changed':
+                binding = {'artifact': {'apkSha256': '0' * 64}}
+
+            ledger = []
+            sends = []
+            after = []
+            stop_after = mode in ('positive', 'diagnostic', 'non-success', 'interrupt')
+            device = helper._device(fixture, target, exact, ledger)
+
+            def run(command, *, capture_output, timeout, input=None):
+                if command[:1] == ['adb'] and command[3:] == ['shell', '-T', exact]:
+                    ledger.append(list(command))
+                    sends.append({'command': list(command), 'bytes': input})
+                    if mode == 'interrupt':
+                        raise KeyboardInterrupt
+                    if mode == 'refused':
+                        return subprocess.CompletedProcess(
+                            command, 5, b'',
+                            b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n')
+                    if mode == 'diagnostic':
+                        return subprocess.CompletedProcess(
+                            command, 0, b'Success\n',
+                            b'Unexpected diagnostic on stderr\n')
+                    if mode == 'non-success':
+                        return subprocess.CompletedProcess(command, 0, b'partial\n', b'')
+                    return subprocess.CompletedProcess(command, 0, b'Success\n', b'')
+                if sends and stop_after:
+                    ledger.append(list(command))
+                    after.append(list(command))
+                    raise SystemExit('stop after the one send')
+                return device.run(command, capture_output=capture_output,
+                                  timeout=timeout, input=input)
+
+            argv = ['capture.py', '--root-install', '--serial',
+                    capture.ROOT_INSTALL_SERIAL, '--output', str(output),
+                    '--fixture', str(fixture_path), '--apk', str(harness),
+                    '--target-apk', str(target), '--asset', str(fixture_path),
+                    '--frozen-source', str(source), '--java-home', 'C:/java',
+                    '--android-sdk', 'C:/sdk']
+            raised = None
+            code = None
+            try:
+                with patch.object(sys, 'argv', argv), \
+                        patch.object(capture, 'selected_preflight',
+                                     return_value=binding), \
+                        patch.object(capture, 'sha256', side_effect=digest), \
+                        patch.object(capture.subprocess, 'run', run), \
+                        patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
+                    code = capture.main()
+            except BaseException as error:  # noqa: BLE001 - the control records the stop
+                raised = error
+            manifest = json.loads((output / 'manifest.json').read_bytes())
+            return {
+                'mode': mode,
+                'code': code,
+                'raised': type(raised).__name__ if raised is not None else None,
+                'raisedText': str(raised) if raised is not None else None,
+                'sends': sends,
+                'afterSend': after,
+                'ledger': [row['log'] for row in manifest['commands']],
+                'manifest': manifest,
+                'exact': exact,
+                'harnessDigest': approved,
+                'harnessBytes': harness_bytes,
+                'files': sorted(path.name for path in output.iterdir()),
+            }
+
+    def _refused_before_send(self, result, expected):
+        self.assertEqual(result['sends'], [], result['mode'])
+        self.assertEqual(result['afterSend'], [], result['mode'])
+        self.assertEqual(result['manifest']['status'], 'failed', result['mode'])
+        self.assertIn(expected, result['manifest']['error'], result['mode'])
+
+    def test_the_privileged_bytes_are_bound_to_the_signed_preflight_before_any_send(self):
+        self._refused_before_send(self._drive('binding-absent'),
+                                  'signed preflight artifact binding is missing')
+        self._refused_before_send(self._drive('binding-malformed'),
+                                  'signed preflight artifact digest is malformed')
+        self._refused_before_send(self._drive('binding-changed'),
+                                  'bytes differ from their signed preflight')
+        self._refused_before_send(self._drive('binding-digest-conflict'),
+                                  'manifest APK digest differs from its signed preflight')
+
+    def test_the_bound_positive_reaches_only_the_one_send_with_the_exact_bytes(self):
+        result = self._drive('positive')
+        self.assertEqual(len(result['sends']), 1)
+        send = result['sends'][0]
+        self.assertEqual(send['command'],
+                         ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', '-T',
+                          result['exact']])
+        self.assertEqual(send['bytes'], result['harnessBytes'])
+        self.assertEqual(capture.sha256_bytes(send['bytes']), result['harnessDigest'])
+        self.assertEqual(result['afterSend'],
+                         [['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', 'pm',
+                           'path', capture.PACKAGE]])
+        self.assertEqual(result['raised'], 'SystemExit')
+        install, = [row for row in result['manifest']['commands']
+                    if row['log'] == 'install.log']
+        self.assertEqual(install['exitCode'], 0)
+        self.assertEqual(install['installCompletion'], 'complete')
+        self.assertEqual(install['stdin'],
+                         {'bytes': len(send['bytes']),
+                          'sha256': result['harnessDigest']})
+        self.assertIn('install.stdout.log', result['files'])
+        self.assertIn('install.stderr.log', result['files'])
+
+    def test_a_contradictory_exit_zero_install_fails_before_any_later_command(self):
+        result = self._drive('diagnostic')
+        self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(result['afterSend'], [])
+        self.assertEqual(result['manifest']['status'], 'failed')
+        self.assertIn('contradictory stderr output', result['manifest']['error'])
+        self.assertNotIn('instrumentation.log', result['files'])
+        unsaid = self._drive('non-success')
+        self.assertEqual(len(unsaid['sends']), 1)
+        self.assertEqual(unsaid['afterSend'], [])
+        self.assertIn('success is missing', unsaid['manifest']['error'])
+
+    def test_a_real_refusal_keeps_its_receipt_and_starts_nothing_else(self):
+        result = self._drive('refused')
+        self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(result['manifest']['status'], 'blocked')
+        self.assertIn('INSTALL_FAILED_USER_RESTRICTED', result['manifest']['blocker'])
+        install, = [row for row in result['manifest']['commands']
+                    if row['log'] == 'install.log']
+        self.assertEqual(install['exitCode'], 5)
+        self.assertEqual(install['installCompletion'], 'complete')
+        self.assertEqual(result['ledger'][-1], 'partial-harness.log')
+        for absent in ('installed-harness-path.log', 'installed-harness-pull.log',
+                       'instrumentation.log', 'remove-harness.log'):
+            self.assertNotIn(absent, result['ledger'])
+        attempt = [row for row in result['sends']]
+        self.assertEqual(len(attempt), 1)
+
+    def test_a_catchable_interruption_keeps_the_attempt_and_fabricates_nothing(self):
+        result = self._drive('interrupt')
+        self.assertEqual(result['raised'], 'KeyboardInterrupt')
+        self.assertEqual(len(result['sends']), 1)
+        self.assertEqual(result['afterSend'], [])
+        self.assertEqual(result['manifest']['status'], 'not-run')
+        attempt = result['manifest']['commands'][-1]
+        self.assertEqual(attempt['command'],
+                         ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', '-T',
+                          result['exact']])
+        self.assertEqual(attempt['installCompletion'], 'unknown')
+        self.assertEqual(attempt['outcome'], 'interrupted')
+        self.assertIsNone(attempt['exitCode'])
+        self.assertEqual(attempt['stdin'],
+                         {'bytes': len(result['sends'][0]['bytes']),
+                          'sha256': result['harnessDigest']})
+        for absent in ('stdoutSha256', 'stderrSha256', 'timeoutSeconds', 'status'):
+            self.assertNotIn(absent, attempt)
+        for absent in ('install.stdout.log', 'install.stderr.log',
+                       'instrumentation.log', 'installed-harness-pull.log',
+                       'remove-harness.log'):
+            self.assertNotIn(absent, result['files'])
 
 
 class SelectedReceiptTest(unittest.TestCase):
@@ -11609,12 +11986,14 @@ public class Application extends ContextWrapper {
 /** Test-only ActivityThread: one controlled application instance. */
 public final class ActivityThread {
     public static Application application;
+    public static int lookups;
 
     public static ActivityThread currentActivityThread() {
         return new ActivityThread();
     }
 
     public Application getApplication() {
+        lookups++;
         return application;
     }
 }
@@ -11644,6 +12023,21 @@ public abstract class Context {
         File cache = getCacheDir();
         info.dataDir = cache == null ? null : cache.getParent();
         return info;
+    }
+
+    public String packageName = "fixture.package";
+    public String packageCodePath;
+
+    public String getPackageName() {
+        return packageName;
+    }
+
+    public String getPackageCodePath() {
+        return packageCodePath;
+    }
+
+    public boolean isDeviceProtectedStorage() {
+        return false;
     }
 
     public Object getSystemService(String name) {
@@ -11703,6 +12097,21 @@ public abstract class ContextWrapper extends Context {
     }
 
     @Override
+    public String getPackageName() {
+        return base.getPackageName();
+    }
+
+    @Override
+    public String getPackageCodePath() {
+        return base.getPackageCodePath();
+    }
+
+    @Override
+    public boolean isDeviceProtectedStorage() {
+        return base.isDeviceProtectedStorage();
+    }
+
+    @Override
     public Object getSystemService(String name) {
         return base.getSystemService(name);
     }
@@ -11722,8 +12131,10 @@ import android.content.Context;
 /** Test-only splitties AppCtx: the one controlled application instance. */
 public final class AppCtxKt {
     public static Context appCtx;
+    public static int lookups;
 
     public static Context getAppCtx() {
+        lookups++;
         return appCtx;
     }
 }
@@ -11782,22 +12193,436 @@ public class GuardedReaderApplication extends Application {
     'io/liber/oracle/nested/SelectedFieldHostBridge.java': r'''package io.liber.oracle.nested;
 
 import android.app.Application;
+import io.liber.oracle.nested.StateSessionOracle;
+import java.util.ArrayList;
+import java.util.List;
+import org.json.JSONObject;
 
-/** Test-only bridge: the guard arm is out of scope for this producer fixture. */
+/** Test-only bridge: the guard arm and the title proof are controlled here. */
 public final class SelectedFieldHostBridge {
     public static boolean armed;
     public static int armCalls;
+    public static boolean failReceipt;
+    public static JSONObject receipt;
+    public static int receiptCalls;
+    public static final List<String> events = new ArrayList<>();
+
+    public static void reset() {
+        armed = false;
+        armCalls = 0;
+        failReceipt = false;
+        receipt = null;
+        receiptCalls = 0;
+        events.clear();
+    }
 
     public static void arm(Application application, ClassLoader loader) {
         armed = true;
         armCalls++;
+        events.add("arm");
+    }
+
+    public static JSONObject firebaseStartupReceipt(
+            StateSessionOracle.ScratchContext scratch) {
+        receiptCalls++;
+        events.add("firebaseStartupReceipt");
+        if (failReceipt) {
+            throw new IllegalStateException("the selected title Firebase startup isolation"
+                + " was not proven: intercepted=0, handled=false, beforeBinding=false,"
+                + " bound=true");
+        }
+        return receipt;
     }
 }
 ''',
 }
 
-EARLY_CONTAINMENT_CONTROLLED_SCRATCH = r'''package io.liber.oracle.nested;
+BINDING_ORDER_FIXTURE = r'''package io.liber.oracle.fields;
 
+import android.app.ActivityThread;
+import android.app.Application;
+import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.SharedPreferences;
+import io.legado.app.data.AppDatabaseKt;
+import io.legado.app.help.book.BookHelp;
+import io.liber.oracle.nested.GuardedReaderApplication;
+import io.liber.oracle.nested.SelectedFieldHostBridge;
+import io.liber.oracle.nested.StateSessionOracle;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import org.json.JSONObject;
+
+/**
+ * The actual producer's binding-order controls for the title startup proof.
+ *
+ * <p>Drives the committed {@code FieldOracle.bindScratch} body in a fresh JVM over a
+ * constructed and owner-bound {@code StateSessionOracle.ScratchContext}. Only native and OS
+ * inputs are controlled: the two contexts, the file-backed preference store, the BookHelp
+ * cache path, the Room handle and the bridge's arm/proof seam. The Firebase guard itself
+ * is out of scope here; this fixture proves where its receipt is required.
+ */
+public final class BindingOrderFixture {
+    static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static void set(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    static Object get(Object target, String name) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    static void deleteTree(File file) {
+        File[] children = file.listFiles();
+        if (children != null) for (File child : children) deleteTree(child);
+        file.delete();
+    }
+
+    /** A file-backed SharedPreferences so the seed probe's own file check is real. */
+    static final class FilePreferences implements SharedPreferences {
+        final File file;
+        final Map<String, String> values = new LinkedHashMap<>();
+
+        FilePreferences(File file) {
+            this.file = file;
+            if (file.isFile()) {
+                try {
+                    for (String line : new String(Files.readAllBytes(file.toPath()),
+                            StandardCharsets.UTF_8).split("\n")) {
+                        int equals = line.indexOf('=');
+                        if (equals > 0) values.put(line.substring(0, equals),
+                            line.substring(equals + 1));
+                    }
+                } catch (Exception error) {
+                    throw new IllegalStateException(error);
+                }
+            }
+        }
+
+        @Override public Map<String, ?> getAll() {
+            return new LinkedHashMap<String, Object>(values);
+        }
+
+        @Override public String getString(String key, String defValue) {
+            return values.containsKey(key) ? values.get(key) : defValue;
+        }
+
+        @Override public Set<String> getStringSet(String key, Set<String> defValues) {
+            return defValues;
+        }
+
+        @Override public int getInt(String key, int defValue) { return defValue; }
+
+        @Override public long getLong(String key, long defValue) { return defValue; }
+
+        @Override public float getFloat(String key, float defValue) { return defValue; }
+
+        @Override public boolean getBoolean(String key, boolean defValue) {
+            return defValue;
+        }
+
+        @Override public boolean contains(String key) { return values.containsKey(key); }
+
+        @Override public Editor edit() { return new Store(this); }
+
+        @Override public void registerOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) {}
+
+        @Override public void unregisterOnSharedPreferenceChangeListener(
+                OnSharedPreferenceChangeListener listener) {}
+    }
+
+    static final class Store implements SharedPreferences.Editor {
+        final FilePreferences target;
+        final Map<String, String> pending = new LinkedHashMap<>();
+
+        Store(FilePreferences target) { this.target = target; }
+
+        @Override public SharedPreferences.Editor putString(String key, String value) {
+            pending.put(key, value);
+            return this;
+        }
+
+        @Override public SharedPreferences.Editor putStringSet(String key,
+                Set<String> values) { return this; }
+
+        @Override public SharedPreferences.Editor putInt(String key, int value) {
+            return this;
+        }
+
+        @Override public SharedPreferences.Editor putLong(String key, long value) {
+            return this;
+        }
+
+        @Override public SharedPreferences.Editor putFloat(String key, float value) {
+            return this;
+        }
+
+        @Override public SharedPreferences.Editor putBoolean(String key, boolean value) {
+            return this;
+        }
+
+        @Override public SharedPreferences.Editor remove(String key) { return this; }
+
+        @Override public SharedPreferences.Editor clear() { return this; }
+
+        @Override public boolean commit() {
+            StringBuilder text = new StringBuilder();
+            for (Map.Entry<String, String> entry : pending.entrySet()) {
+                text.append(entry.getKey()).append('=').append(entry.getValue())
+                    .append('\n');
+            }
+            try {
+                File parent = target.file.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+                    return false;
+                }
+                Files.write(target.file.toPath(),
+                    text.toString().getBytes(StandardCharsets.UTF_8));
+            } catch (Exception error) {
+                throw new IllegalStateException(error);
+            }
+            target.values.putAll(pending);
+            return true;
+        }
+
+        @Override public void apply() { commit(); }
+    }
+
+    /** The controlled target/harness context: real directories under one base. */
+    static class ProbeContext extends Context {
+        final File base;
+        final String packageName;
+        final String codePath;
+        /** Approved host creation-only precondition: Windows cannot rename over a file. */
+        File ownerToClear;
+
+        ProbeContext(File base, String packageName, String codePath) {
+            this.base = base;
+            this.packageName = packageName;
+            this.codePath = codePath;
+        }
+
+        @Override public File getCacheDir() { return new File(base, "cache"); }
+
+        @Override public File getFilesDir() { return new File(base, "files"); }
+
+        @Override public File getExternalFilesDir(String type) {
+            return new File(base, "external");
+        }
+
+        @Override public File getDatabasePath(String name) {
+            return new File(new File(base, "databases"), name);
+        }
+
+        @Override public SharedPreferences getSharedPreferences(String name, int mode) {
+            if (ownerToClear != null) ownerToClear.delete();
+            return new FilePreferences(new File(new File(base, "shared_prefs"),
+                name + ".xml"));
+        }
+
+        @Override public String getPackageName() { return packageName; }
+
+        @Override public String getPackageCodePath() { return codePath; }
+    }
+
+    /** The real Room open-helper/writable-handle shape the producer reflects on. */
+    public static final class RoomDatabase {
+        private final String path;
+
+        RoomDatabase(String path) { this.path = path; }
+
+        public Object getOpenHelper() { return new OpenHelper(path); }
+    }
+
+    public static final class OpenHelper {
+        private final String path;
+
+        OpenHelper(String path) { this.path = path; }
+
+        public Object getWritableDatabase() { return new WritableDatabase(path); }
+    }
+
+    public static final class WritableDatabase {
+        private final String path;
+
+        WritableDatabase(String path) { this.path = path; }
+
+        public String getPath() { return path; }
+    }
+
+    static JSONObject corpus() throws Exception {
+        return new JSONObject().put("fixtureId", "FIELDS-02").put("corpusVersion", 1)
+            .put("titleLifecycle", new JSONObject());
+    }
+
+    static JSONObject run(String mode) throws Exception {
+        File base = Files.createTempDirectory("l138-binding-order-").toFile();
+        try {
+            File targetApk = new File(base, "target.apk");
+            Files.write(targetApk.toPath(), "target bytes".getBytes(StandardCharsets.UTF_8));
+            File harnessApk = new File(base, "harness.apk");
+            Files.write(harnessApk.toPath(), "harness bytes".getBytes(StandardCharsets.UTF_8));
+            ProbeContext appContext = new ProbeContext(new File(base, "app"), "fixture.harness",
+                harnessApk.getAbsolutePath());
+            // The installed package and its harness share one data directory, as on device.
+            ProbeContext targetContext = new ProbeContext(new File(base, "app"),
+                "fixture.target", targetApk.getAbsolutePath());
+            StateSessionOracle.ScratchContext scratch =
+                new StateSessionOracle.ScratchContext(appContext, "liber-fields-02",
+                    "liber_fields_02_");
+            appContext.ownerToClear = new File(scratch.root, "owner.json");
+            File external = scratch.getExternalFilesDir(null);
+            BookHelp.cachePath = new File(external, "book_cache").getAbsolutePath();
+            AppDatabaseKt.appDb = new RoomDatabase(
+                scratch.getDatabasePath("legado.db").getAbsolutePath());
+            GuardedReaderApplication app = new GuardedReaderApplication(scratch);
+            ActivityThread.application = app;
+            splitties.init.AppCtxKt.appCtx = app;
+            com.jeremyliao.liveeventbus.utils.AppUtils.app = app;
+            BookHelp.lookups = 0;
+            AppDatabaseKt.lookups = 0;
+            splitties.init.AppCtxKt.lookups = 0;
+            ActivityThread.lookups = 0;
+            SelectedFieldHostBridge.reset();
+            JSONObject receipt = new JSONObject()
+                .put("provider", "com.google.firebase.provider.FirebaseInitProvider")
+                .put("intercepted", 1).put("handled", true).put("beforeBinding", true);
+            if ("missing-proof".equals(mode)) {
+                SelectedFieldHostBridge.failReceipt = true;
+            } else if ("positive".equals(mode)) {
+                SelectedFieldHostBridge.receipt = receipt;
+            } else {
+                throw new IllegalArgumentException(mode);
+            }
+            FieldOracle oracle = new FieldOracle();
+            oracle.targetContext = targetContext;
+            oracle.appContext = appContext;
+            set(oracle, "scratch", scratch);
+            set(oracle, "selectedReference", false);
+            set(oracle, "titleLifecycleSelection", true);
+            JSONObject corpus = corpus();
+            set(oracle, "corpus", corpus);
+            byte[] asset = corpus.toString().getBytes(StandardCharsets.UTF_8);
+            JSONObject outcome = new JSONObject().put("mode", mode);
+            Throwable thrown = null;
+            try {
+                Method bind = FieldOracle.class.getDeclaredMethod("bindScratch", byte[].class);
+                bind.setAccessible(true);
+                bind.invoke(oracle, (Object) asset);
+            } catch (InvocationTargetException error) {
+                thrown = error.getTargetException();
+            }
+            outcome.put("bound", scratch.isBound())
+                .put("receiptCalls", SelectedFieldHostBridge.receiptCalls)
+                .put("events", new org.json.JSONArray(SelectedFieldHostBridge.events))
+                .put("armCalls", SelectedFieldHostBridge.armCalls)
+                .put("appCtxLookups", splitties.init.AppCtxKt.lookups)
+                .put("activityThreadLookups", ActivityThread.lookups)
+                .put("bookHelpLookups", BookHelp.lookups)
+                .put("appDbLookups", AppDatabaseKt.lookups);
+            if (thrown != null) {
+                outcome.put("thrown", thrown.getMessage() == null
+                    ? thrown.getClass().getName() : thrown.getMessage());
+                return outcome;
+            }
+            if (!"positive".equals(mode)) {
+                // The refused mode has to fail; an admitted bind is reported, not asserted
+                // here, so a producer that skips the proof still yields a comparable row.
+                outcome.put("admittedWithoutProof", true);
+                return outcome;
+            }
+            Object stored;
+            try {
+                stored = get(oracle, "firebaseStartupIsolationProof");
+            } catch (NoSuchFieldException absent) {
+                // A producer that keeps no binding-boundary proof is reported, not asserted.
+                outcome.put("storedIsBoundReceipt", false)
+                    .put("emittedIsBoundReceipt", false)
+                    .put("receiptCallsAfterEmit", SelectedFieldHostBridge.receiptCalls);
+                return outcome;
+            }
+            require(SelectedFieldHostBridge.receipt == receipt, "the receipt is not the bound one");
+            JSONObject report = new JSONObject();
+            Method emit = FieldOracle.class.getDeclaredMethod("emitTitleStartupProof",
+                JSONObject.class);
+            emit.setAccessible(true);
+            emit.invoke(oracle, report);
+            outcome.put("storedIsBoundReceipt", stored == receipt)
+                .put("emittedIsBoundReceipt",
+                    report.opt("firebaseStartupIsolation") == receipt)
+                .put("receiptCallsAfterEmit", SelectedFieldHostBridge.receiptCalls);
+            set(oracle, "firebaseStartupIsolationProof", null);
+            try {
+                emit.invoke(oracle, new JSONObject());
+                outcome.put("missingEmission", "admitted");
+            } catch (InvocationTargetException error) {
+                Throwable cause = error.getTargetException();
+                outcome.put("missingEmission", cause.getClass().getName() + ": "
+                    + cause.getMessage());
+            }
+            return outcome;
+        } finally {
+            deleteTree(base);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        org.json.JSONArray rows = new org.json.JSONArray();
+        int failed = 0;
+        for (String mode : new String[]{"missing-proof", "positive"}) {
+            JSONObject row = run(mode);
+            boolean expectation;
+            if ("missing-proof".equals(mode)) {
+                expectation = row.has("thrown") && !row.has("admittedWithoutProof")
+                    && row.getBoolean("bound")
+                    && row.getInt("receiptCalls") == 1
+                    && row.getInt("armCalls") == 0 && row.getInt("appCtxLookups") == 0
+                    && row.getInt("activityThreadLookups") == 0
+                    && row.getInt("bookHelpLookups") == 0 && row.getInt("appDbLookups") == 0
+                    && row.getJSONArray("events").length() == 1;
+            } else {
+                expectation = !row.has("thrown") && row.getJSONArray("events").length() == 2
+                    && "firebaseStartupReceipt".equals(row.getJSONArray("events").getString(0))
+                    && "arm".equals(row.getJSONArray("events").getString(1))
+                    && row.getBoolean("storedIsBoundReceipt")
+                    && row.getBoolean("emittedIsBoundReceipt")
+                    && row.getInt("receiptCallsAfterEmit") == 1
+                    && row.getInt("bookHelpLookups") == 1 && row.getInt("appDbLookups") == 1
+                    && row.getInt("appCtxLookups") == 2
+                    && String.valueOf(row.get("missingEmission"))
+                        .contains("was not taken at the binding boundary");
+            }
+            row.put("expectedBehavior", expectation);
+            if (!expectation) failed++;
+            rows.put(row);
+        }
+        System.out.println(new JSONObject().put("rows", rows).put("expectationsFailed", failed)
+            .put("scope", "Actual FieldOracle.bindScratch ordering over a real bound"
+                + " ScratchContext; controlled contexts, file-backed preferences, BookHelp/Room"
+                + " doubles and bridge proof seam. No Firebase guard, Android, device or"
+                + " native behavior is claimed."));
+        // The consumer asserts the row expectations; this fixture only reports them so a
+        // producer that skips the boundary proof still yields a comparable row.
+    }
+}
+'''
+
+EARLY_CONTAINMENT_CONTROLLED_SCRATCH = r'''package io.liber.oracle.nested;
 import android.content.Context;
 import android.content.ContextWrapper;
 import java.io.File;
@@ -12463,7 +13288,8 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
             sources.append(path)
         substituted = self._run(
             [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
-             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(overlay)]
+             '-encoding', 'UTF-8', '-cp',
+             os.pathsep.join([str(android), str(actual)]), '-d', str(overlay)]
             + [str(path) for path in sources], repo)
         self.assertEqual(substituted.returncode, 0,
                          substituted.stderr.decode(errors='replace'))
@@ -12797,3 +13623,95 @@ class TitleEarlyContainmentCoordinateTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TitleBindingOrderTest(unittest.TestCase):
+    """The title startup proof is required at the real scratch binding boundary.
+
+    Compiles the committed `FieldOracle` against android-35 and drives the real
+    `bindScratch` over a constructed and owner-bound scratch. The fixture substitutes only
+    the two contexts, the file-backed preference store, the BookHelp/Room doubles and the
+    bridge proof seam, so both controls execute the changed production ordering: a missing
+    proof fails before the guard arm, BookHelp and the writable Room open, and the positive
+    succeeds with the one receipt taken at that boundary and re-emitted unchanged.
+    """
+
+    _java_home = GuardedReaderApplicationHostTest._java_home
+    _android_jar = GuardedReaderApplicationHostTest._android_jar
+    _json_jar = GuardedReaderApplicationHostTest._json_jar
+    _repo = GuardedReaderApplicationHostTest._repo
+    _run = GuardedReaderApplicationHostTest._run
+
+    def _classpath(self, root):
+        repo = self._repo()
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        actual = root / 'actual-classes'
+        actual.mkdir()
+        compiled = self._run(
+            [str(_jdk_launcher(java, 'javac')), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', str(android), '-d', str(actual),
+             str(repo / 'tool/nested_oracle/StateSessionOracle.java'),
+             str(repo / 'tool/nested_oracle/HostRuntimeInit.java'),
+             str(repo / 'tool/nested_oracle/ShortcutStartupGuard.java'),
+             str(repo / 'tool/result_field_oracle/FieldOracle.java'),
+             str(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java'),
+             str(repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java')], repo)
+        self.assertEqual(compiled.returncode, 0,
+                         compiled.stderr.decode(errors='replace'))
+        overlay = root / 'overlay-classes'
+        overlay.mkdir()
+        sources = []
+        for name, source in EARLY_CONTAINMENT_SUBSTITUTES.items():
+            path = root / 'overlay-src' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source, encoding='utf-8')
+            sources.append(path)
+        substituted = self._run(
+            [str(_jdk_launcher(java, 'javac')), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp',
+             os.pathsep.join([str(android), str(actual)]), '-d', str(overlay)]
+            + [str(path) for path in sources], repo)
+        self.assertEqual(substituted.returncode, 0,
+                         substituted.stderr.decode(errors='replace'))
+        fixture = root / 'BindingOrderFixture.java'
+        fixture.write_text(BINDING_ORDER_FIXTURE, encoding='utf-8')
+        fixture_classes = root / 'fixture-classes'
+        fixture_classes.mkdir()
+        compile_cp = os.pathsep.join([str(overlay), str(actual), str(jar), str(android)])
+        built = self._run(
+            [str(_jdk_launcher(java, 'javac')), '-source', '8', '-target', '8',
+             '-encoding', 'UTF-8', '-cp', compile_cp, '-d', str(fixture_classes),
+             str(fixture)], repo)
+        self.assertEqual(built.returncode, 0, built.stderr.decode(errors='replace'))
+        return java, os.pathsep.join([str(overlay), str(fixture_classes), str(actual),
+                                      str(jar), str(android)])
+
+    def test_the_real_binding_boundary_requires_the_proof_before_native_initialization(self):
+        with tempfile.TemporaryDirectory(prefix='l138-binding-order-') as directory:
+            java, classpath = self._classpath(Path(directory))
+            run = self._run(
+                [str(_jdk_launcher(java, 'java')), '-cp', classpath,
+                 'io.liber.oracle.fields.BindingOrderFixture'], self._repo())
+            output = run.stdout.decode(errors='replace').strip()
+            self.assertEqual(run.returncode, 0,
+                             output + run.stderr.decode(errors='replace'))
+            report = json.loads(output.splitlines()[-1])
+            self.assertEqual(report['expectationsFailed'], 0, report)
+            rows = {row['mode']: row for row in report['rows']}
+            missing = rows['missing-proof']
+            self.assertTrue(missing['bound'],
+                            'the scratch binds before the proof is required')
+            self.assertIn('was not proven', missing['thrown'])
+            self.assertEqual(missing['events'], ['firebaseStartupReceipt'])
+            for counter in ('armCalls', 'appCtxLookups', 'activityThreadLookups',
+                            'bookHelpLookups', 'appDbLookups'):
+                self.assertEqual(missing[counter], 0, counter)
+            positive = rows['positive']
+            self.assertNotIn('thrown', positive)
+            self.assertEqual(positive['events'], ['firebaseStartupReceipt', 'arm'])
+            self.assertTrue(positive['storedIsBoundReceipt'])
+            self.assertTrue(positive['emittedIsBoundReceipt'])
+            self.assertEqual(positive['receiptCallsAfterEmit'], 1)
+            self.assertEqual(positive['bookHelpLookups'], 1)
+            self.assertEqual(positive['appDbLookups'], 1)

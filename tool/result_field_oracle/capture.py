@@ -94,7 +94,10 @@ FIREBASE_PROVIDER = 'com.google.firebase.provider.FirebaseInitProvider'
 ROOT_INSTALL_SERIAL = '5615f742'
 ROOT_INSTALL_TIMEOUT = 180
 INSTALL_RECEIPT_KEYS = {'command', 'exitCode', 'log'}
-ROOT_INSTALL_RECEIPT_KEYS = INSTALL_RECEIPT_KEYS | {'stdin'}
+ROOT_INSTALL_RECEIPT_KEYS = INSTALL_RECEIPT_KEYS | {
+    'stdin', 'installCompletion', 'stdoutSha256', 'stderrSha256'}
+# The two raw streams the root transport keeps beside the combined install log.
+INSTALL_STREAM_SUFFIXES = ('.stdout.log', '.stderr.log')
 LEB_RECEIVER = 'com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver'
 LEB_IPC_ACTION = 'intent.action.ACTION_LEB_IPC'
 LEB_LIFECYCLE = 'com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl'
@@ -147,6 +150,65 @@ def _root_install_command(size):
     return "su -c 'pm install --user 0 -r -S " + str(size) + "'"
 
 
+def _install_stream_names(name):
+    """The separate raw stream logs that compose the combined `<name>.log`."""
+    return name + INSTALL_STREAM_SUFFIXES[0], name + INSTALL_STREAM_SUFFIXES[1]
+
+
+def _write_install_streams(output, name, stdout, stderr):
+    """Keep the combined log existing tooling reads plus its two raw streams."""
+    output = Path(output)
+    (output / (name + '.log')).write_bytes(stdout + stderr)
+    stdout_log, stderr_log = _install_stream_names(name)
+    (output / stdout_log).write_bytes(stdout)
+    (output / stderr_log).write_bytes(stderr)
+
+
+def _partial_streams(error):
+    """The streams a child that outlived its bound did produce, as bytes."""
+    stdout = error.stdout if isinstance(error.stdout, bytes) else b''
+    stderr = error.stderr if isinstance(error.stderr, bytes) else b''
+    return stdout, stderr
+
+
+def _require_root_install_success(stdout, stderr, label):
+    """The opt-in root transport's own unambiguous success: one stdout terminal line.
+
+    The package manager has to answer exactly `Success` on stdout and nothing else; any
+    other stdout text and any stderr output are contradictions. Only the root shape uses
+    this: the default install keeps its historical combined-output check.
+    """
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    if lines != [b'Success']:
+        raise ValueError('root install ' + label
+                         + ' success is missing or carries unexpected output')
+    if stderr.strip():
+        raise ValueError('root install ' + label + ' carried contradictory stderr output')
+
+
+def _bind_signed_apk(apk_bytes, preflight, measured_artifact=None, measured_digest=None):
+    """The bytes this invocation may send must be the ones its signed preflight measured.
+
+    The preflight artifact digest is the one taken before that invocation's manifest,
+    signer and ABI reads, so a later pathname measurement never substitutes for it. The
+    same digest also has to agree with this invocation's own artifact inspection and its
+    manifest digest before anything is sent.
+    """
+    artifact = preflight.get('artifact') if isinstance(preflight, dict) else None
+    if not isinstance(artifact, dict):
+        raise ValueError('the signed preflight artifact binding is missing')
+    approved = artifact.get('apkSha256')
+    if not isinstance(approved, str) or not re.fullmatch(r'[0-9a-f]{64}', approved):
+        raise ValueError('the signed preflight artifact digest is malformed')
+    if sha256_bytes(apk_bytes) != approved:
+        raise ValueError('the built APK bytes differ from their signed preflight')
+    if isinstance(measured_artifact, dict) and measured_artifact.get('apkSha256') != approved:
+        raise ValueError('the inspected artifact differs from its signed preflight')
+    if measured_digest is not None and measured_digest != approved:
+        raise ValueError('the manifest APK digest differs from its signed preflight')
+    return approved
+
+
 def root_install(apk_bytes, serial, expected_sha256, run):
     """Install the exact APK bytes once through the approved pinned-handset root shell.
 
@@ -182,8 +244,9 @@ def root_install(apk_bytes, serial, expected_sha256, run):
 
 
 def _install_completion_unknown(item):
-    """Whether an install receipt records a send whose completion is not known."""
-    return item.get('status') == 'timeout' or item.get('installCompletion') == 'unknown'
+    """Whether an opt-in install receipt records a send whose completion is not known."""
+    completion = item.get('installCompletion')
+    return completion is not None and completion != 'complete'
 
 
 def _admit_install_receipt(item, profile, manifest, installed_bytes, adb_prefix):
@@ -215,6 +278,12 @@ def _admit_install_receipt(item, profile, manifest, installed_bytes, adb_prefix)
     if profile != 'title':
         raise ValueError('the root install receipt is admitted only for the selected'
                          ' title corpus')
+    if item.get('installCompletion') != 'complete':
+        raise ValueError('root install completion is unknown')
+    for field in ('stdoutSha256', 'stderrSha256'):
+        value = item.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value):
+            raise ValueError('root install stream receipt differs')
     stdin = item.get('stdin')
     if not isinstance(stdin, dict) or set(stdin) != {'bytes', 'sha256'}:
         raise ValueError('root install stdin receipt differs')
@@ -781,6 +850,8 @@ def selected_preflight(apk, target_apk, fixture_path, source, sdk, java, evidenc
         harness_checked = _admit_harness_abi(dump)
         reflected_abi = _admit_reflected_abi(target_apk, tools, run, receipts,
                                              harness_checked)
+    if sha256(apk) != artifact['apkSha256']:
+        raise ValueError('the selected harness APK changed during its preflight')
     return {'artifact': artifact, 'targetApkSha256': sha256(target_apk),
             'dexSha256': sha256_bytes(dex), 'referenceDexSha256': sha256_bytes(reference_dex),
             'inputs': {'harnessApk': str(apk), 'targetApk': str(target_apk), 'source': str(source),
@@ -2121,6 +2192,39 @@ def _admit_retained_preflight(preflight, install_apk, fixture=None):
             raise ValueError('an ordinary preflight must not claim a reflected ABI')
 
 
+def _admit_auxiliary_commands(indexed, output, preflight, adb_prefix, fail):
+    """Pin the auxiliary rows that used to be exempt to their one real invocation.
+
+    These rows are optional for compatibility, but a present row has to be exactly the
+    command the producer issues for it. A second install or any other privileged command
+    therefore cannot masquerade under an auxiliary log name.
+    """
+    inputs = preflight.get('inputs') if isinstance(preflight, dict) else None
+    references = preflight.get('referenceSources') if isinstance(preflight, dict) else None
+    if not isinstance(inputs, dict) or not isinstance(references, dict):
+        return
+    source = inputs.get('source')
+    if not isinstance(source, str) or not source:
+        return
+    paths = list(references)
+    expected = {
+        'source-head': ['git', '-C', source, 'rev-parse', 'HEAD'],
+        'frozen-source-hashes': ['git', '-C', source, 'hash-object', *paths],
+        'frozen-source-status': ['git', '-C', source, 'status', '--porcelain', '--',
+                                 *paths],
+        'android-release': adb_prefix + ['shell', 'getprop', 'ro.build.version.release'],
+        'model': adb_prefix + ['shell', 'getprop', 'ro.product.model'],
+        'logcat-field-oracle': adb_prefix + ['logcat', '-d', '-s', 'FieldOracle'],
+    }
+    for name, command in expected.items():
+        item = indexed.get(name + '.log')
+        if item is None:
+            continue
+        if (item.get('command') != command or type(item.get('exitCode')) is not int
+                or item['exitCode'] != 0 or not (output / (name + '.log')).is_file()):
+            fail(name + ' command differs')
+
+
 def _admit_selected_commands(output, manifest, report_bytes, before, after, fixture=None):
     """Join selected native promotion to the actual retained command receipts."""
     def fail(detail):
@@ -2219,8 +2323,22 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
     pulled = output / 'installed-harness.apk'
     if not pulled.is_file():
         fail('installed harness APK is missing')
+    preflight = manifest.get('preflight')
+    install_item = indexed['install.log']
     installed_input = _admit_install_receipt(
-        indexed['install.log'], profile, manifest, pulled.stat().st_size, adb_prefix)
+        install_item, profile, manifest, pulled.stat().st_size, adb_prefix)
+    if installed_input is None:
+        stdout_log, stderr_log = _install_stream_names('install')
+        if not (output / stdout_log).is_file() or not (output / stderr_log).is_file():
+            fail('root install streams are missing')
+        stdout_bytes = (output / stdout_log).read_bytes()
+        stderr_bytes = (output / stderr_log).read_bytes()
+        if (sha256_bytes(stdout_bytes) != install_item.get('stdoutSha256')
+                or sha256_bytes(stderr_bytes) != install_item.get('stderrSha256')):
+            fail('root install stream digests differ')
+        if (output / 'install.log').read_bytes() != stdout_bytes + stderr_bytes:
+            fail('root install stream composition differs')
+        _require_root_install_success(stdout_bytes, stderr_bytes, 'install')
     if (output / 'target-private-root.log').read_text(encoding='utf-8').strip() != target_root:
         fail('target private root differs')
     if (output / 'pull-report.log').read_bytes() != report_bytes:
@@ -2264,6 +2382,7 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
          for operation in ('remove', 'absent') for index in range(1, len(names) + 1)}
     if set(indexed) - allowed:
         fail('contain unrecognized commands')
+    _admit_auxiliary_commands(indexed, output, preflight, adb_prefix, fail)
     pid = _require_int(owner.get('seedPid'), 'owner.seedPid')
     pid_receipt = (output / 'owned-pid.log').read_bytes().strip()
     if not ((indexed['owned-pid.log']['exitCode'] == 1 and not pid_receipt)
@@ -2297,7 +2416,6 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
         fail('harness still installed')
     if sha256(output / 'installed-harness.apk') != manifest.get('harnessApkSha256'):
         fail('installed harness APK differs')
-    preflight = manifest.get('preflight')
     if (not isinstance(preflight, dict) or preflight.get('artifact') != manifest.get('artifact')
             or preflight.get('targetApkSha256') != SELECTED_TARGET['apkSha256']
             or preflight.get('referenceSources') != manifest.get('frozenSources')):
@@ -2991,36 +3109,54 @@ def main():
 
     def run(command, name, timeout=60, checked=True, stdin=None, receipt=None,
             retain_timeout=None):
-        """Record one command; only an opted-in ambiguous send survives its timeout.
+        """Record one command; only the opt-in root send is recorded before its wait.
 
         `retain_timeout` is passed by the root install alone, because its send may
-        already have been applied when the child outlives the bound. That record keeps
-        the command, the stdin binding and the partial streams with no exit code and an
-        explicit unknown completion; the timeout is still raised, so nothing is retried.
-        Every other command keeps the original behaviour and writes nothing on timeout.
+        already have been applied when the host cannot finish waiting. Its known command
+        and stdin binding are kept from before the child starts, with the completion
+        explicitly pending until the result is known. A timeout keeps whatever streams
+        the child produced; a catchable host interruption keeps no fabricated stream,
+        exit or status. Both leave the completion unknown and re-raise, so nothing is
+        retried or instrumented. Every other command keeps the original recorder
+        behaviour and writes nothing on timeout.
         """
+        attempt = None
+        if retain_timeout is not None:
+            attempt = {'command': command, 'exitCode': None, 'log': name + '.log',
+                       'installCompletion': 'pending'}
+            attempt.update(receipt or {})
+            manifest['commands'].append(attempt)
         try:
             result = subprocess.run(command, capture_output=True, timeout=timeout,
                                     input=stdin)
         except subprocess.TimeoutExpired as error:
-            if retain_timeout is None:
+            if attempt is None:
                 raise
-            partial_stdout = error.stdout if isinstance(error.stdout, bytes) else b''
-            partial_stderr = error.stderr if isinstance(error.stderr, bytes) else b''
-            (args.output / (name + '.log')).write_bytes(partial_stdout + partial_stderr)
-            entry = {'command': command, 'exitCode': None, 'log': name + '.log',
-                     'status': 'timeout', 'timeoutSeconds': timeout,
-                     'stdoutSha256': sha256_bytes(partial_stdout),
-                     'stderrSha256': sha256_bytes(partial_stderr)}
-            entry.update(receipt or {})
-            entry.update(retain_timeout)
-            manifest['commands'].append(entry)
+            stdout, stderr = _partial_streams(error)
+            _write_install_streams(args.output, name, stdout, stderr)
+            attempt.update({'installCompletion': 'unknown', 'outcome': 'timeout',
+                            'timeoutSeconds': timeout,
+                            'stdoutSha256': sha256_bytes(stdout),
+                            'stderrSha256': sha256_bytes(stderr)})
             raise
-        (args.output / (name + '.log')).write_bytes(result.stdout + result.stderr)
-        entry = {'command': command, 'exitCode': result.returncode, 'log': name + '.log'}
-        if receipt is not None:
-            entry.update(receipt)
-        manifest['commands'].append(entry)
+        except BaseException:
+            if attempt is not None:
+                attempt.update({'installCompletion': 'unknown',
+                                'outcome': 'interrupted'})
+            raise
+        if attempt is None:
+            (args.output / (name + '.log')).write_bytes(result.stdout + result.stderr)
+            entry = {'command': command, 'exitCode': result.returncode,
+                     'log': name + '.log'}
+            if receipt is not None:
+                entry.update(receipt)
+            manifest['commands'].append(entry)
+        else:
+            _write_install_streams(args.output, name, result.stdout, result.stderr)
+            attempt.update({'exitCode': result.returncode,
+                            'installCompletion': 'complete',
+                            'stdoutSha256': sha256_bytes(result.stdout),
+                            'stderrSha256': sha256_bytes(result.stderr)})
         if checked and result.returncode:
             raise RuntimeError(f'{name} exited {result.returncode}; see raw log')
         return result
@@ -3252,9 +3388,10 @@ def main():
             'postStop': True,
         }
 
-    # An install is only ever attempted with `-r`, the incremental form MIUI
-    # accepts on this handset; a streamed `--no-incremental` install is rejected
-    # as INSTALL_FAILED_USER_RESTRICTED even with USB installation enabled.
+    # The default install is only ever attempted with `-r`, the incremental form
+    # MIUI accepts on this handset; a streamed `--no-incremental` default install is
+    # rejected as INSTALL_FAILED_USER_RESTRICTED even with USB installation enabled.
+    # The opt-in root transport above is the separate non-incremental stream.
     try:
         head = run(['git', '-C', str(args.frozen_source), 'rev-parse', 'HEAD'], 'source-head')
         if head.stdout.decode().strip() != fixture['baselineCommit']:
@@ -3329,10 +3466,14 @@ def main():
                          'sh', '-c', snapshot)
         if args.root_install:
             # The approved root transport: the exact built APK bytes on stdin, one
-            # command, one attempt. A refused or ambiguous send returns below and is
-            # never retried, and instrumentation is never reached.
-            installed_result = root_install(args.apk.read_bytes(), args.serial,
-                                            manifest['harnessApkSha256'], run)
+            # command, one attempt. The buffer is bound to the digest this invocation's
+            # successful signed preflight measured, before anything is sent; a refused
+            # or ambiguous send returns below, is never retried and is never instrumented.
+            harness_bytes = args.apk.read_bytes()
+            approved = _bind_signed_apk(harness_bytes, selected_binding,
+                                        manifest.get('artifact'),
+                                        manifest.get('harnessApkSha256'))
+            installed_result = root_install(harness_bytes, args.serial, approved, run)
         else:
             installed_result = adb('install', 'install', '-r', str(args.apk), checked=False,
                                    timeout=180)
@@ -3358,7 +3499,12 @@ def main():
             return 2 if manifest['status'] == 'blocked' else 1
         installed = True
         if selected_reference:
-            _require_selected_success(installed_result.stdout + installed_result.stderr, 'install')
+            if args.root_install:
+                _require_root_install_success(installed_result.stdout,
+                                              installed_result.stderr, 'install')
+            else:
+                _require_selected_success(installed_result.stdout + installed_result.stderr,
+                                          'install')
             installed_path = adb('installed-harness-path', 'shell', 'pm', 'path', PACKAGE).stdout.decode().strip()
             if not re.fullmatch(r'package:[^\r\n]+', installed_path):
                 raise ValueError('installed harness path is malformed')
