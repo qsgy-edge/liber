@@ -1463,6 +1463,9 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                                    'provider': 'io.legado.app.api.ReaderProvider',
                                    'intercepted': 1, 'handled': 1,
                                    'beforeBinding': True},
+            'firebaseStartupIsolation': {'provider': capture.FIREBASE_PROVIDER,
+                                         'intercepted': 1, 'handled': True,
+                                         'beforeBinding': True},
             'isolation': {
                 'bound': True, 'filesRouted': True, 'databaseRouted': True,
                 'deviceProtected': False, 'rootExistedAtStart': False,
@@ -1694,6 +1697,9 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             'duplicate': 'duplicate', 'preflight-summary': 'reflected',
             'profile': 'target ABI command', 'raw-ledger': 'raw report differs',
             'webview-version': 'WebView', 'webview-provider': 'WebView',
+            'firebase-absent': 'firebaseStartupIsolation is missing',
+            'firebase-malformed': 'Firebase startup isolation provider differs',
+            'firebase-not-exact': 'did not intercept exactly once',
         }[label]
         if label == 'duplicate':
             data = (b'{"fixtureId":"FIELDS-02",'
@@ -1751,6 +1757,13 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         elif label == 'preference':
             report['cases'][2]['titleLifecycleProof']['tocCountWords'][
                 'previous'] = False
+        elif label == 'firebase-absent':
+            report.pop('firebaseStartupIsolation')
+        elif label == 'firebase-malformed':
+            report['firebaseStartupIsolation']['provider'] = (
+                'com.google.firebase.provider.UnrelatedProvider')
+        elif label == 'firebase-not-exact':
+            report['firebaseStartupIsolation']['intercepted'] = 2
         elif label == 'operation':
             report['cases'][2]['operations'].pop()
         else:
@@ -1793,7 +1806,8 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         labels = ('owner', 'root', 'external-path', 'observer', 'process',
                   'preference', 'operation', 'artifact', 'duplicate',
                   'preflight-summary', 'profile', 'raw-ledger',
-                  'webview-version', 'webview-provider')
+                  'webview-version', 'webview-provider', 'firebase-absent',
+                  'firebase-malformed', 'firebase-not-exact')
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             clean, fixture, binding, harness_apk, target_apk, _ = \
@@ -8348,6 +8362,634 @@ public final class TocCountWordsLifetimeProbe {
             self.assertNotEqual(wrong['present-true']['restored']['previous'], True)
             self.assertNotEqual(wrong['present-false']['restored']['previous'], False)
             self.assertNotEqual(wrong['absent']['restored']['previous'], True)
+
+
+FIREBASE_STARTUP_SOURCES = {
+    'android/content/Context.java': r'''package android.content;
+
+import android.content.res.Resources;
+import java.io.File;
+
+/** Test-only SDK-signature-faithful Context: only the members this fixture reaches. */
+public abstract class Context {
+    public abstract File getCacheDir();
+
+    public abstract Resources getResources();
+
+    public Object getSystemService(String name) {
+        return null;
+    }
+}
+''',
+    'android/content/ContextWrapper.java': r'''package android.content;
+
+import android.content.res.Resources;
+import java.io.File;
+
+/** Test-only SDK-signature-faithful ContextWrapper: delegation only. */
+public abstract class ContextWrapper extends Context {
+    private final Context base;
+
+    public ContextWrapper(Context base) {
+        this.base = base;
+    }
+
+    public Context getBaseContext() {
+        return base;
+    }
+
+    @Override
+    public File getCacheDir() {
+        return base.getCacheDir();
+    }
+
+    @Override
+    public Resources getResources() {
+        return base.getResources();
+    }
+
+    @Override
+    public Object getSystemService(String name) {
+        return base.getSystemService(name);
+    }
+}
+''',
+    'android/content/res/Resources.java': r'''package android.content.res;
+
+/** Test-only stand-in for the resources handle; this fixture never constructs one. */
+public class Resources {
+}
+''',
+    'android/os/Looper.java': r'''package android.os;
+
+/** Test-only SDK-signature-faithful Looper: the two main-thread predicates. */
+public final class Looper {
+    public static Looper MAIN;
+    public static Looper CURRENT;
+
+    public Looper() {
+    }
+
+    public static Looper myLooper() {
+        return CURRENT;
+    }
+
+    public static Looper getMainLooper() {
+        return MAIN;
+    }
+}
+''',
+    'android/util/Log.java': r'''package android.util;
+
+/** The only other OS boundary this fixture replaces: a log call. */
+public final class Log {
+    public static int i(String tag, String message) {
+        return 0;
+    }
+}
+''',
+    'com/google/android/gms/common/internal/StringResourceValueReader.java': r'''package com.google.android.gms.common.internal;
+
+import android.content.Context;
+
+/** Test-only provider frame: the measured StringResourceValueReader.<init> read. */
+public final class StringResourceValueReader {
+    public final boolean resolved;
+
+    public StringResourceValueReader(Context context) {
+        this.resolved = context.getResources() != null;
+    }
+}
+''',
+    'com/google/firebase/FirebaseOptions.java': r'''package com.google.firebase;
+
+import android.content.Context;
+
+/** Test-only provider frame: the measured FirebaseOptions.fromResource. */
+public final class FirebaseOptions {
+    private FirebaseOptions() {
+    }
+
+    public static boolean fromResource(Context context) {
+        return new com.google.android.gms.common.internal.StringResourceValueReader(context)
+            .resolved;
+    }
+}
+''',
+    'com/google/firebase/FirebaseApp.java': r'''package com.google.firebase;
+
+import android.content.Context;
+
+/** Test-only provider frame: the measured FirebaseApp.initializeApp. */
+public final class FirebaseApp {
+    private FirebaseApp() {
+    }
+
+    public static boolean initializeApp(Context context) {
+        return FirebaseOptions.fromResource(context);
+    }
+}
+''',
+    'com/google/firebase/provider/FirebaseInitProvider.java': r'''package com.google.firebase.provider;
+
+import android.content.Context;
+
+/** Test-only provider frame: the measured FirebaseInitProvider.onCreate. */
+public final class FirebaseInitProvider {
+    public boolean onCreate(Context context) {
+        return com.google.firebase.FirebaseApp.initializeApp(context);
+    }
+}
+''',
+    'io/liber/oracle/fields/TitleStartupFixture.java': r'''package io.liber.oracle.fields;
+
+import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.res.Resources;
+import android.os.Looper;
+import io.liber.oracle.nested.SelectedFieldHostBridge;
+import io.liber.oracle.nested.StateSessionOracle;
+import java.io.File;
+import java.nio.file.Files;
+import org.json.JSONObject;
+
+/**
+ * The actual title startup guard at its producer seam.
+ *
+ * <p>The production {@code ScratchContext} bytes, the real {@code SelectedFieldHostBridge}
+ * factory, the measured provider call order, the real exception acknowledgement and the
+ * real receipt are executed. The OS substitutes cover only Context, ContextWrapper,
+ * Resources, Looper and Log; the provider classes carry the measured class and method
+ * names and nothing else. No Android framework, Firebase or Play Services behaviour is
+ * claimed.
+ */
+public final class TitleStartupFixture {
+    /** The base context: one cache directory and no resources of its own. */
+    static final class Base extends Context {
+        private final File cache;
+
+        Base(File cache) {
+            this.cache = cache;
+        }
+
+        @Override
+        public File getCacheDir() {
+            return cache;
+        }
+
+        @Override
+        public Resources getResources() {
+            return null;
+        }
+    }
+
+    /** The application object as on the target: a wrapper whose base is the scratch. */
+    static final class AppWrapper extends ContextWrapper {
+        AppWrapper(Context base) {
+            super(base);
+        }
+    }
+
+    /** An unrelated caller that reaches the provider's own options resolution. */
+    static final class UnrelatedCaller {
+        static void read(Context context) {
+            com.google.firebase.FirebaseOptions.fromResource(context);
+        }
+    }
+
+    static JSONObject identity() throws Exception {
+        return new JSONObject()
+            .put("fixtureId", "FIELDS-02")
+            .put("corpusVersion", 1)
+            .put("corpusSha256Lf", "fixture")
+            .put("targetPackage", "com.legado.app.debug")
+            .put("targetApkSha256", "fixture-target")
+            .put("harnessPackage", "io.liber.oracle.fields")
+            .put("harnessApkSha256", "fixture-harness");
+    }
+
+    /** The measured provider call order over one application wrapper. */
+    static Throwable providerRead(Context scratch) {
+        AppWrapper application = new AppWrapper(scratch);
+        try {
+            new com.google.firebase.provider.FirebaseInitProvider().onCreate(application);
+            return null;
+        } catch (Throwable error) {
+            return error;
+        }
+    }
+
+    static String receiptRefusal(StateSessionOracle.ScratchContext scratch) {
+        try {
+            SelectedFieldHostBridge.firebaseStartupReceipt(scratch);
+            return null;
+        } catch (Throwable error) {
+            return String.valueOf(error);
+        }
+    }
+
+    static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
+    }
+
+    static JSONObject run(String control, File cache) throws Exception {
+        StateSessionOracle.ScratchContext title = SelectedFieldHostBridge.titleScratch(
+            new Base(cache), "title-startup", "l138_title_fixture_");
+        StateSessionOracle.ScratchContext ordinary = SelectedFieldHostBridge.guardedScratch(
+            new Base(cache), "ordinary-startup", "l138_ordinary_fixture_");
+        JSONObject outcome = new JSONObject().put("control", control);
+        if ("exact".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(marker instanceof IllegalStateException, "the provider read must be refused");
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the owned marker must be consumed once");
+            title.bind("seed", identity());
+            outcome.put("receipt", SelectedFieldHostBridge.firebaseStartupReceipt(title));
+        } else if ("unbound".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the owned marker is still consumable before the binding");
+            require(receiptRefusal(title).contains("bound=false"),
+                "the receipt must need the binding: " + receiptRefusal(title));
+        } else if ("plain-resource".equals(control)) {
+            require(title.getResources() == null, "a plain resource read passes through");
+            require(receiptRefusal(title).contains("intercepted=0"),
+                "a plain read is not the startup proof");
+        } else if ("mixed-stack".equals(control)) {
+            UnrelatedCaller.read(new AppWrapper(title));
+            require(receiptRefusal(title).contains("intercepted=0"),
+                "an unrelated caller reaching the options is not the provider read");
+        } else if ("ordinary-scratch".equals(control)) {
+            require(providerRead(ordinary) == null, "the ordinary scratch reads resources");
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(ordinary, null,
+                new IllegalStateException("unrelated")),
+                "no unrelated exception is this containment");
+            require(receiptRefusal(ordinary).contains("carries no selected title"),
+                "the ordinary scratch carries no title proof");
+        } else if ("forged".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null,
+                new IllegalStateException(marker.getMessage())),
+                "a forged marker is not the owned one");
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the owned marker is still consumable once");
+            title.bind("seed", identity());
+            SelectedFieldHostBridge.firebaseStartupReceipt(title);
+        } else if ("wrapped".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null,
+                new RuntimeException(marker)), "a wrapping exception is not the owned marker");
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the owned marker is still consumable once");
+        } else if ("receiver".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, new Object(),
+                marker), "an unknown receiver is not this containment");
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the owned marker is still consumable once");
+        } else if ("duplicate".equals(control)) {
+            Throwable marker = providerRead(title);
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "the first acknowledgement is the owned one");
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "a second acknowledgement is never success");
+        } else if ("second-read".equals(control)) {
+            Throwable first = providerRead(title);
+            require(SelectedFieldHostBridge.handleFirebaseStartupException(title, null, first),
+                "the first read is the owned one");
+            Throwable second = providerRead(title);
+            require(second != null, "a second provider read is refused too");
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null, second),
+                "a second read is not the owned containment");
+            title.bind("seed", identity());
+            require(receiptRefusal(title).contains("intercepted=2"),
+                "two reads cannot be one proof: " + receiptRefusal(title));
+        } else if ("late-read".equals(control)) {
+            title.bind("seed", identity());
+            Throwable marker = providerRead(title);
+            require(marker != null, "a post-binding provider read is refused");
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "a post-binding read is never success");
+            require(receiptRefusal(title).contains("beforeBinding=false"),
+                "a post-binding read is not the startup phase: " + receiptRefusal(title));
+        } else if ("off-main".equals(control)) {
+            Looper.CURRENT = new Looper();
+            Throwable marker = providerRead(title);
+            require(marker != null, "an off-main provider read is refused");
+            require(!SelectedFieldHostBridge.handleFirebaseStartupException(title, null, marker),
+                "an off-main read is never success");
+            title.bind("seed", identity());
+            require(receiptRefusal(title).contains("handled=false"),
+                "an off-main read leaves no containment: " + receiptRefusal(title));
+        } else {
+            throw new IllegalArgumentException("unknown control " + control);
+        }
+        return outcome;
+    }
+
+    public static void main(String[] args) throws Exception {
+        File cache = Files.createTempDirectory("l138-title-startup-").toFile();
+        Looper.MAIN = new Looper();
+        Looper.CURRENT = Looper.MAIN;
+        JSONObject outcome = run(args[0], cache);
+        outcome.put("codeSource", StateSessionOracle.ScratchContext.class
+            .getProtectionDomain().getCodeSource().getLocation().toString());
+        System.out.println(outcome);
+    }
+}
+''',
+}
+
+
+class FirebaseStartupIsolationHostTest(unittest.TestCase):
+    """The actual title startup guard at its producer seam.
+
+    The production `StateSessionOracle`/`SelectedFieldHostBridge` bytes are compiled
+    against the real android-35 SDK and executed with only the OS signatures this
+    fixture reaches substituted. The provider call order, the owned marker, the
+    framework acknowledgement and the receipt are the real methods; the controls
+    cover the exact read, ordinary resource access, an unrelated caller, the
+    ordinary scratch, forged/wrapped/unknown/duplicate acknowledgements and the
+    later, second and off-main phases.
+    """
+
+    CONTROLS = ('exact', 'unbound', 'plain-resource', 'mixed-stack',
+                'ordinary-scratch', 'forged', 'wrapped', 'receiver', 'duplicate',
+                'second-read', 'late-read', 'off-main')
+
+    def _java_home(self):
+        candidates = []
+        if os.environ.get('JAVA_HOME'):
+            candidates.append(Path(os.environ['JAVA_HOME']))
+        candidates.append(Path.home() / '.cache/wayfinder/temurin-17/jdk-17.0.20+8')
+        candidates.append(Path('C:/Users/17945/.cache/wayfinder/temurin-17/jdk-17.0.20+8'))
+        for candidate in candidates:
+            if (candidate / 'bin' / 'javac.exe').is_file():
+                return candidate
+        raise unittest.SkipTest('no pinned JDK is discoverable')
+
+    def _android_jar(self):
+        roots = [Path(os.environ.get('ANDROID_HOME', '')),
+                 Path(os.environ.get('ANDROID_SDK_ROOT', '')),
+                 Path(os.environ.get('LOCALAPPDATA', '')) / 'Android/Sdk',
+                 Path('C:/Users/17945/AppData/Local/Android/Sdk')]
+        for root in roots:
+            jar = root / 'platforms/android-35/android.jar'
+            if jar.is_file():
+                return jar
+        raise unittest.SkipTest('no android-35 SDK platform is discoverable')
+
+    def _json_jar(self):
+        for root in (Path.home() / '.gradle/caches',
+                     Path('C:/Users/17945/.gradle/caches')):
+            found = sorted(root.glob('**/instrumented-json-20180813.jar'))
+            if found:
+                return found[0]
+        raise unittest.SkipTest('no installed org.json jar is discoverable')
+
+    def _run(self, argv, cwd):
+        return subprocess.run(argv, cwd=str(cwd), capture_output=True, timeout=600)
+
+    def _producer_classpath(self, repo, java, android, jar, root):
+        """SDK-first sources, then the substituted OS/provider seam, then the driver."""
+        root = Path(root)
+        sdk_classes = root / 'sdk-classes'
+        sdk_classes.mkdir()
+        sdk_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-nowarn', '-encoding', 'UTF-8', '-cp', str(android), '-d', str(sdk_classes),
+             str(repo / 'tool/nested_oracle/StateSessionOracle.java'),
+             str(repo / 'tool/nested_oracle/HostRuntimeInit.java'),
+             str(repo / 'tool/nested_oracle/ShortcutStartupGuard.java'),
+             str(repo / 'tool/replace_rule_oracle/GuardedReaderApplication.java'),
+             str(repo / 'tool/result_field_oracle/SelectedFieldHostBridge.java'),
+             str(repo / 'tool/result_field_oracle/FieldOracle.java')],
+            repo)
+        self.assertEqual(sdk_compiled.returncode, 0,
+                         sdk_compiled.stderr.decode(errors='replace'))
+        overlay_sources = []
+        for name, text in FIREBASE_STARTUP_SOURCES.items():
+            path = root / 'overlay-src' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding='utf-8')
+            overlay_sources.append(path)
+        overlay_classes = root / 'overlay-classes'
+        overlay_classes.mkdir()
+        overlay_compiled = self._run(
+            [str(java / 'bin' / 'javac.exe'), '-source', '8', '-target', '8',
+             '-nowarn', '-encoding', 'UTF-8', '-cp',
+             os.pathsep.join([str(jar), str(sdk_classes)]), '-d', str(overlay_classes)]
+            + [str(path) for path in overlay_sources],
+            repo)
+        self.assertEqual(overlay_compiled.returncode, 0,
+                         overlay_compiled.stderr.decode(errors='replace'))
+        self.assertTrue((sdk_classes
+                         / 'io/liber/oracle/nested/StateSessionOracle$ScratchContext.class')
+                        .is_file(), 'the SDK-compiled scratch bytes must exist')
+        return os.pathsep.join([str(overlay_classes), str(sdk_classes), str(jar)])
+
+    def test_the_actual_title_startup_controls_pass(self):
+        java = self._java_home()
+        android = self._android_jar()
+        jar = self._json_jar()
+        repo = Path(__file__).resolve().parent.parent.parent
+        with tempfile.TemporaryDirectory(prefix='l138-title-startup-') as directory:
+            run_cp = self._producer_classpath(repo, java, android, jar, directory)
+            outcomes = {}
+            for control in self.CONTROLS:
+                run = self._run(
+                    [str(java / 'bin' / 'java.exe'), '-cp', run_cp,
+                     'io.liber.oracle.fields.TitleStartupFixture', control],
+                    repo)
+                stdout = run.stdout.decode(errors='replace').strip()
+                self.assertEqual(
+                    run.returncode, 0,
+                    control + ': ' + stdout + run.stderr.decode(errors='replace'))
+                outcomes[control] = json.loads(stdout.splitlines()[-1])
+                self.assertIn('/sdk-classes/',
+                              outcomes[control]['codeSource'].replace(os.sep, '/'),
+                              control)
+            self.assertEqual(outcomes['exact']['receipt'], {
+                'provider': capture.FIREBASE_PROVIDER, 'intercepted': 1,
+                'handled': True, 'beforeBinding': True})
+            self.assertEqual(set(outcomes), set(self.CONTROLS))
+
+
+class FirebaseStartupIsolationAdmissionTest(unittest.TestCase):
+    """The title-only startup proof through the real selected-runtime admission.
+
+    Live finalization and offline verification both call this admission, so a
+    valid title proof is admitted and every absent, malformed or non-exact one is
+    refused. An ordinary selected corpus stays admissible without the proof and
+    cannot claim it.
+    """
+
+    TARGET_ROOT = '/data/user/0/' + capture.SELECTED_TARGET['package']
+    SCRATCH_ROOT = TARGET_ROOT + '/cache/liber-fields-02'
+
+    def _proof(self):
+        return {'provider': capture.FIREBASE_PROVIDER, 'intercepted': 1,
+                'handled': True, 'beforeBinding': True}
+
+    def _fixture(self, name='reader-title-lifecycle-fixtures-selected.json'):
+        return json.loads((Path(__file__).resolve().parent / name).read_bytes())
+
+    def _containment(self):
+        return {
+            'appCtxClass': capture.GUARD_APPLICATION,
+            'activityThreadAppClass': capture.GUARD_APPLICATION,
+            'sameApplicationObject': True, 'guardedApplication': True,
+            'baseContextBound': True,
+            'baseContextClass': capture.SCRATCH_CONTEXT,
+            'externalFilesPath': self.SCRATCH_ROOT + '/external-files',
+            'filesPath': self.SCRATCH_ROOT + '/files',
+            'databasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+            'scratchRoot': self.SCRATCH_ROOT,
+            'externalFilesRouted': True, 'filesRouted': True,
+            'databaseRouted': True,
+            'appUtilsApplicationClass': capture.GUARD_APPLICATION,
+            'appUtilsSameApplication': True,
+            'bookHelpCachePath': self.SCRATCH_ROOT + '/external-files/book_cache',
+            'bookHelpCacheWithinScratch': True,
+            'roomDatabasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+            'roomDatabaseWithinScratch': True,
+        }
+
+    def _guard(self, book_url, chapter_url):
+        return {
+            'release': {
+                'ownedReceivers': 1, 'removedReceivers': 1,
+                'ownedLifecycleCallbacks': 1, 'removedLifecycleCallbacks': 1,
+                'removalFailures': [], 'observerClose': {},
+                'remainingOwnedReceivers': 0,
+                'remainingOwnedLifecycleCallbacks': 0,
+                'pendingOwnedWork': 0, 'closed': True},
+            'fence': {'posted': True, 'completed': True, 'timeoutMillis': 5000,
+                      'mainThread': False},
+            'receipt': {
+                'armed': True, 'ownerClass': capture.GUARD_APPLICATION,
+                'attemptedRegistrations': 2, 'successfulRegistrations': 2,
+                'receiverRegistrations': [{
+                    'overload': '3-arg', 'nativeClass': capture.LEB_RECEIVER,
+                    'wrapperClass': capture.GUARD_RECEIVER_WRAPPER,
+                    'flags': 2, 'actions': [capture.LEB_IPC_ACTION],
+                    'registered': True}],
+                'receiverUnregistrations': [capture.GUARD_RECEIVER_WRAPPER],
+                'lifecycleRegistrations': [capture.LEB_LIFECYCLE],
+                'lifecycleUnregistrations': [capture.LEB_LIFECYCLE],
+                'inboundAttempts': [], 'failures': [],
+                'blockedDeliveries': 0, 'foreignUnregistrations': 0,
+                'pendingWrappers': 0, 'pendingOwnedWork': 0,
+                'saveEvents': 1, 'foreignEvents': 0, 'callbackErrors': 0,
+                'observing': False, 'observerClosed': True,
+                'captureFailed': False,
+                'lastEvent': {'bookUrl': book_url, 'chapterUrl': chapter_url,
+                              'correlates': True},
+            },
+        }
+
+    def _report(self, fixture, proof=None):
+        book_url = fixture['origin'] + '/saved/book/1'
+        chapter_url = '/saved/c/1'
+        cases = []
+        for case in fixture['cases']:
+            record = {
+                'id': case['id'], 'terminal': case['terminal'],
+                'terminalOwner': {'owner': 'Coroutine.DEFAULT Job',
+                                  'observedChildren': 0, 'allCompleted': True,
+                                  'rootEmpty': True, 'launchAttempts': 0},
+            }
+            if case['terminal'] == capture.TITLE_LIFECYCLE_TERMINAL:
+                record['bookInfo'] = {'bookUrl': book_url}
+                record['tableOfContents'] = {'chapters': [{'url': chapter_url}]}
+            cases.append(record)
+        wrappers = {item['type']: item['factory']
+                    for item in fixture['hostInitialization']['registrations']}
+        report = {
+            'startupContainment': {
+                'service': 'shortcut',
+                'provider': 'io.legado.app.api.ReaderProvider',
+                'intercepted': 1, 'handled': 1, 'beforeBinding': True},
+            'isolation': {'appClass': capture.GUARD_APPLICATION,
+                          'scratchRoot': self.SCRATCH_ROOT,
+                          'appFilesDir': self.SCRATCH_ROOT + '/files',
+                          'scratchFilesDir': self.SCRATCH_ROOT + '/files',
+                          'appDatabasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+                          'scratchDatabasePath': self.SCRATCH_ROOT + '/databases/legado.db',
+                          'earlyContainment': self._containment()},
+            'hostInitialization': {
+                'verified': True, 'applicationAttached': False,
+                'invokedOn': 'unattached-instance',
+                'notRun': ['io.legado.app.App.onCreate'],
+                'method': fixture['hostInitialization']['method'],
+                'registeredWrappers': wrappers},
+            'terminalOwner': {
+                'scope': 'Coroutine.DEFAULT', 'rootActive': True,
+                'rootCompleted': False, 'baselineChildren': 0,
+                'childrenMethod': 'kotlinx.coroutines.Job.getChildren()',
+                'completionMethod': 'kotlinx.coroutines.Job.isCompleted()'},
+            'entryPoints': {
+                'searchBookAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.searchBookAwait(io.legado.app.data.entities.BookSource,java.lang.String,java.lang.Integer,kotlin.jvm.functions.Function3,kotlin.jvm.functions.Function1,kotlin.coroutines.Continuation)',
+                'getBookInfoAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.getBookInfoAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,kotlin.coroutines.Continuation)',
+                'getChapterListAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.getChapterListAwait-yxL6bBk(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,boolean,boolean,kotlin.coroutines.Continuation)',
+                'getContentAwait': 'public final java.lang.Object io.legado.app.model.webBook.WebBook.getContentAwait(io.legado.app.data.entities.BookSource,io.legado.app.data.entities.Book,io.legado.app.data.entities.BookChapter,java.lang.String,boolean,kotlin.coroutines.Continuation)',
+            },
+            'cleanup': {'savedContentGuard': self._guard(book_url, chapter_url),
+                        'serverClosed': True, 'openConnectionsAfterClose': 0,
+                        'databaseClosed': True, 'activityLaunchAttempts': 0},
+            'cases': cases,
+        }
+        if proof is not None:
+            report['firebaseStartupIsolation'] = proof
+        return report
+
+    def _manifest(self):
+        return {'targetPrivateRoot': self.TARGET_ROOT}
+
+    def test_the_title_report_needs_exactly_the_measured_startup_proof(self):
+        fixture = self._fixture()
+        capture._admit_selected_runtime(
+            self._report(fixture, self._proof()), fixture, self._manifest())
+        mutations = (
+            (lambda report: report.pop('firebaseStartupIsolation'),
+             'firebaseStartupIsolation is missing'),
+            (lambda report: report.__setitem__('firebaseStartupIsolation', 'measured'),
+             'firebaseStartupIsolation must be an object'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'provider', 'com.google.firebase.provider.OtherProvider'),
+             'provider differs'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'intercepted', 2), 'exactly once'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'intercepted', '1'), 'must be an integer'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'intercepted', True), 'must be an integer'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'handled', False), 'was not handled'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'handled', 1), 'handled must be boolean'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'beforeBinding', False), 'not before the binding'),
+            (lambda report: report['firebaseStartupIsolation'].pop('beforeBinding'),
+             'fields differ'),
+            (lambda report: report['firebaseStartupIsolation'].__setitem__(
+                'phase', 'startup'), 'fields differ'),
+        )
+        for mutate, expected in mutations:
+            report = self._report(fixture, self._proof())
+            mutate(report)
+            with self.subTest(expected=expected), \
+                    self.assertRaisesRegex(ValueError, expected):
+                capture._admit_selected_runtime(report, fixture, self._manifest())
+
+    def test_an_ordinary_selected_report_cannot_claim_the_title_proof(self):
+        fixture = self._fixture('book-url-markers-fixtures-selected.json')
+        capture._admit_selected_runtime(
+            self._report(fixture), fixture, self._manifest())
+        with self.assertRaisesRegex(ValueError, 'ordinary corpus'):
+            capture._admit_selected_runtime(
+                self._report(fixture, self._proof()), fixture,
+                self._manifest())
 
 
 class SelectedReceiptTest(unittest.TestCase):

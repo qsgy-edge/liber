@@ -86,6 +86,8 @@ TITLE_PREFLIGHT_ABI_DEXES = (
 TITLE_PREFLIGHT_ABI_COMMANDS = tuple(
     'target-abi-' + name for name in TITLE_PREFLIGHT_ABI_DEXES)
 PREFLIGHT_SUMMARY = 'reflected-abi'
+# The one early provider read the selected title corpus refuses before binding.
+FIREBASE_PROVIDER = 'com.google.firebase.provider.FirebaseInitProvider'
 LEB_RECEIVER = 'com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver'
 LEB_IPC_ACTION = 'intent.action.ACTION_LEB_IPC'
 LEB_LIFECYCLE = 'com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl'
@@ -1752,6 +1754,26 @@ def _admit_process_guard_cleanup(report, fixture):
         raise ValueError('the process guard last event does not correlate')
 
 
+def _admit_firebase_startup_isolation(report):
+    """The title-only proof that the one early provider options read was stopped.
+
+    The read happens before the scratch binds, so the receipt can only exist after
+    both: the guard issued exactly the one main-thread marker, the start-up exception
+    seam consumed it, and the binding then completed.
+    """
+    label = 'report.firebaseStartupIsolation'
+    proof = _required_map(report, 'firebaseStartupIsolation', 'report')
+    _exact_keys(proof, {'provider', 'intercepted', 'handled', 'beforeBinding'}, label)
+    if _required_string(proof, 'provider', label) != FIREBASE_PROVIDER:
+        raise ValueError('Firebase startup isolation provider differs')
+    if _require_int(proof.get('intercepted'), label + '.intercepted') != 1:
+        raise ValueError('Firebase startup isolation did not intercept exactly once')
+    if _required_bool(proof, 'handled', label) is not True:
+        raise ValueError('Firebase startup isolation was not handled')
+    if _required_bool(proof, 'beforeBinding', label) is not True:
+        raise ValueError('Firebase startup isolation was not before the binding')
+
+
 def _admit_selected_runtime(report, fixture, manifest=None):
     def require(condition, detail):
         if not condition:
@@ -1802,8 +1824,12 @@ def _admit_selected_runtime(report, fixture, manifest=None):
                 and type(terminal.get('launchAttempts')) is int and terminal['launchAttempts'] == 0,
                 'case terminal proof differs')
     if isinstance(fixture.get('titleLifecycle'), dict):
+        _admit_firebase_startup_isolation(report)
         _admit_title_early_containment(report, manifest)
         _admit_process_guard_cleanup(report, fixture)
+    else:
+        require('firebaseStartupIsolation' not in report,
+                'an ordinary corpus carries the title startup containment')
     cleanup = report.get('cleanup') or {}
     require(isinstance(cleanup, dict) and cleanup.get('serverClosed') is True
             and type(cleanup.get('openConnectionsAfterClose')) is int

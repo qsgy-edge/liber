@@ -99,6 +99,8 @@ public final class FieldOracle extends Instrumentation {
     private final JSONObject isolation = new JSONObject();
     private boolean newFamily;
     private boolean selectedReference;
+    /** Whether this selection is the one title-lifecycle corpus, known before startup. */
+    private boolean titleLifecycleSelection;
     private Object rootJob;
     private Method jobChildren, jobCompleted, jobActive, sequenceIterator;
     private Object selectedDatabase;
@@ -152,9 +154,13 @@ public final class FieldOracle extends Instrumentation {
                         || !SELECTED_APK.equals(target.optString("apkSha256"))) {
                     throw new IllegalStateException("selected FIELDS target differs");
                 }
+                // The title corpus alone adds the one early provider-options refusal; every
+                // other selected corpus keeps its storage-only scratch unchanged.
+                titleLifecycleSelection = selection.optJSONObject("titleLifecycle") != null;
                 try {
                     Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
-                    scratch = (StateSessionOracle.ScratchContext) bridge.getMethod("guardedScratch",
+                    scratch = (StateSessionOracle.ScratchContext) bridge.getMethod(
+                        titleLifecycleSelection ? "titleScratch" : "guardedScratch",
                         Context.class, String.class, String.class).invoke(null, context,
                             SCRATCH_ROOT_NAME, PREFERENCE_PREFIX);
                     Class<? extends Application> application = Class.forName(
@@ -187,8 +193,15 @@ public final class FieldOracle extends Instrumentation {
                     StateSessionOracle.ScratchContext.class, Object.class, Throwable.class)
                     .invoke(null, scratch, object, error);
                 if (handled) return true;
+                if (titleLifecycleSelection) {
+                    boolean isolated = (Boolean) bridge.getMethod(
+                        "handleFirebaseStartupException", StateSessionOracle.ScratchContext.class,
+                        Object.class, Throwable.class).invoke(null, scratch, object, error);
+                    if (isolated) return true;
+                }
             } catch (ReflectiveOperationException bridgeError) {
-                throw new IllegalStateException("selected shortcut guard failed", bridgeError);
+                throw new IllegalStateException("selected startup containment failed",
+                    bridgeError);
             }
         }
         return super.onException(object, error);
@@ -557,6 +570,13 @@ public final class FieldOracle extends Instrumentation {
                 Class<?> bridge = Class.forName("io.liber.oracle.nested.SelectedFieldHostBridge");
                 report.put("startupContainment", bridge.getMethod("shortcutReceipt",
                     StateSessionOracle.ScratchContext.class).invoke(null, scratch));
+                if (titleLifecycleSelection) {
+                    // The title-only startup proof is enforced here, before the host
+                    // initialisation, the database and the replay server are reached.
+                    report.put("firebaseStartupIsolation", bridge.getMethod(
+                        "firebaseStartupReceipt", StateSessionOracle.ScratchContext.class)
+                        .invoke(null, scratch));
+                }
                 ClassLoader loader = getTargetContext().getClassLoader();
                 report.put("hostInitialization", bridge.getMethod("initialize",
                     ClassLoader.class, JSONObject.class).invoke(null,

@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase;
@@ -1572,6 +1573,114 @@ public class StateSessionOracle extends Instrumentation {
     }
 
     /**
+     * Stops the frozen target's one early Firebase provider options read, for the selected
+     * title corpus only.
+     *
+     * <p>The target starts {@code FirebaseInitProvider} before the harness binds its
+     * scratch: {@code onCreate → FirebaseApp.initializeApp → FirebaseOptions.fromResource →
+     * StringResourceValueReader.<init> → Context.getResources}. Resolving the options there
+     * is what makes Play Services queue its measurement registration on a worker thread,
+     * which this harness refuses as an unexpected external caller. The read is therefore
+     * interrupted before the registration is queued. Only that exact ordered read is
+     * refused: every other resource read reaches the base context, and no other Firebase
+     * caller or SDK registration is suppressed.
+     *
+     * <p>The marker is owned. Only the one instance this guard issued, once, on the main
+     * thread, before the scratch was bound, may be consumed by the instrumentation
+     * exception seam. A forged, wrapped, foreign, repeated, off-main or post-binding
+     * acknowledgement is refused, so an unrelated exception is never this containment and
+     * a later phase is never success.
+     */
+    static final class FirebaseStartupIsolation {
+        private static final String PROVIDER = "com.google.firebase.provider.FirebaseInitProvider";
+        /** The measured provider read, innermost stack frame first. */
+        private static final String[] READ_CLASSES = {
+            "com.google.android.gms.common.internal.StringResourceValueReader",
+            "com.google.firebase.FirebaseOptions",
+            "com.google.firebase.FirebaseApp",
+            PROVIDER,
+        };
+        private static final String[] READ_METHODS = {
+            "<init>", "fromResource", "initializeApp", "onCreate",
+        };
+
+        private Marker issued;
+        private int intercepted;
+        private boolean handled;
+        private boolean beforeBinding;
+
+        /** The one owned refusal; only this guard can construct it. */
+        static final class Marker extends IllegalStateException {
+            private Marker() {
+                super("the selected title scratch stopped the Firebase provider options read");
+            }
+        }
+
+        /**
+         * Refuses the exact provider options read and lets every other resource read
+         * through. Only the first main-thread read before the binding owns a marker that can
+         * be acknowledged; a later or off-main read is refused too, but nothing can consume
+         * it, so its containment can never be reported.
+         */
+        void intercept(boolean bound, boolean mainThread) {
+            Marker marker = new Marker();
+            if (!optionsRead(marker)) return;
+            synchronized (this) {
+                intercepted++;
+                if (issued == null && intercepted == 1 && !bound && mainThread) {
+                    issued = marker;
+                    beforeBinding = true;
+                }
+            }
+            throw marker;
+        }
+
+        /**
+         * Consumes exactly the issued marker, once, for the start-up exception the framework
+         * caught. Every other receiver, wrapper, marker or repeat stays the caller's own
+         * exception.
+         */
+        synchronized boolean handle(Object object, Throwable error) {
+            if (object != null || issued == null || error != issued || handled
+                    || intercepted != 1 || !beforeBinding || !optionsRead(error)) {
+                return false;
+            }
+            handled = true;
+            return true;
+        }
+
+        /**
+         * The startup proof: the read was issued before the binding and consumed once, and
+         * the scratch is bound now. A receipt therefore cannot exist without both halves.
+         */
+        synchronized JSONObject receipt(boolean bound) throws JSONException {
+            if (issued == null || intercepted != 1 || !handled || !beforeBinding || !bound) {
+                throw new IllegalStateException("the selected title Firebase startup isolation"
+                    + " was not proven: intercepted=" + intercepted + ", handled=" + handled
+                    + ", beforeBinding=" + beforeBinding + ", bound=" + bound);
+            }
+            return new JSONObject()
+                .put("provider", PROVIDER)
+                .put("intercepted", intercepted)
+                .put("handled", true)
+                .put("beforeBinding", true);
+        }
+
+        /** Whether the measured provider options resolution produced this throwable. */
+        private static boolean optionsRead(Throwable error) {
+            int index = 0;
+            for (StackTraceElement frame : error.getStackTrace()) {
+                if (index < READ_CLASSES.length
+                        && READ_CLASSES[index].equals(frame.getClassName())
+                        && READ_METHODS[index].equals(frame.getMethodName())) {
+                    index++;
+                }
+            }
+            return index == READ_CLASSES.length;
+        }
+    }
+
+    /**
      * Storage-only wrapper. The frozen code, its assets and resources stay intact; only
      * the files, database and preference locations move into a task-owned root plus a
      * task-owned preference name prefix.
@@ -1589,6 +1698,10 @@ public class StateSessionOracle extends Instrumentation {
      * without deadlocking start-up because the binder starts from a main-looper post, so
      * it is refused immediately. A binding failure releases waiters with that failure,
      * and a timeout refuses visibly; nothing is retried.
+     *
+     * <p>The selected title profile additionally refuses the one early Firebase provider
+     * options read through {@link FirebaseStartupIsolation}; every other scratch keeps
+     * ordinary resource access.
      */
     public static final class ScratchContext extends ContextWrapper {
         private static final long BINDING_WAIT_SECONDS = 30;
@@ -1596,6 +1709,7 @@ public class StateSessionOracle extends Instrumentation {
         public final File root;
         private final String preferencesPrefix;
         private final ShortcutStartupGuard shortcutGuard;
+        private final FirebaseStartupIsolation firebaseStartupIsolation;
         private final boolean rootExistedAtStart;
         private final Object stateLock = new Object();
         private final java.util.concurrent.CountDownLatch boundSignal =
@@ -1617,9 +1731,16 @@ public class StateSessionOracle extends Instrumentation {
 
         ScratchContext(Context base, String rootName, String preferencesPrefix,
                 boolean containShortcuts) {
+            this(base, rootName, preferencesPrefix, containShortcuts, false);
+        }
+
+        ScratchContext(Context base, String rootName, String preferencesPrefix,
+                boolean containShortcuts, boolean isolateFirebaseStartup) {
             super(base);
             this.preferencesPrefix = preferencesPrefix;
             shortcutGuard = containShortcuts ? new ShortcutStartupGuard() : null;
+            firebaseStartupIsolation = isolateFirebaseStartup
+                ? new FirebaseStartupIsolation() : null;
             root = new File(base.getCacheDir(), rootName);
             rootExistedAtStart = root.exists();
         }
@@ -1630,8 +1751,27 @@ public class StateSessionOracle extends Instrumentation {
             return super.getSystemService(name);
         }
 
+        /**
+         * The title profile's one startup refusal and nothing else: a resource read that is
+         * not the measured Firebase provider options resolution reaches the base context
+         * unchanged, before and after the binding.
+         */
+        @Override
+        public Resources getResources() {
+            if (firebaseStartupIsolation != null) {
+                firebaseStartupIsolation.intercept(isBound(),
+                    Looper.myLooper() == Looper.getMainLooper());
+            }
+            return super.getResources();
+        }
+
         boolean handleShortcutException(Object object, Throwable error) {
             return shortcutGuard != null && shortcutGuard.handle(object, error);
+        }
+
+        boolean handleFirebaseStartupException(Object object, Throwable error) {
+            return firebaseStartupIsolation != null
+                && firebaseStartupIsolation.handle(object, error);
         }
 
         JSONObject shortcutReceipt() throws JSONException {
@@ -1643,6 +1783,14 @@ public class StateSessionOracle extends Instrumentation {
                 .put("intercepted", shortcutGuard.intercepted())
                 .put("handled", shortcutGuard.handled())
                 .put("beforeBinding", shortcutGuard.beforeBinding());
+        }
+
+        JSONObject firebaseStartupReceipt() throws JSONException {
+            if (firebaseStartupIsolation == null) {
+                throw new IllegalStateException("this scratch carries no selected title"
+                    + " Firebase startup isolation");
+            }
+            return firebaseStartupIsolation.receipt(isBound());
         }
 
         /**

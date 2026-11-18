@@ -306,6 +306,31 @@ observer. `saveEvents` is the latest per-case count, not a run total, and the
 final `lastEvent` joins the last saved case. The successful selected profile
 requires the final `release.observerClose` map to be empty because both case
 observers already closed; a nonempty cached terminal is refused.
+
+The title startup is contained by two report facts. `startupContainment` is the
+shared ReaderProvider shortcut containment every selected corpus carries.
+`firebaseStartupIsolation` is the title corpus' own fact: the frozen target
+starts `FirebaseInitProvider` before the harness binds its scratch, and that
+provider's synchronous options read (`FirebaseInitProvider.onCreate` →
+`FirebaseApp.initializeApp` → `FirebaseOptions.fromResource` →
+`StringResourceValueReader.<init>` → `Context.getResources`) is the only resource
+read the title scratch refuses, because resolving it there is what queues the
+Play Services measurement registration this harness rejects. The fact is exactly
+`{provider: com.google.firebase.provider.FirebaseInitProvider, intercepted: 1,
+handled: true, beforeBinding: true}`: one owned marker issued on the MAIN thread
+before the binding, consumed once by the instrumentation exception seam. It is
+enforced before host initialisation, the database and the replay server, and an
+absent, malformed or non-exact fact is refused by both live finalization and
+offline verification. Every other resource read, every other Firebase caller,
+and a non-title selected corpus' report, exception handling and public output
+are unchanged; a corpus without the lifecycle observation may not carry the
+fact. The focused controls run the production scratch/bridge bytes against
+android-35: the exact read, a plain resource read, an unrelated caller, the
+ordinary scratch, forged/wrapped/unknown/duplicate acknowledgements and the
+later, second and off-main phases (`FirebaseStartupIsolationHostTest`), plus the
+real admission for a valid proof, each absent/malformed/non-exact variant and
+an ordinary corpus that cannot claim it (`FirebaseStartupIsolationAdmissionTest`).
+
 The selected runtime also joins `isolation.earlyContainment` to the measured
 target-private root: the guarded application identity and base-context binding;
 `filesPath` is `<root>/files`; `databasePath` is

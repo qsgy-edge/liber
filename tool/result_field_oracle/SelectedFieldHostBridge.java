@@ -13,6 +13,13 @@ public final class SelectedFieldHostBridge {
         return new StateSessionOracle.ScratchContext(context, rootName, preferencePrefix, true);
     }
 
+    /** The selected title corpus' scratch: shortcut containment plus the one provider read. */
+    public static StateSessionOracle.ScratchContext titleScratch(
+            Context context, String rootName, String preferencePrefix) {
+        return new StateSessionOracle.ScratchContext(context, rootName, preferencePrefix,
+            true, true);
+    }
+
     public static boolean handleShortcutException(StateSessionOracle.ScratchContext scratch,
             Object object, Throwable error) {
         return scratch.handleShortcutException(object, error);
@@ -21,6 +28,16 @@ public final class SelectedFieldHostBridge {
     public static JSONObject shortcutReceipt(StateSessionOracle.ScratchContext scratch)
             throws Exception {
         return scratch.shortcutReceipt();
+    }
+
+    public static boolean handleFirebaseStartupException(StateSessionOracle.ScratchContext scratch,
+            Object object, Throwable error) {
+        return scratch.handleFirebaseStartupException(object, error);
+    }
+
+    public static JSONObject firebaseStartupReceipt(StateSessionOracle.ScratchContext scratch)
+            throws Exception {
+        return scratch.firebaseStartupReceipt();
     }
 
     public static JSONObject initialize(ClassLoader loader, JSONObject declaration)
