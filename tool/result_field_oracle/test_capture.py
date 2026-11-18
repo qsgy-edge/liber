@@ -10562,7 +10562,6 @@ class RootSnapshotTest(unittest.TestCase):
         import io
         import shutil
         from unittest.mock import patch
-        helper = RootInstallTimeoutTest()
         case = TitlePhysicalEntryTest(
             'test_the_root_install_receipt_is_consumed_by_both_entry_paths')
         fixture_path = Path(__file__).resolve().with_name(self.TITLE)
@@ -10585,7 +10584,7 @@ class RootSnapshotTest(unittest.TestCase):
             build.mkdir()
             harness = build / 'field-oracle.apk'
             harness.write_bytes(harness_bytes)
-            # A benign but different APK: a pathname ZIP read would see foreign provenance.
+            # Replace the external build input without touching the owned snapshot.
             decoy = io.BytesIO()
             with zipfile.ZipFile(decoy, 'w') as archive:
                 archive.writestr('assets/field-fixtures.json', corpus_bytes)
@@ -10611,6 +10610,14 @@ class RootSnapshotTest(unittest.TestCase):
             target = base / 'target.apk'
             target.write_bytes(_SYNTHETIC_TARGET_APK)
             snapshot = output / capture.HARNESS_SNAPSHOT_NAME
+            real_zip = zipfile.ZipFile
+
+            def check_archive(source, *args, **kwargs):
+                if isinstance(source, (str, os.PathLike)):
+                    self.assertNotIn(Path(source), (harness, snapshot),
+                                     'local harness ZIP must use the checked bytes')
+                return real_zip(source, *args, **kwargs)
+
             real_sha = capture.sha256
             pinned = fixture['target']['apkSha256']
             target_digest = real_sha(target)
@@ -10751,7 +10758,7 @@ class RootSnapshotTest(unittest.TestCase):
                             'dex': dex_files[0]}
                            for descriptor, methods in capture.REFLECTED_ABI.items()
                            for method, signature, access in methods]
-                abi_dir = Path(tempfile.mkdtemp(prefix='fields-target-dex-'))
+                abi_dir = base / 'synthetic-target-dex'
                 for name, dex_name in zip(capture.TITLE_PREFLIGHT_ABI_COMMANDS,
                                           capture.TITLE_PREFLIGHT_ABI_DEXES):
                     recorder(name, [tools / 'dexdump.exe',
@@ -10775,6 +10782,7 @@ class RootSnapshotTest(unittest.TestCase):
                     patch.object(capture, 'sha256', side_effect=pin), \
                     patch.object(capture.subprocess, 'run', run), \
                     patch.object(capture, '_admit_reflected_abi', abstract_abi), \
+                    patch.object(capture.zipfile, 'ZipFile', side_effect=check_archive), \
                     patch.object(capture, 'ROOT_INSTALL_TIMEOUT', self.BOUND):
                 try:
                     code = capture.main()
