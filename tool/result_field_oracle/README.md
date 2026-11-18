@@ -207,14 +207,12 @@ mechanics result is not native evidence.
 The controller alone owns the handset capture and any evidence-backed product
 repairs.
 
-### Opt-in root installation (approved 2026-11-18)
+### Opt-in root installation
 
-The approved handset answers `su` for the read-only probe, and the operator
-approved one opt-in root transport for the live selected title capture. It is a
-single explicit switch, `--root-install`, and it is refused before any device
-action for `--preflight-only`, `--finalize`, `--verify-bundle`, any corpus
-without the title lifecycle observation (including every legacy and ordinary
-selected corpus) and any serial other than `5615f742`.
+Use `--root-install` only for live selected title capture on handset `5615f742`
+with existing root access. The flag is refused before any device action in
+`--preflight-only`, `--finalize`, and `--verify-bundle` modes, for legacy and
+ordinary selected corpora, and for every other serial.
 
 The switch keeps the whole default path unchanged: the same preflight (signed
 artifact, source/target/WebView identity, package absence, scratch/preference
@@ -239,25 +237,13 @@ different `-S` length, a stdin length that differs from the pulled APK, or a
 stdin digest that differs from the measured artifact is refused. The root shape
 is admitted only for the selected title profile, and the exact size and digest
 join the preflight artifact to the pulled `installed-harness.apk` byte identity,
-the original owner-only cleanup and the private before/after equality. A sent
-install is never retried or fallen back from: a nonzero or ambiguous result ends
-the run as blocked/failed before instrumentation, exactly as on the default
-path. The stream is non-incremental root installation; the existing offline
-APK/idsig provenance checks are unchanged and nothing implies that the installer
-consumed `idsig`.
-
-Offline coverage: `RootInstallTest` refuses every unauthorized mode, profile and
-serial before any process starts, proves the accepted live selected-title argv
-passes the gate, runs the real transport against a controlled child process and
-checks the exact argv tail and the exact stdin bytes on the other side of the
-pipe, and admits or refuses the two receipt shapes and their tampered variants.
-`TitlePhysicalEntryTest` consumes the root receipt through both the live
-`--finalize` and the read-only `--verify-bundle` entry paths and refuses the
-hybrid, the missing-stdin, the wrong-size, the wrong-digest, the edited-command
-and the refused-install variants in both. Still **not run**: the real root
-transport against the handset (`su` prompt-free behaviour, `pm install -S`
-streaming), a real refused install's package-state outcome and the formal 4/18
-capture. Those remain controller-only.
+the original owner-only cleanup and the private before/after equality. A nonzero
+or ambiguous install result stops the run before instrumentation, without retry
+or fallback. A timed-out root install preserves the command, the supplied stdin
+length and hash, and the available output, with no exit code and completion
+marked unknown. That receipt cannot qualify a bundle. The root transport is
+non-incremental and does not pass the `idsig` to the installer; offline artifact
+verification still includes the `idsig`.
 
 ### Reader follow-through selected corpus
 
