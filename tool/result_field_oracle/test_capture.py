@@ -1274,7 +1274,7 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         return _snapshot_bytes(capture.FROZEN_APP_STORE,
                                ['.', 'cache', 'databases', 'shared_prefs', 'files'])
 
-    def _bundle(self, root):
+    def _bundle(self, root, root_install=False):
         root = Path(root)
         root.mkdir(parents=True, exist_ok=True)
         fixture = self._fixture()
@@ -1556,11 +1556,12 @@ class TitlePhysicalEntryTest(unittest.TestCase):
         (root / 'nested/sentinel.txt').write_bytes(b'preserve me\n')
         prefix = ['adb', '-s', '5615f742']
 
-        def add(name, args, data=b'', code=0):
+        def add(name, args, data=b'', code=0, **extra):
             log = name + '.log'
             (root / log).write_bytes(data)
-            manifest['commands'].append({'command': prefix + args,
-                                         'exitCode': code, 'log': log})
+            entry = {'command': prefix + args, 'exitCode': code, 'log': log}
+            entry.update(extra)
+            manifest['commands'].append(entry)
 
         def shell(script):
             return ['shell', *capture.remote_script_arguments(
@@ -1597,7 +1598,15 @@ class TitlePhysicalEntryTest(unittest.TestCase):
             + ' ]; then echo PRESENT; fi'))
         add('private-before', shell(capture._fields_snapshot_script(
             self.TARGET_ROOT)), before)
-        add('install', ['install', '-r', str(harness_apk)], b'Success\n')
+        if root_install:
+            install_bytes = harness_apk.read_bytes()
+            add('install', ['shell', '-T',
+                            capture._root_install_command(len(install_bytes))],
+                b'Success\n',
+                stdin={'bytes': len(install_bytes),
+                       'sha256': capture.sha256_bytes(install_bytes)})
+        else:
+            add('install', ['install', '-r', str(harness_apk)], b'Success\n')
         add('installed-harness-path', ['shell', 'pm', 'path', capture.PACKAGE],
             b'package:/installed.apk\n')
         add('installed-harness-pull', ['pull', '/installed.apk',
@@ -1847,6 +1856,109 @@ class TitlePhysicalEntryTest(unittest.TestCase):
                         self.assertTrue(receipt.is_file(), label)
                         detail = receipt.read_text(encoding='utf-8')
                         self.assertIn(expected, detail, label)
+                        self.assertEqual(self._inventory(copy), before, label)
+
+    def test_the_root_install_receipt_is_consumed_by_both_entry_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, fixture, binding, harness_apk, target_apk, _ = \
+                self._bundle(base / 'root', root_install=True)
+            code, stdout, stderr = self._main(
+                'finalize', root, root, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertTrue((root / 'golden.json').is_file())
+            verify = base / 'root-verify'
+            code, stdout, stderr = self._main(
+                'verify', root, verify, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            self.assertEqual(
+                json.loads((verify / 'verification.json').read_bytes())['status'],
+                'verified-bundle')
+
+    def test_both_entry_paths_refuse_hybrid_or_refused_root_install_receipts(self):
+        def install_row(root_dir):
+            manifest = json.loads((Path(root_dir) / 'manifest.json').read_bytes())
+            return manifest, next(row for row in manifest['commands']
+                                  if row['log'] == 'install.log')
+
+        def replace_command(manifest, row, root_dir):
+            row['command'] = ['adb', '-s', '5615f742', 'install', '-r',
+                              'C:/build/field-oracle.apk']
+
+        def drop_stdin(manifest, row, root_dir):
+            row.pop('stdin')
+
+        def wrong_length(manifest, row, root_dir):
+            row['stdin']['bytes'] += 1
+
+        def wrong_digest(manifest, row, root_dir):
+            row['stdin']['sha256'] = '0' * 64
+
+        def wrong_size_command(manifest, row, root_dir):
+            row['command'] = ['adb', '-s', '5615f742', 'shell', '-T',
+                              capture._root_install_command(
+                                  row['stdin']['bytes'] + 1)]
+
+        def edited_command(manifest, row, root_dir):
+            row['command'] = row['command'] + ['--user', '0']
+
+        def refused_install(manifest, row, root_dir):
+            row['exitCode'] = 1
+            (Path(root_dir) / 'install.log').write_bytes(
+                b'Failure [INSTALL_FAILED_USER_RESTRICTED]\n')
+            (Path(root_dir) / 'instrumentation.log').unlink()
+
+        mutations = (
+            ('hybrid', replace_command, 'install receipt shape differs'),
+            ('no-stdin', drop_stdin, 'install receipt shape differs'),
+            ('length', wrong_length, 'root install stdin length differs'),
+            ('digest', wrong_digest, 'root install stdin digest differs'),
+            ('size-command', wrong_size_command, 'root install command differs'),
+            ('edited-command', edited_command, 'root install command differs'),
+            ('refused', refused_install, 'record failure: install'),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            clean, fixture, binding, harness_apk, target_apk, _ = \
+                self._bundle(base / 'root-clean', root_install=True)
+            code, stdout, stderr = self._main(
+                'finalize', clean, clean, binding, fixture, harness_apk,
+                target_apk)
+            self.assertEqual(code, 0, stdout + stderr)
+            for label, mutate, expected in mutations:
+                for mode in ('finalize', 'verify'):
+                    copy = self._copy(clean, base / (label + '-' + mode))
+                    manifest, row = install_row(copy)
+                    mutate(manifest, row, copy)
+                    self._write_manifest(copy, manifest)
+                    before = self._inventory(copy)
+                    if mode == 'finalize':
+                        code, stdout, stderr = self._main(
+                            'finalize', copy, copy, binding, fixture,
+                            harness_apk, target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        failures = sorted(copy.glob('finalize-failure*.json'))
+                        self.assertTrue(failures, label)
+                        self.assertIn(expected, failures[-1].read_text(
+                            encoding='utf-8'), label)
+                        after = self._inventory(copy)
+                        added = {path for path in after if path not in before}
+                        self.assertTrue(all('finalize-failure' in path
+                                            for path in added), (label, added))
+                        for path, value in before.items():
+                            self.assertEqual(after[path], value, (label, path))
+                    else:
+                        output = base / (label + '-verify-out')
+                        code, stdout, stderr = self._main(
+                            'verify', copy, output, binding, fixture,
+                            harness_apk, target_apk)
+                        self.assertEqual(code, 1, label + ' ' + stdout + stderr)
+                        receipt = output / 'verification-failure.json'
+                        self.assertTrue(receipt.is_file(), label)
+                        self.assertIn(expected, receipt.read_text(
+                            encoding='utf-8'), label)
                         self.assertEqual(self._inventory(copy), before, label)
 
     def test_failed_finalize_preserves_all_preexisting_accepted_bytes(self):
@@ -9028,6 +9140,206 @@ class FirebaseStartupIsolationAdmissionTest(unittest.TestCase):
             capture._admit_selected_runtime(
                 self._report(fixture, self._proof()), fixture,
                 self._manifest())
+
+
+ROOT_INSTALL_RECORDER = r'''"""Record the argv tail and the exact stdin bytes of one child run."""
+import hashlib
+import json
+import sys
+
+data = sys.stdin.buffer.read()
+with open(sys.argv[1], "w", encoding="utf-8") as stream:
+    json.dump({"argv": sys.argv[2:], "stdinBytes": len(data),
+               "stdinSha256": hashlib.sha256(data).hexdigest()}, stream)
+print("Success")
+'''
+
+
+class RootInstallTest(unittest.TestCase):
+    """The approved opt-in root installation: switch, transport and receipt shapes."""
+
+    TITLE = 'reader-title-lifecycle-fixtures-selected.json'
+    ORDINARY = 'book-url-markers-fixtures-selected.json'
+    SERIAL = '5615f742'
+
+    def _main(self, argv):
+        from unittest.mock import patch
+        with patch.object(sys, 'argv', ['capture.py'] + argv), \
+                patch.object(capture.subprocess, 'run',
+                             side_effect=AssertionError('no process before the gate')):
+            with self.assertRaises(SystemExit) as raised:
+                capture.main()
+        return str(raised.exception)
+
+    def _fixture(self, name):
+        return str(Path(__file__).resolve().with_name(name))
+
+    def test_unauthorized_modes_profiles_and_serials_are_refused_before_anything_runs(self):
+        live = ['--serial', self.SERIAL, '--output', 'C:/Temp/l138-root-gate',
+                '--fixture', self._fixture(self.TITLE), '--apk', 'C:/Temp/h.apk',
+                '--asset', 'C:/Temp/a.json', '--frozen-source', 'C:/Temp/source']
+        cases = (
+            (['--root-install', '--preflight-only'] + live, 'live selected title capture'),
+            (['--root-install', '--finalize'] + live, 'live selected title capture'),
+            (['--root-install', '--verify-bundle', 'C:/Temp/bundle'] + live,
+             'live selected title capture'),
+            (['--root-install', '--serial', '0123456789',
+              '--output', 'C:/Temp/l138-root-gate-2', '--fixture',
+              self._fixture(self.TITLE), '--apk', 'C:/Temp/h.apk',
+              '--asset', 'C:/Temp/a.json', '--frozen-source', 'C:/Temp/source'],
+             'approved title serial'),
+            (['--root-install', '--serial', self.SERIAL,
+              '--output', 'C:/Temp/l138-root-gate-3', '--fixture',
+              self._fixture(self.ORDINARY), '--apk', 'C:/Temp/h.apk',
+              '--asset', 'C:/Temp/a.json', '--frozen-source', 'C:/Temp/source'],
+             'selected title corpus'),
+            (['--root-install', '--serial', self.SERIAL,
+              '--output', 'C:/Temp/l138-root-gate-4', '--fixture',
+              self._fixture('fixtures.json')], 'selected title corpus'),
+        )
+        for argv, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertIn(expected, self._main(argv))
+
+    def test_the_switch_is_accepted_for_its_live_selected_title_argv(self):
+        from unittest.mock import patch
+
+        def refuse(*args, **kwargs):
+            raise AssertionError('no subprocess is reached before the target check')
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'out'
+            argv = ['capture.py', '--root-install', '--serial', self.SERIAL,
+                    '--output', str(output),
+                    '--fixture', self._fixture(self.TITLE),
+                    '--apk', 'C:/build/field-oracle.apk',
+                    '--target-apk', str(Path(directory) / 'target.apk'),
+                    '--asset', self._fixture(self.TITLE),
+                    '--frozen-source', 'C:/source', '--java-home', 'C:/java',
+                    '--android-sdk', 'C:/sdk']
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(capture.subprocess, 'run', side_effect=refuse), \
+                    self.assertRaises(SystemExit) as raised:
+                capture.main()
+            self.assertNotIn('--root-install', str(raised.exception))
+            self.assertIn('selected target APK', str(raised.exception))
+            self.assertTrue(output.is_dir(),
+                            'the accepted argv must pass the switch gate')
+
+    def test_the_root_transport_sends_the_exact_bytes_once_across_a_process_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            recorder = root / 'record.py'
+            recorder.write_text(ROOT_INSTALL_RECORDER, encoding='utf-8')
+            child = root / 'child.json'
+            data = (Path(__file__).resolve().with_name('fixtures.json')).read_bytes()
+            digest = capture.sha256_bytes(data)
+            rows = []
+
+            def run(command, name, timeout, checked=True, stdin=None, receipt=None):
+                self.assertEqual(command[0], 'adb')
+                argued = subprocess.run(
+                    [sys.executable, '-B', str(recorder), str(child), *command[1:]],
+                    input=stdin, capture_output=True)
+                self.assertEqual(argued.returncode, 0,
+                                 argued.stderr.decode(errors='replace'))
+                rows.append({'command': command, 'name': name, 'timeout': timeout,
+                             'checked': checked, 'stdin': stdin, 'receipt': receipt})
+                return argued
+
+            result = capture.root_install(data, self.SERIAL, digest, run)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row['command'],
+                             ['adb', '-s', self.SERIAL, 'shell', '-T',
+                              "su -c 'pm install --user 0 -r -S "
+                              + str(len(data)) + "'"])
+            self.assertEqual(row['name'], 'install')
+            self.assertEqual(row['timeout'], 180)
+            self.assertFalse(row['checked'])
+            self.assertEqual(row['stdin'], data)
+            self.assertEqual(row['receipt'], {'stdin': {'bytes': len(data),
+                                                       'sha256': digest}})
+            recorded = json.loads(child.read_bytes())
+            self.assertEqual(recorded['argv'], row['command'][1:])
+            self.assertEqual(recorded['stdinBytes'], len(data))
+            self.assertEqual(recorded['stdinSha256'], digest)
+
+    def test_the_root_transport_refuses_before_sending_anything(self):
+        calls = []
+
+        def run(*args, **kwargs):
+            calls.append(args)
+            raise AssertionError('nothing may be sent')
+        data = b'built-apk-bytes'
+        digest = capture.sha256_bytes(data)
+        with self.assertRaisesRegex(ValueError, 'approved title serial'):
+            capture.root_install(data, '0123456789', digest, run)
+        with self.assertRaisesRegex(ValueError, 'built APK bytes'):
+            capture.root_install(b'', self.SERIAL, capture.sha256_bytes(b''), run)
+        with self.assertRaisesRegex(ValueError, 'measured harness APK'):
+            capture.root_install(data, self.SERIAL, '0' * 64, run)
+        self.assertEqual(calls, [])
+
+    def test_the_default_and_root_shapes_are_each_admitted_alone(self):
+        prefix = ['adb', '-s', self.SERIAL]
+        manifest = {'harnessApkSha256': 'a' * 64}
+        default = {'command': prefix + ['install', '-r', 'C:/build/field-oracle.apk'],
+                   'exitCode': 0, 'log': 'install.log'}
+        self.assertEqual(
+            capture._admit_install_receipt(default, 'title', manifest, 3, prefix),
+            'C:/build/field-oracle.apk')
+        root = {'command': prefix + ['shell', '-T',
+                                     capture._root_install_command(3)],
+                'exitCode': 0, 'log': 'install.log', 'stdin': {'bytes': 3,
+                                                               'sha256': 'a' * 64}}
+        self.assertIsNone(
+            capture._admit_install_receipt(root, 'title', manifest, 3, prefix))
+
+    def test_hybrid_and_tampered_shapes_are_refused(self):
+        prefix = ['adb', '-s', self.SERIAL]
+        manifest = {'harnessApkSha256': 'a' * 64}
+        default = {'command': prefix + ['install', '-r', 'C:/build/field-oracle.apk'],
+                   'exitCode': 0, 'log': 'install.log'}
+        root_command = ['shell', '-T', capture._root_install_command(3)]
+        root = {'command': prefix + root_command, 'exitCode': 0,
+                'log': 'install.log', 'stdin': {'bytes': 3, 'sha256': 'a' * 64}}
+        cases = (
+            ('default-with-stdin', dict(default, stdin={'bytes': 3, 'sha256': 'a' * 64}),
+             'title', 3, 'install receipt shape differs'),
+            ('root-without-stdin', {key: root[key] for key in (
+                'command', 'exitCode', 'log')}, 'title', 3,
+             'install receipt shape differs'),
+            ('extra-field', dict(root, attempt=1), 'title', 3,
+             'install receipt shape differs'),
+            ('wrong-serial', dict(root, command=['adb', '-s', '0123456789'] + root_command),
+             'title', 3, 'root install command differs'),
+            ('wrong-session', dict(root, command=prefix + ['shell', '-T',
+                                                           capture._root_install_command(3)]
+                                   + ['--user', '0']), 'title', 3,
+             'root install command differs'),
+            ('wrong-size', dict(root, command=prefix + ['shell', '-T',
+                                                        capture._root_install_command(4)]),
+             'title', 3, 'root install command differs'),
+            ('pulled-length', dict(root), 'title', 4, 'root install stdin length differs'),
+            ('stdin-bytes', dict(root, stdin={'bytes': True, 'sha256': 'a' * 64}),
+             'title', 3, 'root install stdin length differs'),
+            ('stdin-keys', dict(root, stdin={'bytes': 3, 'sha256': 'a' * 64, 'extra': 1}),
+             'title', 3, 'root install stdin receipt differs'),
+            ('digest', dict(root, stdin={'bytes': 3, 'sha256': 'b' * 64}),
+             'title', 3, 'root install stdin digest differs'),
+            ('digest-shape', dict(root, stdin={'bytes': 3, 'sha256': 'not-a-digest'}),
+             'title', 3, 'root install stdin digest differs'),
+            ('ordinary-profile', dict(root), 'ordinary', 3,
+             'admitted only for the selected title corpus'),
+            ('default-command', dict(default, command=prefix + ['install', 'C:/build/x.apk']),
+             'title', 3, 'install command differs'),
+        )
+        for label, item, profile, size, expected in cases:
+            with self.subTest(label=label), \
+                    self.assertRaisesRegex(ValueError, expected):
+                capture._admit_install_receipt(item, profile, manifest, size, prefix)
 
 
 class SelectedReceiptTest(unittest.TestCase):

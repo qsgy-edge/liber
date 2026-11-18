@@ -88,6 +88,12 @@ TITLE_PREFLIGHT_ABI_COMMANDS = tuple(
 PREFLIGHT_SUMMARY = 'reflected-abi'
 # The one early provider read the selected title corpus refuses before binding.
 FIREBASE_PROVIDER = 'com.google.firebase.provider.FirebaseInitProvider'
+# The operator-approved opt-in root installation, for the live selected title
+# capture on the approved handset only. The default `adb install -r` path keeps its
+# exact receipt and every retained bundle keeps its original shape.
+ROOT_INSTALL_SERIAL = '5615f742'
+INSTALL_RECEIPT_KEYS = {'command', 'exitCode', 'log'}
+ROOT_INSTALL_RECEIPT_KEYS = INSTALL_RECEIPT_KEYS | {'stdin'}
 LEB_RECEIVER = 'com.jeremyliao.liveeventbus.ipc.receiver.LebIpcReceiver'
 LEB_IPC_ACTION = 'intent.action.ACTION_LEB_IPC'
 LEB_LIFECYCLE = 'com.jeremyliao.liveeventbus.utils.AppUtils$ActivityLifecycleImpl'
@@ -133,6 +139,77 @@ def lf_bytes(data):
 def remote_script_arguments(package, script):
     """Return the single remote-shell argument for a run-as script."""
     return ['run-as', package, 'sh', '-c', shlex.quote(script)]
+
+
+def _root_install_command(size):
+    """The one approved root transport: one shell command carrying only the size."""
+    return "su -c 'pm install --user 0 -r -S " + str(size) + "'"
+
+
+def root_install(apk_bytes, serial, expected_sha256, run):
+    """Install the exact APK bytes once through the approved pinned-handset root shell.
+
+    `run` is the capture's own command recorder. The bytes go to the child on stdin
+    from this process, with no TTY and no text pipe; the recorded receipt carries the
+    actual byte length and digest. Nothing is retried: the caller's single result
+    decides the run, and no other package, helper or shell command is involved.
+    """
+    if serial != ROOT_INSTALL_SERIAL:
+        raise ValueError('the root install requires the approved title serial')
+    data = bytes(apk_bytes)
+    if not data:
+        raise ValueError('the root install requires the built APK bytes')
+    digest = sha256_bytes(data)
+    if digest != expected_sha256:
+        raise ValueError('the root install bytes differ from the measured harness APK')
+    size = len(data)
+    command = ['adb', '-s', serial, 'shell', '-T', _root_install_command(size)]
+    return run(command, 'install', timeout=180, checked=False, stdin=data,
+               receipt={'stdin': {'bytes': size, 'sha256': digest}})
+
+
+def _admit_install_receipt(item, profile, manifest, installed_bytes, adb_prefix):
+    """Admit exactly one install receipt shape; return its installed input path.
+
+    The original shape is `adb install -r <apk>` and is bound by that path. The
+    opt-in root shape is one no-TTY shell command that carries only the exact byte
+    length, plus a stdin record that has to agree with the measured artifact and the
+    pulled APK. A hybrid of the two shapes, an edited command, another size or
+    digest, or a root shape outside the selected title profile is refused.
+    """
+    keys = set(item)
+    command = item.get('command')
+    root_command = (isinstance(command, list) and len(command) == 6
+                    and command[3:5] == ['shell', '-T'])
+    default_command = (isinstance(command, list) and len(command) == 6
+                       and command[3:5] == ['install', '-r'])
+    if keys == INSTALL_RECEIPT_KEYS:
+        if root_command:
+            raise ValueError('install receipt shape differs')
+        if (not default_command or command[:5] != adb_prefix + ['install', '-r']
+                or not isinstance(command[5], str) or not command[5]):
+            raise ValueError('install command differs')
+        return command[5]
+    if keys != ROOT_INSTALL_RECEIPT_KEYS or default_command:
+        raise ValueError('install receipt shape differs')
+    if profile != 'title':
+        raise ValueError('the root install receipt is admitted only for the selected'
+                         ' title corpus')
+    stdin = item.get('stdin')
+    if not isinstance(stdin, dict) or set(stdin) != {'bytes', 'sha256'}:
+        raise ValueError('root install stdin receipt differs')
+    size = stdin.get('bytes')
+    if not _is_int(size) or size <= 0 or size != installed_bytes:
+        raise ValueError('root install stdin length differs')
+    digest = stdin.get('sha256')
+    if (not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest)
+            or digest != manifest.get('harnessApkSha256')):
+        raise ValueError('root install stdin digest differs')
+    if (not isinstance(command, list) or len(command) != 6
+            or command[:3] != adb_prefix or command[3:5] != ['shell', '-T']
+            or command[5] != _root_install_command(size)):
+        raise ValueError('root install command differs')
+    return None
 
 
 def _is_int(value):
@@ -2117,9 +2194,11 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
             or not isinstance(harness_pull[5], str) or Path(harness_pull[5]).name != 'installed-harness.apk'
             or Path(harness_pull[5]).parent != Path(target_pull[5]).parent):
         fail('installed harness pull command differs')
-    install = indexed['install.log']['command']
-    if len(install) != 6 or install[:5] != adb_prefix + ['install', '-r'] or not install[-1]:
-        fail('install command differs')
+    pulled = output / 'installed-harness.apk'
+    if not pulled.is_file():
+        fail('installed harness APK is missing')
+    installed_input = _admit_install_receipt(
+        indexed['install.log'], profile, manifest, pulled.stat().st_size, adb_prefix)
     if (output / 'target-private-root.log').read_text(encoding='utf-8').strip() != target_root:
         fail('target private root differs')
     if (output / 'pull-report.log').read_bytes() != report_bytes:
@@ -2230,7 +2309,13 @@ def _admit_selected_commands(output, manifest, report_bytes, before, after, fixt
                 fail('preflight command output differs: ' + name)
     if seen != required_preflight:
         fail('preflight command output inventory differs')
-    _admit_retained_preflight(preflight, install[-1], fixture)
+    # The default shape is bound by the path it installed. The root shape has no
+    # path in its command: its exact stdin bytes are bound above to the pulled APK
+    # and the measured artifact, so it joins the preflight's own APK input.
+    if installed_input is None:
+        inputs = preflight.get('inputs')
+        installed_input = inputs.get('harnessApk') if isinstance(inputs, dict) else None
+    _admit_retained_preflight(preflight, installed_input, fixture)
     references = preflight['referenceSources']
     if (any(not isinstance(value, dict) or not re.fullmatch(r'[0-9a-f]{40}', str(value.get('blobSha1', '')))
             or not re.fullmatch(r'[0-9a-f]{64}', str(value.get('worktreeSha256', '')))
@@ -2668,6 +2753,10 @@ def main():
                              'finalize time and required to equal the corpus file')
     parser.add_argument('--fixture', type=Path,
                         help='select the FIELDS corpus; the default remains FIELDS-01')
+    parser.add_argument('--root-install', action='store_true',
+                        help='install the built harness through the approved pinned '
+                             'handset root shell for the live selected title capture; '
+                             'the default install path is unchanged')
     args = parser.parse_args()
     fixture_path = (args.fixture or Path(__file__).with_name('fixtures.json'))
     fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
@@ -2675,6 +2764,16 @@ def main():
     if fixture_id not in (FIELDS_01, FIELDS_02):
         raise SystemExit('unsupported result-field fixture family')
     fields_02 = fixture_id == FIELDS_02
+    if args.root_install:
+        # One explicit switch, refused before any device action: this transport exists
+        # only for the live selected title capture on the approved pinned handset.
+        if args.verify_bundle is not None or args.preflight_only or args.finalize:
+            raise SystemExit('--root-install is only available for a live selected title capture')
+        if (not fields_02 or fixture.get('baselineCommit') != SELECTED_BASELINE
+                or not isinstance(fixture.get('titleLifecycle'), dict)):
+            raise SystemExit('--root-install is only available for the selected title corpus')
+        if args.serial != ROOT_INSTALL_SERIAL:
+            raise SystemExit('--root-install requires the approved title serial')
     if args.verify_bundle is not None:
         if (args.preflight_only or args.finalize or not fields_02
                 or fixture.get('baselineCommit') != SELECTED_BASELINE
@@ -2868,11 +2967,14 @@ def main():
         manifest['artifact'] = artifact
     installed = False
 
-    def run(command, name, timeout=60, checked=True):
-        result = subprocess.run(command, capture_output=True, timeout=timeout)
+    def run(command, name, timeout=60, checked=True, stdin=None, receipt=None):
+        result = subprocess.run(command, capture_output=True, timeout=timeout,
+                                input=stdin)
         (args.output / (name + '.log')).write_bytes(result.stdout + result.stderr)
-        manifest['commands'].append({'command': command, 'exitCode': result.returncode,
-                                     'log': name + '.log'})
+        entry = {'command': command, 'exitCode': result.returncode, 'log': name + '.log'}
+        if receipt is not None:
+            entry.update(receipt)
+        manifest['commands'].append(entry)
         if checked and result.returncode:
             raise RuntimeError(f'{name} exited {result.returncode}; see raw log')
         return result
@@ -3179,8 +3281,15 @@ def main():
             snapshot = "'find databases shared_prefs files -type f -exec sha256sum {} \\; 2>/dev/null'"
             before = adb('private-before', 'shell', 'run-as', 'io.legado.app.debug',
                          'sh', '-c', snapshot)
-        installed_result = adb('install', 'install', '-r', str(args.apk), checked=False,
-                               timeout=180)
+        if args.root_install:
+            # The approved root transport: the exact built APK bytes on stdin, one
+            # command, one attempt. A refused or ambiguous send returns below and is
+            # never retried, and instrumentation is never reached.
+            installed_result = root_install(args.apk.read_bytes(), args.serial,
+                                            manifest['harnessApkSha256'], run)
+        else:
+            installed_result = adb('install', 'install', '-r', str(args.apk), checked=False,
+                                   timeout=180)
         if installed_result.returncode:
             manifest['status'] = 'blocked'
             manifest['blocker'] = installed_result.stderr.decode(errors='replace')
