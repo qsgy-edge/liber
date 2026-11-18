@@ -3620,8 +3620,8 @@ def main():
             # The approved root transport: the exact checked snapshot bytes on stdin, one
             # command, one attempt. The buffer is bound to the digest this invocation's
             # successful signed preflight measured, and the staged snapshot is compared
-            # again before launch; a refused or ambiguous send returns below, is never
-            # retried, probed or instrumented.
+            # again before launch. An exact refusal permits one read-only package query;
+            # an unknown outcome permits none. Neither is retried or instrumented.
             approved = _bind_signed_apk(harness_bytes, selected_binding,
                                         manifest.get('artifact'),
                                         manifest.get('harnessApkSha256'))

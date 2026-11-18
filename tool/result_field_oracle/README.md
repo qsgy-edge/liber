@@ -214,9 +214,10 @@ with existing root access. The flag is refused before any device action in
 `--preflight-only`, `--finalize`, and `--verify-bundle` modes, for legacy and
 ordinary selected corpora, and for every other serial.
 
-The switch keeps the whole default path unchanged: the same preflight (signed
-artifact, source/target/WebView identity, package absence, scratch/preference
-absence, private snapshot) runs first, and only the one install command differs.
+The default invocation is unchanged. Both paths require the same pre-install
+gates: signed artifact, source/target/WebView identity, package absence,
+scratch/preference absence, and a private-state snapshot. The opt-in path also
+binds its install and receipt to an owned APK snapshot.
 
 | Shape | Command | Byte binding |
 |---|---|---|

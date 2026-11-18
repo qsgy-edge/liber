@@ -10034,7 +10034,6 @@ class RootSendBoundaryTest(unittest.TestCase):
 
             ledger = []
             sends = []
-            after = []
             tampers = []
             stop_after = mode not in ('refused', 'refused-crlf', 'refused-no-newline')
             real_run = subprocess.run
@@ -10065,7 +10064,6 @@ class RootSendBoundaryTest(unittest.TestCase):
                     (output / capture.HARNESS_SNAPSHOT_NAME).write_bytes(b'tampered')
                 if sends and stop_after:
                     ledger.append(list(command))
-                    after.append(list(command))
                     raise SystemExit('stop after the one send')
                 return device.run(command, capture_output=capture_output,
                                   timeout=timeout, input=input)
@@ -10095,7 +10093,7 @@ class RootSendBoundaryTest(unittest.TestCase):
                 'raised': type(raised).__name__ if raised is not None else None,
                 'raisedText': str(raised) if raised is not None else None,
                 'sends': sends,
-                'afterSend': after,
+                'afterSend': ledger[ledger.index(sends[0]['command']) + 1:] if sends else [],
                 'ledger': [row['log'] for row in manifest['commands']],
                 'manifest': manifest,
                 'exact': exact,
@@ -10113,9 +10111,14 @@ class RootSendBoundaryTest(unittest.TestCase):
         return next(row for row in result['manifest']['commands']
                     if row['log'] == 'install.log')
 
-    def _row(self, result, log):
-        return next(row for row in result['manifest']['commands']
-                    if row['log'] == log)
+    def _assert_one_refusal_probe(self, result):
+        probe = ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', 'pm',
+                 'list', 'packages', capture.PACKAGE]
+        self.assertEqual(result['afterSend'], [probe],
+                         'one read-only package query after the send')
+        self.assertEqual(result['ledger'][-1], 'partial-harness.log')
+        self.assertEqual([row['command'] for row in result['manifest']['commands']
+                          if row['log'] == 'partial-harness.log'], [probe])
 
     def _refused_before_send(self, result, expected):
         self.assertEqual(result['sends'], [], result['mode'])
@@ -10202,11 +10205,7 @@ class RootSendBoundaryTest(unittest.TestCase):
         self.assertEqual(result['streams']['install.log'], refusal)
         self.assertEqual(install['stdoutSha256'], capture.sha256_bytes(b''))
         self.assertEqual(install['stderrSha256'], capture.sha256_bytes(refusal))
-        self.assertEqual(result['ledger'][-1], 'partial-harness.log')
-        self.assertEqual(self._row(result, 'partial-harness.log')['command'],
-                         ['adb', '-s', capture.ROOT_INSTALL_SERIAL, 'shell', 'pm',
-                          'list', 'packages', capture.PACKAGE])
-        self.assertEqual(result['afterSend'], [], 'no command beyond the existing probe')
+        self._assert_one_refusal_probe(result)
         for absent in ('installed-harness-path.log', 'installed-harness-pull.log',
                        'instrumentation.log', 'remove-harness.log'):
             self.assertNotIn(absent, result['ledger'])
@@ -10248,7 +10247,9 @@ class RootSendBoundaryTest(unittest.TestCase):
                 self.assertEqual(result['streams']['install.stdout.log'], b'')
                 self.assertEqual(result['streams']['install.stderr.log'], stream)
                 self.assertEqual(result['streams']['install.log'], stream)
-                self.assertEqual(result['ledger'][-1], 'partial-harness.log')
+                self.assertEqual(install['stdoutSha256'], capture.sha256_bytes(b''))
+                self.assertEqual(install['stderrSha256'], capture.sha256_bytes(stream))
+                self._assert_one_refusal_probe(result)
 
     def test_padded_or_extra_raw_output_is_an_unknown_completion(self):
         cases = (
