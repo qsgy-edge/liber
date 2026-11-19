@@ -56,10 +56,8 @@ jobs:
             os: macos-15
             target: aarch64-apple-ios-sim
     runs-on: ${{ matrix.os }}
-    # 90 rather than 60: the Linux and macOS jobs gain a release native build and
-    # the runtime-limits harness (three QuickJS probe compiles, eleven product
-    # cases and a second gate sweep), and the mobile jobs now build the app. A
-    # job timeout would kill those rows instead of recording them. (#68)
+    # Allow time for the release native build and runtime-limits harness when
+    # selected on Linux/macOS, as well as the mobile app builds. (#68)
     timeout-minutes: 90
     # The Darwin platforms build through CocoaPods, not Swift Package Manager:
     # the vendored `fjs` package's SwiftPM target is a *binary* target that
@@ -240,16 +238,34 @@ jobs:
           PY
       - name: Record app build rows
         run: python tool/ci_build_row.py '${{ matrix.platform }}'
-      # The limits harness is platform-neutral, but it has only ever run on
-      # Windows: its compiler flags and clock branch were written from a Windows
-      # host. Running it here is what can turn Linux/macOS limits rows from
-      # `not-run` into executed evidence. A probe that does not compile or does
-      # not reproduce on POSIX is a finding for the ticket, never a row to
-      # delete, so the step copies whatever evidence exists before it fails.
-      # It must follow "Generated tree is current": it writes untracked files
-      # under tool/runtime_limits_prototype/evidence/, which that gate rejects.
-      - name: Runtime limits harness
+      - name: Check runtime-limits inputs
+        id: limits_changes
         if: matrix.platform == 'linux' || matrix.platform == 'macos'
+        env:
+          DIFF_BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+        run: |
+          # For a push compare with the previous tip; for a PR, compare the
+          # checked-out test merge with the PR base. Fetch only that base when
+          # the default shallow checkout does not already contain it.
+          run=true
+          if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]]; then
+            if [[ ! "$DIFF_BASE" =~ ^[0-9a-f]{40}$ || "$DIFF_BASE" == 000000000000000000000000000000000000 ]] ||
+               { ! git cat-file -e "$DIFF_BASE^{commit}" 2>/dev/null &&
+                 ! git fetch --no-tags --depth=1 origin "$DIFF_BASE"; }; then
+              echo '::warning::Cannot resolve runtime-limits comparison base; running the harness.'
+            elif git diff --quiet --no-ext-diff --no-renames "$DIFF_BASE" HEAD -- \
+                packages/fjs/ tool/runtime_limits_prototype/ .github/workflows/ci.yml; then
+              run=false
+            elif [[ $? != 1 ]]; then
+              echo '::warning::Cannot compare runtime-limits inputs; running the harness.'
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      # Keep the release build and limits measurements together. The harness
+      # writes under tool/, so it must follow "Generated tree is current".
+      - name: Runtime limits harness
+        id: runtime_limits
+        if: (matrix.platform == 'linux' || matrix.platform == 'macos') && steps.limits_changes.outputs.run == 'true'
         run: |
           suffix=so
           if [ '${{ matrix.platform }}' = 'macos' ]; then suffix=dylib; fi
@@ -273,12 +289,25 @@ jobs:
           exit "$status"
       - name: Coverage boundaries
         if: always()
+        env:
+          LIMITS_REQUIRED: ${{ steps.limits_changes.outputs.run }}
+          LIMITS_OUTCOME: ${{ steps.runtime_limits.outcome }}
         run: |
           echo '### Coverage boundaries' >> "$GITHUB_STEP_SUMMARY"
           echo '- Native compilation is checked for the selected target; a build is not a runtime verdict.' >> "$GITHUB_STEP_SUMMARY"
           echo '- Every platform job now builds the app (debug): Windows, Linux and macOS desktop bundles, an Android debug APK and an unsigned iOS simulator app. The artifact each build produced is recorded with its path and sha256 in .ci-results/, and uploaded with this run.' >> "$GITHUB_STEP_SUMMARY"
           echo '- Windows: the app build and the bounded runtime/differential gates, and the limits rows executed on a Windows host (committed under tool/runtime_limits_prototype/evidence/). CI does not perform manual UI review or a driven run.' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Linux/macOS: the app build, the same shared gate list as Windows (runtime, host surface, HTML adapter, brokers, scoped/nested execution, both frozen differentials), the Dart tests, and the runtime-limits harness executed on the runner — the first execution of probes that had only run from a Windows host. WebView integration is not covered: it stays the rows #2 owns.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Linux/macOS: the app build, the same shared gate list as Windows (runtime, host surface, HTML adapter, brokers, scoped/nested execution, both frozen differentials), and the Dart tests. WebView integration stays with #2.' >> "$GITHUB_STEP_SUMMARY"
+          if [[ '${{ matrix.platform }}' == linux || '${{ matrix.platform }}' == macos ]]; then
+            case "$LIMITS_OUTCOME" in
+              success|failure|cancelled) limits_status="$LIMITS_OUTCOME" ;;
+              *) limits_status='not-run' ;;
+            esac
+            if [[ "$LIMITS_REQUIRED" == false ]]; then
+              limits_status='not-run (no watched paths changed)'
+            fi
+            echo "- Runtime limits harness: $limits_status." >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo '- Android/iOS: the app builds, and the native library is cross-built. No device or simulator is attached, so launch smoke, driven runs and the limits rows for these platforms stay not-run.' >> "$GITHUB_STEP_SUMMARY"
           echo '- An app build is a shell row: it does not make any platform compatible. ADR 0002/0009 still require the limits rows and the #2 WebView rows of that platform before it can claim a capability.' >> "$GITHUB_STEP_SUMMARY"
           echo '- No full frozen-Legado compatibility claim follows from a green workflow.' >> "$GITHUB_STEP_SUMMARY"

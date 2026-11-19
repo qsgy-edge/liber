@@ -169,10 +169,17 @@ fail at package resolution, so build those platforms with
 shell needs `flutter config --no-enable-swift-package-manager` or the same
 variable).
 
-`tool/ci_runtime.py` is the same runner CI uses. It writes per-command logs and
-a manifest with the library hash, the script hashes, and every exit code, and it
-fails a command whose log contains the Dart VM crash marker even when the
-process exited 0.
+`tool/ci_runtime.py` is the same runner CI uses. It runs up to four rows in
+parallel (bounded by the CPU count by default; use `--workers 1` for serial
+execution). It writes per-command logs and a manifest in the original row
+order, with the library hash, the script hashes, and every exit code. A Dart
+VM crash marker fails its row even when the process exited 0.
+
+CI keeps the three desktop gate runs and all five app builds. The additional
+Linux/macOS release build and runtime-limits harness run when `packages/fjs/`,
+`tool/runtime_limits_prototype/` or `.github/workflows/ci.yml` change, on
+manual runs, or when CI cannot establish the diff. A skipped harness is
+recorded as `not-run` in the job summary.
 
 To measure a set of real sources against the current implementation without
 logging their headers or bodies:
