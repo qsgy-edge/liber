@@ -1188,7 +1188,12 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
       LibraryAccessError.missing => l10n.libraryFileMissing,
       LibraryAccessError.unsupported => l10n.libraryUnsupported,
       LibraryAccessError.verification => l10n.libraryVerificationFailed,
-      LibraryAccessError.collision ||
+      // A collision that names two book identities is one book's file being
+      // asked for by another; anything else keeps the store's own words.
+      LibraryAccessError.collision =>
+        error.details is Map && (error.details! as Map).containsKey('bookIds')
+            ? l10n.libraryOwnedFile
+            : l10n.libraryOperationFailed(error.message),
       LibraryAccessError.io => l10n.libraryOperationFailed(error.message),
     };
   }
@@ -1407,6 +1412,37 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
         () => _message = AppLocalizations.of(
           context,
         ).libraryAdopted(books.length),
+      );
+    }
+  });
+
+  /// Reconnects one book whose file is unavailable to the file the user picks
+  /// for it. The picker, the transfer, the conflict dialog and the status line
+  /// are the managed-library ones; the store keeps the book's identity and state
+  /// (`LocalLibrary.relinkBook`).
+  Future<void> _relinkBook(LocalBook book) => _run((transfer) async {
+    if (!await _ensureLocation(transfer)) return;
+    final files = await widget.access.pickFiles();
+    if (files == null || files.isEmpty) return;
+    if (files.length > 1) {
+      // One book reconnects to one file: a multi-file selection has no single
+      // answer, and choosing one of them silently would hide the others.
+      throw const LibraryAccessFailure(
+        LibraryAccessError.unsupported,
+        'A book reconnects to one file',
+      );
+    }
+    final relinked = await widget.service!.relinkBook(
+      book.id,
+      files.single,
+      transfer: transfer,
+      resolveConflict: _resolveConflict,
+    );
+    if (mounted) {
+      setState(
+        () => _message = AppLocalizations.of(
+          context,
+        ).libraryRelinked(relinked.title),
       );
     }
   });
@@ -1634,6 +1670,24 @@ class _LocalLibraryPageState extends State<_LocalLibraryPage> {
               itemCount: legacy.length,
               itemBuilder: (context, index) {
                 final book = legacy[index];
+                // A book no file reference resolves for has nothing to adopt or
+                // open: a backup import leaves one behind because the backup
+                // carries no bytes. Its row offers the explicit file selection
+                // that reconnects this exact book.
+                if (book.path.isEmpty) {
+                  return ListTile(
+                    key: ValueKey('library-relink-${book.id}'),
+                    leading: const Icon(Icons.link_off),
+                    title: Text(book.title),
+                    subtitle: Text(l10n.needsRelinkOffset(book.textOffset)),
+                    trailing: TextButton.icon(
+                      key: ValueKey('library-relink-action-${book.id}'),
+                      onPressed: enabled ? () => _relinkBook(book) : null,
+                      icon: const Icon(Icons.file_open_outlined),
+                      label: Text(l10n.libraryRelink),
+                    ),
+                  );
+                }
                 return CheckboxListTile(
                   key: ValueKey('library-adopt-${book.id}'),
                   secondary: IconButton(

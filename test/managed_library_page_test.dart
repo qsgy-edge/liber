@@ -6,10 +6,12 @@ import 'package:liber/local/library_access.dart';
 import 'package:liber/local/platform_library_access.dart';
 import 'package:liber/main.dart';
 import 'package:liber/store/database.dart';
+import 'package:liber/store/legado_full_backup.dart';
 import 'package:liber/store/space_store.dart';
 import 'package:liber/store/workspace.dart';
 import 'package:drift/drift.dart' show Value;
 
+import 'legado_full_backup_test.dart' show backupZip, localBook, networkBook;
 import 'managed_library_test.dart' show MemoryLibraryAccess;
 import 'temp_directory.dart';
 
@@ -115,6 +117,122 @@ void main() {
         scratch = await Directory.systemTemp.createTemp('liber-library-ui-'),
   );
   tearDown(() => deleteTempDirectory(scratch));
+
+  testWidgets(
+    'a migrated local book is reconnected by its own explicit file selection',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.runAsync(() async {
+        // The importer's own row: metadata, a group and a position, no bytes.
+        final archive = LegadoBackupArchive.decode(
+          backupZip(
+            groups: [
+              {'groupId': 1, 'groupName': '历史', 'order': 0},
+            ],
+            books: [
+              {
+                ...localBook(
+                  'content://provider/document/migrated',
+                  originName: 'migrated.txt',
+                  group: 1,
+                ),
+                'durChapterIndex': 4,
+                'durChapterPos': 240,
+                'durChapterTime': 42,
+              },
+              networkBook('migrated-network', name: '远端的书'),
+            ],
+          ),
+        );
+        final seeded = await (await Workspace.open(root: scratch)).openSpace();
+        await LegadoFullBackupImport(seeded).importArchive(archive);
+        final migrated = (await seeded.localBooks()).single;
+        final network = (await seeded.shelf(kind: 'network')).single;
+        final correlation = migrated.rootId!;
+        final progress = await seeded.progressOf(migrated.id);
+        await seeded.close();
+
+        final io = MemoryLibraryAccess();
+        final access = PickerAccess(io)..selectedDirectory = io.addRoot('one');
+        final selected = io.addFile('picked', 'migrated.txt', '第一章 重新关联的正文');
+        access.selectedFiles = [selected];
+        final store = await openPage(tester, scratch, access);
+        try {
+          expect(
+            find.text(migrated.title),
+            findsOneWidget,
+            reason: 'The migrated local book is listed on this page',
+          );
+          expect(
+            find.byKey(ValueKey('library-relink-action-${network.id}')),
+            findsNothing,
+            reason: 'A network book has no file to reconnect',
+          );
+          final relink = find.text("Select this book's file");
+          expect(
+            relink,
+            findsOneWidget,
+            reason:
+                'The migrated book awaiting relink has no file to read, so its '
+                'row is where the explicit selection belongs',
+          );
+          await tester.tap(relink);
+          await tester.pump();
+          await waitFor(tester, () => idle(tester));
+
+          final current = (await store.bookById(migrated.id))!;
+          final managed = (await store.setting('local.managed_root'))!;
+          expect(current.rootId, managed);
+          expect(current.needsRelink, isFalse);
+          expect(current.title, migrated.title);
+          expect(current.originalRootId, correlation);
+          expect(current.originalRelativePath, migrated.relativePath);
+          expect(await store.localBooks(), hasLength(1));
+          expect(
+            (await store.progressOf(migrated.id))!.textOffset,
+            progress!.textOffset,
+          );
+          expect(
+            (await store.progressOf(migrated.id))!.chapterIndex,
+            progress.chapterIndex,
+          );
+          expect((await store.groupsOf(migrated.id)).single.name, '历史');
+          final file = (await store.localFile(
+            current.rootId!,
+            current.relativePath!,
+          ))!;
+          expect(io.bytes[file.locator], '第一章 重新关联的正文');
+          expect(
+            io.bytes[selected.locator],
+            '第一章 重新关联的正文',
+            reason: 'The selected original file is retained',
+          );
+          expect(
+            find.byKey(ValueKey('library-relink-action-${migrated.id}')),
+            findsNothing,
+            reason: 'A reconnected book is a managed book, not a relink row',
+          );
+          final status = tester.widget<Text>(
+            find.byKey(const ValueKey('library-status')),
+          );
+          expect(
+            status.data,
+            contains(migrated.title),
+            reason: 'The page reports the reconnect for this book',
+          );
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          await store.close();
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+        }
+      });
+    },
+  );
 
   testWidgets(
     'shelf removal hides the book while retaining its file and progress',
