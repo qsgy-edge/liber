@@ -565,7 +565,7 @@ JSON.stringify([
           'function',
           '{"user":"alice","pass":"pw"}',
           '{"X-Static":"s","User-Agent":'
-              '"${sourceDefaultUserAgent}","X-Login":"yes"}',
+              '"$sourceDefaultUserAgent","X-Login":"yes"}',
         ],
       );
     });
