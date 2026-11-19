@@ -30,19 +30,26 @@ import java.util.Set;
  * skipping App.onCreate avoids its unrelated cache cleanup, network and backup jobs.
  * The real Room builder, DAO, entities, processor, regex and converter all execute.
  */
-public final class ReaderOracle extends Instrumentation {
+public class ReaderOracle extends Instrumentation {
     private ScratchContext scratch;
     private Object database;
-    private ClassLoader loader;
+    protected ClassLoader loader;
 
     @Override public Application newApplication(ClassLoader cl, String name, Context context)
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
         scratch = new ScratchContext(context);
-        return super.newApplication(cl, Application.class.getName(), scratch);
+        return createStorageApplication(cl, scratch);
     }
 
+    protected final Application createStorageApplication(ClassLoader cl, Context context)
+            throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+        return super.newApplication(cl, Application.class.getName(), context);
+    }
+
+    protected final void startInstrumentation(Bundle args) { super.onCreate(args); }
+
     @Override public void onCreate(Bundle args) {
-        super.onCreate(args);
+        startInstrumentation(args);
         new Handler(Looper.getMainLooper()).post(() ->
             new Thread(this::run, "reader-oracle").start());
     }
@@ -131,7 +138,7 @@ public final class ReaderOracle extends Instrumentation {
         }
     }
 
-    private void runRow(JSONObject row, JSONObject out, Object dao, Object config) throws Exception {
+    protected void runRow(JSONObject row, JSONObject out, Object dao, Object config) throws Exception {
         List<?> previous = (List<?>) call(dao, "getAll");
         ruleArrayCall(dao, "delete", previous.toArray());
         JSONArray rules = row.getJSONArray("rules");
@@ -173,15 +180,15 @@ public final class ReaderOracle extends Instrumentation {
             .put("useReplaceRule", call(book, "getUseReplaceRule"))
             .put("reSegment", call(book, "getReSegment"))
             .put("converterType", call(config, "getChineseConverterType"));
-        out.put("title", call(chapter, "getDisplayTitle", titleRules, true, true));
-        Object result = call(processor, "getContent", book, chapter, row.getString("rawContent"),
-            false, true, true, true);
+        out.put("title", displayTitle(chapter, titleRules));
+        Object result = content(processor, book, chapter, row.getString("rawContent"));
         // BookContent.toString is the frozen join of its returned textList. Record
         // both the complete text and all other return fields; never normalize.
+        JSONArray effectiveRules = names((List<?>) call(result, "getEffectiveReplaceRules"));
         out.put("content", result.toString())
             .put("textList", new JSONArray((List<?>) call(result, "getTextList")))
             .put("sameTitleRemoved", call(result, "getSameTitleRemoved"))
-            .put("effectiveRules", names((List<?>) call(result, "getEffectiveReplaceRules")));
+            .put("effectiveRules", effectiveRulesValue(effectiveRules));
         JSONArray disabled = new JSONArray();
         for (Object rule : (List<?>) call(dao, "getAll")) {
             if (!(Boolean) call(rule, "isEnabled")) disabled.put(call(rule, "getName"));
@@ -193,7 +200,16 @@ public final class ReaderOracle extends Instrumentation {
         }
     }
 
-    private Object singleton(String name) throws Exception { return loader.loadClass(name).getField("INSTANCE").get(null); }
+    protected Object effectiveRulesValue(JSONArray effectiveRules) { return effectiveRules; }
+
+    protected Object displayTitle(Object chapter, List<?> titleRules) throws Exception {
+        return call(chapter, "getDisplayTitle", titleRules, true, true);
+    }
+    protected Object content(Object processor, Object book, Object chapter, String raw) throws Exception {
+        return call(processor, "getContent", book, chapter, raw, false, true, true, true);
+    }
+
+    protected Object singleton(String name) throws Exception { return loader.loadClass(name).getField("INSTANCE").get(null); }
     private Object construct(String name) throws Exception { return loader.loadClass(name).getConstructor().newInstance(); }
     private void ruleArrayCall(Object dao, String method, Object[] items) throws Exception {
         Object array = Array.newInstance(loader.loadClass("io.legado.app.data.entities.ReplaceRule"), items.length);
@@ -206,7 +222,7 @@ public final class ReaderOracle extends Instrumentation {
         for (Object rule : rules) result.put(call(rule, "getName"));
         return result;
     }
-    private static Object call(Object target, String name, Object... args) throws Exception {
+    protected static Object call(Object target, String name, Object... args) throws Exception {
         for (Method method : target.getClass().getMethods()) {
             if (!method.getName().equals(name) || method.getParameterTypes().length != args.length) continue;
             boolean matches = true;
@@ -219,12 +235,12 @@ public final class ReaderOracle extends Instrumentation {
         throw new NoSuchMethodException(target.getClass().getName() + "." + name);
     }
     private static String upper(String name) { return Character.toUpperCase(name.charAt(0)) + name.substring(1); }
-    private static String describe(Throwable error) {
+    protected static String describe(Throwable error) {
         StringBuilder result = new StringBuilder(error.toString());
         while (error.getCause() != null) { error = error.getCause(); result.append(" <- ").append(error); }
         return result.toString();
     }
-    private static String hash(byte[] bytes) throws Exception {
+    protected static String hash(byte[] bytes) throws Exception {
         StringBuilder result = new StringBuilder();
         for (byte b : MessageDigest.getInstance("SHA-256").digest(bytes)) result.append(String.format("%02x", b & 255));
         return result.toString();

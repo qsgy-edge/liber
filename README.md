@@ -256,9 +256,11 @@ produced them.
 
 ## Compatibility baseline
 
-Book Source compatibility is defined against a local Legado snapshot at commit
-`14dd24945b2914ce2708b8abaa4ee67ceef892af`. Upstream `main` was replaced by a
-notice-only history and is not a baseline; see
+Book Source compatibility is defined against LegadoTeam/legado formal release
+`3.26101819`, pinned to commit `a7d37f1707a70a459ad708f4fe79341d1e42d716`.
+Reference execution uses a same-SHA instrumentable build with its actual APK,
+configuration and initialization receipts. Historical `14dd2494` goldens retain
+their original identity. See
 [`docs/compatibility/legado-compatibility-baseline.md`](docs/compatibility/legado-compatibility-baseline.md).
 
 ## License

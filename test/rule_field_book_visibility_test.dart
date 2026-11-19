@@ -85,7 +85,7 @@ void main() {
         final observed = _golden[row['name']] as Map;
         expect(book.title.codeUnits, (observed['finalNameUnits'] as List).cast<int>());
         expect(book.author.codeUnits, (observed['finalAuthorUnits'] as List).cast<int>());
-        expect(book.kind.codeUnits, ((observed['getterUnits'] as Map)['kind'] as List).cast<int>());
+        expect(book.kind?.codeUnits, ((observed['getterUnits'] as Map)['kind'] as List).cast<int>());
         expect(book.wordCount.codeUnits, ((observed['getterUnits'] as Map)['wordCount'] as List).cast<int>());
         expect(book.rawAddress, hit.rawAddress);
       });

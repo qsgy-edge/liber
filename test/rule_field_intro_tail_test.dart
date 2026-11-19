@@ -19,6 +19,25 @@ import 'native_library.dart';
 const _oracle = 'tool/rule_field_oracle';
 const _evidence = '$_oracle/evidence/intro-tail-host';
 const _origin = 'http://rules.test';
+
+/// The historical golden rows are `HtmlFormatter.format` outputs (paragraph
+/// indent "　　"). The selected intro callers use `HtmlFormatter.formatIntro`
+/// (empty indent; `BookList.kt:260`, `BookInfo.kt:123`), so the four rows whose
+/// getter starts with a paragraph tag have a different selected answer. The
+/// golden file and its manifest stay the historical `format` observation; this
+/// constant is the selected source's answer for their one shared getter.
+const _selectedParagraphIntro = 'A\u00A0\u00A0B\nCD\n&';
+const _paragraphIntroRows = {
+  'intro-json-string',
+  'intro-json-map',
+  'intro-html-node',
+  'intro-html-string',
+};
+
+List<int> _introExpectation(String name, Map observed) =>
+    _paragraphIntroRows.contains(name)
+    ? _selectedParagraphIntro.codeUnits
+    : (observed['formattedUnits'] as List).cast<int>();
 final _cases =
     (jsonDecode(File('$_oracle/intro-tail-fixtures.json').readAsStringSync())
             as List)
@@ -86,7 +105,7 @@ void main() {
     });
 
     test(
-      'unchanged product intro formatter matches actual frozen format outputs',
+      'product intro formatter matches the selected empty-indent outputs',
       () {
         for (final row in _cases) {
           final observed = _golden[row['name']] as Map;
@@ -95,7 +114,7 @@ void main() {
           );
           expect(
             formatSourceIntro(getter).codeUnits,
-            (observed['formattedUnits'] as List).cast<int>(),
+            _introExpectation(row['name'] as String, observed),
             reason: '${row['name']}',
           );
         }
@@ -224,14 +243,14 @@ void main() {
             ? book.kind
             : book.author;
         expect(
-          actual.codeUnits,
+          actual?.codeUnits,
           (observed['getterUnits'] as List).cast<int>(),
           reason: '${row['name']} getter',
         );
         if (row['url'] != true && row['form'] != 'list') {
           expect(
             book.intro.codeUnits,
-            (observed['formattedUnits'] as List).cast<int>(),
+            _introExpectation(row['name'] as String, observed),
             reason: '${row['name']} formatted',
           );
         }

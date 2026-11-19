@@ -1,0 +1,438 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18734",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "BookList and BookInfo formatIntro at the ordinary search and information stages, including a blank information-intro result that retains the incoming search intro and literal escaped line breaks in the static control.",
+    "HTML two-page body/replace/title order: the content script writes source-owned state, the joined-content replacement rewrites it, and the title reads it together with the first-page title marker while the second page carries a distinct marker.",
+    "JSON two-page body/title order through simple ASCII root-property reads, with no replaceRegex.",
+    "Static HTML control independent of source state, carrying literal escaped line breaks in ordinary content and both introductions."
+  ],
+  "coverageGaps": [
+    "No handset or native execution is claimed by this corpus file; only a later approved capture supplies native expected values.",
+    "JSON whole-content replacement, malformed-title error disposition, persisted content-title/imgUrl/titleMD5 and imageStyle remain outside this corpus.",
+    "No rich-prefix intro branch, new selector, XPath, JavaScript grammar, image/audio or WebView behavior is introduced.",
+    "The two-page cases observe first-page title context through a first-page marker and a distinct second-page marker; they do not claim a last-page title context."
+  ],
+  "cases": [
+    {
+      "id": "html-body-replace-title-order",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Reader follow-through HTML",
+        "searchUrl": "/html/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".results .item",
+          "name": "a@text",
+          "author": "span.author@text",
+          "bookUrl": "a@href",
+          "intro": "span.intro@html"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": "span.author@text",
+          "intro": "",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": "@js: source.put(\"seenHtml\",\"content\"); java.getString(\".content@text\")",
+          "nextContentUrl": ".next@href",
+          "replaceRegex": "##（广告）##{{source.put(\"seenHtml\",\"replace\");\"\"}}",
+          "title": "@js: (source.get(\"seenHtml\") || \"none\") + \"|\" + java.getString(\".chapter-title@text\")"
+        }
+      }
+    },
+    {
+      "id": "json-body-title-order",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Reader follow-through JSON",
+        "searchUrl": "/json/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url",
+          "intro": "$.intro"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "intro": "",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "@js: source.put(\"seenJson\",\"content\"); java.getString(\"$.body\")",
+          "nextContentUrl": "$.next",
+          "title": "@js: (source.get(\"seenJson\") || \"none\") + \"|\" + java.getString(\"$.title\")"
+        }
+      }
+    },
+    {
+      "id": "html-order-control",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "Reader follow-through control",
+        "searchUrl": "/control/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": ".results .item",
+          "name": "a@text",
+          "author": "span.author@text",
+          "bookUrl": "a@href",
+          "intro": "span.intro@html"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": "span.author@text",
+          "intro": "span.intro@html",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters a",
+          "chapterName": "text",
+          "chapterUrl": "href"
+        },
+        "ruleContent": {
+          "content": ".content@text",
+          "replaceRegex": "##（广告）",
+          "title": ".chapter-title@text"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "html-search",
+      "method": "GET",
+      "path": "/html/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"results\"><div class=\"item\"><a href=\"/html/book/1\">HTML书</a><span class=\"author\">作者</span><span class=\"intro\"><p>搜索简介&nbsp;&nbsp;A</p></span></div></div></body></html>"
+    },
+    {
+      "id": "html-book",
+      "method": "GET",
+      "path": "/html/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>HTML书</h1><span class=\"author\">作者</span><span class=\"missing-intro\"></span><p class=\"toc\"><a href=\"/html/toc/1\">目录</a></p></body></html>"
+    },
+    {
+      "id": "html-toc",
+      "method": "GET",
+      "path": "/html/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"chapters\"><a href=\"/html/c/1\">第一章</a></div></body></html>"
+    },
+    {
+      "id": "html-content-1",
+      "method": "GET",
+      "path": "/html/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h2 class=\"chapter-title\">第一页标题</h2><div class=\"content\">HTML BODY（广告）</div><a class=\"next\" href=\"/html/c/2\">下一页</a></body></html>"
+    },
+    {
+      "id": "html-content-2",
+      "method": "GET",
+      "path": "/html/c/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h2 class=\"chapter-title\">第二页标题</h2><div class=\"content\">HTML PAGE2</div></body></html>"
+    },
+    {
+      "id": "json-search",
+      "method": "GET",
+      "path": "/json/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[{\"name\":\"JSON书\",\"author\":\"作者\",\"url\":\"/json/book/1\",\"intro\":\"<p>JSON搜索简介</p>\"}]}"
+    },
+    {
+      "id": "json-book",
+      "method": "GET",
+      "path": "/json/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"JSON书\",\"author\":\"作者\",\"toc\":\"/json/toc/1\"}"
+    },
+    {
+      "id": "json-toc",
+      "method": "GET",
+      "path": "/json/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"第一章\",\"href\":\"/json/c/1\"}]}"
+    },
+    {
+      "id": "json-content-1",
+      "method": "GET",
+      "path": "/json/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"JSON BODY\",\"next\":\"/json/c/2\",\"title\":\"第一页标题\"}"
+    },
+    {
+      "id": "json-content-2",
+      "method": "GET",
+      "path": "/json/c/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"JSON PAGE2\",\"title\":\"第二页标题\"}"
+    },
+    {
+      "id": "control-search",
+      "method": "GET",
+      "path": "/control/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"results\"><div class=\"item\"><a href=\"/control/book/1\">控制书</a><span class=\"author\">作者</span><span class=\"intro\"><p>控制简介\\n第二行</p></span></div></div></body></html>"
+    },
+    {
+      "id": "control-book",
+      "method": "GET",
+      "path": "/control/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>控制书</h1><span class=\"author\">作者</span><span class=\"intro\"><p>详情简介\\n第二行</p></span><p class=\"toc\"><a href=\"/control/toc/1\">目录</a></p></body></html>"
+    },
+    {
+      "id": "control-toc",
+      "method": "GET",
+      "path": "/control/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"chapters\"><a href=\"/control/c/1\">第一章</a></div></body></html>"
+    },
+    {
+      "id": "control-content",
+      "method": "GET",
+      "path": "/control/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h2 class=\"chapter-title\">控制标题</h2><div class=\"content\">CONTROL BODY（广告）\\nSECOND</div></body></html>"
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/html/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/html/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/html/c/2"
+    },
+    {
+      "method": "GET",
+      "path": "/json/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/json/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json/c/2"
+    },
+    {
+      "method": "GET",
+      "path": "/control/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/control/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/control/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/control/c/1"
+    }
+  ],
+  "scenario": [
+    "html-body-replace-title-order: search, information, TOC, then two serial HTML content pages. The first page body writes source-owned state, the joined-content replacement rewrites it, and the title reads that state plus the first-page title marker; the second page carries a distinct title marker.",
+    "json-body-title-order: search, information, TOC, then two serial JSON content pages. The first page body writes source-owned state and the title reads it plus the first-page title marker; the second page carries a distinct title marker. No replaceRegex is declared.",
+    "html-order-control: search, information, TOC, then one HTML content page. Static content, replacement and title are independent of source state; ordinary content and both introductions carry literal escaped line breaks."
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "97c63d635bd1dfdfca5611b568130ee6dbdd3c43"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}

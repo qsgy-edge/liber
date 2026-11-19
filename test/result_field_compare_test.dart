@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pointycastle/export.dart';
 
@@ -53,6 +54,342 @@ void main() {
     corpusSha256: shaOverride ?? corpusSha256,
     manifestCorpusSha256: manifestShaOverride ?? manifestCorpusSha256,
   );
+
+  test(
+    'selected APK accepts exactly historical five or current seven sources',
+    () {
+      final asset = File(
+        'tool/result_field_oracle/book-url-markers-fixtures.json',
+      ).readAsBytesSync();
+      final historical = <String, String>{
+        for (final name in [
+          'FieldOracle.java',
+          'StateSessionOracle.java',
+          'AndroidManifest.xml',
+          'build.ps1',
+          'capture.py',
+        ])
+          name: 'a' * 64,
+      };
+      final current = {
+        ...historical,
+        'HostRuntimeInit.java': 'b' * 64,
+        'ShortcutStartupGuard.java': 'c' * 64,
+      };
+      final directory = Directory.systemTemp.createTempSync(
+        'fields-provenance-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      Map<String, dynamic> inspect(Map<String, String> sources) {
+        final provenance = {
+          'schemaVersion': 1,
+          'fixtureId': 'FIELDS-02',
+          'corpus': {
+            'asset': 'field-fixtures.json',
+            'fixtureId': 'FIELDS-02',
+            'corpusVersion': 1,
+            'bytes': asset.length,
+            'sha256': _sha256(asset),
+            'sha256Lf': _sha256(
+              utf8.encode(utf8.decode(asset).replaceAll('\r\n', '\n')),
+            ),
+          },
+          'sources': sources,
+        };
+        final encoded = utf8.encode(jsonEncode(provenance));
+        final archive = Archive()
+          ..addFile(
+            ArchiveFile('assets/field-fixtures.json', asset.length, asset),
+          )
+          ..addFile(
+            ArchiveFile(
+              'assets/field-provenance.json',
+              encoded.length,
+              encoded,
+            ),
+          );
+        final apk = File('${directory.path}/fields.apk')
+          ..writeAsBytesSync(ZipEncoder().encode(archive));
+        return inspectSelectedHarnessApk(apk.path);
+      }
+
+      expect((inspect(historical)['provenance'] as Map)['sources'], historical);
+      expect((inspect(current)['provenance'] as Map)['sources'], current);
+      for (final bad in [
+        {...current}..remove('HostRuntimeInit.java'),
+        {...current, 'ShortcutStartupGuard.java': 'bad'},
+        {...current, 'unrelated.java': 'd' * 64},
+      ]) {
+        expect(() => inspect(bad), throwsA(isA<StateError>()));
+      }
+    },
+  );
+
+  test('selected-reference APK requires its exact ten-source provenance', () {
+    final asset = File(
+      'tool/result_field_oracle/book-url-markers-fixtures-selected.json',
+    ).readAsBytesSync();
+    final sources = <String, String>{
+      for (final name in [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+        'HostRuntimeInit.java',
+        'ShortcutStartupGuard.java',
+        'GuardedReaderApplication.java',
+        'SelectedFieldHostBridge.java',
+        'AndroidManifest-selected.xml',
+      ])
+        name: 'a' * 64,
+    };
+    final directory = Directory.systemTemp.createTempSync('fields-selected-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    Map<String, dynamic> inspect(
+      Map<String, String> input, {
+      List<int>? corpusBytes,
+    }) {
+      final selectedAsset = corpusBytes ?? asset;
+      final provenance = utf8.encode(
+        jsonEncode({
+          'schemaVersion': 1,
+          'fixtureId': 'FIELDS-02',
+          'corpus': {
+            'asset': 'field-fixtures.json',
+            'fixtureId': 'FIELDS-02',
+            'corpusVersion': 1,
+            'bytes': selectedAsset.length,
+            'sha256': _sha256(selectedAsset),
+            'sha256Lf': _sha256(selectedAsset),
+          },
+          'sources': input,
+        }),
+      );
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile(
+            'assets/field-fixtures.json',
+            selectedAsset.length,
+            selectedAsset,
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'assets/field-provenance.json',
+            provenance.length,
+            provenance,
+          ),
+        );
+      final apk = File('${directory.path}/fields.apk')
+        ..writeAsBytesSync(ZipEncoder().encode(archive));
+      return inspectSelectedHarnessApk(apk.path);
+    }
+
+    expect((inspect(sources)['provenance'] as Map)['sources'], sources);
+    expect(
+      () => inspect({...sources}..remove('SelectedFieldHostBridge.java')),
+      throwsA(isA<StateError>()),
+    );
+    final relabelled = (jsonDecode(utf8.decode(asset)) as Map<String, dynamic>);
+    (relabelled['target'] as Map)['apkSha256'] = '0' * 64;
+    expect(
+      () => inspect(sources, corpusBytes: utf8.encode(jsonEncode(relabelled))),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test(
+    'reader follow-through selected corpus is admitted by its fixed hash',
+    () {
+      final asset = File(
+        'tool/result_field_oracle/reader-followthrough-fixtures-selected.json',
+      ).readAsBytesSync();
+      final sources = <String, String>{
+        for (final name in [
+          'FieldOracle.java',
+          'StateSessionOracle.java',
+          'AndroidManifest.xml',
+          'build.ps1',
+          'capture.py',
+          'HostRuntimeInit.java',
+          'ShortcutStartupGuard.java',
+          'GuardedReaderApplication.java',
+          'SelectedFieldHostBridge.java',
+          'AndroidManifest-selected.xml',
+        ])
+          name: 'a' * 64,
+      };
+      final directory = Directory.systemTemp.createTempSync(
+        'fields-reader-followthrough-',
+      );
+      addTearDown(() => directory.deleteSync(recursive: true));
+      Map<String, dynamic> inspect(List<int> corpusBytes) {
+        final provenance = utf8.encode(
+          jsonEncode({
+            'schemaVersion': 1,
+            'fixtureId': 'FIELDS-02',
+            'corpus': {
+              'asset': 'field-fixtures.json',
+              'fixtureId': 'FIELDS-02',
+              'corpusVersion': 1,
+              'bytes': corpusBytes.length,
+              'sha256': _sha256(corpusBytes),
+              'sha256Lf': _sha256(corpusBytes),
+            },
+            'sources': sources,
+          }),
+        );
+        final archive = Archive()
+          ..addFile(
+            ArchiveFile(
+              'assets/field-fixtures.json',
+              corpusBytes.length,
+              corpusBytes,
+            ),
+          )
+          ..addFile(
+            ArchiveFile(
+              'assets/field-provenance.json',
+              provenance.length,
+              provenance,
+            ),
+          );
+        final apk = File('${directory.path}/fields.apk')
+          ..writeAsBytesSync(ZipEncoder().encode(archive));
+        return inspectSelectedHarnessApk(apk.path);
+      }
+
+      expect((inspect(asset)['provenance'] as Map)['sources'], sources);
+      expect(() => inspect([...asset, 0x20]), throwsA(isA<StateError>()));
+    },
+  );
+
+  test('JSON replace selected corpus is admitted by its fixed hash', () {
+    final asset = File(
+      'tool/result_field_oracle/reader-json-replace-fixtures-selected.json',
+    ).readAsBytesSync();
+    final sources = <String, String>{
+      for (final name in [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+        'HostRuntimeInit.java',
+        'ShortcutStartupGuard.java',
+        'GuardedReaderApplication.java',
+        'SelectedFieldHostBridge.java',
+        'AndroidManifest-selected.xml',
+      ])
+        name: 'a' * 64,
+    };
+    final directory = Directory.systemTemp.createTempSync(
+      'fields-json-replace-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    Map<String, dynamic> inspect(List<int> corpusBytes) {
+      final provenance = utf8.encode(
+        jsonEncode({
+          'schemaVersion': 1,
+          'fixtureId': 'FIELDS-02',
+          'corpus': {
+            'asset': 'field-fixtures.json',
+            'fixtureId': 'FIELDS-02',
+            'corpusVersion': 1,
+            'bytes': corpusBytes.length,
+            'sha256': _sha256(corpusBytes),
+            'sha256Lf': _sha256(corpusBytes),
+          },
+          'sources': sources,
+        }),
+      );
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile(
+            'assets/field-fixtures.json',
+            corpusBytes.length,
+            corpusBytes,
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'assets/field-provenance.json',
+            provenance.length,
+            provenance,
+          ),
+        );
+      final apk = File('${directory.path}/fields.apk')
+        ..writeAsBytesSync(ZipEncoder().encode(archive));
+      return inspectSelectedHarnessApk(apk.path);
+    }
+
+    expect((inspect(asset)['provenance'] as Map)['sources'], sources);
+    expect(() => inspect([...asset, 0x20]), throwsA(isA<StateError>()));
+  });
+
+  test('title lifecycle selected corpus is admitted by its fixed hash', () {
+    final asset = File(
+      'tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json',
+    ).readAsBytesSync();
+    final sources = <String, String>{
+      for (final name in [
+        'FieldOracle.java',
+        'StateSessionOracle.java',
+        'AndroidManifest.xml',
+        'build.ps1',
+        'capture.py',
+        'HostRuntimeInit.java',
+        'ShortcutStartupGuard.java',
+        'GuardedReaderApplication.java',
+        'SelectedFieldHostBridge.java',
+        'AndroidManifest-selected.xml',
+      ])
+        name: 'a' * 64,
+    };
+    final directory = Directory.systemTemp.createTempSync(
+      'fields-title-lifecycle-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    Map<String, dynamic> inspect(List<int> corpusBytes) {
+      final provenance = utf8.encode(
+        jsonEncode({
+          'schemaVersion': 1,
+          'fixtureId': 'FIELDS-02',
+          'corpus': {
+            'asset': 'field-fixtures.json',
+            'fixtureId': 'FIELDS-02',
+            'corpusVersion': 1,
+            'bytes': corpusBytes.length,
+            'sha256': _sha256(corpusBytes),
+            'sha256Lf': _sha256(corpusBytes),
+          },
+          'sources': sources,
+        }),
+      );
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile(
+            'assets/field-fixtures.json',
+            corpusBytes.length,
+            corpusBytes,
+          ),
+        )
+        ..addFile(
+          ArchiveFile(
+            'assets/field-provenance.json',
+            provenance.length,
+            provenance,
+          ),
+        );
+      final apk = File('${directory.path}/fields.apk')
+        ..writeAsBytesSync(ZipEncoder().encode(archive));
+      return inspectSelectedHarnessApk(apk.path);
+    }
+
+    expect((inspect(asset)['provenance'] as Map)['sources'], sources);
+    expect(() => inspect([...asset, 0x20]), throwsA(isA<StateError>()));
+  });
 
   test('the corpus row and six of the seven field rows pass', () {
     final report = compareWith();

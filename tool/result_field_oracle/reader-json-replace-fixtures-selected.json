@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18734",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "JSON two-page whole-content replacement: the declared ruleContent.replaceRegex ##@@AD@@ runs over the joined, per-line-trimmed body and every line is then prefixed with the two full-width spaces, so the marker disappears, the marker-only line survives as the bare paragraph indent, and the second page line gains an indent it does not carry in the control.",
+    "JSON two-page no-replace control over the same routes and the same bodies with no replaceRegex declared: the joined text keeps the marker and keeps the per-page formatting, so the pair isolates the whole-content replacement pass rather than the page join."
+  ],
+  "coverageGaps": [
+    "No handset or native execution is claimed by this corpus file; only a later approved capture supplies native expected values.",
+    "The pair observes only the ordinary whole-content replacement pass. Title-read error disposition, persisted content-title/imgUrl/titleMD5, imageStyle, rich intros and every new selector, XPath, JavaScript, option or image/audio family stay outside this corpus.",
+    "The replacement field is the ordinary ##regex##replacement form with an ASCII marker and an empty replacement; no @js:, {{...}} or @get: substitution is declared in it, so the replacement script context is not observed here.",
+    "Both cases read a static first-page title ($.title); no title-order or title-error behavior is re-observed."
+  ],
+  "cases": [
+    {
+      "id": "json-replace-whole-content",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "JSON replace observation",
+        "searchUrl": "/json-replace/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "$.body",
+          "nextContentUrl": "$.next",
+          "title": "$.title",
+          "replaceRegex": "##@@AD@@"
+        }
+      }
+    },
+    {
+      "id": "json-no-replace-control",
+      "terminal": "four-stage",
+      "keyword": "probe",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18734",
+        "bookSourceName": "JSON no-replace control",
+        "searchUrl": "/json-control/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "$.body",
+          "nextContentUrl": "$.next",
+          "title": "$.title"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "replace-search",
+      "method": "GET",
+      "path": "/json-replace/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[{\"name\":\"JSON REPLACE BOOK\",\"author\":\"AUTHOR\",\"url\":\"/json-replace/book/1\"}]}"
+    },
+    {
+      "id": "replace-book",
+      "method": "GET",
+      "path": "/json-replace/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"JSON REPLACE BOOK\",\"author\":\"AUTHOR\",\"toc\":\"/json-replace/toc/1\"}"
+    },
+    {
+      "id": "replace-toc",
+      "method": "GET",
+      "path": "/json-replace/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"CHAPTER ONE\",\"href\":\"/json-replace/c/1\"}]}"
+    },
+    {
+      "id": "replace-content-1",
+      "method": "GET",
+      "path": "/json-replace/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"  JSON REPLACE BODY@@AD@@  \\n@@AD@@\\nJSON REPLACE TAIL\",\"next\":\"/json-replace/c/2\",\"title\":\"FIRST PAGE TITLE\"}"
+    },
+    {
+      "id": "replace-content-2",
+      "method": "GET",
+      "path": "/json-replace/c/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"JSON REPLACE PAGE2\",\"title\":\"SECOND PAGE TITLE\"}"
+    },
+    {
+      "id": "control-search",
+      "method": "GET",
+      "path": "/json-control/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[{\"name\":\"JSON REPLACE BOOK\",\"author\":\"AUTHOR\",\"url\":\"/json-control/book/1\"}]}"
+    },
+    {
+      "id": "control-book",
+      "method": "GET",
+      "path": "/json-control/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"JSON REPLACE BOOK\",\"author\":\"AUTHOR\",\"toc\":\"/json-control/toc/1\"}"
+    },
+    {
+      "id": "control-toc",
+      "method": "GET",
+      "path": "/json-control/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"CHAPTER ONE\",\"href\":\"/json-control/c/1\"}]}"
+    },
+    {
+      "id": "control-content-1",
+      "method": "GET",
+      "path": "/json-control/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"  JSON REPLACE BODY@@AD@@  \\n@@AD@@\\nJSON REPLACE TAIL\",\"next\":\"/json-control/c/2\",\"title\":\"FIRST PAGE TITLE\"}"
+    },
+    {
+      "id": "control-content-2",
+      "method": "GET",
+      "path": "/json-control/c/2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"JSON REPLACE PAGE2\",\"title\":\"SECOND PAGE TITLE\"}"
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/json-replace/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/json-replace/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-replace/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-replace/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-replace/c/2"
+    },
+    {
+      "method": "GET",
+      "path": "/json-control/search",
+      "query": {
+        "keyword": "probe",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/json-control/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-control/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-control/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/json-control/c/2"
+    }
+  ],
+  "scenario": [
+    "json-replace-whole-content: search, information, TOC, then two serial JSON content pages. The declared replaceRegex removes the @@AD@@ marker from the joined body, leaving the marker-only line as the bare paragraph indent, and the whole-content indent then prefixes every line including the second page line.",
+    "json-no-replace-control: the same four stages over the same two pages and the same bodies with no replaceRegex declared, so the joined text keeps the marker and the per-page formatting unchanged."
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/HtmlFormatter.kt",
+      "sha1": "97c63d635bd1dfdfca5611b568130ee6dbdd3c43"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}

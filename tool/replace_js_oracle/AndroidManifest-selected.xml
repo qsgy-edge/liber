@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.liber.oracle.replacejs.selected">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+  <application android:label="Liber selected REPLACE-JS oracle" android:debuggable="true" />
+  <instrumentation android:name="io.liber.oracle.nested.SelectedReplaceJsOracle" android:targetPackage="com.legado.app.debug" android:label="Selected REPLACE-JS oracle" />
+</manifest>

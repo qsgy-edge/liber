@@ -42,6 +42,11 @@ Map<String, Object?> compareRows(
   Map<String, dynamic>? golden, {
   required String fixtureSha256,
 }) {
+  if (fixture['baselineCommit'] == 'a7d37f1707a70a459ad708f4fe79341d1e42d716') {
+    throw const FormatException(
+      'Selected native evidence requires physical bundle verification',
+    );
+  }
   final cases = (fixture['cases'] as List).cast<Map>();
   final ids = cases.map((row) => row['id'] as String).toList();
   void checkIds(List<Map> rows, String side) {
@@ -227,8 +232,9 @@ bool _equal(Object? a, Object? b) {
 /// reimplement the frozen evaluator; `@js:` goes through [ContentProcessing] and
 /// therefore through the approved source script facade.
 Future<List<Map<String, Object?>>> observeProduct(
-  Map<String, dynamic> fixture,
-) async {
+  Map<String, dynamic> fixture, {
+  bool typedNotices = false,
+}) async {
   final rows = <Map<String, Object?>>[];
   for (final input in (fixture['cases'] as List).cast<Map>()) {
     final rules = <ReplaceRule>[];
@@ -290,12 +296,19 @@ Future<List<Map<String, Object?>>> observeProduct(
       // Capture after both processors, including notices emitted before a
       // later error. The code and arguments (#72) remain locale independent.
       row['notices'] = [for (final notice in notices) notice.toString()];
+      if (typedNotices) {
+        row['noticeRecords'] = [for (final notice in notices) notice.toJson()];
+      }
     }
   }
   return rows;
 }
 
 Future<void> main(List<String> args) async {
+  if (args.isNotEmpty && args.first == '--selected') {
+    await _selectedMain(args.skip(1).toList());
+    return;
+  }
   if (args.length != 3) {
     stderr.writeln(
       'Usage: dart run tool/replace_js_oracle/compare.dart '
@@ -358,4 +371,308 @@ Future<void> main(List<String> args) async {
   } finally {
     await InProcessSourceScriptRuntime.dispose();
   }
+}
+
+/// Selected comparisons can only obtain rows from the physical verifier. A
+/// product-only capture and failed or absent role never become native rows.
+Future<void> _selectedMain(List<String> args) async {
+  if (args.length != 10) {
+    stderr.writeln(
+      'Usage: compare.dart --selected <library> <harness.apk> '
+      '<reference.apk> <frozen-source> <sdk> <java-home> <backup.zip> '
+      '<main12-bundle|-> <timeout-bundle|-> <output.json>',
+    );
+    exitCode = 64;
+    return;
+  }
+  final verifierOutput = '${args[9]}.verification';
+  final command = <String>[
+    'tool/replace_js_oracle/capture.py',
+    '--selected',
+    '--verify-only',
+    '--apk',
+    args[1],
+    '--reference-apk',
+    args[2],
+    '--frozen-source',
+    args[3],
+    '--android-sdk',
+    args[4],
+    '--java-home',
+    args[5],
+    '--backup',
+    args[6],
+    '--output',
+    verifierOutput,
+    if (args[7] != '-') ...['--main12-bundle', args[7]],
+    if (args[8] != '-') ...['--timeout-bundle', args[8]],
+  ];
+  final verified = await Process.run('python', command);
+  if (verified.exitCode != 0) {
+    stderr.writeln('Selected physical verifier refused: ${verified.stderr}');
+    exitCode = 1;
+    return;
+  }
+  final admitted =
+      jsonDecode(File('$verifierOutput/admitted.json').readAsStringSync())
+          as Map<String, dynamic>;
+  final fixtureFile = File('tool/replace_js_oracle/fixtures-selected.json');
+  final fixture =
+      jsonDecode(fixtureFile.readAsStringSync()) as Map<String, dynamic>;
+  await NativeLibrary.initialize(libraryPath: args[0]);
+  try {
+    final product = await observeProduct(fixture, typedNotices: true);
+    final timeout = (fixture['cases'] as List).cast<Map>().singleWhere(
+      (row) => row['id'] == 'js-timeout',
+    );
+    final unmodified = <String, dynamic>{
+      ...fixture,
+      'cases': [
+        <String, dynamic>{
+          ...Map<String, dynamic>.from(timeout),
+          'rules': <Object>[],
+        },
+      ],
+    };
+    final preserved = (await observeProduct(
+      unmodified,
+      typedNotices: true,
+    )).single;
+    if (preserved['status'] != 'observed' || preserved['content'] is! String) {
+      throw const FormatException('Product preserved-text control failed');
+    }
+    final rows = _compareSelected(
+      fixture,
+      product,
+      admitted,
+      preserved['content'] as String,
+    );
+    final counts = <String, int>{
+      for (final state in ['pass', 'fail', 'notCompared', 'not-run'])
+        state: rows.where((row) => row['status'] == state).length,
+    };
+    final report = <String, Object?>{
+      'fixtureId': fixture['fixtureId'],
+      'fixtureSha256': sha256File(fixtureFile),
+      'baselineCommit': fixture['baselineCommit'],
+      'roles': admitted['states'],
+      'recovery': admitted['recovery'],
+      'rows': rows,
+      'counts': counts,
+      'complete': rows.every((row) => row['status'] == 'pass'),
+      'product': product,
+      'librarySha256': sha256File(File(args[0])),
+      'recordedAt': DateTime.now().toUtc().toIso8601String(),
+      'productCommit': (await Process.run('git', [
+        'rev-parse',
+        'HEAD',
+      ])).stdout.toString().trim(),
+      'productWorkingTreeStatus': (await Process.run('git', [
+        'status',
+        '--porcelain=v1',
+      ])).stdout.toString().trim(),
+      'verifierCommand': command,
+      'verifierStdout': verified.stdout.toString(),
+    };
+    File(args[9])
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync(
+        '${const JsonEncoder.withIndent('  ').convert(report)}\n',
+      );
+    stdout.writeln(jsonEncode(counts));
+    exitCode = counts['fail']! > 0
+        ? 1
+        : counts['not-run']! > 0
+        ? 2
+        : 0;
+  } finally {
+    await InProcessSourceScriptRuntime.dispose();
+  }
+}
+
+/// Product notice integrity only; this does not admit any native evidence.
+bool selectedNoticeIntegrity(String id, Object? notices) {
+  if (notices is! List ||
+      !notices.every(
+        (n) =>
+            n is Map &&
+            n.length == 2 &&
+            n.containsKey('code') &&
+            n.containsKey('arguments') &&
+            n['code'] is String &&
+            (n['code'] as String).isNotEmpty &&
+            n['arguments'] is List &&
+            (n['arguments'] as List).every((a) => a is String || a is int),
+      )) {
+    return false;
+  }
+  final requiredCode =
+      id == 'js-error' ||
+          id == 'js-match-and-capture' ||
+          id == 'js-binding-surface'
+      ? 'replaceRuleFailed'
+      : id == 'js-timeout'
+      ? 'replaceRuleTimedOut'
+      : null;
+  final relevant = notices
+      .where(
+        (n) =>
+            n is Map &&
+            (n['code'] == 'replaceRuleFailed' ||
+                n['code'] == 'replaceRuleTimedOut'),
+      )
+      .toList();
+  if (requiredCode == null) return relevant.isEmpty;
+  if (notices.any(
+    (n) =>
+        n is Map &&
+        n['code'] == 'replaceRuleUnusable' &&
+        n['arguments'] is List &&
+        (id == 'js-match-and-capture' ||
+            id == 'js-binding-surface' ||
+            ((n['arguments'] as List).isNotEmpty &&
+                (n['arguments'] as List).first == id)),
+  )) {
+    return false;
+  }
+  if (relevant.length != 1) return false;
+  final n = relevant.single as Map;
+  if (n['code'] != requiredCode || n['arguments'] is! List) return false;
+  final args = n['arguments'] as List;
+  if (args.length != 2 || args[0] != id) return false;
+  return id == 'js-timeout'
+      ? args[1] == 200
+      : args[1] is String && (args[1] as String).trim().isNotEmpty;
+}
+
+/// The selected timeout's returned diagnostic, not a manufactured expected result.
+bool selectedTimeoutDiagnostic(String text) {
+  return text ==
+      '　　js-timeoutio.legado.app.exception.RegexTimeoutException: 替换超时,3秒后还未结束将重启应用\n　　规则名称:js-timeout\n　　替换规则:广告\n　　替换内容:正文广告。';
+}
+
+/// Product timeout policy retains the exact separately processed source text.
+bool selectedTimeoutPreservesText(Object? actual, String preserved) =>
+    actual is String && actual == preserved;
+
+/// Only differences inside the fixed binding diagnostic qualify for that policy.
+bool selectedBindingDifference(String product, String native) {
+  final shape = RegExp(
+    r'^　　result=string \$1=undefined \$name=undefined book=(object|undefined) source=(object|undefined) java=(object|undefined) sourceKey=(string|undefined)$',
+  );
+  return shape.hasMatch(product) && shape.hasMatch(native);
+}
+
+List<Map<String, Object?>> _compareSelected(
+  Map<String, dynamic> fixture,
+  List<Map<String, Object?>> product,
+  Map<String, dynamic> admitted,
+  String timeoutPreservedText,
+) {
+  final cases = (fixture['cases'] as List).cast<Map>();
+  if (product.length != cases.length ||
+      !_equal(
+        product.map((r) => r['id']).toList(),
+        cases.map((r) => r['id']).toList(),
+      )) {
+    throw const FormatException('Selected product row identity/order differs');
+  }
+  final native = <String, Map>{};
+  for (final role in ['main12', 'timeout']) {
+    final report = admitted[role];
+    if (report == null) continue;
+    for (final row in (report['rows'] as List).cast<Map>()) {
+      if (native.containsKey(row['id'])) {
+        throw const FormatException('Duplicate selected row');
+      }
+      native[row['id'] as String] = row;
+    }
+  }
+  final rows = <Map<String, Object?>>[];
+  for (var i = 0; i < cases.length; i++) {
+    final input = cases[i];
+    final actual = product[i];
+    final id = input['id'] as String;
+    final expected = native[id];
+    final differences = <Map<String, Object?>>[];
+    final observations = <String, Object?>{};
+    for (final field in [
+      'title',
+      'content',
+      'selection',
+      'rulesDisabledByRun',
+    ]) {
+      if (expected == null) {
+        observations[field] = 'not-run';
+        continue;
+      }
+      if (!actual.containsKey(field) || !expected.containsKey(field)) {
+        throw FormatException('$id missing $field');
+      }
+      final equal = _equal(actual[field], expected[field]);
+      observations[field] = equal ? 'pass' : 'fail';
+      if (!equal) {
+        differences.add({
+          'field': field,
+          'native': expected[field],
+          'product': actual[field],
+        });
+      }
+    }
+    final validNotices = selectedNoticeIntegrity(id, actual['noticeRecords']);
+    final timeoutObserved =
+        id == 'js-timeout' &&
+        expected != null &&
+        (expected['rulesDisabledByRun'] as List).contains('js-timeout') &&
+        selectedTimeoutDiagnostic(expected['content'] as String);
+    final onlyContent = differences.every((d) => d['field'] == 'content');
+    final String status;
+    if (actual['status'] != 'observed' ||
+        !validNotices ||
+        (id == 'js-timeout' &&
+            !selectedTimeoutPreservesText(
+              actual['content'],
+              timeoutPreservedText,
+            ))) {
+      status = 'fail';
+    } else if (expected == null) {
+      status = 'not-run';
+    } else if (differences.isNotEmpty &&
+        !(onlyContent &&
+            ((id == 'js-binding-surface' &&
+                    selectedBindingDifference(
+                      actual['content'] as String,
+                      expected['content'] as String,
+                    )) ||
+                (id == 'js-timeout' && timeoutObserved)))) {
+      status = 'fail';
+    } else if (id == 'js-timeout' && !timeoutObserved) {
+      status = 'not-run';
+    } else if (differences.isNotEmpty || id == 'js-timeout') {
+      status = 'notCompared';
+    } else {
+      status = 'pass';
+    }
+    rows.add({
+      'id': id,
+      'status': status,
+      'nativeStatus': expected == null ? 'not-run' : 'observed',
+      'productStatus': actual['status'],
+      'observations': observations,
+      'differences': differences,
+      'native': expected,
+      'productNotices': actual['noticeRecords'],
+      'noticeCaptureIntegrity': validNotices ? 'pass' : 'fail',
+      'noticeChannelComparison': 'notCompared',
+      if (id == 'js-binding-surface') 'policy': 'js-binding-surface',
+      if (id == 'js-error') 'policy': 'js-error',
+      if (id == 'js-timeout') ...{
+        'policy': 'js-timeout',
+        'timeoutCoverage': timeoutObserved
+            ? 'observed in native returned fields'
+            : 'not-run: no admitted timeout observation',
+      },
+    });
+  }
+  return rows;
 }

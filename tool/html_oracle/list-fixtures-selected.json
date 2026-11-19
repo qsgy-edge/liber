@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "HTML-LIST-SELECTED-01",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "entryPoint": "AnalyzeRule.getString/getStringList (default and URL modes)",
+  "expectationSource": "Historical source-derived annotations only; selected native output is authoritative.",
+  "documents": {
+    "toc": "<div id=\"list\"><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li><li><a href=\"/3\">第三章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
+    "entity": "<div id=\"code\">A&amp;amp;B</div>",
+    "json": "{\"names\":[\"甲\",\"乙\"],\"items\":[{\"name\":\"丙\"},{\"name\":\"丁\"}]}"
+  },
+  "baseUrl": "http://fixture.test",
+  "cases": [
+    {
+      "id": "html-list-ordered-hrefs",
+      "document": "toc",
+      "rule": "#list li@a@href",
+      "method": "getStringList",
+      "expected": [
+        "/1",
+        "/2",
+        "/3"
+      ]
+    },
+    {
+      "id": "html-scalar-twin-ordered-hrefs",
+      "document": "toc",
+      "rule": "#list li@a@href",
+      "method": "getString",
+      "expected": "/1\n/2\n/3"
+    },
+    {
+      "id": "html-list-declared-order",
+      "document": "toc",
+      "rule": "#list li[2,0,1]@a@href",
+      "method": "getStringList",
+      "expected": [
+        "/3",
+        "/1",
+        "/2"
+      ]
+    },
+    {
+      "id": "html-list-per-item-replacement",
+      "document": "toc",
+      "rule": "#list li@a@href##^/##/page/",
+      "method": "getStringList",
+      "expected": [
+        "/page/1",
+        "/page/2",
+        "/page/3"
+      ]
+    },
+    {
+      "id": "html-scalar-joined-replacement-twin",
+      "document": "toc",
+      "rule": "#list li@a@href##^/##/page/",
+      "method": "getString",
+      "expected": "/page/1\n/2\n/3"
+    },
+    {
+      "id": "html-list-empty",
+      "document": "toc",
+      "rule": "a.absent@href",
+      "method": "getStringList",
+      "expected": []
+    },
+    {
+      "id": "html-list-url-empty",
+      "document": "toc",
+      "rule": "a.absent@href##$##/missing",
+      "method": "getStringListUrl",
+      "expected": []
+    },
+    {
+      "id": "html-list-entity-no-unescape",
+      "document": "entity",
+      "rule": "#code@text",
+      "method": "getStringList",
+      "expected": [
+        "A&amp;B"
+      ]
+    },
+    {
+      "id": "html-scalar-entity-twin",
+      "document": "entity",
+      "rule": "#code@text",
+      "method": "getString",
+      "expected": "A&B"
+    },
+    {
+      "id": "json-list-string-names",
+      "document": "json",
+      "rule": "@Json:$.names[*]",
+      "path": "json",
+      "method": "getStringList",
+      "expected": [
+        "甲",
+        "乙"
+      ]
+    },
+    {
+      "id": "json-scalar-string-twin",
+      "document": "json",
+      "rule": "@Json:$.names[*]",
+      "path": "json",
+      "method": "getString",
+      "expected": "甲\n乙"
+    }
+  ],
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+    "manifest": "docs/compatibility/legado-compatibility-baseline.md"
+  },
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  },
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "33272745cb7cc3ca8abbdcc5d1c130af21ab1fe4",
+      "sha256": "e35feee0489d895fc983f8057d58764290552858188724e7b6377007a6cc65e9"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSoup.kt",
+      "sha1": "7f066a40d9da8fec42bfbcae4d0e25758f8dde9f",
+      "sha256": "5f164d07acd6a603a84562d3bb0316c94a25cae5e88b92c66805b11bb0aa0ffc"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt",
+      "sha1": "a29c7219d92367558e93f77482bfad2ab605b24b",
+      "sha256": "cacc19c35167b1208492e5174465acfe442d144cb7c7e2a635cf47996f566578"
+    }
+  ]
+}

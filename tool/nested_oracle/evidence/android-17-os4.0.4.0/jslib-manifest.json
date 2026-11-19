@@ -1,0 +1,443 @@
+{
+  "recordedAt": "2026-10-20T06:33:33Z",
+  "kind": "frozen-jslib-shared-scope-capture-and-comparison",
+  "ticket": "https://github.com/qsgy-edge/liber/issues/136",
+  "scope": "Spec A #133 JSLIB-01 v2 pilot: the resumed handset's frozen capture compared with the current Windows product. Branch-scoped pilot evidence until controller review and integration; it is not an acceptance of #136's state/session or policy families, and #137/#138 remain blocked.",
+  "ownership": {
+    "deviceAndCapture": "controller: installed the preparation harness, ran the two instrumentations, force-stopped the target and pulled the captures",
+    "comparison": "pilot worker in D:/GithubRepositories/Flutter/liber-136 on wayfinder/136; no adb command was run from this lane"
+  },
+  "lane": {
+    "path": "D:/GithubRepositories/Flutter/liber-136",
+    "branch": "wayfinder/136",
+    "head": "fcd472b3b103b4c38817e81a72a7b97907fb2bb4",
+    "tree": "a04e22a15eee6ad4b5846b59db819a2cd07f01cd",
+    "integrationBase": "fcd472b3b103b4c38817e81a72a7b97907fb2bb4",
+    "cleanAtDispatch": true
+  },
+  "baseline": {
+    "commit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+    "application": {
+      "package": "io.legado.app.debug",
+      "productionRebuilt": false,
+      "installedBytesPulledAndVerified": true,
+      "installedPath": "/data/app/~~N3qtjOHydu4rSb5ImBoi2Q==/io.legado.app.debug-UJkYUCVVhbSfikExuISXcQ==/base.apk",
+      "sha256": "cc99040cc55e9a8b37134430c3ba38ff6ec2940b787e0235a19fa95692552cc6",
+      "unchangedFromPriorEvidence": true
+    },
+    "targetPinManifest": "tool/nested_oracle/evidence/android-17-os4.0.0.31/request-manifest.json",
+    "targetPinMeaning": "the frozen device corpus pin the jsLib capture and the comparator both verify: package, APK SHA-256 and baseline commit"
+  },
+  "device": {
+    "serial": "5615f742",
+    "fingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.4.0.XPMCNXM:user/release-keys",
+    "androidRelease": "17",
+    "sdk": 37,
+    "factsRecordedBy": "controller receipts: device-baseline.json, jslib-install.json and the capture provenance blocks; this lane ran no adb command",
+    "priorEvidenceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.0.31.XPMCNXM:user/release-keys",
+    "priorEvidenceNote": "the committed 0.0.31 evidence recorded that fingerprint; the handset has since taken an OS update and old OS receipts are not reused here"
+  },
+  "corpus": {
+    "path": "tool/nested_oracle/jslib-fixtures.json",
+    "fixtureId": "JSLIB-01",
+    "corpusVersion": 2,
+    "rows": 18,
+    "sha256": "774b2f5c9a0702c91433cb489fdb644ecc97ca7d5f21d4e619fc1c6c63e7a7a5",
+    "sha256Lf": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+    "gitBlobSha256Lf": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+    "workingTreeNote": "a Windows checkout with core.autocrlf=true reads the corpus as CRLF; the compared identity is the LF-normalized hash, which is also what the harness bundles and the capture records",
+    "bundledAsset": {
+      "path": "C:/Users/17945/AppData/Local/liber-evidence/batch29/74/repair1/harness/nested-oracle.apk!assets/jslib-fixtures.json",
+      "sha256": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+      "matchesCorpusSha256Lf": true,
+      "measuredBy": "zipfile read of the installed harness APK's asset"
+    }
+  },
+  "harness": {
+    "apkPath": "C:/Users/17945/AppData/Local/liber-evidence/batch29/74/repair1/harness/nested-oracle.apk",
+    "apkSha256": "b43140443588bd85ea543b3ddae0bc66eccbed75398f20d28eb45c58949495c4",
+    "buildRecord": "C:/Users/17945/AppData/Local/liber-evidence/batch29/74/repair1/manifest.json (accepted #74 preparation e0be9bae)",
+    "installReceipt": "C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/jslib-install.json",
+    "installedApkPath": "/data/app/~~VctiQGAgPPAE-2VnuUhtpg==/io.liber.oracle.nested-AlfuieOzUvGaR6gpRz754Q==/base.apk",
+    "installedSha256": "b43140443588bd85ea543b3ddae0bc66eccbed75398f20d28eb45c58949495c4",
+    "instrumentation": {
+      "command": [
+        "adb",
+        "-s",
+        "5615f742",
+        "shell",
+        "am",
+        "instrument",
+        "-w",
+        "-r",
+        "-e",
+        "corpus",
+        "jslib",
+        "io.liber.oracle.nested/io.liber.oracle.nested.NestedOracle"
+      ],
+      "processExitCode": 0,
+      "instrumentationCode": -1,
+      "result": "jsLib oracle recorded 18 observations",
+      "receipts": [
+        "jslib-instrument.json",
+        "jslib-instrument.log",
+        "jslib-instrument-2.log"
+      ]
+    },
+    "sources": [
+      {
+        "path": "tool/nested_oracle/NestedOracle.java",
+        "role": "harness entry point",
+        "sha256": "2b85816bc60e488313ba441aba1d62e758aade1b6a94434afb2065ce8408a5fa",
+        "sha256Lf": "9d994a818e71dcbacf6c6af65dfdd0618bb2fb360ad1802706d3a3c05541753e",
+        "gitBlobSha256Lf": "9d994a818e71dcbacf6c6af65dfdd0618bb2fb360ad1802706d3a3c05541753e",
+        "acceptedPreparationSha256": "2b85816bc60e488313ba441aba1d62e758aade1b6a94434afb2065ce8408a5fa",
+        "matchesAcceptedPreparation": true
+      },
+      {
+        "path": "tool/nested_oracle/AndroidManifest.xml",
+        "role": "instrumentation manifest",
+        "sha256": "fc5a83c311bce349d97c00430cf03bb4cf3311eff88add650c8a91a370b0dc60",
+        "sha256Lf": "fc5a83c311bce349d97c00430cf03bb4cf3311eff88add650c8a91a370b0dc60",
+        "gitBlobSha256Lf": "fc5a83c311bce349d97c00430cf03bb4cf3311eff88add650c8a91a370b0dc60",
+        "acceptedPreparationSha256": "fc5a83c311bce349d97c00430cf03bb4cf3311eff88add650c8a91a370b0dc60",
+        "matchesAcceptedPreparation": true
+      },
+      {
+        "path": "tool/nested_oracle/build.ps1",
+        "role": "harness build script",
+        "sha256": "854065fd369fc2300fede7fd90dad83d8c0cb51d13b3034e125cc23c351de804",
+        "sha256Lf": "854065fd369fc2300fede7fd90dad83d8c0cb51d13b3034e125cc23c351de804",
+        "gitBlobSha256Lf": "854065fd369fc2300fede7fd90dad83d8c0cb51d13b3034e125cc23c351de804",
+        "acceptedPreparationSha256": "854065fd369fc2300fede7fd90dad83d8c0cb51d13b3034e125cc23c351de804",
+        "matchesAcceptedPreparation": true
+      },
+      {
+        "path": "tool/nested_oracle/jslib-fixtures.json",
+        "role": "served corpus asset",
+        "sha256": "774b2f5c9a0702c91433cb489fdb644ecc97ca7d5f21d4e619fc1c6c63e7a7a5",
+        "sha256Lf": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+        "gitBlobSha256Lf": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+        "acceptedPreparationSha256": "256b20cdc531a3b526e2ea401db72fc75dd79bbc421f5cf99f5685a1a4daa2d6",
+        "matchesAcceptedPreparation": true
+      },
+      {
+        "path": "tool/nested_oracle_compare.dart",
+        "role": "comparator",
+        "sha256": "67f8622e204558965d5b3bcd94430b1b441f4681f694043302965eb064c3de0e",
+        "sha256Lf": "7e103aab02fdd3d2c606c1ea418a6332911453a4fce0b2c99ca9b11b7bb22434",
+        "gitBlobSha256Lf": "7e103aab02fdd3d2c606c1ea418a6332911453a4fce0b2c99ca9b11b7bb22434",
+        "acceptedPreparationSha256": "67f8622e204558965d5b3bcd94430b1b441f4681f694043302965eb064c3de0e",
+        "matchesAcceptedPreparation": true
+      },
+      {
+        "path": "test/nested_oracle_jslib_compare_test.dart",
+        "role": "focused comparator test",
+        "sha256": "08b09ea2061438e59e4d00628b94c524c755d4f451fd673c0ad863a72c1375af",
+        "sha256Lf": "28158ba1daf3f135d9d9742e3ac490e94871b49a918842afdc7776476cf5999c",
+        "gitBlobSha256Lf": "28158ba1daf3f135d9d9742e3ac490e94871b49a918842afdc7776476cf5999c",
+        "acceptedPreparationSha256": "28158ba1daf3f135d9d9742e3ac490e94871b49a918842afdc7776476cf5999c",
+        "matchesAcceptedPreparation": true
+      }
+    ],
+    "allSourcesMatchAcceptedPreparation": true,
+    "sourceHashRule": "sha256 is the working-tree byte hash; sha256Lf is the CRLF->LF hash, which equals the committed blob for these text files. The preparation manifest recorded working-tree bytes for the Java/ps1/xml/Dart files and the LF hash for jslib-fixtures.json, so a source matches when either value equals its recorded hash."
+  },
+  "run": {
+    "captures": [
+      {
+        "path": "C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/jslib-frozen-1.json",
+        "sha256": "7883c6fad858d3fff433da1f29b9292026d411cc58ed5b404cc7f03ae3fd4d56",
+        "capturedAt": "2026-10-20T13:40:33+08:00",
+        "receipt": "jslib-frozen-1-receipt.json (its top-level recordedAt is null; the capture time is provenance.capturedAt)"
+      },
+      {
+        "path": "C:/Users/17945/AppData/Local/liber-evidence/spec133/phone-resume-20261020-01a15796/jslib-frozen-2.json",
+        "sha256": "58645ee73750a27616632fdf6928b5289eb49bcfb22b383a22317f0f1bf856d9",
+        "capturedAt": "2026-10-20T14:03:17+08:00",
+        "receipt": "jslib-frozen-2-receipt.json"
+      }
+    ],
+    "golden": {
+      "path": "tool/nested_oracle/evidence/android-17-os4.0.4.0/jslib-oracle.json",
+      "sha256": "7883c6fad858d3fff433da1f29b9292026d411cc58ed5b404cc7f03ae3fd4d56",
+      "bytes": 2831,
+      "copiedVerbatimFrom": "jslib-frozen-1.json",
+      "editedAfterCapture": false,
+      "assertedBy": "the file hash equals jslib-frozen-1.json's receipt captureSha256"
+    },
+    "observations": 18,
+    "requests": 7,
+    "requestTrace": [
+      "GET /value/3",
+      "GET /value/undefined",
+      "GET /value/inner",
+      "GET /value/inner",
+      "GET /value/6",
+      "GET /value/7",
+      "GET /value/8"
+    ],
+    "twoCapturesSemanticallyIdentical": {
+      "excluded": [
+        "provenance.capturedAt"
+      ],
+      "identical": true,
+      "report": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\capture-comparison.json",
+        "sha256": "9fc1648bf58b34e3904f29ebba7d6397ad149b63f6252a0a282c23627bfb5907"
+      },
+      "measuredBy": "json.load both captures, drop provenance.capturedAt, deep-compare"
+    },
+    "cleanup": {
+      "forceStopExitCode": 0,
+      "pidofExitCode": 1,
+      "remainingPids": [],
+      "source": "both capture receipts, controller-run"
+    }
+  },
+  "comparison": {
+    "mode": "jslib",
+    "command": [
+      "dart",
+      "run",
+      "tool/nested_oracle_compare.dart",
+      "--jslib",
+      "D:/GithubRepositories/Flutter/liber-136/packages/fjs/libfjs/target/debug/fjs.dll",
+      "tool/nested_oracle/evidence/android-17-os4.0.4.0/jslib-oracle.json",
+      "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\jslib-comparison-1.json"
+    ],
+    "runFrom": "D:/GithubRepositories/Flutter/liber-136",
+    "exitCode": 0,
+    "status": "pass",
+    "observations": 18,
+    "requests": 7,
+    "mismatches": 0,
+    "requestsMatch": true,
+    "countMatches": true,
+    "report": {
+      "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\jslib-comparison-1.json",
+      "sha256": "e79a388220a0c1bfe8691ee6c58af3622fe04bd1ba7be10a46ca07df04ce1a3c"
+    },
+    "stdout": {
+      "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\jslib-comparison-1.stdout.log",
+      "sha256": "4c69662d8d73493132c9c5a131501b1bae2f146abab9b870e4bcf5f5d179e427"
+    },
+    "library": {
+      "path": "D:/GithubRepositories/Flutter/liber-136/packages/fjs/libfjs/target/debug/fjs.dll",
+      "sha256": "ca81e69d990b24c6e4de54622573d9102cb7d8790d565670a8f7a3c859b213f4",
+      "bytes": 52289536,
+      "buildCommand": [
+        "cargo",
+        "build",
+        "--locked",
+        "--manifest-path",
+        "packages/fjs/libfjs/Cargo.toml"
+      ],
+      "buildResult": "success (dev profile) in 2m31s",
+      "rustToolchain": "1.97.0 (rust-toolchain.toml)",
+      "flutterRustBridge": "2.12.0, content-hash check enabled",
+      "loadedBy": "InProcessSourceScriptRuntime.initialize(libraryPath:) -> NativeLibrary.initialize -> ExternalLibrary.open(<this path>)"
+    },
+    "secondCaptureAlsoPasses": {
+      "golden": "jslib-frozen-2.json",
+      "exitCode": 0,
+      "status": "pass",
+      "report": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\jslib-comparison-2.json",
+        "sha256": "6a674c295ef2c1da8f2748b072537987793a261b4a72833335b7412bfced3957"
+      }
+    },
+    "cargokitBuiltLibraryAlsoPasses": {
+      "library": "build/windows/x64/plugins/fjs/cargokit_build/x86_64-pc-windows-msvc/debug/fjs.dll",
+      "sha256": "9de1f07d99d03b86479850b8105f8bd73fade9c91eb5912c051a4a7d04ef925e",
+      "buildCommand": [
+        "rustup",
+        "run",
+        "stable",
+        "cargo",
+        "build",
+        "--manifest-path",
+        "packages/fjs/libfjs/Cargo.toml",
+        "-p",
+        "fjs",
+        "--target",
+        "x86_64-pc-windows-msvc",
+        "--target-dir",
+        "build/windows/x64/plugins/fjs/cargokit_build"
+      ],
+      "exitCode": 0,
+      "status": "pass",
+      "report": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\jslib-comparison-cargokit-build.json",
+        "sha256": "ef555c51cfd38eb11b4468c3c574a5839ff83ef961c7e530fe9513435fdafcc7"
+      }
+    },
+    "flutterWindowsAppBuild": {
+      "result": "failed",
+      "reason": "the MSBuild-driven cargokit build could not compile the native C dependencies in this session (cc-rs/cl), and the last attempt failed in a later C++ project with no error line in the captured output; build/windows/x64/runner/Debug was never produced",
+      "commands": [
+        "PUB_HOSTED_URL=https://pub.flutter-io.cn flutter build windows --debug --no-pub",
+        "the same command with VSLANG=1033",
+        "the same command after vcvars64.bat, and again on the warm cargokit target"
+      ],
+      "logs": [
+        {
+          "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\flutter-build-windows.log",
+          "sha256": "b1919935cd49b4c8bd910dcebec010e723cc6599c211feec4d51bb04fb19e2c3"
+        },
+        {
+          "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\flutter-build-windows-ps.log",
+          "sha256": "fa8b165d8d7b1d47bf4919aea0008e67696e327500fa17d0d6df349bbcba539f"
+        },
+        {
+          "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\flutter-build-windows-vcvars.log",
+          "sha256": "9eadbfe222809c9889d9e4095d3c28c6d157249ef79c556d47e285e409436af5"
+        },
+        {
+          "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\flutter-build-windows-warm.log",
+          "sha256": "d9c166f9e33d0d62192a2b9ed7274c21c081f4cfd0192e5606c6f6d0829c0226"
+        },
+        {
+          "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\flutter-build-windows-en.log",
+          "sha256": "2fa590dd743b1a0d815f613fbd79362b0b04c3d021e8e06e8e7cd2b43019747f"
+        }
+      ],
+      "evidenceThatTheNativeSourcesAreCorrect": "the same cargokit cargo command succeeds outside MSBuild (probe-cargokit-cargo.log) and produced the cargokit-built DLL that also passes the comparison",
+      "scopeNote": "the pilot comparator does not need the app build; the controller's Windows driven review does, and it was not run by this lane"
+    }
+  },
+  "negativeControls": [
+    {
+      "name": "observed-value",
+      "mutation": "copied golden: observations[3].value '4' -> '5' (library-second-source)",
+      "expected": "status fail, exit non-zero, report written",
+      "exitCode": 1,
+      "status": "fail",
+      "mismatch": {
+        "index": 3,
+        "expected": {
+          "id": "library-second-source",
+          "value": "5"
+        },
+        "actual": {
+          "id": "library-second-source",
+          "value": "4"
+        }
+      },
+      "report": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\negative-value.report.json",
+        "sha256": "b8c643fc3389ef8d703f30c53b896ffad00005763378b3095999f9f4a5830421"
+      }
+    },
+    {
+      "name": "request-trace",
+      "mutation": "copied golden: requests[0] 'GET /value/3' -> 'GET /value/4'",
+      "expected": "status fail, exit non-zero, request trace compared",
+      "exitCode": 1,
+      "status": "fail",
+      "requestsMatch": false,
+      "report": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\negative-requests.report.json",
+        "sha256": "ecc5ac424d7ca6be3e6dc4bbbc522ac98af35ada00d6c48d5b4c8fbf4f266459"
+      }
+    },
+    {
+      "name": "target-identity",
+      "mutation": "copied golden: provenance.targetApkSha256 replaced with 64 zeroes",
+      "expected": "hard refusal, no report written",
+      "exitCode": 255,
+      "status": "refused",
+      "exception": "FormatException: the golden provenance does not match the corpus (targetApkSha256)",
+      "reportWritten": false,
+      "stderr": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\negative-target.stderr.log",
+        "sha256": "65c056fb860af8a6aebf3579d0b6ae2a361b9f1217eee3977d3472e0561a2431"
+      }
+    },
+    {
+      "name": "corpus-identity",
+      "mutation": "copied golden: corpusSha256 replaced with 64 zeroes",
+      "expected": "hard refusal, no report written",
+      "exitCode": 255,
+      "status": "refused",
+      "exception": "FormatException: the golden was captured against different corpus bytes",
+      "reportWritten": false,
+      "stderr": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\negative-corpus.stderr.log",
+        "sha256": "8d50bce4d6f66217549eb73dcfccd36766d9f13d6cc3d451482b48688b392a39"
+      }
+    }
+  ],
+  "validation": {
+    "focusedTest": {
+      "command": [
+        "PUB_HOSTED_URL=https://pub.flutter-io.cn",
+        "flutter",
+        "test",
+        "test/nested_oracle_jslib_compare_test.dart"
+      ],
+      "exitCode": 0,
+      "tests": 16,
+      "log": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\test-nested-oracle-jslib-compare.log",
+        "sha256": "ce8ae81bc7f45443fb9dd6bd40402db79e251f42b758d11ab678ae418543de99"
+      }
+    },
+    "analyze": {
+      "command": [
+        "dart",
+        "analyze",
+        "tool/nested_oracle_compare.dart",
+        "test/nested_oracle_jslib_compare_test.dart"
+      ],
+      "exitCode": 0,
+      "result": "No issues found!",
+      "log": {
+        "path": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker\\analyze.log",
+        "sha256": "2e678bbba98e2f30330669296d79ebc425eef77d6cb1e299fdaff561e603dc95"
+      }
+    },
+    "productOrComparatorSourceChanges": "none: the comparison passed as committed",
+    "dartMcp": "not used by this lane: the pilot is a headless comparator run; the controller owns the driven Windows review"
+  },
+  "coverage": {
+    "comparedRows": 18,
+    "comparedRequests": 7,
+    "families": [
+      "shared state across repeated evaluations of one source",
+      "nested {{...}} and two-level nested evaluations",
+      "a second source sharing the same jsLib scope",
+      "library functions reading no per-eval bindings",
+      "eval var shadowing and restoring the library binding",
+      "eval-local isolation between evaluations",
+      "shared object assignment shadowing only the eval binding",
+      "throwing nested evaluation caught with shared state intact",
+      "<js>, @js: and java.connect segments sharing the scope"
+    ],
+    "gaps": [
+      "sealed-top-level-write stays source/bytecode-derived and device-not-run; it is a reported potential divergence, not a compared row",
+      "no state/session, policy, allocator, deadline or quantum family is covered; the controller scopes those after this pilot",
+      "Android, iOS, macOS and Linux destinations are not-run; only Windows compared",
+      "one handset and one fingerprint; no aggregate status or full-Spec A claim follows"
+    ]
+  },
+  "knownDivergences": {
+    "sealed-top-level-write": {
+      "status": "source/bytecode-derived; frozen device execution not-run",
+      "note": "a write to a jsLib top-level binding from inside a library function hits the frozen Rhino sealed scope (msg.modify.sealed) while the product's closure model would allow it; the corpus mutates only sharedState.n, so this stays a reported potential divergence and not a compared row"
+    }
+  },
+  "noAggregateStatusPromotion": true,
+  "rawEvidenceDirectory": "C:\\Users\\17945\\AppData\\Local\\liber-evidence\\spec133\\phone-resume-20261020-01a15796\\pilot-worker",
+  "hashes": [
+    {
+      "path": "D:/GithubRepositories/Flutter/liber-136/tool/nested_oracle/evidence/android-17-os4.0.4.0/jslib-oracle.json",
+      "sha256": "7883c6fad858d3fff433da1f29b9292026d411cc58ed5b404cc7f03ae3fd4d56"
+    },
+    {
+      "path": "D:/GithubRepositories/Flutter/liber-136/tool/nested_oracle/jslib-fixtures.json",
+      "sha256": "774b2f5c9a0702c91433cb489fdb644ecc97ca7d5f21d4e619fc1c6c63e7a7a5"
+    }
+  ],
+  "note": "The golden is the controller's actual capture copied verbatim; no expected value was edited to fit the product. The comparison, both captures, the negative controls, the build commands and every log are retained under rawEvidenceDirectory; this manifest's own hash is recorded in the worker report and the commit. Pilot result only: #136's state and policy outcomes, #137/#138 and whole-Spec acceptance remain open."
+}

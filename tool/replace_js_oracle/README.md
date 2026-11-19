@@ -11,7 +11,14 @@ scratch directory and its own evidence directory. Nothing here reads or rewrites
 the SLICE-01, FIELDS-01, REQUEST-01, nested or replace-rule corpora, goldens or
 comparisons, and none of those tool directories is modified.
 
-## Result
+## Historical #49 result (14dd2494)
+
+The counts and per-row product values in this historical section describe the
+original #49 execution, not the current product. The selected-reference #138
+correction below intentionally changes regex `@js:` dollar expansion; comparing
+the current product against this unchanged legacy golden reports 10 pass / 1
+fail / 2 notCompared. The `js-match-and-capture` mismatch is retained, not
+rebaselined. The historical capture and comparator remain unchanged.
 
 **Executed on serial `5615f742` (Redmi/myron, Android 17): the harness installed
 on the first attempt of each run, ran once, returned all 13 rows, and was
@@ -259,3 +266,75 @@ Named, not hidden:
 - The corpus uses one book identity and one chapter per row; no per-book
   `useReplaceRule` switch is exercised (the frozen call and the product call both
   pass the frozen text-book default).
+
+## Selected-reference correction (#138)
+
+For regex `@js:` replacements the selected reference expands the returned
+string as Matcher capture references while preserving literal backslashes. An
+invalid reference rejects the entire rule and records one ordinary product
+error without disabling it. The selected corpus's `js-match-and-capture` and
+`js-binding-surface` rows therefore preserve their original bodies and each
+require their own typed `replaceRuleFailed` notice. Native notice channels are
+not observed. Existing selected main12 evidence belongs to the old APK; the
+new source-bound APK requires a fresh main12 capture. The original failed
+native timeout and its recovery remain separate evidence, not a new result.
+
+The expansion is bounded: the UTF-8 bytes inserted by those capture references
+are counted cumulatively over one rule execution on a title or content string,
+and more than 8,388,608 bytes is an ordinary own-rule `replaceRuleFailed` that
+keeps the rule enabled and lets later rules run. The count is checked before the
+expanded text is built; the unchanged input, the template's literal characters,
+non-regex `@js:` and ordinary replacement are not part of it, and the existing
+JavaScript result cap stays separate. This explicit resource policy differs from
+selected Legado a7d37f1, which uses a per-rule timeout and attempted restart
+rather than an expansion cap; the selected matcher grammar is unchanged.
+
+### Selected-reference tooling
+
+The selected tooling is a separate path. `fixtures-selected.json` retains all
+13 original case objects, including the disabled backup rules and timeout
+input; the legacy fixture and golden above retain their historical identity.
+The selected APK targets `com.legado.app.debug`. Its entry takes exactly one of
+`main12` or `timeout`, with a fresh owned scratch lifetime for each; no prefix
+of a failed run qualifies as evidence. Its guarded application refuses a launch
+attempt and an unclosed DEFAULT Job or failed attempt retains owned state for
+independent recovery. Successful native rows retain the owned root and prefs;
+the host proves the role owner and PID/start-time identity, terminates only a
+proven live target (or records it already absent), rechecks ownership, removes
+only owned files, then checks a complete final inventory. A failed attempt is
+not a successful native cleanup or returned timeout result. The earlier selected
+main12 capture and failed timeout remain bound to the original APK; neither is
+a native capture of the corrected comparator artifact.
+
+Both roles preflight the selected WebView provider: an early unique suffix and
+the scratch application context must produce owned canonical PathUtils data,
+cache and texture paths. The OS6 provider `com.google.android.webview`
+`158.0.8127.2` is a historical candidate pin, not a current observation; a
+future approved capture must first verify the actual provider, check the
+noninitializing candidate in process, and then record the loaded provider and
+in-process containment receipt. This is not WebView behavior parity.
+
+Build against the stage JDK/source/APK with `build.ps1 -Selected -FrozenSource
+<source> -ReferenceApk <apk> -JavaHome <jdk> -OutputDirectory <fresh-dir>`.
+Use `capture.py --selected --preflight-only --apk <harness> --reference-apk
+<reference> --frozen-source <source> --android-sdk <sdk> --java-home <jdk>
+--output <fresh-dir>` for offline inspection. The signed APK and its matching
+`.idsig` are verified as a v4 pair and staged together for incremental install.
+A later separately approved device
+operation requires `--role main12` or `--role timeout`; failure preserves raw
+logs and owned residue and requires independent recovery, not an automatic
+cleanup retry. Do not run a handset from this tooling checkpoint.
+
+The selected comparator form is `dart tool/replace_js_oracle/compare.dart
+--selected <fjs.dll> <harness.apk> <reference.apk> <source> <sdk> <jdk>
+<backup.zip> <main12-bundle|-> <timeout-bundle|-> <output.json>`. It invokes the
+physical verifier with the current source, signed artifacts and raw bundles;
+a product-only capture or missing/failed role remains `not-run`. Native text,
+`textList`, effective rules and other returned fields stay in the report.
+Typed product notice integrity is checked separately from native notice channel
+parity; the named binding/error/timeout differences do not waive unrelated title,
+selection or rule-state fields. Hashes bind physical raw receipts; they do not
+authenticate the origin of a wholesale fabrication of those receipts. Native
+qualification requires the controller's directly guarded capture and custody plus
+independent review. Synthetic test controls exercise mechanics only and are not
+native evidence, including any mechanically reported observed rows.

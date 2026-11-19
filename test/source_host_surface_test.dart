@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
@@ -423,6 +424,58 @@ void main() {
         ),
         sourceDefaultUserAgent,
       );
+    },
+  );
+
+  test(
+    'getHeaderMap answers the corpus Java-Map keySet().iterator() idiom',
+    () async {
+      // The exact scripts of the `helper.header-map-js`/`-ltjs` rows. The
+      // explicit false/true calls are the frozen Java-Map forms; the
+      // zero-argument call is the product's supported extension, whose frozen
+      // Rhino binding refuses it (the named divergence in the contract).
+      final corpus =
+          jsonDecode(
+                File('tool/http_boundary/fixtures.json').readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      final sources = <String, Map>{
+        for (final source in corpus['sources'] as List)
+          (source as Map)['id'] as String: source['bookSource'] as Map,
+      };
+      final steps = <String, Map>{
+        for (final step in corpus['steps'] as List)
+          if (step is Map && step['action'] == 'headerMap')
+            step['source'] as String: step,
+      };
+      const expected = {
+        'H2': [
+          ['User-Agent', 'HTTP-BOUNDARY-01/1.0'],
+          ['X-Script', 's1'],
+        ],
+        'H3': [
+          ['User-Agent', 'HTTP-BOUNDARY-01/1.0'],
+          ['X-Ltjs', 's2'],
+        ],
+      };
+      for (final entry in expected.entries) {
+        final scripts = steps[entry.key]!['scripts'] as Map;
+        for (final arity in ['zero', 'falseArity', 'trueArity']) {
+          expect(
+            jsonDecode(
+              await run(
+                    '${scripts[arity]}',
+                    input: {
+                      'source': sources[entry.key]!.cast<String, Object?>(),
+                    },
+                  )
+                  as String,
+            ),
+            {'value': entry.value},
+            reason: '${entry.key} $arity',
+          );
+        }
+      }
     },
   );
 

@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "entryPoint": "AnalyzeRule.getString/getStringList (default and URL modes)",
+  "expectationSource": "Historical source-derived annotations only; selected native output is authoritative.",
+  "documents": {
+    "chapter": "<div class=\"info\"><span>A</span><span>B</span><span>C</span><span>D</span></div><div class=\"chapter_content\">第一段<br>第二段<span>嵌套广告</span><br>第三段</div><script>var ad = 1;</script><style>.ad{}</style><a href=\"/2\">下一页</a><div id=\"meta\" data-id=\"42\">作者：忘语</div>",
+    "toc": "<div id=\"list\"><li><a href=\"/ad\">忽略</a></li><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
+    "scripted": "<div id=\"wrapped\"><p>正文</p><script>var ad=1;</script></div>",
+    "entity": "<div id=\"code\">A&amp;amp;B</div>",
+    "search": "<div class=\"container\"><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/1\">书一</a></h3><p class=\"author\">作者：甲</p><span class=\"kind\">玄幻</span></div></div><div class=\"item\"><div class=\"itemtxt\"><h3><a href=\"/book/2\">书二</a></h3><p class=\"author\">作者：乙</p><span class=\"kind\">都市</span></div></div></div>",
+    "json": "{\"name\":\"A\"}"
+  },
+  "baseUrl": "http://fixture.test",
+  "cases": [
+    {
+      "id": "ordered-indices",
+      "document": "chapter",
+      "rule": ".info span.1:3:0@text",
+      "expected": "B\nD\nA"
+    },
+    {
+      "id": "exclusion-chain",
+      "document": "toc",
+      "rule": "#list li!0@a@href",
+      "expected": "/1\n/2"
+    },
+    {
+      "id": "negative-index",
+      "document": "chapter",
+      "rule": ".info span.-1@text",
+      "expected": "D"
+    },
+    {
+      "id": "slice-range",
+      "document": "toc",
+      "rule": "#list li[0,2]@a@href",
+      "expected": "/ad\n/2"
+    },
+    {
+      "id": "extraction-text",
+      "document": "chapter",
+      "rule": ".chapter_content@text",
+      "expected": "第一段 第二段嵌套广告 第三段"
+    },
+    {
+      "id": "extraction-textNodes",
+      "document": "chapter",
+      "rule": ".chapter_content@textNodes",
+      "expected": "第一段\n第二段\n第三段"
+    },
+    {
+      "id": "extraction-ownText",
+      "document": "chapter",
+      "rule": ".chapter_content@ownText",
+      "expected": "第一段 第二段 第三段"
+    },
+    {
+      "id": "extraction-html",
+      "document": "chapter",
+      "rule": ".chapter_content@html",
+      "expected": "<div class=\"chapter_content\">\n 第一段\n <br>\n 第二段<span>嵌套广告</span>\n <br>\n 第三段\n</div>"
+    },
+    {
+      "id": "extraction-all",
+      "document": "toc",
+      "rule": "#pages@all",
+      "expected": "<div id=\"pages\">\n <a class=\"gr\" href=\"/toc/2\">下一页</a>\n</div>"
+    },
+    {
+      "id": "extraction-attribute-name",
+      "document": "chapter",
+      "rule": "#meta@data-id",
+      "expected": "42"
+    },
+    {
+      "id": "extraction-href",
+      "document": "toc",
+      "rule": "#pages a@href",
+      "expected": "/toc/2"
+    },
+    {
+      "id": "escape-at-literal",
+      "document": "chapter",
+      "rule": "@@#meta@text",
+      "expected": "作者：忘语"
+    },
+    {
+      "id": "index-list-step",
+      "document": "chapter",
+      "rule": ".info span[0:3:2]@text",
+      "expected": "A\nC"
+    },
+    {
+      "id": "index-list-negative-step",
+      "document": "chapter",
+      "rule": ".info span[3:0:-2]@text",
+      "expected": "D\nB"
+    },
+    {
+      "id": "all-keeps-script",
+      "document": "scripted",
+      "rule": "#wrapped@all",
+      "expected": "<div id=\"wrapped\">\n <p>正文</p>\n <script>var ad=1;</script>\n</div>"
+    },
+    {
+      "id": "html-drops-script",
+      "document": "scripted",
+      "rule": "#wrapped@html",
+      "expected": "<div id=\"wrapped\">\n <p>正文</p>\n</div>"
+    },
+    {
+      "id": "entity-unescape",
+      "document": "entity",
+      "rule": "#code@text",
+      "expected": "A&B"
+    },
+    {
+      "id": "merge-and",
+      "document": "chapter",
+      "rule": ".info span@text&&#meta@data-id",
+      "expected": "A\nB\nC\nD\n42"
+    },
+    {
+      "id": "merge-or",
+      "document": "chapter",
+      "rule": "#missing@text||#meta@text",
+      "expected": "作者：忘语"
+    },
+    {
+      "id": "merge-interleave",
+      "document": "chapter",
+      "rule": ".info span.0:1@text%%#meta@data-id",
+      "expected": "A\n42\nB"
+    },
+    {
+      "id": "legacy-text-sub-syntax",
+      "document": "chapter",
+      "rule": "text.下一页@href",
+      "expected": "/2"
+    },
+    {
+      "id": "legacy-class-sub-syntax",
+      "document": "search",
+      "rule": "class.itemtxt@text",
+      "expected": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "legacy-tag-sub-syntax",
+      "document": "chapter",
+      "rule": "tag.span@text",
+      "expected": "A\nB\nC\nD\n嵌套广告"
+    },
+    {
+      "id": "replacement-two-fields",
+      "document": "chapter",
+      "rule": "#meta@text##^作者：##",
+      "expected": "忘语"
+    },
+    {
+      "id": "replacement-trailing-field",
+      "document": "chapter",
+      "rule": "#meta@text##忘语##忘语先生##",
+      "expected": "忘语先生"
+    },
+    {
+      "id": "replacement-first-match",
+      "document": "chapter",
+      "rule": "#meta@text##忘语##忘语先生###",
+      "expected": "忘语先生"
+    },
+    {
+      "id": "css-prefix",
+      "document": "search",
+      "rule": "@CSS:.itemtxt h3 a@href",
+      "expected": "/book/1\n/book/2"
+    },
+    {
+      "id": "css-nth-child",
+      "document": "toc",
+      "rule": "@CSS:#list li:nth-child(2n+1)@text",
+      "expected": "忽略\n第二章"
+    },
+    {
+      "id": "css-eq",
+      "document": "toc",
+      "rule": "@CSS:#list li:eq(2) a@href",
+      "expected": "/2"
+    },
+    {
+      "id": "css-lt",
+      "document": "toc",
+      "rule": "@CSS:#list li:lt(2)@text",
+      "expected": "忽略\n第一章"
+    },
+    {
+      "id": "css-contains",
+      "document": "toc",
+      "rule": "@CSS:#list li:contains(第二章) a@href",
+      "expected": "/2"
+    },
+    {
+      "id": "css-has",
+      "document": "search",
+      "rule": "@CSS:div.itemtxt:has(.author)@text",
+      "expected": "书一 作者：甲 玄幻\n书二 作者：乙 都市"
+    },
+    {
+      "id": "css-matches-own",
+      "document": "toc",
+      "rule": "@CSS:#pages a:matchesOwn(^下一页$)@href",
+      "expected": "/toc/2"
+    },
+    {
+      "id": "css-attribute-operator",
+      "document": "search",
+      "rule": "@CSS:.itemtxt a[href^=/book/]@text",
+      "expected": "书一\n书二"
+    },
+    {
+      "id": "css-not-pseudo",
+      "document": "toc",
+      "rule": "@CSS:#list li:not(:first-child)@text",
+      "expected": "第一章\n第二章"
+    },
+    {
+      "id": "rule-js-trailing",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@text @js: result + '!'",
+      "expected": "作者：忘语!"
+    },
+    {
+      "id": "rule-js-lt-js-block",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@text<js>'<' + result + '>'</js>",
+      "expected": "<作者：忘语>"
+    },
+    {
+      "id": "rule-interpolation-base-url",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@text@js: '{{baseUrl}}' + result",
+      "expected": "http://fixture.test作者：忘语"
+    },
+    {
+      "id": "rule-interpolation-title-null",
+      "path": "rule",
+      "document": "chapter",
+      "rule": "#meta@data-id@js: '[' + '{{title}}' + ']' + result",
+      "expected": "[]42"
+    },
+    {
+      "id": "no-match-html-value-append",
+      "document": "chapter",
+      "rule": "a.absent@href##$##/missing",
+      "expected": ""
+    },
+    {
+      "id": "no-match-html-url-append",
+      "document": "chapter",
+      "rule": "a.absent@href##$##/missing",
+      "method": "getStringUrl",
+      "expected": "/missing"
+    },
+    {
+      "id": "no-match-html-list-append",
+      "document": "chapter",
+      "rule": "a.absent@href##$##/missing",
+      "method": "getStringListUrl",
+      "expected": []
+    },
+    {
+      "id": "no-match-json-value-append",
+      "document": "json",
+      "rule": "@Json:$.missing##$##Fallback",
+      "path": "json",
+      "expected": "Fallback"
+    },
+    {
+      "id": "no-match-json-url-append",
+      "document": "json",
+      "rule": "@Json:$.missing##$##Fallback",
+      "path": "json",
+      "method": "getStringUrl",
+      "expected": "Fallback"
+    },
+    {
+      "id": "no-match-json-list-append",
+      "document": "json",
+      "rule": "@Json:$.missing##$##Fallback",
+      "path": "json",
+      "method": "getStringListUrl",
+      "expected": []
+    }
+  ],
+  "fixtureId": "HTML-SELECTED-01",
+  "corpusVersion": 1,
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+    "manifest": "docs/compatibility/legado-compatibility-baseline.md"
+  },
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  },
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "33272745cb7cc3ca8abbdcc5d1c130af21ab1fe4",
+      "sha256": "e35feee0489d895fc983f8057d58764290552858188724e7b6377007a6cc65e9"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSoup.kt",
+      "sha1": "7f066a40d9da8fec42bfbcae4d0e25758f8dde9f",
+      "sha256": "5f164d07acd6a603a84562d3bb0316c94a25cae5e88b92c66805b11bb0aa0ffc"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeByJSonPath.kt",
+      "sha1": "a29c7219d92367558e93f77482bfad2ab605b24b",
+      "sha256": "cacc19c35167b1208492e5174465acfe442d144cb7c7e2a635cf47996f566578"
+    }
+  ]
+}

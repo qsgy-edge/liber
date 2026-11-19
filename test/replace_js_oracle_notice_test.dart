@@ -52,8 +52,8 @@ void main() {
             fixtureSha256: sha256File(fixtureFile),
           );
       expect(compare(product)['counts'], {
-        'pass': 11,
-        'fail': 0,
+        'pass': 10,
+        'fail': 1,
         'notCompared': 2,
         'not-run': 0,
       });
@@ -84,11 +84,215 @@ void main() {
           );
           expect(result['noticeCaptureIntegrity']['status'], 'fail');
           expect(result['noticeChannelComparison'], 'notCompared');
-          expect((report['counts'] as Map)['fail'], 1);
+          expect((report['counts'] as Map)['fail'], 2);
         }
       }
     },
   );
+
+  test(
+    'selected typed notice integrity rejects wrong rule, blank error and timeout type',
+    () {
+      expect(
+        selectedNoticeIntegrity('js-error', [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'Error: boom'],
+          },
+        ]),
+        isTrue,
+      );
+      for (final value in <Object?>[
+        null,
+        <Object?>[],
+        [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'boom'],
+            'extra': true,
+          },
+        ],
+        [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['other', 'Error: boom'],
+          },
+        ],
+        [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', '  '],
+          },
+        ],
+      ]) {
+        expect(selectedNoticeIntegrity('js-error', value), isFalse);
+      }
+      expect(
+        selectedNoticeIntegrity('js-timeout', [
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': ['js-timeout', 200],
+          },
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': ['js-timeout', 'bad'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity('js-error', [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'boom'],
+          },
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': ['js-error', 'bad'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity('js-error', [
+          {
+            'code': 'replaceRuleFailed',
+            'arguments': ['js-error', 'boom'],
+          },
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': ['js-error', 200],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity('js-timeout', [
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': ['js-timeout', '200'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity('js-timeout', [
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': ['js-timeout', 200],
+          },
+        ]),
+        isTrue,
+      );
+    },
+  );
+
+  test('selected affected rows require exactly their own ordinary error', () {
+    for (final id in ['js-match-and-capture', 'js-binding-surface']) {
+      Map<String, Object?> failure(String rule, String diagnostic) => {
+        'code': 'replaceRuleFailed',
+        'arguments': [rule, diagnostic],
+      };
+      expect(
+        selectedNoticeIntegrity(id, [failure(id, 'missing group')]),
+        isTrue,
+      );
+      for (final notices in <Object?>[
+        [],
+        [failure('other', 'missing group')],
+        [failure(id, ' ')],
+        [failure(id, 'bad'), failure(id, 'bad')],
+        [failure(id, 'bad'), failure('other', 'bad')],
+        [
+          failure(id, 'bad'),
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': [id, 200],
+          },
+        ],
+        [
+          failure(id, 'bad'),
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': [id, 'bad'],
+          },
+        ],
+        [
+          failure(id, 'bad'),
+          {
+            'code': 'replaceRuleUnusable',
+            'arguments': ['other', 'bad'],
+          },
+        ],
+        [
+          failure(id, 'bad'),
+          {'code': 'replaceRuleUnusable', 'arguments': <Object>[]},
+        ],
+      ]) {
+        expect(
+          selectedNoticeIntegrity(id, notices),
+          isFalse,
+          reason: '$id $notices',
+        );
+      }
+    }
+  });
+
+  test('selected real affected notices reject damaged copies', () async {
+    final fixture =
+        jsonDecode(
+              File(
+                'tool/replace_js_oracle/fixtures-selected.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    fixture['cases'] = (fixture['cases'] as List)
+        .where(
+          (row) =>
+              row['id'] == 'js-match-and-capture' ||
+              row['id'] == 'js-binding-surface',
+        )
+        .toList();
+    for (final row in await observeProduct(fixture, typedNotices: true)) {
+      final id = row['id'] as String;
+      final notices = (row['noticeRecords'] as List).cast<Map>();
+      expect(selectedNoticeIntegrity(id, notices), isTrue);
+      final original = Map<String, Object?>.from(notices.single);
+      expect(selectedNoticeIntegrity(id, []), isFalse);
+      expect(selectedNoticeIntegrity(id, [original, original]), isFalse);
+      expect(
+        selectedNoticeIntegrity(id, [
+          {
+            ...original,
+            'arguments': ['other', 'missing group'],
+          },
+        ]),
+        isFalse,
+      );
+      expect(
+        selectedNoticeIntegrity(id, [
+          original,
+          {
+            'code': 'replaceRuleTimedOut',
+            'arguments': [id, 200],
+          },
+        ]),
+        isFalse,
+      );
+    }
+  });
+
+  test('selected product capture keeps typed rule error notice', () async {
+    final row = (await observeProduct(
+      errorFixture(),
+      typedNotices: true,
+    )).single;
+    final notices = (row['noticeRecords'] as List).cast<Map>();
+    expect(notices, hasLength(1));
+    expect(notices.single['code'], 'replaceRuleFailed');
+    expect(notices.single['arguments'][0], 'js-error');
+    expect(notices.single['arguments'][1], contains('Error: boom'));
+  });
 
   test(
     'observeProduct snapshots notices after real content processing',

@@ -80,6 +80,24 @@ String _joined(String name) => String.fromCharCodes(
 );
 Map _case(String name) => _cases.singleWhere((row) => row['name'] == name);
 
+String? _kindAfterDetails(String name) {
+  final values = (_golden[name] as Map)['values'] as List?;
+  if (const {
+    'kind-map-blank',
+    'native-object-list',
+    'native-number-list',
+    'native-boolean-list',
+    'native-null-list',
+  }.contains(name)) {
+    expect(values, isNull, reason: '$name frozen list read');
+    expect(_joined(name), isEmpty, reason: '$name harness null fallback');
+  }
+  // BookInfo only publishes a nonempty join; the incoming kind is null.
+  if (values == null) return null;
+  final joined = _joined(name);
+  return joined.isEmpty ? null : joined;
+}
+
 class _CancelAtExpression extends InProcessSourceScriptRuntime {
   @override
   Future<Object?> evaluate({
@@ -256,7 +274,7 @@ void main() {
       test('$name executes list then Kotlin join boundary', () async {
         expect(
           (await detailField(_case(name), kind: true)).kind,
-          _joined(name),
+          _kindAfterDetails(name),
         );
       });
     }
@@ -348,7 +366,7 @@ void main() {
           final book = await detailField(_case(name), kind: form == 'list');
           expect(
             form == 'list' ? book.kind : book.author,
-            form == 'list' ? _joined(name) : _value(name),
+            form == 'list' ? _kindAfterDetails(name) : _value(name),
           );
         });
       }
@@ -371,26 +389,36 @@ void main() {
           final source = _json();
           (source['ruleBookInfo'] as Map)['tocUrl'] = _case(name)['rule'];
           final target = Uri.parse(_value(name));
+          final body = jsonEncode({
+            'name': 'body',
+            'list': [
+              {'name': 'chapter', 'href': '/chapter'},
+            ],
+          });
           final pages = _Pages({
-            '/book': jsonEncode({
-              'name': 'body',
-              'list': [
-                {'name': 'chapter', 'href': '/chapter'},
-              ],
-            }),
+            '/book': body,
             '/ok': jsonEncode({
               'list': [
                 {'name': 'chapter', 'href': '/chapter'},
               ],
             }),
           });
-          final (book, chapters) = await JsonSourcePipeline(
-            source,
-            pages,
-          ).details(HtmlBook(url: Uri.parse('$_origin/book'), title: 'old'));
+          final pipeline = JsonSourcePipeline(source, pages);
+          final hit = HtmlBook(url: Uri.parse('$_origin/book'), title: 'old');
+          final HtmlBook book;
+          final List<SourceChapter> chapters;
+          if (name == 'url-toc-empty-script') {
+            expect(target, hit.url);
+            final info = await pipeline.bookInfo(hit);
+            expect(info.tocHtml, body);
+            (book, chapters) = await pipeline.tableOfContents(info);
+            expect(pages.requests, ['/book']);
+          } else {
+            (book, chapters) = await pipeline.details(hit);
+            expect(pages.requests, ['/book', target.path]);
+          }
           expect(book.title, 'body');
           expect(chapters, hasLength(1));
-          expect(pages.requests, ['/book', target.path]);
         },
       );
     }

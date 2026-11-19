@@ -624,7 +624,10 @@ void main() {
   // (search fields), BookInfo.kt:65-107 (canReName and wordCount),
   // BookContent.kt:64-72 (content title), and StringUtils.kt:252-266
   // (word-count formatting). The deterministic HTML/JSON replay bodies below
-  // are the fixture for those frozen entry points.
+  // are the fixture for those frozen entry points. The intro and title-order
+  // expectations follow the selected a7d37f1 behavior instead:
+  // `HtmlFormatter.formatIntro` (empty paragraph indent) and the later
+  // `BookContent.kt:65-69,169-182` title read after the joined body.
   group('remaining result fields', () {
     for (final json in [false, true]) {
       test('intro formatting and detail fallback (json=$json)', () async {
@@ -638,25 +641,15 @@ void main() {
             ? JsonSourcePipeline(source, _JsonPages()..pages.addAll(_jsonPages))
             : HtmlSourcePipeline(source, _HtmlPages());
         final hit = (await pipeline.search('query')).single;
-        final introGolden =
-            jsonDecode(
-                  File(
-                    'tool/rule_field_oracle/evidence/intro-tail-host/golden.json',
-                  ).readAsStringSync(),
-                )
-                as Map;
-        final observed =
-            introGolden[json ? 'intro-json-map' : 'intro-html-node'] as Map;
-        expect(
-          hit.intro.codeUnits,
-          (observed['formattedUnits'] as List).cast<int>(),
-        );
+        // The selected `formatIntro` answer for `<p>A&nbsp;&nbsp;B</p><p>C&thinsp;D</p><!--x-->&amp;`
+        // after the ordinary entity read: empty paragraph indent, U+00A0 kept.
+        expect(hit.intro, 'A\u00A0\u00A0B\nCD\n&');
         final (book, _) = await pipeline.details(hit);
         expect(book.intro, hit.intro);
       });
       for (final blank in [false, true]) {
         test(
-          'content scripts see the first-page title (json=$json, blank=$blank)',
+          'content scripts see the incoming chapter title before the later title read (json=$json, blank=$blank)',
           () async {
             final source = json
                 ? _jsonSource(
@@ -686,10 +679,11 @@ void main() {
                 Uri.parse('${json ? _jsonUrl : _htmlUrl}/chapter/1'),
               ),
             );
-            expect(
-              result.text,
-              '${blank ? '目录标题' : '正文标题'}:${blank ? '目录标题' : '正文标题'}:正文',
-            );
+            // The selected stage reads the title after the joined body
+            // (`BookContent.kt:65-69,169-182`), so the body script sees the
+            // incoming chapter title, and the extracted title is published
+            // afterwards.
+            expect(result.text, '目录标题:目录标题:正文');
             expect(result.title, blank ? null : '正文标题');
           },
         );
@@ -877,7 +871,9 @@ void main() {
         ),
       );
       final json = _jsonSource(name: r'$.name');
-      (json['ruleContent'] as Map)['title'] = 'bad';
+      // A simple bare name is json-path's canonical `$.name` and is read; the
+      // shape this test keeps is one no supported form names.
+      (json['ruleContent'] as Map)['title'] = 'a b';
       final pipeline = JsonSourcePipeline(
         json,
         _JsonPages()..pages.addAll(_jsonPages),

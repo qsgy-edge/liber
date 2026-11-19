@@ -20,6 +20,113 @@ import 'source_stage_diagnostic.dart';
 
 export 'source_stage_diagnostic.dart';
 
+/// The base text the frozen `NetworkUtils.getAbsoluteURL(String?, String)`
+/// overload builds its URL object from: everything before the first comma
+/// (`NetworkUtils.kt:160-169`), so a `,{…}` option tail inside a base text never
+/// becomes part of a resolved directory.
+String _sourceUrlStringBase(String text) {
+  final comma = text.indexOf(',');
+  return comma < 0 ? text : text.substring(0, comma);
+}
+
+/// The two halves of one address text at the frozen option boundary
+/// (`AnalyzeUrl.paramPattern`), read as text: everything before it, and the tail
+/// verbatim, comma included.
+///
+/// A carrier keeps the tail exactly as the rule wrote it, because building a
+/// chapter reads no option object. Only a request that actually consumes the
+/// tail validates a family, so an unsupported one stays that request's named
+/// refusal ([splitSourceUrlOptions]) instead of failing the table of contents.
+({String before, String tail}) _sourceAddressParts(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  return boundary == null
+      ? (before: address, tail: '')
+      : (
+          before: address.substring(0, boundary),
+          tail: address.substring(boundary),
+        );
+}
+
+/// One declared page address's own identity for a page walk's duplicate check:
+/// its text before the frozen option boundary, resolved against the page it was
+/// read from — or against [rawBase], the complete native text a retained page
+/// hands a later page. Nothing the text declares runs here: the frozen
+/// `NetworkUtils.getAbsoluteURL` builds no `AnalyzeUrl`, so no source header is
+/// read, no template expands and no option is interpreted for an address the
+/// walk may still discard. The page the walk really visits analyses its whole
+/// text in its own visit.
+Uri _declaredPageUrl(Uri base, String address, {String? rawBase}) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final native = sourceUrlTextResolved(
+    base,
+    boundary == null ? address : address.substring(0, boundary),
+    rawBase: rawBase,
+  );
+  final uri = base.resolve(native);
+  if (!['http', 'https'].contains(uri.scheme) ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    throw const FormatException('Invalid source URL');
+  }
+  return uri;
+}
+
+/// One chapter's complete native `BookChapter.getAbsoluteURL()` text
+/// (`BookChapter.kt:143-155`): [address] before its own frozen option boundary,
+/// resolved against [base], then that same tail verbatim behind it.
+///
+/// The frozen content branch hands this whole text to its analysis as both of its
+/// URLs (`WebBook.kt:311-329`), so the tail is part of the page base a later
+/// page resolves against and its `..` segments take part in that resolution.
+/// Deriving it here reads no option object and runs no script.
+String _sourceAbsoluteText(String address, Uri base) {
+  final parts = _sourceAddressParts(address);
+  return '${sourceUrlTextResolved(base, parts.before)}${parts.tail}';
+}
+
+/// Whether an address text is pending analysis rather than a URI: a `{{…}}`
+/// template in its address part, or one of the request-program spellings the
+/// frozen grammar recognises — `@js:` or a closed `<js>…</js>` block, in either
+/// case, anywhere in the text (`AppPattern.JS_PATTERN`, the same block
+/// recognition [expandSourceUrl] runs).
+///
+/// A closed block can itself hold the `,{` characters the lexical option
+/// boundary would cut at, so the block is matched on the whole text and only its
+/// start decides whether it belongs to the address or to an ordinary option
+/// tail: a program written inside option data is not this chapter's input.
+///
+/// Such text is carried, saved and rebuilt verbatim. It is never read as a URI —
+/// a program's `@js:` is not a scheme, and a template's braces are not escapes —
+/// and it runs only in the request that actually analyses it.
+bool _isPendingAddressText(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final path = (boundary == null ? address : address.substring(0, boundary))
+      .trim();
+  if (path.contains('{{')) return true;
+  final block = RegExp(
+    r'<js>([\s\S]*?)</js>|@js:([\s\S]*)',
+    caseSensitive: false,
+  ).firstMatch(address);
+  return block != null && block.start < (boundary ?? address.length);
+}
+
+/// The pre-option target an ordinary empty chapter keeps when the TOC page's
+/// own address stands in for a rule that answered nothing.
+///
+/// The complete request text remains separate; identity reads no request option
+/// and does not depend on the information request that supplied the page.
+Uri _ordinaryChapterTarget(String fallbackAddress, Uri pageUrl) {
+  final boundary = sourceUrlOptionBoundaryOf(fallbackAddress);
+  final path = boundary == null
+      ? fallbackAddress
+      : fallbackAddress.substring(0, boundary);
+  // The native absolute shortcut is the Kotlin trim; a relative text keeps the
+  // URL constructor's own original spelling.
+  final trimmed = sourceKotlinTrim(path);
+  final parsed = Uri.tryParse(trimmed);
+  return parsed != null && parsed.hasScheme ? parsed : pageUrl.resolve(path);
+}
+
 /// The bounded JSON-only Legado source slice, behind the shared pipeline shape.
 ///
 /// A JSON Book Source runs the same four stages over the same HTTP semantics as
@@ -193,11 +300,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     ruleEvaluator: _readScriptRule,
   );
 
-  /// The headers every request and `java.ajax` carries: the source's own
-  /// `header` rule, then the caller's. Read once per analysis and before the
-  /// first request, because a `<js>` header rule can itself reach the network.
+  /// The headers the request being analysed carries: the source's own `header`
+  /// rule, then the caller's. The frozen `AnalyzeUrl` constructor evaluates them
+  /// for each new request — before that request's own address is expanded and
+  /// its own options run, because a `<js>` header rule can itself reach the
+  /// network (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`) — and the
+  /// request that read them sends that same map.
   Map<String, String> _activeHeaders = const {};
-  Future<Map<String, String>>? _resolvedHeaders;
 
   @override
   void cancel() => _cancellation.cancel();
@@ -210,9 +319,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
       throw const FormatException('书源 header 必须是 JSON 字符串或 JS 规则');
     }
   }
-
-  Future<Map<String, String>> _ensureHeaders() =>
-      _resolvedHeaders ??= _readHeaders();
 
   /// The source fields a script can read, as the frozen `source` object exposes
   /// them.
@@ -456,8 +562,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return !raw && unescape ? unescapeHtml4('${result ?? ''}') : result;
   }
 
-  Future<String> _kind(Object? value, String rule, {String label = ''}) async {
-    if (rule.isEmpty) return '';
+  /// The frozen category carrier is nullable: no kind rule, or an exactly empty
+  /// one, leaves it unset. A declared rule that matches nothing still answers
+  /// empty text.
+  Future<String?> _kind(Object? value, String rule, {String label = ''}) async {
+    if (rule.isEmpty) return null;
     final content = _analysisContent(value);
     final field = await RuleField.resolve(
       rule,
@@ -679,23 +788,35 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String template,
     String keyword, {
     void Function(Uri preOptionUrl, String expandedAddress)? captureIdentity,
+    String? rawBase,
   }) async {
     final expandedAddress = await _expand(template, keyword);
-    final split = splitSourceUrlOptions(expandedAddress);
-    var url = _url(base, split.path);
+    // A retained first page hands a later-page rule the complete native text as
+    // its base (`WebBook.kt:311-329`): the declared address resolves against
+    // that whole raw text first, so its option boundary is still text when the
+    // address is read, and only this request splits it afterwards.
+    var address = expandedAddress;
+    final raw = rawBase;
+    if (raw != null) {
+      final parts = _sourceAddressParts(expandedAddress);
+      address =
+          '${sourceUrlTextResolved(base, parts.before, rawBase: raw)}${parts.tail}';
+    }
+    final split = splitSourceUrlOptions(address);
+    Uri? capturedPreOption;
     if (captureIdentity != null) {
-      var preOptionUrl = url;
+      capturedPreOption = _url(base, split.path);
       if (!split.options.isPost) {
-        preOptionUrl = _url(
+        capturedPreOption = _url(
           base,
           await encodeSourceQuery(
-            sourceUrlTextWithRawQuery(url, split.path),
+            sourceUrlTextWithRawQuery(capturedPreOption, split.path),
             charset: split.options.charset,
           ),
         ).removeFragment();
       }
-      captureIdentity(preOptionUrl, expandedAddress);
     }
+    var url = _url(base, split.path);
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
     // result is not null (`AnalyzeUrl.kt:238-242`: `evalJS(jsStr, url)
@@ -704,18 +825,42 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // `'null'` sent the request to `/null` (a real source's search, #94).
     final text = script == null
         ? split.path
-        : (await _evalJs(script, keyword, '$url'))?.toString() ?? split.path;
+        : (await _evalJs(
+                script,
+                keyword,
+                sourceUrlTextResolved(base, split.path),
+              ))?.toString() ??
+              split.path;
     url = _url(base, text);
     if (!split.options.isPost) {
       url = _url(
         base,
         await encodeSourceQuery(
-          sourceUrlTextWithRawQuery(url, text),
+          sourceUrlTextWithRawQuery(
+            text.contains('?') ? url.removeFragment() : url,
+            text,
+          ),
           charset: split.options.charset,
         ),
       );
     }
+    if (captureIdentity != null) {
+      captureIdentity(capturedPreOption!, expandedAddress);
+    }
     return (url, split.options);
+  }
+
+  /// One declared page's own request, in the frozen order: the source header it
+  /// reads once (`AnalyzeUrl.kt:125-145`), then the whole address text expanded,
+  /// its options split and its `js` run (`initUrl`, `:139-147`). [request] is a
+  /// page the walk really reached, so an alias it discards never runs this.
+  Future<(Uri, SourceUrlOptions)> _analyzeDeclaredPage(
+    SourcePageRequest request, {
+    String? rawBase,
+  }) async {
+    _activeHeaders = await _readHeaders();
+    _cancellation.throwIfCancelled();
+    return _request(request.base, request.address, _keyword, rawBase: rawBase);
   }
 
   /// Sends one stage request and answers the stage response as the JSON rules
@@ -743,6 +888,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       base: base ?? url,
     );
     _cancellation.throwIfCancelled();
+    // This request's own map: its stage read the source header before it
+    // analysed the address, and a `java.initUrl` reanalysis or a repeated send
+    // of that same request keeps it.
     final merged = {..._activeHeaders, ...options.headers};
     final (method: method, body: body, headers: extra) =
         await sourceRequestShape(options, merged);
@@ -790,6 +938,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
             ),
       );
       trace.add(BookSourceTraceEntry(stage: stage, path: url.toString()));
+      if ('${response.url}' != '$url') {
+        trace.add(BookSourceTraceEntry(stage: stage, path: '${response.url}'));
+      }
       _cancellation.throwIfCancelled();
       return SourceStageResponse(
         body: response.body,
@@ -801,6 +952,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           bodyByteLength: response.bodyByteLength,
           url: response.url,
         ),
+        wasRedirected: response.wasRedirected,
       );
     }
     if (method != 'GET' || headers.isNotEmpty) {
@@ -968,6 +1120,38 @@ class JsonSourcePipeline implements BookSourcePipeline {
     return url;
   }
 
+  /// One chapter address whose own request program has not run yet: the text
+  /// that request will analyse, and the key this chapter names right now.
+  ///
+  /// A TOC chapter address is a completed rule value, not the request itself, so
+  /// a `{{…}}` template or `@js:` program it still carries belongs to the
+  /// request that fetches the chapter. The address is resolved passively against
+  /// the TOC base this chapter was read from — a relative pending address keeps
+  /// that directory, and a program is resolved as text instead of being parsed
+  /// as a URI scheme — and that resolved representation names the chapter and is
+  /// what the saved request text keeps. A whole program stays the rule's own
+  /// text for the one request that runs it. [_url] keeps refusing a pending text
+  /// wherever a request actually resolves its target.
+  static ({String text, Uri target}) _pendingChapterAddress(
+    Uri base,
+    String address,
+  ) {
+    final parts = splitSourceUrlOptions(address);
+    final resolved = resolveSourceTocUrl(
+      address: address,
+      base: base,
+      fallbackAddress: address,
+    );
+    final bare = splitSourceUrlOptions(resolved).path;
+    if (!_isPendingAddressText(address)) {
+      return (text: resolved, target: _url(base, bare));
+    }
+    return (
+      text: parts.path.startsWith('@js:') ? address : resolved,
+      target: SourceHttpUri.parse(bare),
+    );
+  }
+
   /// `ruleSearch`: the books a keyword search returns.
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async {
@@ -978,11 +1162,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _keyword = keyword;
     _page = page;
     final search = _rules('ruleSearch', ['bookList', 'name', 'bookUrl']);
-    _activeHeaders = await _ensureHeaders();
+    // This request's own source header, read before its address options run.
+    _activeHeaders = await _readHeaders();
+    late String searchIdentityAddress;
     final (url, options) = await _request(
       _base,
       source['searchUrl'] as String,
       keyword,
+      captureIdentity: (_, expandedAddress) {
+        searchIdentityAddress = expandedAddress;
+      },
     );
     final checked = await _loginCheck(
       await _fetch(
@@ -995,6 +1184,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     final document = _document(BookSourceStage.search, checked);
     final finalUrl = checked.url;
+    final searchParts = splitSourceUrlOptions(searchIdentityAddress);
+    final redirected = checked.wasRedirected ?? ('$finalUrl' != '$url');
+    final identityAddress = redirected
+        ? '$finalUrl'
+        : (Uri.tryParse(searchParts.path)?.hasScheme == true
+                  ? searchParts.path
+                  : sourceUrlTextResolved(url, searchParts.path)) +
+              searchParts.tail;
+    // The frozen `getInfoItem` keeps `book.bookUrl` from one native URL operation
+    // over the whole once-expanded rule text (`BookList.kt:159-163` over
+    // `AnalyzeUrl.ruleUrl`), not from a resolution of its option-stripped path; a
+    // redirected response keeps the URL it landed on.
+    final comparisonAddress = redirected
+        ? '$finalUrl'
+        : sourceUrlTextResolved(url, searchIdentityAddress);
     final bookUrlPattern = '${source['bookUrlPattern'] ?? ''}';
     // The frozen search stage asks first whether the response is a book detail
     // page, and returns that one book when it is; the element-list rules below
@@ -1005,7 +1209,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
           '$finalUrl',
           label: 'bookUrlPattern',
         )) {
-      return _detailPageBooks(document, finalUrl);
+      return _detailPageBooks(
+        document,
+        finalUrl,
+        identityAddress: identityAddress,
+        comparisonAddress: comparisonAddress,
+        infoHtml: checked.body,
+      );
     }
     final found = await _elementList(
       document,
@@ -1015,7 +1225,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // The frozen companion to the branch above: an empty element list and no
     // `bookUrlPattern` mean the page is a detail page too (`BookList.kt:88-99`).
     if (found.isEmpty && bookUrlPattern.isEmpty) {
-      return _detailPageBooks(document, finalUrl);
+      return _detailPageBooks(
+        document,
+        finalUrl,
+        identityAddress: identityAddress,
+        comparisonAddress: comparisonAddress,
+        infoHtml: checked.body,
+      );
     }
     final books = <HtmlBook>[];
     for (final entry in found) {
@@ -1054,7 +1270,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
       final bookAddressValue = search['bookUrl']!.trim().isEmpty
           ? ''
           : '${await _field(entry, search['bookUrl']!, label: 'ruleSearch.bookUrl') ?? ''}';
-      final bookAddress = bookAddressValue.trim().isEmpty
+      // The frozen `AnalyzeRule.getString(rule, isUrl = true)` answers the
+      // analyser's base URL text for a Kotlin-blank result and keeps every other
+      // finished scalar exactly as it was read (`AnalyzeRule.kt:315-323`).
+      final bookAddress = sourceKotlinIsBlank(bookAddressValue)
           ? '$finalUrl'
           : bookAddressValue;
       late Uri preOptionUrl;
@@ -1073,6 +1292,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
         base: finalUrl,
         options: bookOptions,
       );
+      final nativeBookAddress = sourceUrlTextResolved(finalUrl, bookAddress);
+      final publicationScalar = expandedBookAddress;
+      final publicationParts = splitSourceUrlOptions(publicationScalar);
+      final publicationAddress =
+          '${sourceUrlTextResolved(finalUrl, publicationParts.path)}${publicationParts.tail}';
       books.add(
         HtmlBook(
           url: bookUrl,
@@ -1086,15 +1310,35 @@ class JsonSourcePipeline implements BookSourcePipeline {
           lastChapter: lastChapter,
           wordCount: formatSourceWordCount(wordCount),
           kind: kind,
+          infoHtml: nativeBookAddress == '$finalUrl' ? checked.body : null,
+          addressContext: (
+            comparisonAddress: nativeBookAddress,
+            publicationAddress: publicationAddress,
+          ),
         ),
       );
     }
     return books;
   }
 
-  /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
   @override
-  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+  Future<SourceBookInfo> bookInfo(HtmlBook hit) async {
+    _cancellation.throwIfCancelled();
+    final retained = hit.infoHtml;
+    final info = await _beginInformation(
+      hit,
+      evaluateHeaders: retained == null || retained.isEmpty,
+    );
+    return _fetchInformation(hit, info, retainedInfo: retained);
+  }
+
+  /// The information stage's pre-request setup, in the frozen composed order:
+  /// source validation, the entity state the candidate carries, header
+  /// evaluation, then the information rule group.
+  Future<Map<String, String>> _beginInformation(
+    HtmlBook hit, {
+    bool evaluateHeaders = true,
+  }) async {
     _book = hit;
     _chapter = null;
     _chapterTitle = null;
@@ -1109,9 +1353,20 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     _validate();
     _page = null;
-    _activeHeaders = await _ensureHeaders();
-    final info = _rules('ruleBookInfo', const []);
-    final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
+    if (evaluateHeaders) {
+      // This request's own source header, read before its address expands.
+      _activeHeaders = await _readHeaders();
+    }
+    return _rules('ruleBookInfo', const []);
+  }
+
+  /// The information request, its check and its rules, over the setup a caller
+  /// already ran.
+  Future<SourceBookInfo> _fetchInformation(
+    HtmlBook hit,
+    Map<String, String> info, {
+    String? retainedInfo,
+  }) async {
     final bookRequest = _bookRequests.remove(hit.url);
     // The book's own address text is what this request analyzes, the way the
     // frozen details stage analyzes `book.bookUrl` (`WebBook.kt:163-169`): the
@@ -1123,25 +1378,166 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // which resolves against the source's own URL as it does there. The frozen
     // stage binds no key and no page, so a stored address's `{{key}}`/`{{page}}`
     // bind nothing here either.
-    final (bookUrl, bookOptions) = bookRequest == null
-        ? await _request(_base, hit.address, '')
+    //
+    // A fresh analysis has no request map (#136): the search hit's
+    // [HtmlBook.identityAddress] is the resolved target its search recorded,
+    // with the rule's raw option tail, so the details stage resolves that
+    // target rather than re-resolving a relative rule text against [_base]. A
+    // carrier without a recorded target keeps its raw text.
+    final bookAddressText = bookRequest?.address ?? hit.identityAddress;
+    final context = hit.addressContext;
+    final String nativeBookAddress;
+    if (context != null) {
+      nativeBookAddress = context.comparisonAddress;
+    } else if (bookRequest == null) {
+      nativeBookAddress = hit.identityAddress;
+    } else {
+      nativeBookAddress = sourceUrlTextResolved(
+        bookRequest.base,
+        bookAddressText,
+      );
+    }
+    final publicationAddress = context?.publicationAddress ?? nativeBookAddress;
+    final cached = retainedInfo != null && retainedInfo.isNotEmpty;
+    final (bookUrl, bookOptions) = cached
+        ? (hit.url, bookRequest?.options ?? const SourceUrlOptions())
+        : bookRequest == null
+        ? await _request(_base, bookAddressText, '')
         : (hit.url, bookRequest.options);
-    final bookInfo = await _loginCheck(
-      await _fetch(
-        BookSourceStage.bookInfo,
-        bookUrl,
-        options: bookOptions,
-        address: bookRequest?.address ?? hit.address,
-        base: bookRequest?.base ?? _base,
-      ),
-    );
+    final bookInfo = retainedInfo != null && retainedInfo.isNotEmpty
+        ? SourceStageResponse(body: retainedInfo, url: hit.url)
+        : await _loginCheck(
+            await _fetch(
+              BookSourceStage.bookInfo,
+              bookUrl,
+              options: bookOptions,
+              address: bookAddressText,
+              base: bookRequest?.base ?? _base,
+            ),
+          );
     final document = _document(BookSourceStage.bookInfo, bookInfo);
-    final (book, tocAddress) = await _readBookInfo(document, hit, info);
-    // An empty `tocUrl` resolves to the book's own address, which is the frozen
-    // fallback (`BookInfo.kt:150-152`), whose options that request parses again.
-    final (tocUrl, tocOptions) = tocAddress.isEmpty
+    final retainedBody = retainedInfo != null && retainedInfo.isNotEmpty;
+    final logicalBase = retainedBody
+        ? _jsonNativeBaseUri(nativeBookAddress)
+        : null;
+    final parseBase = retainedBody ? (logicalBase ?? hit.url) : hit.url;
+    final (book, tocAddress) = await _readBookInfo(
+      document,
+      hit,
+      info,
+      parseBase: parseBase,
+      // The frozen `BookInfo.kt:137-145` cover call is the String-base overload
+      // `NetworkUtils.getAbsoluteURL(redirectUrl, value)`, whose base is the
+      // book's native logical text (`book.bookUrl`), not the expanded
+      // publication; the overload builds its URL object before the base's first
+      // comma (`NetworkUtils.kt:160-169`).
+      coverRawBase: retainedBody ? nativeBookAddress : null,
+    );
+    final effectiveTocAddress = sourceKotlinIsBlank(tocAddress)
+        ? ''
+        : tocAddress;
+    final Uri tocBase;
+    if (retainedBody) {
+      tocBase = logicalBase ?? bookInfo.url;
+    } else {
+      tocBase = hit.url.hasScheme ? bookInfo.url : hit.url;
+    }
+    final comparisonBase = retainedBody ? (logicalBase ?? tocBase) : tocBase;
+    // The frozen `BookInfo.kt:150-157` compares the finished TOC text with the
+    // book's own finished text: one native URL operation over the whole rule
+    // result, not a resolution of its option-stripped path.
+    final tocNativeText = effectiveTocAddress.isEmpty
+        ? nativeBookAddress
+        : sourceUrlNativeText(
+            effectiveTocAddress,
+            comparisonBase,
+            rawBase: retainedBody ? nativeBookAddress : null,
+          );
+    return SourceBookInfo(
+      book: book,
+      tocAddress: effectiveTocAddress,
+      bookUrl: bookUrl,
+      bookOptions: bookOptions,
+      bookAddress: publicationAddress,
+      keyword: _keyword,
+      page: _page,
+      tocBase: tocBase,
+      tocHtml: tocNativeText == nativeBookAddress ? bookInfo.body : null,
+    );
+  }
+
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> tableOfContents(
+    SourceBookInfo info,
+  ) async {
+    _cancellation.throwIfCancelled();
+    _entityVariables.beginToc();
+    // The information stage's book is the one this stage's rules and scripts
+    // read (`book.*`), so a TOC run that follows another analysis still names
+    // the book its own information result carries.
+    _book = info.book;
+    _chapter = null;
+    _chapterTitle = null;
+    _tocChapterAddress = null;
+    // The TOC stage continues the information analysis it was handed, so its
+    // rules see that analysis's own `key`/`page` bindings — not a later search
+    // on this pipeline.
+    _keyword = info.keyword;
+    _page = info.page;
+    final book = info.book;
+    final bookUrl = info.bookUrl;
+    final bookOptions = info.bookOptions;
+    final bookAddressText = info.bookAddress;
+    final toc = _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
+    final retainedFirstPage = info.tocHtml != null && info.tocHtml!.isNotEmpty;
+    // The non-empty body this analysis actually retained — the information
+    // response the TOC stage reads instead of fetching a page. The frozen
+    // content stage reuses exactly this body for a chapter whose own finished
+    // text is the book's (`WebBook.kt:311-329`), so the fact is kept as the
+    // response it is, never as a name or a marker.
+    final retainedBody = retainedFirstPage ? info.tocHtml : null;
+    // A retained page is read at the book's own finished native text
+    // (`WebBook.kt:239-262` passes `book.tocUrl` as both base URLs), so its
+    // next-page addresses resolve there rather than at the response URL a
+    // redirect landed on. `book.bookUrl` is that native logical text, which the
+    // frozen chapter constructor hands to the String overload
+    // (`BookChapterList.kt:219-222` over `BookChapter.kt:143-149`), and that
+    // overload builds its URL object from the text before its first comma
+    // (`NetworkUtils.kt:160-169`). The expanded publication stays the ordinary
+    // empty chapter's own fact below, not this base.
+    final retainedLogicalText =
+        info.book.addressContext?.comparisonAddress ??
+        info.book.identityAddress;
+    final retainedPageUrl = retainedFirstPage
+        ? Uri.tryParse(retainedLogicalText)
+        : null;
+    final retainedChapterBase = retainedFirstPage
+        ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
+              retainedPageUrl
+        : null;
+    // The complete `BookChapter.getAbsoluteURL()` text an ordinary empty chapter
+    // of a retained page hands its content analysis (`BookChapter.kt:143-155`):
+    // the book's own native text before its frozen option boundary, resolved
+    // against this TOC analysis's own base, then that tail verbatim. A later page
+    // therefore resolves against the whole native text, never against a bare
+    // target and never against this page's response URL.
+    final retainedEmptyFallbackText = retainedFirstPage
+        ? _sourceAbsoluteText(
+            retainedLogicalText,
+            retainedChapterBase ?? retainedPageUrl ?? info.tocBase,
+          )
+        : null;
+    if (!retainedFirstPage) {
+      // This stage's first page is a request of its own: its source header is
+      // read before that request's address options run.
+      _activeHeaders = await _readHeaders();
+      _cancellation.throwIfCancelled();
+    }
+    final (tocUrl, tocOptions) = retainedFirstPage
+        ? (bookUrl, const SourceUrlOptions())
+        : info.tocAddress.isEmpty
         ? (bookUrl, bookOptions)
-        : await _request(hit.url, tocAddress, _keyword);
+        : await _request(info.tocBase, info.tocAddress, _keyword);
     final chapters = <SourceChapter>[];
     SourceStageResponse? finalTocResponse;
     // The frozen 猫眼 rule names `java.aesBase64DecodeToString`, which is outside
@@ -1169,48 +1565,112 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
-    String tocFallbackAddress(SourcePageRequest request) {
+    /// The frozen `bookChapter.url = baseUrl` fallback (`BookChapterList.kt:229-243`)
+    /// writes the page's own finished TOC text into an empty chapter URL. A
+    /// retained first page publishes the approved TOC value; a fetched page
+    /// resolves the address it was read for.
+    String tocFallbackAddress(
+      SourcePageRequest request, {
+      bool retained = false,
+    }) {
+      if (retained) return info.tocUrl;
       if (request.address.isEmpty) {
-        return bookRequest?.address ?? hit.address;
+        return resolveSourceTocUrl(
+          address: '',
+          base: request.url,
+          fallbackAddress: bookAddressText,
+        );
       }
       final parts = splitSourceUrlOptions(request.address);
       final address = Uri.parse(parts.path);
       if (address.hasScheme) {
         return request.address;
       }
-      return '${request.base.resolveUri(address)}${parts.tail}';
+      return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
+    }
+
+    /// This analysis's retained page as one chapter's first content response, or
+    /// null when the frozen reuse condition does not hold for the chapter that
+    /// [chapterText] is.
+    ///
+    /// The condition is two finished native texts and one actual response: the
+    /// chapter's own native text, the book's own native text, and the body this
+    /// analysis really retained. A chapter text that merely *resolves* to the
+    /// book's address is a different text and is fetched — nothing here parses
+    /// the address to compare it, and this adapter's expanded publication never
+    /// decides reuse. [absoluteText] is that chapter's complete
+    /// `BookChapter.getAbsoluteURL()` text (`WebBook.kt:311-329`), the chapter
+    /// text itself by default: it becomes the retained page's base exactly as the
+    /// frozen branch hands it to its analysis, so a tail's own `..` segments take
+    /// part in a later page's resolution.
+    SourceStageResponse? retainedChapterPage(
+      String chapterText,
+      Uri target, {
+      String? absoluteText,
+    }) {
+      final body = retainedBody;
+      if (body == null || chapterText != retainedLogicalText) return null;
+      return SourceStageResponse(
+        body: body,
+        url: Uri.tryParse(absoluteText ?? chapterText) ?? target,
+      );
     }
 
     await walkSourcePages(
       first: (
         url: tocUrl,
         options: tocOptions,
-        address: tocAddress,
-        base: hit.url,
+        address: info.tocAddress,
+        base: info.tocBase,
       ),
-      maxPages: 30,
+      // The TOC follows next-page declarations without a count bound
+      // (`BookChapterList.kt:48-86`); repeated URLs still fail by name.
+      maxPages: null,
       cycleError: 'TOC page cycle',
       // The frozen drops an item equal to the page it was read from
       // (`BookChapterList.kt:96-100`).
       dropSelf: true,
-      resolve: (address, pageUrl) async {
-        final (url, options) = await _request(pageUrl, address, _keyword);
-        return (url: url, options: options);
-      },
+      // A declared next-page address costs nothing here but the identity the
+      // walk's own duplicate check needs: the frozen `NetworkUtils.getAbsoluteURL`
+      // builds no `AnalyzeUrl`, so no source header is read and nothing the text
+      // declares runs for an address the walk discards. The page itself is
+      // analysed in its own visit.
+      resolve: (address, pageUrl) async => (
+        url: _declaredPageUrl(pageUrl, address),
+        options: const SourceUrlOptions(),
+      ),
       visit: (request, {required readNext}) async {
         clearTocChapter();
         try {
-          var tocPage = await _fetch(
-            BookSourceStage.tableOfContents,
-            request.url,
-            options: request.options,
-            address: request.address,
-            base: request.base,
-          );
+          final isFirstPage = firstPage;
+          final cachedFirstPage =
+              isFirstPage &&
+              info.tocHtml != null &&
+              info.tocHtml!.isNotEmpty &&
+              request.url == info.bookUrl;
+          // The stage's first page was analysed before the walk and sends that
+          // analysis; a declared page the walk really reaches is a request of
+          // its own, analysed here on the header it reads first.
+          final (pageUrl, pageOptions) = isFirstPage
+              ? (request.url, request.options)
+              : await _analyzeDeclaredPage(request);
+          var tocPage = cachedFirstPage
+              ? SourceStageResponse(
+                  body: info.tocHtml!,
+                  url: retainedPageUrl ?? info.tocBase,
+                )
+              : await _fetch(
+                  BookSourceStage.tableOfContents,
+                  pageUrl,
+                  options: pageOptions,
+                  address: request.address,
+                  base: request.base,
+                );
           // The frozen TOC stage checks login once, on its first response
-          // (`WebBook.kt:253`); the `nextTocUrl` pages never run the check.
-          if (firstPage) {
-            tocPage = await _loginCheck(tocPage);
+          // (`WebBook.kt:253`); the `nextTocUrl` pages never run the check. A
+          // retained same-page body has no request/check/header work to repeat.
+          if (isFirstPage) {
+            if (!cachedFirstPage) tocPage = await _loginCheck(tocPage);
             firstPage = false;
           }
           finalTocResponse = tocPage;
@@ -1231,7 +1691,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   label: 'ruleToc.nextTocUrl',
                 );
           // Only ordinary empty URLs need this text; cache it lazily per page.
-          late final ordinaryFallbackAddress = tocFallbackAddress(request);
+          late final ordinaryFallbackAddress = tocFallbackAddress(
+            request,
+            retained: cachedFirstPage,
+          );
           for (var index = 0; index < entries.length; index++) {
             publishTocChapter('', '');
             // One rebuilt item's chapter variables start empty and keep only
@@ -1307,45 +1770,109 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 // volume takes the identity text `title + index`, every other chapter
                 // takes the TOC page's own address, which resolves to the page it was
                 // read from.
-                chapter = isVolume
-                    ? SourceChapter.volume(
-                        name,
-                        index,
-                        tocUrl: tocPage.url,
-                        tag: tag.isEmpty ? null : tag,
-                        isVip: isVip,
-                        isPay: isPay,
-                      )
-                    : SourceChapter(
-                        name,
-                        tocPage.url,
-                        rawAddress: request.address,
-                        tag: tag.isEmpty ? null : tag,
-                        isVip: isVip,
-                        isPay: isPay,
-                      );
+                if (isVolume) {
+                  chapter = SourceChapter.volume(
+                    name,
+                    index,
+                    tocUrl: tocPage.url,
+                    tag: tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                  );
+                } else {
+                  final target =
+                      // Only a retained page's own address stands in for the
+                      // chapter text; a fetched TOC page keeps its actual
+                      // response target.
+                      cachedFirstPage
+                      ? _ordinaryChapterTarget(
+                          ordinaryFallbackAddress,
+                          tocPage.url,
+                        )
+                      : tocPage.url;
+                  // The frozen empty-URL fallback writes this TOC page's own
+                  // finished address into the chapter (`BookChapterList.kt:229-243`).
+                  // On a retained page that text is the book's own native text
+                  // (`BookInfo.kt:150-153`), never this adapter's expanded
+                  // publication; a later fetched page keeps its own completed
+                  // address, so its ordinary empty chapter never reuses the first
+                  // page's retained body.
+                  final fallbackText = cachedFirstPage
+                      ? retainedEmptyFallbackText
+                      : ordinaryFallbackAddress;
+                  final retainedPage = fallbackText == null
+                      ? null
+                      : retainedChapterPage(
+                          cachedFirstPage
+                              ? retainedLogicalText
+                              : ordinaryFallbackAddress,
+                          target,
+                          absoluteText: fallbackText,
+                        );
+                  chapter = SourceChapter(
+                    name,
+                    target,
+                    rawAddress: ordinaryFallbackAddress,
+                    tag: tag,
+                    isVip: isVip,
+                    isPay: isPay,
+                    // A reused page fetches nothing, and what it would have
+                    // fetched is this fallback text: the approved payload keeps
+                    // the request input and the published identity apart, so
+                    // `requestAddress` — and with it `persistedAddress` — is that
+                    // complete native text, while the target, key and progress
+                    // identity stay the published ones. The text is kept as the
+                    // rule wrote it: building a carrier reads no option object, so
+                    // a family this analysis cannot consume stays the request's
+                    // own refusal.
+                    fetchContext: fallbackText == null || retainedPage == null
+                        ? null
+                        : (
+                            requestAddress: fallbackText,
+                            retainedPage: retainedPage,
+                          ),
+                  );
+                }
               } else {
-                final (resolved, _) = await _request(
-                  tocPage.url,
-                  chapterUrl,
-                  _keyword,
-                );
+                // The chapter keeps its rule's finished text, and the request it
+                // will make is that same text: a `{{…}}` template or an `@js:`
+                // program it carries belongs to that request, so building this
+                // chapter runs neither. The key names the pending address
+                // resolved against this TOC page's own base, and the option tail
+                // stays verbatim behind it.
+                final chapterBase = cachedFirstPage
+                    ? (retainedChapterBase ?? tocPage.url)
+                    : tocPage.url;
+                final pending = _pendingChapterAddress(chapterBase, chapterUrl);
                 chapter = SourceChapter(
                   name,
-                  resolved,
+                  pending.target,
                   rawAddress: chapterUrl,
-                  tag: tag.isEmpty ? null : tag,
+                  addressBase: chapterBase,
+                  tag: tag,
                   isVolume: isVolume,
                   isVip: isVip,
                   isPay: isPay,
+                  fetchContext: (
+                    requestAddress: pending.text,
+                    // Only an equal finished native text reuses this analysis's
+                    // retained page; a relative text that merely resolves to
+                    // the book's address carries its own request instead
+                    // (`WebBook.kt:311-329`). The chapter's complete native
+                    // absolute text is its own pending request text.
+                    retainedPage: retainedChapterPage(
+                      chapterUrl,
+                      pending.target,
+                      absoluteText: pending.text,
+                    ),
+                  ),
                 );
               }
-              // The chapter's own variable text, read after all the item's
-              // address and rule analysis: a supported chapterUrl option `js`
-              // runs inside `_request` above and may write it, keyed by the same
-              // raw address the script bound as `chapter.url` (#132). Reading
-              // here does not run that option script again, and the item's own
-              // capture is the write alone.
+              // The chapter's own variable text, read after the item's own rule
+              // analysis: the item's rule scripts write it now (#132), and a
+              // supported `chapterUrl` option `js` writes it later, when the
+              // actual content request runs that address (`chapter`). Reading
+              // here runs no option script.
               final chapterVariable = _entityVariables.chapterText;
               // A repeated chapter address is kept, as this path always has: the frozen
               // deduplicates its list by URL (`BookChapterList.kt:123`) and the HTML
@@ -1354,6 +1881,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
               // row twice, which is a store-level limit (D4), not a rule decision taken
               // at this point.
               chapters.add(chapter.withVariable(chapterVariable));
+              _entityVariables.recordTocChapter();
             } finally {
               _entityVariables.endChapter();
               clearTocChapter();
@@ -1373,11 +1901,50 @@ class JsonSourcePipeline implements BookSourcePipeline {
         httpResponse: finalTocResponse?.httpResponse,
       );
     }
-    return (
-      book.withVariable(
-        await _entityVariables.bookVariable(_sourceRef, book.identityAddress),
-      ),
-      chapters,
+    final rows = await _hostSurface.chapterRestorationRows(
+      _sourceRef,
+      book.identityAddress,
+    );
+    final old = {for (final row in rows) (row.index, row.title): row.variable};
+    final restored = [
+      for (var i = 0; i < chapters.length; i++)
+        if (old[(i, chapters[i].name)] case final String variable)
+          chapters[i].withVariable(variable)
+        else
+          chapters[i],
+    ];
+    final bookVariable = await _entityVariables.bookVariable(
+      _sourceRef,
+      book.identityAddress,
+    );
+    final handoff = await _entityVariables.prepareTocHandoff([
+      for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
+    ]);
+    _cancellation.throwIfCancelled();
+    _entityVariables.publishTocHandoff(handoff);
+    return (book.withVariable(bookVariable), restored);
+  }
+
+  /// The composed entry validates the TOC group before its first request, as it
+  /// always has: a `ruleToc` field that belongs to another stage is refused by
+  /// name before any information request, so the composed failure order is the
+  /// one current callers already see. Each stage entry validates its own group
+  /// when it runs.
+  @override
+  Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
+    // The composed entry keeps the order current callers already see: source
+    // validation, entity state, header evaluation and the information rule
+    // group first, then the TOC rule group, all before any request. A bad
+    // source, header or information rule is never replaced by a later TOC
+    // group error.
+    final retained = hit.infoHtml;
+    final info = await _beginInformation(
+      hit,
+      evaluateHeaders: retained == null || retained.isEmpty,
+    );
+    _rules('ruleToc', ['chapterList', 'chapterName', 'chapterUrl']);
+    return tableOfContents(
+      await _fetchInformation(hit, info, retainedInfo: retained),
     );
   }
 
@@ -1398,8 +1965,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// to read here, where the details stage would refuse the missing field.
   Future<List<HtmlBook>> _detailPageBooks(
     Object? document,
-    Uri finalUrl,
-  ) async {
+    Uri finalUrl, {
+    required String identityAddress,
+    required String comparisonAddress,
+    required String infoHtml,
+  }) async {
     final infoRules = source['ruleBookInfo'];
     final nameRule = infoRules is Map ? infoRules['name'] : null;
     if (nameRule == null || nameRule == '') {
@@ -1407,7 +1977,16 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final (book, _) = await _readBookInfo(
       document,
-      HtmlBook(url: finalUrl, title: ''),
+      HtmlBook(
+        url: finalUrl,
+        rawAddress: identityAddress,
+        title: '',
+        infoHtml: infoHtml,
+        addressContext: (
+          comparisonAddress: comparisonAddress,
+          publicationAddress: identityAddress,
+        ),
+      ),
       _rules('ruleBookInfo', const []),
     );
     if (book.title.isEmpty) return const <HtmlBook>[];
@@ -1436,8 +2015,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
   Future<(HtmlBook, String)> _readBookInfo(
     Object? document,
     HtmlBook hit,
-    Map<String, String> info,
-  ) async {
+    Map<String, String> info, {
+    Uri? parseBase,
+    String? coverRawBase,
+  }) async {
     _book = hit;
     // The frozen `ruleBookInfo.init` moves the document the remaining rules
     // read into a subtree of the response; it is a rule field too, so a `@js:`
@@ -1496,8 +2077,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
             : current.lastChapter,
         intro: intro != null && intro.isNotEmpty ? intro : current.intro,
         cover: cover != null && cover.isNotEmpty ? cover : current.cover,
-        // A metadata copy does not clear the variable it started from (#132).
+        // A metadata copy does not clear the variable or retained search
+        // response it started from (#132, retained-body handoff).
         variable: current.variable,
+        infoHtml: current.infoHtml,
+        addressContext: current.addressContext,
       );
     }
 
@@ -1549,7 +2133,21 @@ class JsonSourcePipeline implements BookSourcePipeline {
       info['coverUrl'] ?? '',
       label: 'ruleBookInfo.coverUrl',
     );
-    publishBook(cover: cover.isEmpty ? '' : '${_url(hit.url, cover)}');
+    // The frozen `BookInfo.kt:137-145` cover call is the String-base overload
+    // `NetworkUtils.getAbsoluteURL(redirectUrl, value)`, so a retained response
+    // resolves against the book's raw logical text and a fetched one against the
+    // response URL it actually came from.
+    publishBook(
+      cover: cover.isEmpty
+          ? ''
+          : coverRawBase == null
+          ? '${_url(parseBase ?? hit.url, cover)}'
+          : sourceUrlTextResolved(
+              parseBase ?? hit.url,
+              cover,
+              rawBase: _sourceUrlStringBase(coverRawBase),
+            ),
+    );
     final book = _book!;
     final tocAddress = await _optional(
       page,
@@ -1635,68 +2233,114 @@ class JsonSourcePipeline implements BookSourcePipeline {
         ),
       );
     }
-    _activeHeaders = await _ensureHeaders();
     final parts = <String>[];
     String? contentTitle;
+    // The selected content stage reads `ruleContent.title` after it has joined
+    // every page, against the first response's document (`BookContent.kt:65-69`,
+    // `:169-182`). The first post-login document and its raw body are retained
+    // for that later read; the page walk itself never reads them.
+    Object? firstPageDocument;
+    String? firstPageBody;
     var firstPage = true;
+    // The complete native raw base of a retained first page, while that page's
+    // own declared addresses are resolved. Its later page's own response base
+    // takes over as soon as a real page is fetched.
+    String? contentRawBase;
     // The frozen page walk (`BookContent.kt:54-135`), the same one the HTML
     // adapter runs: this page, then the pages its `nextContentUrl` list declares.
+    //
+    // A real first content request analyses its complete input: a generated
+    // chapter's pending text or the address a stored/imported chapter carries.
+    // Templates and request options run for this request, keeping the chapter's
+    // identity and saved input independent of the selected network target.
+    //
+    // A context that also carries a retained page is the frozen content-reuse
+    // branch (`WebBook.kt:311-329`): the response the TOC stage already read is
+    // this chapter's first content page, so it runs no request analysis, reads
+    // no source header, sends nothing and runs no login check. The pages that
+    // first one declares are real requests again.
+    final chapterContext = chapter.fetchContext;
+    final retainedPage = chapterContext?.retainedPage;
+    final chapterBase = chapter.addressBase ?? chapter.url;
+    if (retainedPage == null) {
+      // This request's own source header, read before its own address options
+      // run. The reuse branch reuses the response the TOC stage already read, so
+      // it reads none and sends nothing.
+      _activeHeaders = await _readHeaders();
+    }
+    final (firstUrl, firstOptions) = retainedPage != null
+        ? (chapter.url, const SourceUrlOptions())
+        : await _request(
+            chapterBase,
+            chapterContext?.requestAddress ?? chapter.address,
+            _keyword,
+          );
     final pages = await walkSourcePages(
       first: (
-        url: chapter.url,
-        // The chapter's own address text carries its options (the frozen
-        // `BookContent` fetches `chapter.url` through `AnalyzeUrl`).
-        options: chapter.options,
-        address: chapter.address,
-        base: chapter.addressBase ?? chapter.url,
+        url: firstUrl,
+        options: firstOptions,
+        address: chapterContext?.requestAddress ?? chapter.address,
+        base: chapterBase,
       ),
-      maxPages: 20,
+      // The frozen content walk has no page-count bound either
+      // (`BookContent.kt:54-135`): an empty declaration or the next chapter's own
+      // address ends it, and a repeated URL still fails by name.
+      maxPages: null,
       cycleError: 'Content page cycle',
       // The frozen stops the one-URL walk before fetching the next chapter's
       // own URL (`BookContent.kt:85-88`); the declared-list walk has no guard.
       nextChapterUrl: nextChapterUrl == null || nextChapterUrl.isEmpty
           ? null
           : SourceHttpUri.parse(nextChapterUrl),
-      resolve: (address, pageUrl) async {
-        final (url, options) = await _request(pageUrl, address, _keyword);
-        return (url: url, options: options);
-      },
+      // A declared next-page address costs nothing here but the identity the
+      // walk's own duplicate check needs: the frozen `NetworkUtils.getAbsoluteURL`
+      // builds no `AnalyzeUrl`, so no source header is read and nothing the text
+      // declares runs for an alias the walk discards. The page itself is
+      // analysed in its own visit, against the complete native base the page
+      // that declared it carried.
+      resolve: (address, pageUrl) async => (
+        url: _declaredPageUrl(pageUrl, address, rawBase: contentRawBase),
+        options: const SourceUrlOptions(),
+      ),
       visit: (request, {required readNext}) async {
-        var contentPage = await _fetch(
-          BookSourceStage.content,
-          request.url,
-          options: request.options,
-          address: request.address,
-          base: request.base,
-        );
+        final isFirstPage = firstPage;
+        final retainedFirst = isFirstPage ? retainedPage : null;
+        // The complete native base this page's own text resolves against, read
+        // before this visit names what its declared addresses get.
+        final pageRawBase = contentRawBase;
+        contentRawBase = retainedFirst == null
+            ? null
+            : chapterContext?.requestAddress;
+        // The first real page was analysed above and keeps that analysis; a
+        // real next page is a request of its own, analysed here on the source
+        // header it reads first.
+        final (pageUrl, pageOptions) = retainedFirst != null
+            ? (request.url, const SourceUrlOptions())
+            : isFirstPage
+            ? (request.url, request.options)
+            : await _analyzeDeclaredPage(request, rawBase: pageRawBase);
+        var contentPage =
+            retainedFirst ??
+            await _fetch(
+              BookSourceStage.content,
+              pageUrl,
+              options: pageOptions,
+              address: request.address,
+              base: request.base,
+            );
         // The frozen content stage checks login once, on its first response
-        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it.
-        if (firstPage) {
-          contentPage = await _loginCheck(contentPage);
+        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A retained
+        // first page made no request of this stage for a check to read.
+        if (isFirstPage) {
+          if (retainedFirst == null) {
+            contentPage = await _loginCheck(contentPage);
+          }
           firstPage = false;
         }
         final document = _document(BookSourceStage.content, contentPage);
-        // The frozen applies the first page's title before the content rules.
         if (parts.isEmpty) {
-          final titleRule = content['title'];
-          final title = titleRule == null
-              ? null
-              : await _optional(
-                  document,
-                  titleRule,
-                  label: 'ruleContent.title',
-                );
-          if (title != null && title.trim().isNotEmpty) {
-            contentTitle = _chapterTitle = title;
-            _chapter = SourceChapter(
-              title,
-              chapter.url,
-              rawAddress: chapter.rawAddress,
-              storedKey: chapter.storedKey,
-              addressBase: chapter.addressBase,
-              variable: chapter.variable,
-            );
-          }
+          firstPageDocument = document;
+          firstPageBody = contentPage.body;
         }
         // The frozen content stage turns one page's value into text here, before
         // the pages are joined (`BookContent.kt:178-181`) — the same pass the HTML
@@ -1730,6 +2374,38 @@ class JsonSourcePipeline implements BookSourcePipeline {
     );
     // The frozen joins a chapter's pages with a newline (`BookContent.kt:129`).
     final text = parts.join('\n');
+    // The selected title read is after the joined body, so the source state the
+    // content scripts wrote is visible and those scripts saw the incoming
+    // chapter title. Its document is the first post-login response, not the last
+    // page's; restoring it makes the reader's own content context the one the
+    // title rule reads (`BookContent.kt:65-69`, `:169-182`).
+    final titleRule = content['title'];
+    // The captured first response is its non-null raw body; the decoded root may
+    // itself be JSON null, which is a value, not an absent response. Restore
+    // that raw-text context and let the ordinary optional read receive the
+    // nullable root.
+    final firstBody = firstPageBody;
+    if (titleRule != null && firstBody != null) {
+      _responseRoot = firstPageDocument;
+      _responseText = firstBody;
+      final title = await _optional(
+        firstPageDocument,
+        titleRule,
+        label: 'ruleContent.title',
+      );
+      if (title.trim().isNotEmpty) {
+        contentTitle = _chapterTitle = title;
+        _chapter = SourceChapter(
+          title,
+          chapter.url,
+          rawAddress: chapter.rawAddress,
+          storedKey: chapter.storedKey,
+          addressBase: chapter.addressBase,
+          variable: chapter.variable,
+          fetchContext: chapter.fetchContext,
+        );
+      }
+    }
     return HtmlChapterBody(
       text,
       pages,
@@ -1769,7 +2445,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final response = await host
         .forExecution(_cancellation)
-        .get('$target', headers: await _ensureHeaders(), readBytes: true);
+        .get('$target', headers: await _readHeaders(), readBytes: true);
     _cancellation.throwIfCancelled();
     final bytes = response.bodyBytes;
     if (bytes == null) throw StateError('图片响应没有字节：$target');
@@ -1916,11 +2592,13 @@ class JsonSourcePipeline implements BookSourcePipeline {
 
 /// One chapter of a source's table of contents.
 ///
-/// [url] is the resolved request target, without any option tail. [rawAddress]
-/// is the address text the TOC rule produced, options included — the frozen
-/// `BookChapter.url` (`BookChapterList.kt:222`) — so the request that fetches
-/// the chapter can parse its options the way the frozen `AnalyzeUrl` does
-/// (`AnalyzeUrl.kt:214-222`).
+/// [url] is the resolved target before request-option execution, without the
+/// option tail: a newly generated chapter keys by its rule's own address
+/// resolved, while the options its request applies belong to that request
+/// ([fetchContext]). [rawAddress] is the address text the TOC rule produced,
+/// options included — the frozen `BookChapter.url` (`BookChapterList.kt:222`) —
+/// so the request that fetches the chapter can parse its options the way the
+/// frozen `AnalyzeUrl` does (`AnalyzeUrl.kt:214-222`).
 ///
 /// [tag], [isVolume], [isVip] and [isPay] are the frozen `BookChapter` marker
 /// fields: `ruleToc.updateTime`/`isVolume`/`isVip`/`isPay` read through the
@@ -1937,6 +2615,7 @@ class SourceChapter {
     this.isVip = false,
     this.isPay = false,
     this.variable,
+    this.fetchContext,
   });
 
   /// A volume chapter whose URL rule produced nothing.
@@ -1969,6 +2648,10 @@ class SourceChapter {
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
   /// their owning book at fetch time; the raw address remains the store's key.
+  ///
+  /// A saved `{{…}}` template or `@js:` program is pending text rather than a
+  /// URI: it resolves against the book as text alone, so rebuilding it runs
+  /// nothing and never reads the program's `@js:` as a scheme.
   factory SourceChapter.fromAddress(
     String name,
     String address, {
@@ -1981,9 +2664,18 @@ class SourceChapter {
     String? variable,
   }) {
     final target = sourceUrlTargetOf(address);
+    final base = bookUrl;
+    final Uri url;
+    if (base == null) {
+      url = SourceHttpUri.parse(target);
+    } else if (_isPendingAddressText(address)) {
+      url = JsonSourcePipeline._pendingChapterAddress(base, address).target;
+    } else {
+      url = SourceHttpUri.parse('${base.resolve(target)}');
+    }
     return SourceChapter(
       name,
-      SourceHttpUri.parse('${bookUrl?.resolve(target) ?? target}'),
+      url,
       rawAddress: address,
       storedKey: chapterKey,
       addressBase: bookUrl,
@@ -2004,8 +2696,9 @@ class SourceChapter {
   /// Existing store identity; new TOC chapters still key by their resolved URL.
   final String? storedKey;
 
-  /// The `ruleToc.updateTime` value (the frozen `BookChapter.tag`), null when
-  /// the source declares no such rule or the rule matched nothing.
+  /// The `ruleToc.updateTime` value (the frozen `BookChapter.tag`). A parsed
+  /// rule result is retained exactly, including the empty string; null remains
+  /// the manual/imported default when this carrier has no parsed value.
   final String? tag;
 
   /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
@@ -2026,6 +2719,16 @@ class SourceChapter {
   /// `chapter.url`, never this field directly.
   final String? variable;
 
+  /// Input for a generated chapter's content request and, when eligible, its
+  /// retained first response.
+  ///
+  /// The complete request text stays independent of [url] and the target
+  /// selected by request options. [persistedAddress] saves that text, including
+  /// its original query and exact option tail. The record and retained response
+  /// stay in memory; a chapter rebuilt from stored text or an import has none.
+  final ({String requestAddress, SourceStageResponse? retainedPage})?
+  fetchContext;
+
   /// This carrier with [variable] replaced, every identity, address and marker
   /// field retained. A metadata or content-stage copy must not drop the
   /// variable it started from.
@@ -2040,6 +2743,7 @@ class SourceChapter {
     isVip: isVip,
     isPay: isPay,
     variable: variable,
+    fetchContext: fetchContext,
   );
 
   /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
@@ -2053,8 +2757,9 @@ class SourceChapter {
   /// Base used to reanalyse a stored address via `java.initUrl()`.
   final Uri? addressBase;
 
-  /// The text a fetch parses: the rule's address when it was kept. A bare URL
-  /// carries no options, so it parses to itself.
+  /// The rule's own address text when it was kept. A bare URL carries no
+  /// options, so it parses to itself. A chapter that carries [fetchContext]
+  /// fetches its complete pending request text instead.
   String get address => rawAddress ?? '$url';
 
   /// The options this chapter's own request applies. Parsed where the chapter
@@ -2062,8 +2767,13 @@ class SourceChapter {
   /// restart once the address text is what the store holds.
   SourceUrlOptions get options => splitSourceUrlOptions(address).options;
 
-  /// The address text to persist: the request target resolved, the option tail
-  /// kept verbatim.
+  /// The address text to persist: the target before request-option execution,
+  /// resolved, with the exact option tail kept verbatim.
+  ///
+  /// A chapter that carries [fetchContext] keeps exactly its
+  /// `fetchContext.requestAddress`, which is that complete text: the key stays
+  /// the bare target while the row keeps the options the content stage
+  /// reanalyses. Every other chapter keeps the tail behind [url].
   ///
   /// A stored row has no TOC page left to resolve a relative address against, so
   /// the target is written absolute. The frozen stores the rule's own text and
@@ -2071,12 +2781,22 @@ class SourceChapter {
   /// and the URL a request targets are the same either way, and a row written by
   /// [SourceChapter.fromAddress] keeps parsing to itself.
   ///
+  /// A stored `{{…}}` template or `@js:` program is the exception: that text is
+  /// pending analysis, so the row keeps it exactly as it was saved. Re-deriving
+  /// it from [url] would re-encode its braces and pipes and lose the form the
+  /// request has to analyse.
+  ///
   /// A volume the rules left without a URL has no target to write absolute
   /// (`rendersTagAsContent`): the frozen keeps the identity text
   /// `title + index` as that chapter's whole state, so the row keeps it too and
   /// the shortcut reads it again after a restart.
-  String get persistedAddress =>
-      rendersTagAsContent ? address : '$url${sourceUrlOptionTailOf(address)}';
+  String get persistedAddress {
+    if (rendersTagAsContent) return address;
+    final context = fetchContext;
+    if (context != null) return context.requestAddress;
+    if (_isPendingAddressText(address)) return address;
+    return '$url${sourceUrlOptionTailOf(address)}';
+  }
 
   /// The frozen `WebBook.getContentAwait` volume shortcut
   /// (`WebBook.kt:307-310`): a volume chapter whose own URL text starts with its
@@ -2097,4 +2817,26 @@ class SourceReadingResult {
   final List<SourceChapter> chapters;
   final String content;
   final List<BookSourceTraceEntry> trace;
+}
+
+/// The book's own finished comparison text as a base URL.
+///
+/// The frozen retained `WebBook` hands `book.bookUrl` to `BookInfo` and
+/// `AnalyzeRule.setRedirectUrl` only constructs a URL from it: no `AnalyzeUrl`
+/// and no request option object is created there, so the comparison text's own
+/// `,{…}` boundary is a text boundary alone. A boundary a legal header value left
+/// in the finished text is data; the request parsers and `SourceChapter.options`
+/// keep their named refusal of an unsupported family.
+Uri? _jsonNativeBaseUri(String text) {
+  final value = text.trim();
+  if (value.startsWith('@js:') ||
+      value.toLowerCase().startsWith('<js>') ||
+      value.startsWith('[') ||
+      value.startsWith('{')) {
+    return Uri.tryParse(value);
+  }
+  final boundary = sourceUrlOptionBoundaryOf(value);
+  return Uri.tryParse(
+    boundary == null ? value : value.substring(0, boundary).trim(),
+  );
 }

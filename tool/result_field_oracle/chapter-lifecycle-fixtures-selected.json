@@ -1,0 +1,802 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18745",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "Actual WebBook search -> bookInfo -> retained TOC -> cached content with plain/fragment option-JS targets",
+    "Actual chapter raw and getAbsoluteURL text with nonblank trailing U+2000 and ASCII control",
+    "Actual non-reused chapter request with its own GBK/options.js and before-content source probe"
+  ],
+  "coverageGaps": [
+    "Diagnostic selected corpus; no result is assumed or promoted before actual execution.",
+    "No database migration, chapter-key policy, fresh-process persistence or unrelated source family is changed.",
+    "Expected request declarations below are frozen source-derived hypotheses, not substituted observations.",
+    "A capture admission failure remains visible; raw completed cases are not re-labelled as an accepted golden."
+  ],
+  "cases": [
+    {
+      "id": "fallback-html-plain",
+      "terminal": "four-stage",
+      "keyword": "plain",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/fallback-html-plain",
+        "bookSourceName": "Native chain fallback-html-plain",
+        "searchUrl": "http://127.0.0.1:18745/fallback-html-plain/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "a@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "fallback-html-fragment",
+      "terminal": "four-stage",
+      "keyword": "fragment",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/fallback-html-fragment",
+        "bookSourceName": "Native chain fallback-html-fragment",
+        "searchUrl": "http://127.0.0.1:18745/fallback-html-fragment/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "a@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-html-plain",
+      "terminal": "four-stage",
+      "keyword": "plain",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-html-plain",
+        "bookSourceName": "Native chain whitespace-html-plain",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-html-plain/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "@js: \"http://127.0.0.1:18745/whitespace-html-plain/book?q=word\""
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-html-unicode-tail",
+      "terminal": "four-stage",
+      "keyword": "unicode-tail",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-html-unicode-tail",
+        "bookSourceName": "Native chain whitespace-html-unicode-tail",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-html-unicode-tail/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "@js: \"http://127.0.0.1:18745/whitespace-html-unicode-tail/book?q=word \""
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "content-html-script",
+      "terminal": "four-stage",
+      "keyword": "script",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/content-html-script",
+        "bookSourceName": "Native chain content-html-script",
+        "searchUrl": "http://127.0.0.1:18745/content-html-script/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": ".results li",
+          "name": "a@text",
+          "author": "span@text",
+          "bookUrl": "a@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".author@text",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "fallback-json-plain",
+      "terminal": "four-stage",
+      "keyword": "plain",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/fallback-json-plain",
+        "bookSourceName": "Native chain fallback-json-plain",
+        "searchUrl": "http://127.0.0.1:18745/fallback-json-plain/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "fallback-json-fragment",
+      "terminal": "four-stage",
+      "keyword": "fragment",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/fallback-json-fragment",
+        "bookSourceName": "Native chain fallback-json-fragment",
+        "searchUrl": "http://127.0.0.1:18745/fallback-json-fragment/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-json-plain",
+      "terminal": "four-stage",
+      "keyword": "plain",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-json-plain",
+        "bookSourceName": "Native chain whitespace-json-plain",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-json-plain/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "@js: \"http://127.0.0.1:18745/whitespace-json-plain/book?q=word\""
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "whitespace-json-unicode-tail",
+      "terminal": "four-stage",
+      "keyword": "unicode-tail",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/whitespace-json-unicode-tail",
+        "bookSourceName": "Native chain whitespace-json-unicode-tail",
+        "searchUrl": "http://127.0.0.1:18745/whitespace-json-unicode-tail/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "@js: \"http://127.0.0.1:18745/whitespace-json-unicode-tail/book?q=word \""
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    },
+    {
+      "id": "content-json-script",
+      "terminal": "four-stage",
+      "keyword": "script",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18745/content-json-script",
+        "bookSourceName": "Native chain content-json-script",
+        "searchUrl": "http://127.0.0.1:18745/content-json-script/search,{\"js\":\"source.put('once','0');source.put('contentOnce','0');source.put('vipProbe','not-run');source.put('payProbe','not-run');source.put('choice',key);result\"}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": ""
+        },
+        "ruleToc": {
+          "chapterList": "$.chapters",
+          "chapterName": "$.name",
+          "chapterUrl": "$.url"
+        },
+        "ruleContent": {
+          "content": "@js: 'BODY|info='+(source.get('once')||'0')+'|content='+(source.get('contentOnce')||'0')"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "fallback-html-plain-search",
+      "method": "GET",
+      "path": "/fallback-html-plain/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/fallback-html-plain/book?q=中,{&quot;charset&quot;:&quot;gbk&quot;,&quot;js&quot;:&quot;source.put(&#x27;once&#x27;,String(Number(source.get(&#x27;once&#x27;)||&#x27;0&#x27;)+1));source.put(&#x27;vipProbe&#x27;,source.get(&#x27;once&#x27;));source.put(&#x27;payProbe&#x27;,\\&quot;http://127.0.0.1:18745/fallback-html-plain/wire\\&quot;);\\&quot;http://127.0.0.1:18745/fallback-html-plain/wire\\&quot;&quot;,&quot;headers&quot;:{&quot;X-Case&quot;:&quot;fallback-html-plain&quot;}}\">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "fallback-html-plain-information",
+      "method": "GET",
+      "path": "/fallback-html-plain/wire",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>"
+    },
+    {
+      "id": "fallback-html-fragment-search",
+      "method": "GET",
+      "path": "/fallback-html-fragment/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/fallback-html-fragment/book?q=中,{&quot;charset&quot;:&quot;gbk&quot;,&quot;js&quot;:&quot;source.put(&#x27;once&#x27;,String(Number(source.get(&#x27;once&#x27;)||&#x27;0&#x27;)+1));source.put(&#x27;vipProbe&#x27;,source.get(&#x27;once&#x27;));source.put(&#x27;payProbe&#x27;,\\&quot;http://127.0.0.1:18745/fallback-html-fragment/wire#frag?probe=wire\\&quot;);\\&quot;http://127.0.0.1:18745/fallback-html-fragment/wire#frag?probe=wire\\&quot;&quot;,&quot;headers&quot;:{&quot;X-Case&quot;:&quot;fallback-html-fragment&quot;}}\">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "fallback-html-fragment-information",
+      "method": "GET",
+      "path": "/fallback-html-fragment/wire",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>",
+      "query": {
+        "probe": "wire"
+      }
+    },
+    {
+      "id": "whitespace-html-plain-search",
+      "method": "GET",
+      "path": "/whitespace-html-plain/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/whitespace-html-plain/book?q=word\">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "whitespace-html-plain-information",
+      "method": "GET",
+      "path": "/whitespace-html-plain/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "whitespace-html-unicode-tail-search",
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/whitespace-html-unicode-tail/book?q=word \">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "whitespace-html-unicode-tail-information",
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "content-html-script-search",
+      "method": "GET",
+      "path": "/content-html-script/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><ul class=\"results\"><li><a href=\"http://127.0.0.1:18745/content-html-script/book\">Book</a><span>Author</span></li></ul></html>"
+    },
+    {
+      "id": "content-html-script-information",
+      "method": "GET",
+      "path": "/content-html-script/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"http://127.0.0.1:18745/content-html-script/content?q=中,{&quot;charset&quot;:&quot;gbk&quot;,&quot;js&quot;:&quot;source.put(&#x27;contentOnce&#x27;,String(Number(source.get(&#x27;contentOnce&#x27;)||&#x27;0&#x27;)+1));source.put(&#x27;vipProbe&#x27;,&#x27;content-script-ran&#x27;);result&quot;,&quot;headers&quot;:{&quot;X-Case&quot;:&quot;content-html-script&quot;}}\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>"
+    },
+    {
+      "id": "content-html-script-content",
+      "method": "GET",
+      "path": "/content-html-script/content",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>Book</h1><p class=\"author\">Author</p><a class=\"toc\" href=\"\"></a><ul class=\"chapters\"><li><a href=\"\">Chapter</a></li></ul><div id=\"content\">BODY</div></body></html>",
+      "query": {
+        "q": "��"
+      }
+    },
+    {
+      "id": "fallback-json-plain-search",
+      "method": "GET",
+      "path": "/fallback-json-plain/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/fallback-json-plain/book?q=中,{\\\"charset\\\":\\\"gbk\\\",\\\"js\\\":\\\"source.put('once',String(Number(source.get('once')||'0')+1));source.put('vipProbe',source.get('once'));source.put('payProbe',\\\\\\\"http://127.0.0.1:18745/fallback-json-plain/wire\\\\\\\");\\\\\\\"http://127.0.0.1:18745/fallback-json-plain/wire\\\\\\\"\\\",\\\"headers\\\":{\\\"X-Case\\\":\\\"fallback-json-plain\\\"}}\"}]}"
+    },
+    {
+      "id": "fallback-json-plain-information",
+      "method": "GET",
+      "path": "/fallback-json-plain/wire",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}"
+    },
+    {
+      "id": "fallback-json-fragment-search",
+      "method": "GET",
+      "path": "/fallback-json-fragment/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/fallback-json-fragment/book?q=中,{\\\"charset\\\":\\\"gbk\\\",\\\"js\\\":\\\"source.put('once',String(Number(source.get('once')||'0')+1));source.put('vipProbe',source.get('once'));source.put('payProbe',\\\\\\\"http://127.0.0.1:18745/fallback-json-fragment/wire#frag?probe=wire\\\\\\\");\\\\\\\"http://127.0.0.1:18745/fallback-json-fragment/wire#frag?probe=wire\\\\\\\"\\\",\\\"headers\\\":{\\\"X-Case\\\":\\\"fallback-json-fragment\\\"}}\"}]}"
+    },
+    {
+      "id": "fallback-json-fragment-information",
+      "method": "GET",
+      "path": "/fallback-json-fragment/wire",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "probe": "wire"
+      }
+    },
+    {
+      "id": "whitespace-json-plain-search",
+      "method": "GET",
+      "path": "/whitespace-json-plain/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/whitespace-json-plain/book?q=word\"}]}"
+    },
+    {
+      "id": "whitespace-json-plain-information",
+      "method": "GET",
+      "path": "/whitespace-json-plain/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "whitespace-json-unicode-tail-search",
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/whitespace-json-unicode-tail/book?q=word \"}]}"
+    },
+    {
+      "id": "whitespace-json-unicode-tail-information",
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "word"
+      }
+    },
+    {
+      "id": "content-json-script-search",
+      "method": "GET",
+      "path": "/content-json-script/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\": [{\"name\": \"Book\", \"author\": \"Author\", \"url\": \"http://127.0.0.1:18745/content-json-script/book\"}]}"
+    },
+    {
+      "id": "content-json-script-information",
+      "method": "GET",
+      "path": "/content-json-script/book",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"http://127.0.0.1:18745/content-json-script/content?q=中,{\\\"charset\\\":\\\"gbk\\\",\\\"js\\\":\\\"source.put('contentOnce',String(Number(source.get('contentOnce')||'0')+1));source.put('vipProbe','content-script-ran');result\\\",\\\"headers\\\":{\\\"X-Case\\\":\\\"content-json-script\\\"}}\"}], \"body\": \"BODY\"}"
+    },
+    {
+      "id": "content-json-script-content",
+      "method": "GET",
+      "path": "/content-json-script/content",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\": \"Book\", \"author\": \"Author\", \"toc\": \"\", \"chapters\": [{\"name\": \"Chapter\", \"url\": \"\"}], \"body\": \"BODY\"}",
+      "query": {
+        "q": "��"
+      }
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/fallback-html-plain/search"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-html-plain/wire"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-html-fragment/search"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-html-fragment/wire",
+      "query": {
+        "probe": "wire"
+      },
+      "rawQuery": "probe=wire"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-plain/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-plain/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-html-unicode-tail/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/content-html-script/search"
+    },
+    {
+      "method": "GET",
+      "path": "/content-html-script/book"
+    },
+    {
+      "method": "GET",
+      "path": "/content-html-script/content",
+      "query": {
+        "q": "��"
+      },
+      "rawQuery": "q=%D6%D0"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-json-plain/search"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-json-plain/wire"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-json-fragment/search"
+    },
+    {
+      "method": "GET",
+      "path": "/fallback-json-fragment/wire",
+      "query": {
+        "probe": "wire"
+      },
+      "rawQuery": "probe=wire"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-plain/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-plain/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/search"
+    },
+    {
+      "method": "GET",
+      "path": "/whitespace-json-unicode-tail/book",
+      "query": {
+        "q": "word"
+      },
+      "rawQuery": "q=word"
+    },
+    {
+      "method": "GET",
+      "path": "/content-json-script/search"
+    },
+    {
+      "method": "GET",
+      "path": "/content-json-script/book"
+    },
+    {
+      "method": "GET",
+      "path": "/content-json-script/content",
+      "query": {
+        "q": "��"
+      },
+      "rawQuery": "q=%D6%D0"
+    }
+  ],
+  "scenario": [
+    "fallback-html-plain: native content reuses retained TOC body without another request",
+    "fallback-html-fragment: native content reuses retained TOC body without another request",
+    "whitespace-html-plain: native content reuses retained TOC body without another request",
+    "whitespace-html-unicode-tail: native content reuses retained TOC body without another request",
+    "content-html-script: content runs its own AnalyzeUrl after TOC",
+    "fallback-json-plain: native content reuses retained TOC body without another request",
+    "fallback-json-fragment: native content reuses retained TOC body without another request",
+    "whitespace-json-plain: native content reuses retained TOC body without another request",
+    "whitespace-json-unicode-tail: native content reuses retained TOC body without another request",
+    "content-json-script: content runs its own AnalyzeUrl after TOC"
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt",
+      "sha1": "d898c88dfd844d73f06d9396d0b46f39939f7e6c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt",
+      "sha1": "7591a026a072ac8a6fe4902add0795812fe0a0a6"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/NetworkUtils.kt",
+      "sha1": "517f63c18998be2f57087486069df9f67281d642"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/help/http/OkHttpUtils.kt",
+      "sha1": "d918f0efbee7bd36394e1218ed608a5ffaa99fd6"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}

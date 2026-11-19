@@ -62,6 +62,63 @@ const _unsupportedUrlOptions = <String, String>{
   'serverID': 'serverID 选项需要多服务器书源支持',
 };
 
+/// Kotlin's `String.trim()`, which is `trim(Char::isWhitespace)`.
+String sourceKotlinTrim(String value) {
+  var start = 0;
+  var end = value.length;
+  while (start < end && sourceIsKotlinWhitespace(value.codeUnitAt(start))) {
+    start++;
+  }
+  while (end > start && sourceIsKotlinWhitespace(value.codeUnitAt(end - 1))) {
+    end--;
+  }
+  return value.substring(start, end);
+}
+
+/// Kotlin's `isBlank()`: every code unit is `Char.isWhitespace()`.
+bool sourceKotlinIsBlank(String value) =>
+    value.codeUnits.every(sourceIsKotlinWhitespace);
+
+/// `Character.isWhitespace(c) || Character.isSpaceChar(c)`, the Kotlin
+/// `Char.isWhitespace()` predicate. The `isSpaceChar` half is the full Zs/Zl/Zp
+/// set, so the non-breaking spaces (`0xA0`, `0x2007` — inside `0x2000`–`0x200A`
+/// — and `0x202F`) are members, where Java's `isWhitespace` alone excludes them.
+/// The ASCII controls Java counts (`0x09`–`0x0D`, `0x1C`–`0x1F`) are members and
+/// `0x85` is not, which is what the frozen blank tests see; Dart's own `trim()`
+/// is the other way round on both. The Unicode version behind the table is the
+/// runtime's, so a code point that changed category between versions (U+180E) is
+/// not covered by a claim here.
+bool sourceIsKotlinWhitespace(int unit) =>
+    (unit >= 0x09 && unit <= 0x0D) ||
+    (unit >= 0x1C && unit <= 0x1F) ||
+    unit == 0x20 ||
+    unit == 0xA0 ||
+    unit == 0x1680 ||
+    (unit >= 0x2000 && unit <= 0x200A) ||
+    unit == 0x2028 ||
+    unit == 0x2029 ||
+    unit == 0x202F ||
+    unit == 0x205F ||
+    unit == 0x3000;
+
+/// Java's `String.trim()`, the edge trim the pinned `java.net.URL` constructor
+/// applies to the text it receives: every leading and trailing code unit
+/// `<= U+0020`. It is not the Kotlin `trim()` of [sourceKotlinTrim]: a Unicode
+/// space such as U+2000 stays in the URL text, which is what the frozen relative
+/// branch relies on because it hands `URL(baseURL, relativePath)` the original
+/// relative text (and the String-base overload builds its base the same way).
+String _javaUrlEdgeText(String value) {
+  var start = 0;
+  var end = value.length;
+  while (start < end && value.codeUnitAt(start) <= 0x20) {
+    start++;
+  }
+  while (end > start && value.codeUnitAt(end - 1) <= 0x20) {
+    end--;
+  }
+  return value.substring(start, end);
+}
+
 /// Frozen `AnalyzeUrl.analyzeFields`/`analyzeQuery` (`AnalyzeUrl.kt:279-292`)
 /// over `encodeParams` (`AnalyzeUrl.kt:294-334`).
 ///
@@ -441,6 +498,46 @@ String sourceUrlTargetOf(String address) => splitSourceUrlOptions(address).path;
 String sourceUrlOptionTailOf(String address) =>
     splitSourceUrlOptions(address).tail;
 
+/// The request facts a target conversion reads from an address text's own
+/// `,{…}` option tail: the method the frozen request would use, the charset its
+/// GET query encoder would consume, and whether that tail declares an option
+/// script.
+///
+/// This is the same first-object read [splitSourceUrlOptions] performs, with the
+/// same decoder, but it reads only the three facts a target conversion consumes:
+/// no option family is validated, no unsupported option is refused and no
+/// charset is resolved. A tail the reader cannot read is "no options", exactly
+/// as it is there.
+///
+/// [scripted] is the presence of the `js` option alone. That option replaces the
+/// request URL when a request runs it, so text that already was a request's own
+/// address must take its query-consumption fact from that request instead of
+/// reading the script again.
+({String method, String? charset, bool scripted}) sourceUrlTargetOptionFacts(
+  String address,
+) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final Object? decoded = boundary == null
+      ? null
+      : _decodeUrlOptionTail(address.substring(address.indexOf('{', boundary)));
+  if (decoded is! Map) {
+    return (method: 'GET', charset: null, scripted: false);
+  }
+  final rawCharset = decoded['charset'];
+  return (
+    // Frozen `UrlOption.setMethod`'s branch: only `POST` leaves the GET path.
+    method: '${decoded['method'] ?? ''}'.toUpperCase() == 'POST'
+        ? 'POST'
+        : 'GET',
+    // Frozen `UrlOption.setCharset`: a null or blank value is the default
+    // branch, and a non-blank one is the name the encoder resolves.
+    charset: rawCharset is String && rawCharset.trim().isNotEmpty
+        ? rawCharset
+        : null,
+    scripted: decoded['js'] != null,
+  );
+}
+
 /// Decodes a URL option tail the way the frozen Gson reader does, or null when
 /// it is not an object.
 ///
@@ -463,7 +560,9 @@ Map<String, Object?>? _decodeUrlOptionTail(String optionText) {
     try {
       final strict = jsonDecode(optionText.substring(0, end));
       if (strict is Map) {
-        return {for (final entry in strict.entries) '${entry.key}': entry.value};
+        return {
+          for (final entry in strict.entries) '${entry.key}': entry.value,
+        };
       }
     } on FormatException {
       // The reader below is what decides.
@@ -824,6 +923,167 @@ String sourceUrlTextWithRawQuery(Uri resolved, String raw) {
   final text = '$resolved';
   final encoded = text.indexOf('?');
   return '${encoded < 0 ? text : text.substring(0, encoded)}${raw.substring(at)}';
+}
+
+/// The textual URL the pinned native `URL(base, relativePath).toString()`
+/// publishes: an already absolute [raw] is returned verbatim, otherwise the
+/// base's authority stays unless the input is protocol-relative; path/query/
+/// fragment stay raw. This
+/// is publication text, not a wire target; callers validate the actual request
+/// separately.
+String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
+  // The Kotlin trim is the frozen admission test and absolute shortcut, not a
+  // trim of the text the constructor sees: the relative branch keeps the
+  // original text for the URL constructor, whose own edge trim stops at U+0020.
+  final trimmed = sourceKotlinTrim(raw);
+  if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
+  final relative = _javaUrlEdgeText(raw);
+  if (rawBase != null) return _resolveAgainstRawBase(rawBase, relative);
+  var path = relative;
+  String? query;
+  String? fragment;
+  final hash = path.indexOf('#');
+  if (hash >= 0) {
+    fragment = path.substring(hash + 1);
+    path = path.substring(0, hash);
+  }
+  final question = path.indexOf('?');
+  if (question >= 0) {
+    query = path.substring(question + 1);
+    path = path.substring(0, question);
+  }
+  String authority;
+  final String resolvedPath;
+  if (path.startsWith('//')) {
+    final slash = path.indexOf('/', 2);
+    authority = slash < 0 ? path.substring(2) : path.substring(2, slash);
+    final authorityPath = slash < 0 ? '' : path.substring(slash);
+    resolvedPath = authorityPath;
+  } else {
+    authority = base.hasAuthority ? base.authority : base.host;
+    if (path.startsWith('/')) {
+      // java.net.URL keeps a rooted path's dot components as written.
+      resolvedPath = path;
+    } else if (path.isEmpty) {
+      // A query-only relative reference takes the base directory; a
+      // fragment-only one keeps the base path and query.
+      resolvedPath = query != null ? _baseDirectory(base.path) : base.path;
+    } else {
+      final basePath = _baseDirectory(base.path);
+      resolvedPath = _normalizeRawPath('$basePath$path');
+    }
+  }
+  var outputQuery = query;
+  // The base's own query is a `hasQuery` fact, not a `?` character somewhere in
+  // the text: a fragment may hold one without the base carrying a query.
+  if (outputQuery == null &&
+      path.isEmpty &&
+      fragment != null &&
+      base.hasQuery) {
+    outputQuery = base.query;
+  }
+  final output = StringBuffer('${base.scheme}://$authority$resolvedPath');
+  if (outputQuery != null) output.write('?$outputQuery');
+  if (fragment != null) output.write('#$fragment');
+  return output.toString();
+}
+
+/// The frozen `AnalyzeRule.getString(rule, isUrl = true)` text for one finished
+/// rule result (`AnalyzeRule.kt:315-323`): an absolute value stays verbatim,
+/// every other value goes through the native URL operation. A blank result is
+/// the analyser's own base URL there, so callers answer that before asking.
+String sourceUrlNativeText(String scalar, Uri base, {String? rawBase}) {
+  // Only the frozen absolute shortcut trims; a relative result reaches the URL
+  // constructor as the original text, exactly as the caller's rule wrote it.
+  final trimmed = sourceKotlinTrim(scalar);
+  if (Uri.tryParse(trimmed)?.hasScheme == true) return trimmed;
+  return sourceUrlTextResolved(base, scalar, rawBase: rawBase);
+}
+
+String _resolveAgainstRawBase(String baseText, String raw) {
+  final match = RegExp(
+    r'^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$',
+  ).firstMatch(_javaUrlEdgeText(baseText));
+  if (match == null) return raw;
+  // The native URL object lower-cases its protocol and keeps the authority,
+  // path and query as they were written.
+  final scheme = match.group(1)!.toLowerCase();
+  final authority = match.group(2)!;
+  final basePath = match.group(3) ?? '';
+  final baseQuery = match.group(4);
+  var path = raw;
+  String? query;
+  String? fragment;
+  final hash = path.indexOf('#');
+  if (hash >= 0) {
+    fragment = path.substring(hash + 1);
+    path = path.substring(0, hash);
+  }
+  final question = path.indexOf('?');
+  if (question >= 0) {
+    query = path.substring(question + 1);
+    path = path.substring(0, question);
+  }
+  String resolvedAuthority = authority;
+  String resolvedPath;
+  if (path.startsWith('//')) {
+    final slash = path.indexOf('/', 2);
+    resolvedAuthority = slash < 0
+        ? path.substring(2)
+        : path.substring(2, slash);
+    resolvedPath = slash < 0 ? '' : path.substring(slash);
+  } else if (path.startsWith('/')) {
+    resolvedPath = path;
+  } else if (path.isEmpty) {
+    resolvedPath = query != null ? _baseDirectory(basePath) : basePath;
+  } else {
+    resolvedPath = _normalizeRawPath('${_baseDirectory(basePath)}$path');
+  }
+  var outputQuery = query;
+  if (outputQuery == null &&
+      path.isEmpty &&
+      fragment != null &&
+      baseQuery != null) {
+    outputQuery = baseQuery.substring(1);
+  }
+  final output = StringBuffer('$scheme://$resolvedAuthority$resolvedPath');
+  if (outputQuery != null) output.write('?$outputQuery');
+  if (fragment != null) output.write('#$fragment');
+  return output.toString();
+}
+
+String _baseDirectory(String path) {
+  if (path.isEmpty) return '/';
+  return path.endsWith('/')
+      ? path
+      : path.substring(0, path.lastIndexOf('/') + 1);
+}
+
+String _normalizeRawPath(String path) {
+  final input = path.split('/');
+  final parts = <String>[];
+  for (var i = 0; i < input.length; i++) {
+    final part = input[i];
+    final last = i == input.length - 1;
+    if (part == '.') {
+      if (last) parts.add('');
+      continue;
+    }
+    if (part == '..') {
+      if (parts.length > 1 && parts.last != '..') {
+        parts.removeLast();
+        if (last) parts.add('');
+      } else {
+        parts.add('..');
+      }
+      continue;
+    }
+    parts.add(part);
+  }
+  if (parts.isEmpty) return '/';
+  if (parts.first.isNotEmpty) parts.insert(0, '');
+  final result = parts.join('/');
+  return result.isEmpty ? '/' : result;
 }
 
 /// Frozen `replaceKeyPageJs` page-list step: each `<a,b,c>` becomes the page-th

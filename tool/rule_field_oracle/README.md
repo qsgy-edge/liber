@@ -166,15 +166,23 @@ inside the same stage batch. Item reads retain their actual node context. No
 native source, output kind, adapter interface, parser or engine is added.
 The existing RuleFieldContext extraction callback now returns a completed nested
 getString, on the same runtime/state and with one tail, before `@put` stores it.
-Known NativeObject bare keys defer validation only for script-only book-info init
-and the eight existing getters; other inputs and ignored fields keep their named
-refusals. Ordinary decoded maps are not reclassified as NativeObject.
+A simple ASCII JSON property name (`[A-Za-z_][A-Za-z0-9_]*`) is read as its
+canonical root property `$.name` by the existing JSON reader under the bounded
+#137 AUTH decision. Literal/template values, scripts, dot-leading recursive
+paths and every named refusal outside that simple-name form are unchanged.
+Script-only book-info init still defers the eight existing getters' bare keys
+until the initialized page exists. Ordinary decoded maps remain distinct from
+script-created NativeObject, and script-string/list inputs are not reclassified
+as object content. A supported static property in an ignored book-info field is
+accepted but not read; an unsupported ignored rule still refuses by field before
+requests.
 
 The focused block suite has 44 tests: 34 value comparisons, one actual nested
-error propagation control, one identity check, five input/preflight guards, one
-preserved nested-put rejection guard, and two tool getter comparisons. Its 37
-frozen observations include NativeObject `unescape=false` (frozen-only) and a
-nested put that frozen actually permits. The product's existing nested-put ban
+error propagation control, one identity check, five input/preflight guards
+(supported simple-name and unsupported-shape call-site rows), one preserved
+nested-put rejection guard, and two tool getter comparisons. Its 37 frozen
+observations include NativeObject `unescape=false` (frozen-only) and a nested
+put that frozen actually permits. The product's existing nested-put ban
 is preserved by explicit controller direction; that rejection is a recorded
 policy difference, not parity or a compatibility acceptance. The intro suite has
 21 tests: 18 caller comparisons, one identity check, one formatter check over all

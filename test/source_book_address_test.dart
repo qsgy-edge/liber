@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart'
@@ -10,6 +11,7 @@ import 'package:liber/source/js_source_runtime.dart'
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/source/source_url_rules.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
@@ -73,14 +75,10 @@ void main() {
 
         expect(book.title, '万生痴魔', reason: label);
         expect(chapters.single.name, '第一章', reason: label);
-        expect(
-          pages.requests.map((request) => request.url.toString()),
-          [
-            '$origin/book/b29${label == 'no tail' ? '' : '?isSearch=1'}',
-            '$origin/toc/b29',
-          ],
-          reason: label,
-        );
+        expect(pages.requests.map((request) => request.url.toString()), [
+          '$origin/book/b29${label == 'no tail' ? '' : '?isSearch=1'}',
+          '$origin/toc/b29',
+        ], reason: label);
         expect(
           pages.requests.first.url.toString(),
           isNot(contains('%7B')),
@@ -118,12 +116,20 @@ void main() {
           // Existing JSON TOC resolution uses hit.url as its base; a historical
           // relative URL has none. Details can load, then TOC resolution fails.
           await expectLater(
-            pipeline.details(HtmlBook(
-              url: Uri.parse(stored), rawAddress: stored, title: '万生痴魔',
-            )),
-            throwsA(isA<FormatException>().having(
-              (error) => error.message, 'message', 'Invalid source URL',
-            )),
+            pipeline.details(
+              HtmlBook(
+                url: Uri.parse(stored),
+                rawAddress: stored,
+                title: '万生痴魔',
+              ),
+            ),
+            throwsA(
+              isA<FormatException>().having(
+                (error) => error.message,
+                'message',
+                'Invalid source URL',
+              ),
+            ),
           );
           expect(pages.requests.map((request) => request.url.toString()), [
             '$origin/book/b29?isSearch=1',
@@ -136,14 +142,10 @@ void main() {
 
         expect(book.title, '万生痴魔', reason: label);
         expect(chapters.single.name, '第一章', reason: label);
-        expect(
-          pages.requests.map((request) => request.url.toString()),
-          [
-            '$origin/book/b29${label == 'no tail' ? '' : '?isSearch=1'}',
-            '$origin/toc/b29',
-          ],
-          reason: label,
-        );
+        expect(pages.requests.map((request) => request.url.toString()), [
+          '$origin/book/b29${label == 'no tail' ? '' : '?isSearch=1'}',
+          '$origin/toc/b29',
+        ], reason: label);
         expect(
           notices.map((notice) => notice.message),
           label == 'no tail' ? isEmpty : [toasted],
@@ -152,6 +154,137 @@ void main() {
       }
     },
   );
+
+  for (final json in [false, true]) {
+    for (final (label, baseText, tail, requestPath) in [
+      ('host', 'http://SOURCE.test/exact/book/1?q=raw', '', '/exact/book/1'),
+      (
+        'unicode',
+        'http://source.test/目录?q=书',
+        '',
+        Uri.parse('http://source.test/目录?q=书').path,
+      ),
+      (
+        'unicode-option',
+        'http://source.test/目录?q=书',
+        ',{"js":"\'http://source.test/wire\'"}',
+        '/wire',
+      ),
+    ]) {
+      test(
+        'absolute direct information keeps native text $label json=$json',
+        () async {
+          final address = baseText + tail;
+          final document = json
+              ? jsonEncode({'title': 'Book', 'toc': ''})
+              : '<h2>Book</h2><div id="toc"></div>';
+          final pages = _Pages({requestPath: document});
+          final data = (json ? _jsonSource(origin) : _htmlSource(origin))
+            ..['searchUrl'] = address
+            ..['bookUrlPattern'] = '.*';
+          final pipeline = json
+              ? JsonSourcePipeline(data, pages)
+              : HtmlSourcePipeline(data, pages);
+          try {
+            final hit = (await pipeline.search('x')).single;
+            expect(hit.title, 'Book');
+            expect(hit.identityAddress, address);
+            expect(pages.requests.single.url.path, requestPath);
+          } finally {
+            pipeline.cancel();
+          }
+        },
+      );
+    }
+  }
+
+  test('published textual components follow the native URL operation', () {
+    final base = Uri.parse('http://source.test/exact/book?q=old#base');
+    for (final (raw, expected) in [
+      ('#next', 'http://source.test/exact/book?q=old#next'),
+      ('?q=new', 'http://source.test/exact/?q=new'),
+      ('//cdn.test', 'http://cdn.test'),
+      ('/../../toc', 'http://source.test/../../toc'),
+      ('../..', 'http://source.test/..'),
+      ('../../toc', 'http://source.test/../toc'),
+      ('toc', 'http://source.test/exact/toc'),
+    ]) {
+      expect(
+        resolveSourceTocUrl(address: raw, base: base, fallbackAddress: ''),
+        expected,
+        reason: raw,
+      );
+    }
+    for (final (baseText, raw, expected) in [
+      (
+        'http://source.test/exact/book?keep=a%23tail&x=1',
+        '#next',
+        'http://source.test/exact/book?keep=a%23tail&x=1#next',
+      ),
+      (
+        'http://source.test/exact/book',
+        'child/..',
+        'http://source.test/exact/',
+      ),
+    ]) {
+      expect(
+        resolveSourceTocUrl(
+          address: raw,
+          base: Uri.parse(baseText),
+          fallbackAddress: '',
+        ),
+        expected,
+        reason: '$baseText $raw',
+      );
+    }
+  });
+
+  for (final json in [false, true]) {
+    for (final (raw, expected) in [
+      ('toc/', 'http://source.test/exact/toc/'),
+      ('toc//nested', 'http://source.test/exact/toc//nested'),
+      ('//cdn.test/toc', 'http://cdn.test/toc'),
+    ]) {
+      test('published TOC keeps native raw path $raw json=$json', () async {
+        const origin = 'http://source.test';
+        final body = json
+            ? jsonEncode({
+                'title': 'Book',
+                'toc': raw,
+                'list': [
+                  {'name': 'Chapter', 'url': '/c/1'},
+                ],
+              })
+            : '<h2>Book</h2><a class="toc" href="$raw">toc</a>'
+                  '<ul id="list"><li><a href="/c/1">Chapter</a></li></ul>';
+        final pages = _Pages({
+          '/exact/book': body,
+          raw.startsWith('//') ? '/toc' : '/exact/$raw': body,
+        });
+        final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+          ..['ruleBookInfo'] = json
+              ? {'name': r'$.title', 'tocUrl': r'$.toc'}
+              : {'name': 'h2@text', 'tocUrl': 'a.toc@href'};
+        final pipeline = json
+            ? JsonSourcePipeline(source, pages)
+            : HtmlSourcePipeline(source, pages);
+        try {
+          final (_, chapters) = await pipeline.details(
+            HtmlBook(url: Uri.parse('$origin/exact/book'), title: 'Book'),
+          );
+          expect(chapters.single.name, 'Chapter');
+          expect(
+            (await pipeline.bookInfo(
+              HtmlBook(url: Uri.parse('$origin/exact/book'), title: 'Book'),
+            )).tocUrl,
+            expected,
+          );
+        } finally {
+          pipeline.cancel();
+        }
+      });
+    }
+  }
 
   const expandedTail = ''' ,{
   "js": "result + '/next'"
@@ -308,8 +441,7 @@ void main() {
     final htmlPages = _Pages({
       '/search':
           '<div class="item"><h3><a href="/book/b29">万生痴魔</a></h3></div>',
-      '/book/b29':
-          '<h2>万生痴魔</h2><div id="toc"><a href="/toc/b29">目录</a></div>',
+      '/book/b29': '<h2>万生痴魔</h2><div id="toc"><a href="/toc/b29">目录</a></div>',
       '/toc/b29': '<ul id="list"><li><a href="/c/1">第一章</a></li></ul>',
     });
     final html = HtmlSourcePipeline(_htmlSource(origin, tail: tail), htmlPages);
@@ -320,7 +452,10 @@ void main() {
     final htmlEntry = (await shelf.find(origin, htmlHit.identityAddress))!;
     expect(htmlEntry.book.sourceBookUrl, '$origin${htmlHit.address}');
     await shelf.add(_htmlSource(origin, tail: tail), htmlHit);
-    expect((await shelf.find(origin, htmlHit.identityAddress))!.id, htmlEntry.id);
+    expect(
+      (await shelf.find(origin, htmlHit.identityAddress))!.id,
+      htmlEntry.id,
+    );
 
     final htmlSecond = HtmlSourcePipeline(
       _htmlSource(origin, tail: tail),
@@ -331,14 +466,11 @@ void main() {
     expect(htmlBook.preOptionUrl, htmlHit.preOptionUrl);
     expect(htmlBook.identityAddress, htmlHit.identityAddress);
     expect(htmlChapters.single.name, '第一章');
-    expect(
-      htmlPages.requests.map((request) => request.url.toString()),
-      [
-        '$origin/search?key=b29',
-        '$origin/book/b29?isSearch=1',
-        '$origin/toc/b29',
-      ],
-    );
+    expect(htmlPages.requests.map((request) => request.url.toString()), [
+      '$origin/search?key=b29',
+      '$origin/book/b29?isSearch=1',
+      '$origin/toc/b29',
+    ]);
 
     final jsonPages = _Pages({
       '/search':
@@ -349,45 +481,273 @@ void main() {
     });
     final json = JsonSourcePipeline(_jsonSource(origin), jsonPages);
     final jsonHit = (await json.search('b29')).single;
-    expect(
-      jsonHit.rawAddress,
-      '/book/b29?isSearch=1,{"js":"java.toast(1)"}',
-    );
+    expect(jsonHit.rawAddress, '/book/b29?isSearch=1,{"js":"java.toast(1)"}');
     expect('${jsonHit.url}', '$origin/book/b29?isSearch=1');
     await shelf.add(_jsonSource(origin), jsonHit);
     final jsonEntry = (await shelf.find(origin, jsonHit.identityAddress))!;
     expect(jsonEntry.book.sourceBookUrl, '$origin${jsonHit.address}');
     await shelf.add(_jsonSource(origin), jsonHit);
-    expect((await shelf.find(origin, jsonHit.identityAddress))!.id, jsonEntry.id);
+    expect(
+      (await shelf.find(origin, jsonHit.identityAddress))!.id,
+      jsonEntry.id,
+    );
     expect(await store.shelf(), hasLength(2));
 
     final jsonSecond = JsonSourcePipeline(_jsonSource(origin), jsonPages);
     final (jsonBook, jsonChapters) = await jsonSecond.details(jsonHit);
     expect(jsonBook.title, '万生痴魔');
     expect(jsonChapters.single.name, '第一章');
-    expect(
-      jsonPages.requests.map((request) => request.url.toString()),
-      [
-        '$origin/search?key=b29',
-        '$origin/book/b29?isSearch=1',
-        '$origin/toc/b29',
-      ],
-    );
+    expect(jsonPages.requests.map((request) => request.url.toString()), [
+      '$origin/search?key=b29',
+      '$origin/book/b29?isSearch=1',
+      '$origin/toc/b29',
+    ]);
   });
+
+  // The precise-search preview opens a fresh pipeline for the hit its search
+  // answered. A relative `ruleSearch.bookUrl` was resolved against the search
+  // *response* URL, so its pre-option target can sit under a source path the
+  // source's own URL does not end in. The hit keeps that resolved target in
+  // [HtmlBook.preOptionUrl]; a fresh details/TOC analysis has to reach it, not
+  // re-resolve the rule's relative text against the source URL.
+  const searchSubdirectory = 'http://source.test/exact';
+  const searchUrl = '/exact/search?key={{key}}';
+  const optionTail = ',{"method":"GET"}';
+
+  test(
+    'a fresh HTML search hit reaches its subdirectory target and TOC',
+    () async {
+      final pages = _Pages({
+        '/exact/search':
+            '<div class="item"><h3><a href="book/1?from=search">书</a></h3></div>',
+        '/exact/book/1': '<h2>书</h2><div id="toc"><a href="1/toc">目录</a></div>',
+        '/exact/book/1/toc':
+            '<ul id="list"><li><a href="c/1">第一章</a></li></ul>',
+      });
+      final source = _htmlSource(
+        searchSubdirectory,
+        tail: optionTail,
+        searchUrl: searchUrl,
+      );
+      final search = HtmlSourcePipeline(source, pages);
+      final hit = (await search.search('book')).single;
+      expect(hit.rawAddress, 'book/1?from=search$optionTail');
+      expect(
+        hit.preOptionUrl.toString(),
+        '$searchSubdirectory/book/1?from=search',
+      );
+      expect(
+        hit.identityAddress,
+        '$searchSubdirectory/book/1?from=search$optionTail',
+      );
+
+      // The same analysis keeps the request its search made: it runs the hit's
+      // own pipeline cache and adds no second expansion.
+      final (sameBook, sameChapters) = await search.details(hit);
+      expect(sameBook.identityAddress, hit.identityAddress);
+      expect(sameChapters.single.name, '第一章');
+
+      // The preview's fresh pipeline has only the carrier. It reaches the
+      // resolved pre-option target, with the raw option tail parsed once. A
+      // deferred (candidate) analysis also keeps the hit's variable payload.
+      final fresh = HtmlSourcePipeline(
+        source,
+        pages,
+        deferEntityVariables: true,
+      );
+      final carried = hit.withVariable('{"seed":"S"}');
+      final (book, chapters) = await fresh.details(carried);
+      expect(book.title, '书');
+      expect(book.preOptionUrl, hit.preOptionUrl);
+      expect(book.identityAddress, hit.identityAddress);
+      expect(book.variable, '{"seed":"S"}', reason: '新鲜分析保留命中的实体变量文本');
+      expect(chapters.single.name, '第一章');
+      expect(
+        pages.requests.map((request) => request.url.toString()),
+        [
+          '$searchSubdirectory/search?key=book',
+          '$searchSubdirectory/book/1?from=search',
+          '$searchSubdirectory/book/1/toc',
+          '$searchSubdirectory/book/1?from=search',
+          '$searchSubdirectory/book/1/toc',
+        ],
+        reason: '搜索与新鲜详情分析都到达源路径下的目标',
+      );
+      expect(
+        pages.requests.expand((request) => request.url.query.split('&')),
+        isNot(contains(contains('%7B'))),
+        reason: '原始选项尾巴没有作为查询文本到达站点',
+      );
+    },
+  );
+
+  test('shelf association preserves the ephemeral address context', () async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = ShelfService(store);
+    const origin = 'http://source.test';
+    final source = _jsonSource(origin);
+    final context = (
+      comparisonAddress: '$origin/book/{{key}}',
+      publicationAddress: '$origin/book/1',
+    );
+    final candidate = HtmlBook(
+      url: Uri.parse('$origin/book/1'),
+      rawAddress: '/book/1',
+      title: 'Book',
+      addressContext: context,
+    );
+    await shelf.add(source, candidate);
+    final entry = (await shelf.onlineShelf()).single;
+    final prepared = shelf.associationCandidate(entry, source, candidate);
+    expect(prepared.addressContext, context);
+    expect(prepared.toJson().containsKey('addressContext'), isFalse);
+  });
+
+  test(
+    'a fresh JSON search hit reaches its subdirectory target and TOC',
+    () async {
+      final raw = 'book/1?from=search$optionTail';
+      final pages = _Pages({
+        '/exact/search': jsonEncode({
+          'items': [
+            {'title': '书', 'url': raw},
+          ],
+        }),
+        '/exact/book/1': jsonEncode({'title': '书', 'toc': '1/toc'}),
+        '/exact/book/1/toc': jsonEncode({
+          'list': [
+            {'name': '第一章', 'url': 'c/1'},
+          ],
+        }),
+      });
+      final source = _jsonSource(searchSubdirectory, searchUrl: searchUrl);
+      final search = JsonSourcePipeline(source, pages);
+      final hit = (await search.search('book')).single;
+      expect(hit.rawAddress, raw);
+      expect(
+        hit.preOptionUrl.toString(),
+        '$searchSubdirectory/book/1?from=search',
+      );
+      expect(hit.identityAddress, '$searchSubdirectory/$raw');
+
+      final (sameBook, sameChapters) = await search.details(hit);
+      expect(sameBook.identityAddress, hit.identityAddress);
+      expect(sameChapters.single.name, '第一章');
+
+      final fresh = JsonSourcePipeline(source, pages);
+      final (book, chapters) = await fresh.details(hit);
+      expect(book.title, '书');
+      expect(book.identityAddress, hit.identityAddress);
+      expect(chapters.single.name, '第一章');
+      expect(pages.requests.map((request) => request.url.toString()), [
+        '$searchSubdirectory/search?key=book',
+        '$searchSubdirectory/book/1?from=search',
+        '$searchSubdirectory/book/1/toc',
+        '$searchSubdirectory/book/1?from=search',
+        '$searchSubdirectory/book/1/toc',
+      ]);
+    },
+  );
+
+  test(
+    'a fresh JSON search hit applies its raw tail once to the resolved pre-option target',
+    () async {
+      const raw = 'book,{"js":"result + \'/1\'"}';
+      final pages = _Pages({
+        '/exact/search': jsonEncode({
+          'items': [
+            {'title': '书', 'url': raw},
+          ],
+        }),
+        '/exact/book/1': jsonEncode({'title': '书', 'toc': '/exact/book/1/toc'}),
+        '/exact/book/1/toc': jsonEncode({
+          'list': [
+            {'name': '第一章', 'url': '/exact/book/1/c/1'},
+          ],
+        }),
+      });
+      final source = _jsonSource(searchSubdirectory, searchUrl: searchUrl);
+      final search = JsonSourcePipeline(source, pages);
+      final hit = (await search.search('book')).single;
+      expect(hit.address, raw);
+      expect(hit.preOptionUrl.toString(), '$searchSubdirectory/book');
+      expect(hit.url.toString(), '$searchSubdirectory/book/1');
+      expect(hit.identityAddress, '$searchSubdirectory/$raw');
+
+      // The option script already ran for the search; the same analysis keeps
+      // the transformed target rather than running it again.
+      final (_, sameChapters) = await search.details(hit);
+      expect(sameChapters.single.name, '第一章');
+
+      // A fresh analysis starts from the pre-option identity and runs the tail
+      // once. Twice would target `/exact/book/1/1`.
+      final fresh = JsonSourcePipeline(source, pages);
+      final (book, chapters) = await fresh.details(hit);
+      expect(book.title, '书');
+      expect(book.identityAddress, hit.identityAddress);
+      expect(chapters.single.name, '第一章');
+      expect(
+        pages.requests.map((request) => request.url.toString()),
+        [
+          '$searchSubdirectory/search?key=book',
+          '$searchSubdirectory/book/1',
+          '$searchSubdirectory/book/1/toc',
+          '$searchSubdirectory/book/1',
+          '$searchSubdirectory/book/1/toc',
+        ],
+        reason: '每次分析各执行一次选项脚本，且从预选项目标解析',
+      );
+    },
+  );
+
+  // Reading the published TOC address is boundary-only: the frozen
+  // `BookInfo.kt:150-157` compares the finished text and never parses the book
+  // program's request options, so an option family the request path refuses
+  // must not make the getter throw.
+  for (final future in [false, true]) {
+    test('repair06 publication is boundary only future=$future', () {
+      const origin = 'http://source.test';
+      final tail =
+          ',${jsonEncode(future ? {'futureRequestOption': true} : {'headers': <String, String>{}})}';
+      final info = SourceBookInfo(
+        book: HtmlBook(url: Uri.parse('$origin/book'), title: 'Book'),
+        tocAddress: '$origin/toc',
+        tocBase: Uri.parse('$origin/book'),
+        bookUrl: Uri.parse('$origin/book'),
+        bookOptions: const SourceUrlOptions(),
+        bookAddress: '$origin/book$tail',
+        keyword: '',
+        page: null,
+      );
+      String? value;
+      Object? error;
+      try {
+        value = info.tocUrl;
+      } catch (exception) {
+        error = exception;
+      }
+      expect(error, isNull, reason: 'publication reads no request options');
+      expect(value, '$origin/toc');
+    });
+  }
 }
 
 /// A source whose search page names the address text a hit keeps: [tail] is
 /// appended by the `ruleSearch.bookUrl` rule the way an imported source writes
 /// its options (`href##$##,{…}`).
-Map<String, dynamic> _htmlSource(String origin, {String tail = ''}) => {
+Map<String, dynamic> _htmlSource(
+  String origin, {
+  String tail = '',
+  String searchUrl = '/search?key={{key}}',
+}) => {
   'bookSourceUrl': origin,
   'bookSourceName': '地址源',
-  'searchUrl': '/search?key={{key}}',
+  'searchUrl': searchUrl,
   'ruleSearch': {
     'bookList': '@CSS:.item',
     'name': '@CSS:h3 a@text',
-    'bookUrl':
-        '@CSS:h3 a@href${tail.isEmpty ? '' : '##\$##$tail'}',
+    'bookUrl': '@CSS:h3 a@href${tail.isEmpty ? '' : '##\$##$tail'}',
   },
   'ruleBookInfo': {'name': '@CSS:h2@text', 'tocUrl': '@CSS:#toc a@href'},
   'ruleToc': {
@@ -397,10 +757,13 @@ Map<String, dynamic> _htmlSource(String origin, {String tail = ''}) => {
   },
 };
 
-Map<String, dynamic> _jsonSource(String origin) => {
+Map<String, dynamic> _jsonSource(
+  String origin, {
+  String searchUrl = '/search?key={{key}}',
+}) => {
   'bookSourceUrl': origin,
   'bookSourceName': '地址源',
-  'searchUrl': '/search?key={{key}}',
+  'searchUrl': searchUrl,
   'ruleSearch': {
     'bookList': r'$.items',
     'name': r'$.title',

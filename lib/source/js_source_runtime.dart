@@ -184,6 +184,7 @@ class SourceStageResponse {
     this.statusCode = 200,
     this.headers = const {},
     this.httpResponse,
+    this.wasRedirected,
   });
 
   /// The frozen `StrResponse(analyzeUrl.url, body)` a rendered document comes
@@ -241,6 +242,9 @@ class SourceStageResponse {
   /// Trusted transport facts; never serialized into the source's payload.
   final SourceStageHttpDetails? httpResponse;
 
+  /// Trusted transport redirect provenance; null for legacy/source payloads.
+  final bool? wasRedirected;
+
   Map<String, Object?> toJson() => {
     'statusCode': statusCode,
     'headers': headers,
@@ -252,19 +256,21 @@ class SourceStageResponse {
 /// Only one loginCheck invocation owns these handles. Bodies and source
 /// payloads stay out of the table, and source JSON never registers a handle.
 class _StageResponseProvenance {
-  final _details = <int, SourceStageHttpDetails>{};
+  final _details = <int, SourceStageHttpDetails?>{};
+  final _redirects = <int, bool?>{};
   int _next = 0;
 
-  int? register(SourceStageHttpDetails? details) {
-    if (details == null) return null;
+  int? register(SourceStageHttpDetails? details, bool? wasRedirected) {
+    if (details == null && wasRedirected == null) return null;
     final handle = _next++;
     _details[handle] = details;
+    _redirects[handle] = wasRedirected;
     return handle;
   }
 
   Map<String, Object?> encode(SourceStageResponse response) => {
     'payload': response.toJson(),
-    'handle': register(response.httpResponse),
+    'handle': register(response.httpResponse, response.wasRedirected),
   };
 
   SourceStageResponse selected(Object? envelope) {
@@ -279,10 +285,16 @@ class _StageResponseProvenance {
       statusCode: response.statusCode,
       headers: response.headers,
       httpResponse: handle is num && handle.isFinite ? _details[handle] : null,
+      wasRedirected: handle is num && handle.isFinite
+          ? _redirects[handle]
+          : null,
     );
   }
 
-  void clear() => _details.clear();
+  void clear() {
+    _details.clear();
+    _redirects.clear();
+  }
 }
 
 /// The two things only the pipeline can do for a `loginCheckJs` hook.
@@ -694,6 +706,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final provenance = checkResponse ? _StageResponseProvenance() : null;
     final initialHandle = provenance?.register(
       stage?.initialResponse?.httpResponse,
+      stage?.initialResponse?.wasRedirected,
     );
     final sourceRef = input['sourceKey'] is String
         ? input['sourceKey'] as String
@@ -2399,6 +2412,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
               bodyByteLength: response.bodyByteLength,
               url: response.url,
             ),
+            wasRedirected: response.wasRedirected,
           ),
         )
       : {
@@ -2614,6 +2628,51 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   };
   const book = snapshot('book', input.book);
   const chapter = snapshot('chapter', input.chapter);
+  // The frozen `BaseSource.getHeaderMap`/`getLoginHeaderMap`/`getLoginInfoMap`
+  // (`BaseSource.kt:103-196`) answer Java `Map` objects. A source script reads
+  // them with the Java `Map.get(key)` — a `loginUrl` script's
+  // `source.getLoginInfoMap().get('user')` is the frozen idiom — and the
+  // frozen header-map scripts iterate `map.keySet().iterator()` with
+  // `hasNext()`/`next()`. This bridge answers plain JSON objects, so the three
+  // returns carry those local lookups: bracket access, `JSON.stringify` output
+  // and a data key literally named `get` keep the plain object's behaviour,
+  // `.get(name)` answers the frozen map's own value or null, and
+  // `keySet().iterator()` visits keys in JavaScript enumeration order. A map
+  // whose own data has a `get` or `keySet` key keeps that data — the Java
+  // method cannot be reached on such a map here, a recorded tradeoff for those
+  // names only (#137).
+  const javaMap = value => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return value;
+    }
+    const keySet = () => ({
+      iterator: () => {
+        const keys = Object.keys(value);
+        let index = 0;
+        return {
+          hasNext: () => index < keys.length,
+          next: () => {
+            if (index >= keys.length) throw new Error('keySet iterator exhausted');
+            return keys[index++];
+          }
+        };
+      }
+    });
+    return new Proxy(value, {
+      get: (target, key) => {
+        if (typeof key === 'symbol' ||
+            Object.prototype.hasOwnProperty.call(target, key)) {
+          return target[key];
+        }
+        if (key === 'get') {
+          return name => Object.prototype.hasOwnProperty.call(target, name)
+            ? target[name] : null;
+        }
+        if (key === 'keySet') return keySet;
+        return target[key];
+      }
+    });
+  };
   const source = Object.freeze({
     ...sourceFields,
     getKey: () => input.sourceKey,
@@ -2621,19 +2680,19 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     getTag: () => sourceFields.bookSourceName || '',
     getHeaderMap: (...args) => {
       if (args.length > 1) throw new Error('source.getHeaderMap expects zero or one argument');
-      if (args[0]) return call('headers', {hasLoginHeader: true});
-      return call('headers', null);
+      if (args[0]) return javaMap(call('headers', {hasLoginHeader: true}));
+      return javaMap(call('headers', null));
     },
     // Frozen `BaseSource.getLoginHeader`/`putLoginHeader`/`removeLoginHeader`
     // (`BaseSource.kt:132-155`) and `getLoginInfo`/`putLoginInfo`/
     // `removeLoginInfo` (`:160-196`): the login state the source's own scripts
     // read and write, which is what a `loginUrl` script stores a session with.
     getLoginHeader: () => call('loginHeader', {op:'get'}),
-    getLoginHeaderMap: () => call('loginHeader', {op:'map'}),
+    getLoginHeaderMap: () => javaMap(call('loginHeader', {op:'map'})),
     putLoginHeader: header => { call('loginHeader', {op:'put', header:String(header)}); },
     removeLoginHeader: () => { call('loginHeader', {op:'remove'}); },
     getLoginInfo: () => call('loginInfo', {op:'get'}),
-    getLoginInfoMap: () => call('loginInfo', {op:'map'}),
+    getLoginInfoMap: () => javaMap(call('loginInfo', {op:'map'})),
     putLoginInfo: info => call('loginInfo', {op:'put', info:String(info)}),
     removeLoginInfo: () => { call('loginInfo', {op:'remove'}); },
     getVariable: () => call('cache', {op:'get', key:'sourceVariable_' + input.sourceKey}) || '',

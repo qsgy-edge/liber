@@ -40,106 +40,150 @@ void main() {
   /// Every `source_cookies` row the store holds, as `writer|domain|name`.
   Future<List<String>> storedCookies(SpaceStore store) async {
     final rows =
-        await (store.db.select(store.db.sourceCookies)
-              ..orderBy([
-                (c) => OrderingTerm(expression: c.domain),
-                (c) => OrderingTerm(expression: c.name),
-              ]))
+        await (store.db.select(store.db.sourceCookies)..orderBy([
+              (c) => OrderingTerm(expression: c.domain),
+              (c) => OrderingTerm(expression: c.name),
+            ]))
             .get();
     return [
       for (final row in rows) '${row.writerRef}|${row.domain}|${row.name}',
     ];
   }
 
-  test('deleting a source reclaims its rows and keeps the shared session',
-      () async {
-    const first = 'https://first.example.com/book';
-    const second = 'https://second.example.com/book';
+  test(
+    'deleting a source reclaims its rows and keeps the shared session',
+    () async {
+      const first = 'https://first.example.com/book';
+      const second = 'https://second.example.com/book';
+      var workspace = await Workspace.open(root: root);
+      var store = await workspace.openSpace();
+      var state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      final firstJar = state.cookiesFor(first);
+      final secondJar = state.cookiesFor(second);
+
+      // The first source writes its own site's pair, a pair under another site,
+      // and its cache entries and variables; the second source of the same site
+      // writes the session's other pair.
+      await firstJar.set('https://first.example.com/', 'sid=first');
+      await firstJar.set('https://cdn.other.test/x', 'ad=first');
+      await secondJar.set('https://second.example.com/', 'token=second');
+      await state.putEntry(first, 'cache.keep', 'v');
+      await state.putEntry(first, 'v_${first}_login', 'yes');
+      await state.putEntry(second, 'cache.other', 'o');
+
+      await state.deleteSource(first);
+
+      // The deleted source's rows are gone from the store...
+      expect(await storedEntryKeys(store, first), isEmpty);
+      expect(await storedCookies(store), ['$second|example.com|token']);
+      // ...and from the in-memory copy, which cannot read them back.
+      expect(await state.entry(first, 'cache.keep'), isNull);
+      expect(await state.entry(first, 'v_${first}_login'), isNull);
+      expect(firstJar.value('https://first.example.com/', 'sid'), '');
+      expect(firstJar.value('https://cdn.other.test/', 'ad'), '');
+      // The other source of the site kept its pair and the other source's cache
+      // entries are untouched.
+      expect(secondJar.value('https://second.example.com/', 'token'), 'second');
+      expect(
+        secondJar.cookiesFor('https://second.example.com/'),
+        'token=second',
+      );
+      expect(await state.entry(second, 'cache.other'), 'o');
+      await workspace.close();
+
+      // A restart reads the same: the deletion was durable, not just in memory.
+      workspace = await Workspace.open(root: root);
+      store = await workspace.openSpace();
+      state = SourceHostState(persistence: SpaceHostStatePersistence(store));
+      expect(await state.entry(first, 'cache.keep'), isNull);
+      expect(
+        state.cookiesFor(second).value('https://second.example.com/', 'token'),
+        'second',
+      );
+      expect(
+        state.cookiesFor(first).value('https://first.example.com/', 'sid'),
+        '',
+      );
+      await workspace.close();
+    },
+  );
+
+  test(
+    're-pointing to another site reclaims the old rows, shares stay',
+    () async {
+      const first = 'https://first.example.com/book';
+      const moved = 'https://first.example.org/book';
+      const second = 'https://second.example.com/book';
+      final workspace = await Workspace.open(root: root);
+      final store = await workspace.openSpace();
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      final firstJar = state.cookiesFor(first);
+      final secondJar = state.cookiesFor(second);
+
+      await firstJar.set('https://first.example.com/', 'sid=first');
+      await secondJar.set('https://second.example.com/', 'token=second');
+      await state.putEntry(first, 'cache.old', 'v');
+
+      // The re-point: the source's identity is its URL, so the edit is the old
+      // URL's rows going and the source starting under the new one.
+      await state.deleteSource(first);
+      final movedJar = state.cookiesFor(moved);
+      await movedJar.set('https://first.example.org/', 'sid=moved');
+      await state.putEntry(moved, 'cache.new', 'n');
+
+      // The old site lost only the re-pointed source's pair: the pair the other
+      // source of that site wrote is still the session read through it.
+      expect(await storedEntryKeys(store, first), isEmpty);
+      expect(await storedCookies(store), [
+        '$second|example.com|token',
+        '$moved|example.org|sid',
+      ]);
+      expect(
+        secondJar.cookiesFor('https://second.example.com/'),
+        'token=second',
+      );
+      // The moved source starts with the new site and cannot read the old one's
+      // session, which now belongs to the other source alone.
+      expect(movedJar.value('https://first.example.org/', 'sid'), 'moved');
+      expect(movedJar.value('https://second.example.com/', 'token'), '');
+      expect(await state.entry(first, 'cache.old'), isNull);
+      expect(await state.entry(moved, 'cache.new'), 'n');
+      await workspace.close();
+    },
+  );
+
+  test('a restart reads the durable pairs in their stored order', () async {
     var workspace = await Workspace.open(root: root);
     var store = await workspace.openSpace();
-    var state = SourceHostState(
-      persistence: SpaceHostStatePersistence(store),
-    );
-    final firstJar = state.cookiesFor(first);
-    final secondJar = state.cookiesFor(second);
-
-    // The first source writes its own site's pair, a pair under another site,
-    // and its cache entries and variables; the second source of the same site
-    // writes the session's other pair.
-    await firstJar.set('https://first.example.com/', 'sid=first');
-    await firstJar.set('https://cdn.other.test/x', 'ad=first');
-    await secondJar.set('https://second.example.com/', 'token=second');
-    await state.putEntry(first, 'cache.keep', 'v');
-    await state.putEntry(first, 'v_${first}_login', 'yes');
-    await state.putEntry(second, 'cache.other', 'o');
-
-    await state.deleteSource(first);
-
-    // The deleted source's rows are gone from the store...
-    expect(await storedEntryKeys(store, first), isEmpty);
-    expect(await storedCookies(store), ['$second|example.com|token']);
-    // ...and from the in-memory copy, which cannot read them back.
-    expect(await state.entry(first, 'cache.keep'), isNull);
-    expect(await state.entry(first, 'v_${first}_login'), isNull);
-    expect(firstJar.value('https://first.example.com/', 'sid'), '');
-    expect(firstJar.value('https://cdn.other.test/', 'ad'), '');
-    // The other source of the site kept its pair and the other source's cache
-    // entries are untouched.
-    expect(secondJar.value('https://second.example.com/', 'token'), 'second');
-    expect(secondJar.cookiesFor('https://second.example.com/'), 'token=second');
-    expect(await state.entry(second, 'cache.other'), 'o');
+    var state = SourceHostState(persistence: SpaceHostStatePersistence(store));
+    final jar = state.cookiesFor('https://a.test/book');
+    // An interleaved response: the persistent pairs come first in this process,
+    // while the session pair keeps its arrival position only inside its block.
+    await jar.accept('a.test', [
+      'sid=1; Max-Age=60',
+      'sess=s',
+      'extra=2; Max-Age=60',
+    ]);
+    expect(jar.cookiesFor('https://a.test/'), 'sid=1; extra=2; sess=s');
     await workspace.close();
 
-    // A restart reads the same: the deletion was durable, not just in memory.
+    // A new process loads every durable pair in the store's own order: the
+    // one-tier restart behavior (the session value survives under the accepted
+    // divergence) is unchanged, and no ordering metadata is persisted.
     workspace = await Workspace.open(root: root);
     store = await workspace.openSpace();
     state = SourceHostState(persistence: SpaceHostStatePersistence(store));
-    expect(await state.entry(first, 'cache.keep'), isNull);
+    // The jar reads the loaded state synchronously, so a caller that has not
+    // waited for it sees nothing; the restart probe waits first.
+    await state.ready();
     expect(
-      state.cookiesFor(second).value('https://second.example.com/', 'token'),
-      'second',
+      state.cookiesFor('https://a.test/book').cookiesFor('https://a.test/'),
+      'sid=1; sess=s; extra=2',
     );
-    expect(state.cookiesFor(first).value('https://first.example.com/', 'sid'), '');
-    await workspace.close();
-  });
-
-  test('re-pointing to another site reclaims the old rows, shares stay', () async {
-    const first = 'https://first.example.com/book';
-    const moved = 'https://first.example.org/book';
-    const second = 'https://second.example.com/book';
-    final workspace = await Workspace.open(root: root);
-    final store = await workspace.openSpace();
-    final state = SourceHostState(
-      persistence: SpaceHostStatePersistence(store),
-    );
-    final firstJar = state.cookiesFor(first);
-    final secondJar = state.cookiesFor(second);
-
-    await firstJar.set('https://first.example.com/', 'sid=first');
-    await secondJar.set('https://second.example.com/', 'token=second');
-    await state.putEntry(first, 'cache.old', 'v');
-
-    // The re-point: the source's identity is its URL, so the edit is the old
-    // URL's rows going and the source starting under the new one.
-    await state.deleteSource(first);
-    final movedJar = state.cookiesFor(moved);
-    await movedJar.set('https://first.example.org/', 'sid=moved');
-    await state.putEntry(moved, 'cache.new', 'n');
-
-    // The old site lost only the re-pointed source's pair: the pair the other
-    // source of that site wrote is still the session read through it.
-    expect(await storedEntryKeys(store, first), isEmpty);
-    expect(await storedCookies(store), [
-      '$second|example.com|token',
-      '$moved|example.org|sid',
-    ]);
-    expect(secondJar.cookiesFor('https://second.example.com/'), 'token=second');
-    // The moved source starts with the new site and cannot read the old one's
-    // session, which now belongs to the other source alone.
-    expect(movedJar.value('https://first.example.org/', 'sid'), 'moved');
-    expect(movedJar.value('https://second.example.com/', 'token'), '');
-    expect(await state.entry(first, 'cache.old'), isNull);
-    expect(await state.entry(moved, 'cache.new'), 'n');
     await workspace.close();
   });
 

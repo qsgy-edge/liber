@@ -6,6 +6,7 @@ import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_host_state.dart';
+import 'source_url_rules.dart';
 
 /// The shapes the pages hold come with the interface, so a caller that runs a
 /// source needs one import for them: [HtmlBook] and [HtmlChapterBody] from the
@@ -43,61 +44,22 @@ String sourceCheckKeyword(Map<String, dynamic> source, String fallback) {
 
 /// Frozen `String?.isTrue()` (`StringExtensions.kt:74-79`): null, a blank value
 /// and the literal `null` are false, a value that trims to `false`, `no`, `not`
-/// or `0` (case-insensitively) is false, and every other value — `true`, `TRUE`,
-/// `1`, `是`, any other text — is true. The `ruleToc.isVolume`/`isVip`/`isPay`
-/// markers are read through it.
+/// or `0` (case-insensitively) is false, and every other value — `true`,
+/// `TRUE`, `1`, `是`, any other text — is true. The `ruleToc.isVolume`/`isVip`/
+/// `isPay` markers are read through it.
 ///
-/// Blank and trim are Kotlin's `Char.isWhitespace()`, which on the JVM and on
-/// ART is `Character.isWhitespace(c) || Character.isSpaceChar(c)`: the ASCII
-/// controls Java counts (`0x09`–`0x0D`, `0x1C`–`0x1F`), every Unicode space
-/// separator (`0x20`, `0xA0`, `0x1680`, `0x2000`–`0x200A`, `0x202F`, `0x205F`,
-/// `0x3000`) and the line/paragraph separators `0x2028`/`0x2029`. So a
-/// non-breaking space or an ideographic space is blank and is trimmed — unlike
-/// Java's `String.trim()`, which stops at `0x20`, and unlike Dart's `trim()`,
-/// which also strips `0x85` and leaves `0x1C`–`0x1F` alone. The Unicode version
-/// behind that table is the runtime's, so a code point that changed category
-/// between versions (U+180E) is not covered by a claim here.
+/// Blank and trim are the Kotlin `Char.isWhitespace()` definition
+/// ([sourceKotlinIsBlank], [sourceKotlinTrim]); Dart's own `trim()` is the other
+/// way round on `0x85` and `0x1C`–`0x1F`.
 bool sourceIsTrue(String? value) {
-  if (value == null || _sourceIsBlank(value) || value == 'null') return false;
+  if (value == null || sourceKotlinIsBlank(value) || value == 'null') {
+    return false;
+  }
   return !RegExp(
     r'^(false|no|not|0)$',
     caseSensitive: false,
-  ).hasMatch(_sourceKotlinTrim(value));
+  ).hasMatch(sourceKotlinTrim(value));
 }
-
-/// Kotlin's `String.trim()`, which is `trim(Char::isWhitespace)`.
-String _sourceKotlinTrim(String value) {
-  var start = 0;
-  var end = value.length;
-  while (start < end && _sourceIsKotlinWhitespace(value.codeUnitAt(start))) {
-    start++;
-  }
-  while (end > start && _sourceIsKotlinWhitespace(value.codeUnitAt(end - 1))) {
-    end--;
-  }
-  return value.substring(start, end);
-}
-
-/// Kotlin's `isBlank()`: every code unit is `Char.isWhitespace()`.
-bool _sourceIsBlank(String value) =>
-    value.codeUnits.every(_sourceIsKotlinWhitespace);
-
-/// `Character.isWhitespace(c) || Character.isSpaceChar(c)`, the Kotlin
-/// `Char.isWhitespace()` predicate. The `isSpaceChar` half is the full Zs/Zl/Zp
-/// set, so the non-breaking spaces (`0xA0`, `0x2007` — inside `0x2000`–`0x200A`
-/// — and `0x202F`) are members, where Java's `isWhitespace` alone excludes them.
-bool _sourceIsKotlinWhitespace(int unit) =>
-    (unit >= 0x09 && unit <= 0x0D) ||
-    (unit >= 0x1C && unit <= 0x1F) ||
-    unit == 0x20 ||
-    unit == 0xA0 ||
-    unit == 0x1680 ||
-    (unit >= 0x2000 && unit <= 0x200A) ||
-    unit == 0x2028 ||
-    unit == 0x2029 ||
-    unit == 0x202F ||
-    unit == 0x205F ||
-    unit == 0x3000;
 
 /// `HtmlFormatter.wrapHtmlRegex`: the tag family that stands for a paragraph
 /// break in the frozen formatter.
@@ -112,10 +74,21 @@ final RegExp _otherHtmlRegex = RegExp(r'</?[a-zA-Z]+(?=[ >])[^<>]*>');
 /// `formatKeepImg` hands to `format`.
 final RegExp _keepImgHtmlRegex = RegExp(r'</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>');
 
-/// Frozen `HtmlFormatter.format(html, otherHtmlRegex)`: the entity folding, the
-/// paragraph-break tag family, comments, the tag pass [otherHtmlRegex] picks,
-/// then the paragraph indentation (`HtmlFormatter.kt:20-34`).
-String _formatHtml(String value, RegExp otherHtmlRegex) => value
+/// Frozen `HtmlFormatter.formatText(html, otherHtmlRegex, paragraphIndent)`:
+/// the entity folding, the paragraph-break tag family, comments, the tag pass
+/// [otherHtmlRegex] picks, then the paragraph indentation
+/// (`HtmlFormatter.kt:39-51`). [paragraphIndent] is the two full-width spaces
+/// of `format` or the empty string of `formatIntro`.
+String _formatHtml(
+  String value,
+  RegExp otherHtmlRegex,
+  String paragraphIndent,
+) => value
+    // Frozen `normalizeEscapedLineBreaks` runs before every formatter pass,
+    // in this order: `\\r\\n`, `\\n`, `\\r` (`HtmlFormatter.kt:24-29,41`).
+    .replaceAll(r'\r\n', '\n')
+    .replaceAll(r'\n', '\n')
+    .replaceAll(r'\r', '\n')
     .replaceAll(RegExp(r'(&nbsp;)+'), ' ')
     .replaceAll(RegExp(r'(&ensp;|&emsp;)'), ' ')
     .replaceAll(RegExp('(&thinsp;|&zwnj;|&zwj;|\u2009|\u200C|\u200D)'), '')
@@ -123,13 +96,19 @@ String _formatHtml(String value, RegExp otherHtmlRegex) => value
     .replaceAll(RegExp(r'<!--[^>]*-->'), '')
     .replaceAll(otherHtmlRegex, '')
     // Java's default \\s is ASCII, unlike Dart's ECMAScript whitespace class.
-    .replaceAll(RegExp(r'[ \t\n\x0b\f\r]*\n+[ \t\n\x0b\f\r]*'), '\n　　')
-    .replaceAll(RegExp(r'^[\n \t\x0b\f\r]+'), '　　')
+    .replaceAll(
+      RegExp(r'[ \t\n\x0b\f\r]*\n+[ \t\n\x0b\f\r]*'),
+      '\n$paragraphIndent',
+    )
+    .replaceAll(RegExp(r'^[\n \t\x0b\f\r]+'), paragraphIndent)
     .replaceAll(RegExp(r'[\n \t\x0b\f\r]+$'), '');
 
-/// Frozen `HtmlFormatter.format` used for search and book-information intros
-/// (`BookList.kt:251`, `BookInfo.kt:123`), whose tag pass is the house one.
-String formatSourceIntro(String value) => _formatHtml(value, _otherHtmlRegex);
+/// Frozen `HtmlFormatter.formatIntro` used for search and book-information
+/// intros (`BookList.kt:260`, `BookInfo.kt:123`): the house tag pass with the
+/// empty paragraph indent. The empty indent is also what trims the resulting
+/// ASCII paragraph-edge whitespace (`HtmlFormatter.kt:48-50`).
+String formatSourceIntro(String value) =>
+    _formatHtml(value, _otherHtmlRegex, '');
 
 /// The frozen content stage's own HTML pass, `BookContent.kt:178`:
 ///
@@ -162,7 +141,7 @@ String formatSourceIntro(String value) => _formatHtml(value, _otherHtmlRegex);
 ///   value a `@js:` segment produced — and a page that wrote its tags escaped
 ///   (`&lt;p&gt;`) keeps them on the frozen side where this pass strips them.
 String formatChapterContent(String value) =>
-    _formatHtml(value, _keepImgHtmlRegex);
+    _formatHtml(value, _keepImgHtmlRegex, '　　');
 
 /// The frozen content stage's whole per-page pass (`BookContent.kt:177-181`):
 /// the value `AnalyzeRule.getString(contentRule.content, unescape = false)`
@@ -247,6 +226,119 @@ SourceImageStyle sourceImageStyle(Map<String, dynamic> source) {
   }
 }
 
+/// The book-information stage's own result: the book `ruleBookInfo` produced,
+/// the TOC address its page declared, and the request context the TOC stage
+/// continues from.
+///
+/// The two frozen stages are separate calls — `WebBook.getBookInfoAwait` then
+/// `WebBook.getChapterListAwait` (`WebBook.kt:152-198,224-270`) — so a caller
+/// that must observe the information stage on its own (the AUTH runner's
+/// details-only step, a page that shows the information before its chapter
+/// list) runs [BookSourcePipeline.bookInfo] and stops. The frozen
+/// `Book.tocUrl` is the declared address with the `BookInfo.kt:150-152`
+/// fallback, which [tocUrl] answers.
+class SourceBookInfo {
+  const SourceBookInfo({
+    required this.book,
+    required this.tocAddress,
+    required this.tocBase,
+    required this.bookUrl,
+    required this.bookOptions,
+    required this.bookAddress,
+    required this.keyword,
+    required this.page,
+    this.tocHtml,
+  });
+
+  /// The book the information stage produced, with the variable text its
+  /// carrier was handed.
+  final HtmlBook book;
+
+  /// The address text `ruleBookInfo.tocUrl` produced, empty when the page
+  /// declared none.
+  final String tocAddress;
+
+  /// The base [tocAddress] resolves against: the native logical book/TOC text
+  /// for a retained information body, or the actual fetched response URL for a
+  /// fetched information response. The historical-relative legacy branch keeps
+  /// its original missing-base behavior.
+  final Uri tocBase;
+
+  /// The book request's own target, options and address text. The frozen TOC
+  /// falls back to the book's own address when the information page declares
+  /// none (`BookInfo.kt:150-152`), and that fallback reuses this request.
+  final Uri bookUrl;
+  final SourceUrlOptions bookOptions;
+  final String bookAddress;
+
+  /// The `key`/`page` bindings the information stage ran with. A rule field of
+  /// the TOC stage sees this context, never a later search on the same
+  /// pipeline: the frozen `AnalyzeUrl` a details stage builds carries the
+  /// search's key and no page, and the TOC stage it starts keeps them.
+  final String keyword;
+  final int? page;
+
+  /// The nonempty information response retained for a same-page TOC handoff.
+  /// It is ephemeral result state, not persisted or shared by URL.
+  final String? tocHtml;
+
+  /// The frozen `Book.tocUrl` value: the declared address, or the book's own
+  /// address text when the page declared none (`BookInfo.kt:150-152`), resolved
+  /// against the actual information base and retaining the option tail. A
+  /// retained information response contributes its own raw book text as that
+  /// base; a fetched one contributes [tocBase] and never old text.
+  String get tocUrl => resolveSourceTocUrl(
+    address: tocAddress,
+    base: tocBase,
+    fallbackAddress: bookAddress,
+    rawBase: _retainedRawBase,
+  );
+
+  /// The raw logical book text, when this information stage read a retained
+  /// response instead of fetching one.
+  ///
+  /// The frozen retained branch hands `book.bookUrl` to `BookInfo` as both the
+  /// analyser's base URL and its redirect URL (`WebBook.kt:157-165`), so the
+  /// declared address resolves against that raw text. A fetched response owns
+  /// its own URL ([tocBase]) and never inherits old book text, which is why this
+  /// is the retained response fact rather than a comparison of resolved
+  /// components. [HtmlBook.infoHtml] is that retained response and is never
+  /// serialized, so the fact cannot outlive the handoff. The text is taken as it
+  /// stands and its option boundary is not parsed here.
+  String? get _retainedRawBase {
+    final retained = book.infoHtml;
+    if (retained == null || retained.isEmpty) return null;
+    if (sourceKotlinIsBlank(bookAddress)) return null;
+    // The base text is kept as the book carried it: the URL constructor's own
+    // edge trim stops at U+0020, so a Unicode space is part of the base.
+    return bookAddress;
+  }
+}
+
+/// The full resolved TOC identity, including its requested raw query and its
+/// untouched request-option tail. The option text is delimited textually; it is
+/// not parsed or validated during information publication.
+String resolveSourceTocUrl({
+  required String address,
+  required Uri base,
+  required String fallbackAddress,
+  String? rawBase,
+}) {
+  final value = address.isEmpty ? fallbackAddress : address;
+  final boundary = sourceUrlOptionBoundaryOf(value);
+  final path = boundary == null ? value : value.substring(0, boundary);
+  final tail = boundary == null ? '' : value.substring(boundary);
+  // The Kotlin trim belongs to the frozen absolute shortcut only; the relative
+  // branch keeps the address text as the rule wrote it, so a Unicode space at
+  // either edge is not discarded before the URL constructor sees it.
+  final trimmed = sourceKotlinTrim(path);
+  final parsed = Uri.tryParse(trimmed);
+  final text = parsed != null && parsed.hasScheme
+      ? trimmed
+      : sourceUrlTextResolved(base, path, rawBase: rawBase);
+  return '$text$tail';
+}
+
 /// One analysis of one Book Source, as the pages that run a source hold it.
 ///
 /// A source's rules decide which adapter actually runs: [HtmlSourcePipeline]
@@ -282,7 +374,33 @@ abstract interface class BookSourcePipeline {
   /// `ruleSearch`: the books one keyword search returns.
   Future<List<HtmlBook>> search(String keyword, {int page = 1});
 
+  /// `ruleBookInfo` alone: the book's own page and the TOC address it declares.
+  ///
+  /// This is the frozen `WebBook.getBookInfoAwait` stage on its own. It fetches
+  /// and runs the source's `loginCheckJs` when the hit has no retained
+  /// information response; a retained response is consumed without another
+  /// request or check. It parses the information rules and makes no TOC
+  /// request. [tableOfContents] continues from its result. The hit's variable
+  /// text is the candidate a deferred analysis reads and writes; nothing is
+  /// stored by this stage.
+  Future<SourceBookInfo> bookInfo(HtmlBook hit);
+
+  /// `ruleToc` alone: the chapter list, continued from [info].
+  ///
+  /// This is the frozen `WebBook.getChapterListAwait` stage: it fetches the
+  /// declared TOC address (or the book's own address when the page declared
+  /// none), runs the `loginCheckJs` on its first page and walks the declared
+  /// pages. A retained first-page body is consumed without another request or
+  /// check, and the stage never repeats the information request, its check or
+  /// its URL-option evaluation.
+  Future<(HtmlBook, List<SourceChapter>)> tableOfContents(SourceBookInfo info);
+
   /// `ruleBookInfo` plus `ruleToc`: the book's own page and its chapter list.
+  ///
+  /// The composition of [bookInfo] and [tableOfContents], which is what the
+  /// shelf, the browser and the reader run: one call, the information stage then
+  /// the TOC stage, consuming retained bodies where the carrier has them and
+  /// making the corresponding requests otherwise.
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit);
 
   /// `ruleContent`: one chapter's text. A reader supplies its selected [book]

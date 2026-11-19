@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "HTML-LIST-01",
+  "corpusVersion": 1,
+  "baselineCommit": "14dd24945b2914ce2708b8abaa4ee67ceef892af",
+  "entryPoint": "AnalyzeRule.getString/getStringList (default and URL modes)",
+  "expectationSource": "Source-derived, not device-recorded. Read from the frozen AnalyzeRule.getStringList (AnalyzeRule.kt:159-235), AnalyzeByJSoup.getStringList (AnalyzeByJSoup.kt:72-118), AnalyzeByJSonPath.getStringList (AnalyzeByJSonPath.kt:71-123) and AnalyzeRule.getString at 14dd24945b2914ce2708b8abaa4ee67ceef892af, together with the existing product analyze path (HtmlRuleBatch.documentText/documentTextList and JsonSourceRules.list/contentText/extract). The ordered list, scalar twin, per-item ##, empty-list and JSON sibling values are therefore source/product-derived; the frozen APK run that would turn them into a device golden is not-run. The scalar twin of a list rule joins the same matches with a newline and runs ## on that join; the list read runs ## on every item and never entity-unescapes. The getStringListUrl form is a named product refusal when nonempty, so only its supported empty result is present.",
+  "documents": {
+    "toc": "<div id=\"list\"><li><a href=\"/1\">第一章</a></li><li><a href=\"/2\">第二章</a></li><li><a href=\"/3\">第三章</a></li></div><div id=\"pages\"><a class=\"gr\" href=\"/toc/2\">下一页</a></div>",
+    "entity": "<div id=\"code\">A&amp;amp;B</div>",
+    "json": "{\"names\":[\"甲\",\"乙\"],\"items\":[{\"name\":\"丙\"},{\"name\":\"丁\"}]}"
+  },
+  "baseUrl": "http://fixture.test",
+  "cases": [
+    {
+      "id": "html-list-ordered-hrefs",
+      "document": "toc",
+      "rule": "#list li@a@href",
+      "method": "getStringList",
+      "expected": ["/1", "/2", "/3"]
+    },
+    {
+      "id": "html-scalar-twin-ordered-hrefs",
+      "document": "toc",
+      "rule": "#list li@a@href",
+      "method": "getString",
+      "expected": "/1\n/2\n/3"
+    },
+    {
+      "id": "html-list-declared-order",
+      "document": "toc",
+      "rule": "#list li[2,0,1]@a@href",
+      "method": "getStringList",
+      "expected": ["/3", "/1", "/2"]
+    },
+    {
+      "id": "html-list-per-item-replacement",
+      "document": "toc",
+      "rule": "#list li@a@href##^/##/page/",
+      "method": "getStringList",
+      "expected": ["/page/1", "/page/2", "/page/3"]
+    },
+    {
+      "id": "html-scalar-joined-replacement-twin",
+      "document": "toc",
+      "rule": "#list li@a@href##^/##/page/",
+      "method": "getString",
+      "expected": "/page/1\n/2\n/3"
+    },
+    {
+      "id": "html-list-empty",
+      "document": "toc",
+      "rule": "a.absent@href",
+      "method": "getStringList",
+      "expected": []
+    },
+    {
+      "id": "html-list-url-empty",
+      "document": "toc",
+      "rule": "a.absent@href##$##/missing",
+      "method": "getStringListUrl",
+      "expected": []
+    },
+    {
+      "id": "html-list-entity-no-unescape",
+      "document": "entity",
+      "rule": "#code@text",
+      "method": "getStringList",
+      "expected": ["A&amp;B"]
+    },
+    {
+      "id": "html-scalar-entity-twin",
+      "document": "entity",
+      "rule": "#code@text",
+      "method": "getString",
+      "expected": "A&B"
+    },
+    {
+      "id": "json-list-string-names",
+      "document": "json",
+      "rule": "@Json:$.names[*]",
+      "path": "json",
+      "method": "getStringList",
+      "expected": ["甲", "乙"]
+    },
+    {
+      "id": "json-scalar-string-twin",
+      "document": "json",
+      "rule": "@Json:$.names[*]",
+      "path": "json",
+      "method": "getString",
+      "expected": "甲\n乙"
+    }
+  ]
+}

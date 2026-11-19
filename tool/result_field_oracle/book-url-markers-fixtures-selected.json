@@ -1,0 +1,439 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "FIELDS-02",
+  "corpusVersion": 1,
+  "baselineCommit": "a7d37f1707a70a459ad708f4fe79341d1e42d716",
+  "origin": "http://127.0.0.1:18733",
+  "entryPoint": "io.legado.app.model.webBook.WebBook.searchBookAwait/getBookInfoAwait/getChapterListAwait/getContentAwait",
+  "target": {
+    "package": "com.legado.app.debug",
+    "apkSha256": "593cc00c7d588e78cc32775d85aeb4d05957c6fd56f4ba942096753e8a5283b5",
+    "deviceFingerprint": "Redmi/myron/myron:17/CP2A.260605.016/OS4.0.6.0.XPMCNXM:user/release-keys"
+  },
+  "capabilityRows": [
+    "Search bookUrlPattern selection on the final response URL after redirect, with the list rule not read",
+    "search pattern nonmatch through a real list, information, TOC and content",
+    "no-pattern empty-list information fallback using the original request identity",
+    "nonmatching-pattern empty-list search terminal without information/TOC/content",
+    "TOC updateTime/isVolume/isVip/isPay with raw/absolute chapter addresses and empty-title gating observable through source.put probes"
+  ],
+  "coverageGaps": [
+    "No handset or native execution is claimed by this corpus file; only a later approved capture supplies native expected values.",
+    "No new selector, XPath, JavaScript grammar, image/audio or WebView behavior is introduced.",
+    "The five STATE tag/context observations remain the updateTime/context reuse boundary; FIELDS-02 tags are only marker-row tags.",
+    "HTML pattern match and JSON pattern fallback cover the affected adapters; no full combinatorial adapter matrix is claimed."
+  ],
+  "cases": [
+    {
+      "id": "html-pattern-redirect-markers",
+      "terminal": "four-stage",
+      "keyword": "回放",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18733",
+        "bookSourceName": "FIELDS-02 HTML",
+        "searchUrl": "/a/search?keyword={{key}}&page={{page}}",
+        "bookUrlPattern": ".*/a/detail/73.*",
+        "ruleSearch": {
+          "bookList": ".result li",
+          "name": "a.0@text",
+          "author": "span.author@text",
+          "bookUrl": "a.0@href"
+        },
+        "ruleBookInfo": {
+          "name": "h1@text",
+          "author": ".info span.author@text",
+          "tocUrl": ".toc a@href"
+        },
+        "ruleToc": {
+          "chapterList": ".chapters li",
+          "chapterName": "a@text",
+          "chapterUrl": "a@href",
+          "updateTime": "em.time@text",
+          "isVolume": "em.vol@text",
+          "isVip": "@js: chapter.title ? java.getString('em.vip@text') : (source.put('vipProbe','read'), '1')",
+          "isPay": "@js: chapter.title ? java.getString('em.pay@text') : (source.put('payProbe','read'), '1')"
+        },
+        "ruleContent": {
+          "content": "#content@text"
+        }
+      }
+    },
+    {
+      "id": "json-pattern-nonmatch-list",
+      "terminal": "four-stage",
+      "keyword": "回放",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18733",
+        "bookSourceName": "FIELDS-02 JSON list",
+        "searchUrl": "/b/search?keyword={{key}}&page={{page}}",
+        "bookUrlPattern": ".*/b/detail/\\d+.*",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href",
+          "updateTime": "$.time",
+          "isVolume": "$.volume",
+          "isVip": "@js: chapter.title ? java.getString('$.vip') : (source.put('vipProbe','read'), '1')",
+          "isPay": "@js: chapter.title ? java.getString('$.pay') : (source.put('payProbe','read'), '1')"
+        },
+        "ruleContent": {
+          "content": "$.body"
+        }
+      }
+    },
+    {
+      "id": "json-no-pattern-empty-fallback",
+      "terminal": "four-stage",
+      "keyword": "回放",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18733",
+        "bookSourceName": "FIELDS-02 JSON fallback",
+        "searchUrl": "/c/search?keyword={{key}}&page={{page}}",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "$.body"
+        }
+      }
+    },
+    {
+      "id": "json-pattern-empty-terminal",
+      "terminal": "search-empty",
+      "keyword": "回放",
+      "source": {
+        "bookSourceUrl": "http://127.0.0.1:18733",
+        "bookSourceName": "FIELDS-02 JSON terminal",
+        "searchUrl": "/d/search?keyword={{key}}&page={{page}}",
+        "bookUrlPattern": ".*/d/detail/\\d+.*",
+        "ruleSearch": {
+          "bookList": "$.items",
+          "name": "$.name",
+          "author": "$.author",
+          "bookUrl": "$.url"
+        },
+        "ruleBookInfo": {
+          "name": "$.title",
+          "author": "$.author",
+          "tocUrl": "$.toc"
+        },
+        "ruleToc": {
+          "chapterList": "$.list",
+          "chapterName": "$.name",
+          "chapterUrl": "$.href"
+        },
+        "ruleContent": {
+          "content": "$.body"
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "id": "a-search-redirect",
+      "method": "GET",
+      "path": "/a/search",
+      "status": 302,
+      "headers": {
+        "Location": "/a/detail/73"
+      },
+      "body": ""
+    },
+    {
+      "id": "a-detail",
+      "method": "GET",
+      "path": "/a/detail/73",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><h1>详情书</h1><p class=\"toc\"><a href=\"/a/toc/1\">目录</a></p></body></html>"
+    },
+    {
+      "id": "a-toc",
+      "method": "GET",
+      "path": "/a/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div class=\"chapters\"><li><a href=\"/a/c/1\">第一章</a><em class=\"time\">2026-01-01</em><em class=\"vol\">0</em><em class=\"vip\">1</em><em class=\"pay\">false</em></li><li><a>第一卷</a><em class=\"time\">卷首</em><em class=\"vol\">1</em><em class=\"vip\">0</em><em class=\"pay\">no</em></li><li><a>第二章</a><em class=\"time\">2026-01-02</em><em class=\"vol\">0</em><em class=\"vip\">1</em><em class=\"pay\">1</em></li><li><a></a><em class=\"time\">空标题</em><em class=\"vol\">0</em><em class=\"vip\">1</em><em class=\"pay\">1</em></li></div></body></html>"
+    },
+    {
+      "id": "a-content",
+      "method": "GET",
+      "path": "/a/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body": "<html><body><div id=\"content\">正文一</div></body></html>"
+    },
+    {
+      "id": "b-search",
+      "method": "GET",
+      "path": "/b/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[{\"name\":\"列表书\",\"author\":\"列表作者\",\"url\":\"/b/book/1\"}]}"
+    },
+    {
+      "id": "b-book",
+      "method": "GET",
+      "path": "/b/book/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"title\":\"详情书\",\"author\":\"详情作者\",\"toc\":\"/b/toc/1\"}"
+    },
+    {
+      "id": "b-toc",
+      "method": "GET",
+      "path": "/b/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"第一章\",\"href\":\"/b/c/1\",\"time\":\"2026-01-01\",\"volume\":\"0\",\"vip\":\"yes\",\"pay\":\"false\"},{\"name\":\"第一卷\",\"time\":\"卷首\",\"volume\":\"1\",\"vip\":\"0\",\"pay\":\"no\"},{\"name\":\"第二章\",\"time\":\"2026-01-02\",\"volume\":\"0\",\"vip\":\"1\",\"pay\":\"1\"},{\"name\":\"\",\"time\":\"空标题\",\"volume\":\"0\",\"vip\":\"1\",\"pay\":\"1\"}]}"
+    },
+    {
+      "id": "b-content",
+      "method": "GET",
+      "path": "/b/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"正文一\"}"
+    },
+    {
+      "id": "c-search",
+      "method": "GET",
+      "path": "/c/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[],\"title\":\"详情书\",\"author\":\"详情作者\",\"toc\":\"/c/toc/1\"}"
+    },
+    {
+      "id": "c-toc",
+      "method": "GET",
+      "path": "/c/toc/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"list\":[{\"name\":\"第一章\",\"href\":\"/c/c/1\"}]}"
+    },
+    {
+      "id": "c-content",
+      "method": "GET",
+      "path": "/c/c/1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"body\":\"正文一\"}"
+    },
+    {
+      "id": "d-search",
+      "method": "GET",
+      "path": "/d/search",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
+      "body": "{\"items\":[]}"
+    }
+  ],
+  "expectedRequests": [
+    {
+      "method": "GET",
+      "path": "/a/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/a/detail/73"
+    },
+    {
+      "method": "GET",
+      "path": "/a/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/a/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/b/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/b/book/1"
+    },
+    {
+      "method": "GET",
+      "path": "/b/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/b/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/c/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/c/toc/1"
+    },
+    {
+      "method": "GET",
+      "path": "/c/c/1"
+    },
+    {
+      "method": "GET",
+      "path": "/d/search",
+      "query": {
+        "keyword": "回放",
+        "page": "1"
+      }
+    }
+  ],
+  "scenario": [
+    "A: search /a/search redirects to /a/detail/73; the final URL matches bookUrlPattern, so information is read from the search response and no list rule is read; the information cache supplies the detail page to the information stage; then TOC and content.",
+    "B: /b/search does not match bookUrlPattern, so the list is read; the selected book is fetched, then TOC and content.",
+    "C: no bookUrlPattern and an empty list; the search response is the information fallback, and its original request identity is the book URL; information is cached, then TOC and content.",
+    "D: bookUrlPattern is nonempty but does not match /d/search, and the list is empty; the search result is the declared complete empty terminal, with no information/TOC/content requests."
+  ],
+  "frozenSources": [
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookList.kt",
+      "sha1": "c542264ebe0fbaba8bbd47fb939f51cd67dd6df1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookInfo.kt",
+      "sha1": "e8c062baaccbe7a27b8ea9b9507b6fad036b5ff1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookChapterList.kt",
+      "sha1": "dd2ae3950cee55a9c8e7880dc2c034d6f4c6f33d"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/BookContent.kt",
+      "sha1": "cbc353920315db9810f57aec935faeaca5310a13"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/model/webBook/WebBook.kt",
+      "sha1": "d7a924c2d687bc99d6e25099cefacc9d920e1386"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookChapter.kt",
+      "sha1": "9798267c77c9e14d0a673a822930491cd6e44cc1"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/Book.kt",
+      "sha1": "e811d5faf9c6d23033f0b5215931fc254ffeda4f"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/SearchBook.kt",
+      "sha1": "2b327b6d793f86ded504abe293711f25c0285c35"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringExtensions.kt",
+      "sha1": "694fe6d8f3a815261e034c1341109aae1b18bf2c"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/utils/StringUtils.kt",
+      "sha1": "acc118d12e221bd8e0d4b546434373d8640576fb"
+    },
+    {
+      "path": "app/src/main/java/io/legado/app/data/entities/BookSource.kt",
+      "sha1": "7f63496ebf25c820b7d0c715d2fbce8e7bd29b9c"
+    }
+  ],
+  "hostInitialization": {
+    "method": "io.legado.app.App#initRhino()",
+    "invocation": "on an unattached io.legado.app.App instance, after the scratch binding and its context routing are verified; App.onCreate, App.attachBaseContext and every background job stay unrun",
+    "engine": "com.script.rhino.RhinoScriptEngine.initialize()",
+    "storage": "scratch-only: android.app.Application over the task-owned root; the installed application's own database and preferences stay out of reach",
+    "registrations": [
+      {
+        "type": "io.legado.app.data.entities.BookSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.RssSource",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.HttpTTS",
+        "factory": "native-base-source"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ExploreRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.SearchRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.BookInfoRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.rule.ContentRule",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.BookChapter",
+        "factory": "read-only-java-object"
+      },
+      {
+        "type": "io.legado.app.data.entities.Book$ReadConfig",
+        "factory": "read-only-java-object"
+      }
+    ]
+  }
+}

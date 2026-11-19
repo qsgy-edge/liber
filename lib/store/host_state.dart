@@ -224,6 +224,22 @@ class SpaceHostStatePersistence implements SourceHostStatePersistence {
   }
 
   @override
+  Future<List<({int index, String title, String? variable})>>
+  loadChapterRestorationRows(String sourceRef, String bookUrl) async {
+    final book = await store.bookByNaturalKey(sourceRef, bookUrl);
+    if (book == null) return [];
+    final chapters = await store.chaptersOf(book.id);
+    return [
+      for (final chapter in chapters)
+        (
+          index: chapter.chapterIndex,
+          title: chapter.name,
+          variable: chapter.variable,
+        ),
+    ];
+  }
+
+  @override
   Future<bool> saveChapterVariable(
     String sourceRef,
     String bookUrl,

@@ -23,6 +23,29 @@ void main() {
             .cast<String, dynamic>();
   });
 
+  test(
+    'selected corpus preserves historical inputs under its own identity',
+    () {
+      final selected =
+          jsonDecode(
+                File(
+                  'tool/replace_rule_oracle/fixtures-selected.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      expect(selected['fixtureId'], 'REPLACE-17');
+      expect(selected['corpusVersion'], 2);
+      expect(
+        selected['baselineCommit'],
+        'a7d37f1707a70a459ad708f4fe79341d1e42d716',
+      );
+      expect((selected['target'] as Map)['package'], 'com.legado.app.debug');
+      expect((selected['deviceOracle'] as Map)['status'], 'not-run');
+      expect(selected['comparisonBoundary'], fixture['comparisonBoundary']);
+      expect(selected['cases'], fixture['cases']);
+    },
+  );
+
   test('pins the frozen identity and leaves the Android row not-run', () {
     expect(fixture['fixtureId'], 'REPLACE-17');
     expect(

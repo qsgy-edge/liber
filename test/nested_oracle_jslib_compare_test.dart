@@ -1,0 +1,410 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import '../tool/nested_oracle_compare.dart';
+
+/// Focused checks for the dedicated local jsLib shared-scope fixture and its
+/// offline comparator (#74). Every value here is synthetic test data that
+/// exercises the verdict mechanics; none of it is a frozen golden, and the
+/// committed corpus is the only real fixture this file reads.
+void main() {
+  late Map<String, dynamic> corpus;
+  late Map<String, dynamic> target;
+  late String corpusSha256;
+  late List<Map<String, Object?>> observations;
+  late List<String> requests;
+  late Map<String, dynamic> golden;
+
+  setUp(() {
+    corpus = loadJsLibCorpus();
+    target = (corpus['target'] as Map).cast<String, dynamic>();
+    corpusSha256 = jsLibCorpusSha256(File(jsLibCorpusPath));
+    // Synthetic observations for comparator mechanics only; never evidence.
+    observations = [
+      for (final step in corpus['steps'] as List)
+        {'id': (step as Map)['id'], 'value': '"observed"'},
+    ];
+    requests = ['GET /value/3', 'GET /value/undefined'];
+    golden = <String, dynamic>{
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'baselineCommit': corpus['baselineCommit'],
+      'entryPoint': corpus['entryPoint'],
+      'corpusSha256': corpusSha256,
+      'provenance': {
+        'kind': 'frozen-device-capture',
+        'deviceFingerprint':
+            'Redmi/synthetic/synthetic:17/CP2A/OS:user/release-keys',
+        'capturedAt': '2026-10-18T00:00:00+08:00',
+        'entryPoint': corpus['entryPoint'],
+        'baselineCommit': corpus['baselineCommit'],
+        'targetPackage': target['package'],
+        'targetApkPath': '/data/app/~~x==/io.legado.app.debug--y==/base.apk',
+        'targetApkSha256': target['apkSha256'],
+      },
+      'observations': jsonDecode(jsonEncode(observations)),
+      'requests': jsonDecode(jsonEncode(requests)),
+    };
+  });
+
+  Map<String, Object?> compare() => compareJsLib(
+    corpus: corpus,
+    corpusSha256: corpusSha256,
+    golden: golden,
+    observations: observations,
+    requests: requests,
+    goldenPath: 'synthetic-golden.json',
+    library: 'synthetic-fjs.dll',
+  );
+
+  test('the corpus is a versioned, non-empty fixture with unique row ids', () {
+    expect(corpus['schemaVersion'], 1);
+    expect(corpus['fixtureId'], 'JSLIB-01');
+    expect(corpus['corpusVersion'], 2);
+    expect(corpus['baselineCommit'], isNotEmpty);
+    expect(corpus['entryPoint'], isNotEmpty);
+    expect(corpus['jsLib'], isNotEmpty);
+    expect(target['package'], 'io.legado.app.debug');
+    expect(target['apkSha256'], matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(target['baselineCommit'], corpus['baselineCommit']);
+    final steps = corpus['steps'] as List;
+    expect(steps, isNotEmpty);
+    final ids = [for (final step in steps) (step as Map)['id']];
+    expect(ids.toSet().length, ids.length);
+    expect(corpusSha256, matches(RegExp(r'^[0-9a-f]{64}$')));
+  });
+
+  test('selected JSLIB refuses escaped routing and incomplete cleanup', () {
+    corpus = loadJsLibCorpus(jsLibSelectedCorpusPath);
+    target = (corpus['target'] as Map).cast<String, dynamic>();
+    corpusSha256 = jsLibCorpusSha256(File(jsLibSelectedCorpusPath));
+    observations = [
+      for (final row in corpus['steps'] as List)
+        {'id': (row as Map)['id'], 'value': 'synthetic'},
+    ];
+    requests = ['GET /synthetic'];
+    final init = corpus['hostInitialization'] as Map;
+    final wrappers = <String, Object?>{
+      for (final row in init['registrations'] as List)
+        '${(row as Map)['type']}': row['factory'],
+    };
+    golden = {
+      'fixtureId': corpus['fixtureId'],
+      'corpusVersion': corpus['corpusVersion'],
+      'baselineCommit': corpus['baselineCommit'],
+      'entryPoint': corpus['entryPoint'],
+      'corpusSha256': corpusSha256,
+      'provenance': {
+        'kind': 'frozen-device-capture',
+        'deviceFingerprint': 'synthetic',
+        'capturedAt': '2026-10-30T00:00:00Z',
+        'entryPoint': corpus['entryPoint'],
+        'baselineCommit': corpus['baselineCommit'],
+        'targetPackage': target['package'],
+        'targetApkPath': '/data/app/base.apk',
+        'targetApkSha256': target['apkSha256'],
+      },
+      'identity': {
+        'fixtureId': corpus['fixtureId'],
+        'corpusVersion': corpus['corpusVersion'],
+        'corpusSha256Lf': corpusSha256,
+        'targetPackage': target['package'],
+        'targetApkSha256': target['apkSha256'],
+        'targetBaselineCommit': corpus['baselineCommit'],
+        'targetPinManifest': target['manifest'],
+        'harnessPackage': 'io.liber.oracle.nested',
+        'harnessApkSha256': '1' * 64,
+        'harnessApkPath': '/data/app/harness.apk',
+      },
+      'hostInitialization': {
+        'verified': true,
+        'method': init['method'],
+        'invokedOn': 'unattached-instance',
+        'applicationAttached': false,
+        'registeredWrappers': wrappers,
+      },
+      'startupContainment': {
+        'service': 'shortcut',
+        'provider': 'io.legado.app.api.ReaderProvider',
+        'intercepted': 1,
+        'handled': 1,
+        'beforeBinding': true,
+      },
+      'isolation': {
+        'application': 'android.app.Application',
+        'dataDirectory': '/data/user/0/com.legado.app.debug',
+        'scratchRoot':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle',
+        'files':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle/files',
+        'database':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle/databases/legado.db',
+        'preferencesPrefix': 'liber_jslib_oracle_',
+        'scratchRootExistedAtStart': false,
+        'preferenceProbe': {
+          'name': 'liber_jslib_oracle_liber_jslib_probe',
+          'registered': true,
+          'committed': true,
+          'scopedFile': true,
+          'installationFile': false,
+        },
+      },
+      'cleanup': {
+        'ownership': 'created-fresh-root',
+        'scratchRemoved': true,
+        'scratchRoot':
+            '/data/user/0/com.legado.app.debug/cache/liber-jslib-oracle',
+        'preferencesRemoved': [
+          {'name': 'liber_jslib_oracle_liber_jslib_probe', 'ok': true},
+        ],
+      },
+      'bindings': {'analyzeUrlConstructorParameters': 16},
+      'replayServerClosed': true,
+      'analysisFailure': null,
+      'observations': observations,
+      'requests': requests,
+    };
+    expect(compare()['status'], 'pass');
+    final alt = golden['isolation'] as Map;
+    alt['dataDirectory'] = '/data/data/com.legado.app.debug';
+    alt['scratchRoot'] = '${alt['dataDirectory']}/cache/liber-jslib-oracle';
+    alt['files'] = '${alt['scratchRoot']}/files';
+    alt['database'] = '${alt['scratchRoot']}/databases/legado.db';
+    (golden['cleanup'] as Map)['scratchRoot'] = alt['scratchRoot'];
+    expect(compare()['status'], 'pass');
+    final initial = jsonDecode(jsonEncode(golden)) as Map<String, dynamic>;
+    final scenarios = <void Function()>[
+      () => golden.remove('startupContainment'),
+      () => (golden['startupContainment'] as Map)['handled'] = 0,
+      () => (golden['startupContainment'] as Map)['beforeBinding'] = false,
+      () {
+        golden['isolation'] = {
+          'scratchRootExistedAtStart': false,
+          'preferenceProbe': {'installationFile': true},
+        };
+        (golden['cleanup'] as Map)['preferencesRemoved'] = [];
+      },
+      () => (golden['isolation'] as Map)['application'] = 'io.legado.app.App',
+      () => (golden['isolation'] as Map)['files'] =
+          '/data/user/0/com.legado.app.debug/files',
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['committed'] =
+              false,
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['registered'] =
+              false,
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['scopedFile'] =
+              false,
+      () =>
+          ((golden['isolation'] as Map)['preferenceProbe']
+                  as Map)['installationFile'] =
+              true,
+      () => (golden['cleanup'] as Map)['preferencesRemoved'] = [],
+      () => (golden['cleanup'] as Map)['preferencesRemoved'] = [
+        {'name': 'unrelated', 'ok': true},
+      ],
+      () => (golden['cleanup'] as Map)['preferencesRemoved'] = [
+        {'name': 'liber_jslib_oracle_other', 'ok': true},
+      ],
+    ];
+    for (final mutate in scenarios) {
+      golden = jsonDecode(jsonEncode(initial)) as Map<String, dynamic>;
+      mutate();
+      expect(compare, throwsFormatException);
+    }
+  });
+
+  test('the corpus never writes a sealed top-level binding', () {
+    // The frozen shared scope is sealed; a library function that assigns a
+    // top-level jsLib name would throw `msg.modify.sealed`. Shared mutation must
+    // go through the mutable object's property only.
+    final jsLib = corpus['jsLib'] as String;
+    expect(jsLib, contains('function bump() { return ++sharedState.n; }'));
+    expect(jsLib, isNot(contains('sharedCounter')));
+    expect(jsLib, isNot(contains('+=')));
+  });
+
+  test('a genuine matching frozen capture passes', () {
+    final report = compare();
+    expect(report['status'], 'pass');
+    expect(report['countMatches'], true);
+    expect(report['requestsMatch'], true);
+    expect(report['mismatches'], isEmpty);
+  });
+
+  test('reordered JSON object members still pass', () {
+    golden['observations'] = <Map<String, Object?>>[
+      for (final row in observations)
+        <String, Object?>{'value': row['value'], 'id': row['id']},
+    ];
+    final report = compare();
+    expect(report['status'], 'pass');
+    expect(report['mismatches'], isEmpty);
+  });
+
+  test('array order is still compared', () {
+    observations[0] = <String, Object?>{
+      ...observations[0],
+      'value': <Object?>[1, 2],
+    };
+    (golden['observations'] as List)[0] = <String, Object?>{
+      ...observations[0],
+      'value': <Object?>[2, 1],
+    };
+    final report = compare();
+    expect(report['status'], 'fail');
+    expect(report['mismatches'], isNotEmpty);
+  });
+
+  test('a product-only record capture is refused as a golden', () {
+    golden
+      ..['mode'] = 'jslib-record'
+      ..['comparison'] = 'not-run';
+    expect(compare, throwsFormatException);
+  });
+
+  test('a missing or forged provenance block is refused', () {
+    golden.remove('provenance');
+    expect(compare, throwsFormatException);
+    golden['provenance'] = {
+      'kind': 'product-capture',
+      'deviceFingerprint': 'synthetic',
+      'capturedAt': '2026-10-18T00:00:00+08:00',
+    };
+    expect(compare, throwsFormatException);
+  });
+
+  test('a blank device fingerprint or capture time is refused', () {
+    for (final key in ['deviceFingerprint', 'capturedAt']) {
+      (golden['provenance'] as Map)[key] = '  ';
+      expect(compare, throwsFormatException, reason: key);
+      (golden['provenance'] as Map)[key] = 'synthetic';
+    }
+  });
+
+  test('a stale corpus hash is refused', () {
+    golden['corpusSha256'] = 'stale';
+    expect(compare, throwsFormatException);
+  });
+
+  test('another baseline, version, fixture or entry point is refused', () {
+    for (final entry in <String, Object?>{
+      'baselineCommit': '0000000000000000000000000000000000000000',
+      'corpusVersion': 999,
+      'fixtureId': 'OTHER-01',
+      'entryPoint': 'Something.else',
+    }.entries) {
+      final previous = golden[entry.key];
+      golden[entry.key] = entry.value;
+      expect(compare, throwsFormatException, reason: entry.key);
+      golden[entry.key] = previous;
+    }
+  });
+
+  test('a contradictory provenance identity is refused', () {
+    final provenance = golden['provenance'] as Map;
+    for (final entry in <String, Object?>{
+      'entryPoint': 'Another.entryPoint',
+      'baselineCommit': '0000000000000000000000000000000000000000',
+      'targetPackage': 'io.legado.app.release',
+      'targetApkSha256': '0' * 64,
+    }.entries) {
+      final previous = provenance[entry.key];
+      provenance[entry.key] = entry.value;
+      expect(compare, throwsFormatException, reason: entry.key);
+      provenance[entry.key] = previous;
+    }
+    for (final key in [
+      'entryPoint',
+      'baselineCommit',
+      'targetPackage',
+      'targetApkSha256',
+      'targetApkPath',
+    ]) {
+      final previous = provenance.remove(key);
+      expect(compare, throwsFormatException, reason: 'missing $key');
+      provenance[key] = previous;
+    }
+  });
+
+  test('a corpus without a target pin is refused', () {
+    final withoutTarget = jsonDecode(jsonEncode(corpus)) as Map<String, dynamic>
+      ..remove('target');
+    expect(
+      () => compareJsLib(
+        corpus: withoutTarget,
+        corpusSha256: corpusSha256,
+        golden: golden,
+        observations: observations,
+        requests: requests,
+        goldenPath: 'synthetic-golden.json',
+        library: 'synthetic-fjs.dll',
+      ),
+      throwsFormatException,
+    );
+  });
+
+  test('row count, identity and duplicate rows are refused', () {
+    final rows = golden['observations'] as List;
+    rows.removeLast();
+    expect(compare, throwsFormatException, reason: 'a missing row');
+    rows.add(jsonDecode(jsonEncode(observations.last)));
+    rows[0] = <String, Object?>{
+      ...(rows[0] as Map).cast<String, Object?>(),
+      'id': 'not-a-corpus-row',
+    };
+    expect(compare, throwsFormatException, reason: 'a wrong row identity');
+  });
+
+  test('an empty golden or product run cannot pass vacuously', () {
+    golden['observations'] = <Object?>[];
+    expect(compare, throwsFormatException, reason: 'empty golden rows');
+    golden['observations'] = jsonDecode(jsonEncode(observations));
+    golden['requests'] = <Object?>[];
+    expect(compare, throwsFormatException, reason: 'empty golden requests');
+    golden['requests'] = jsonDecode(jsonEncode(requests));
+    expect(
+      () => compareJsLib(
+        corpus: corpus,
+        corpusSha256: corpusSha256,
+        golden: golden,
+        observations: observations.sublist(1),
+        requests: requests,
+        goldenPath: 'synthetic-golden.json',
+        library: 'synthetic-fjs.dll',
+      ),
+      throwsFormatException,
+      reason: 'a short product run',
+    );
+  });
+
+  test('a value mismatch fails rather than passing', () {
+    observations[0] = <String, Object?>{
+      ...observations[0],
+      'value': '"different"',
+    };
+    final report = compare();
+    expect(report['status'], 'fail');
+    expect(report['mismatches'], isNotEmpty);
+  });
+
+  test('a request trace mismatch fails', () {
+    final report = compareJsLib(
+      corpus: corpus,
+      corpusSha256: corpusSha256,
+      golden: golden,
+      observations: observations,
+      requests: const ['GET /other'],
+      goldenPath: 'synthetic-golden.json',
+      library: 'synthetic-fjs.dll',
+    );
+    expect(report['status'], 'fail');
+    expect(report['requestsMatch'], false);
+  });
+}

@@ -18,6 +18,7 @@ tool/first_slice/fixtures.json text eol=lf
 # the same way: the comparator refuses to compare when the corpus bytes hash to
 # anything but the value the observation and manifest recorded.
 tool/result_field_oracle/fixtures.json text eol=lf
+tool/result_field_oracle/book-url-markers-fixtures.json text eol=lf
 tool/result_field_oracle/evidence/** text eol=lf
 # The harness serves the corpus out of its assets, so the runner is not shipped;
 # this line keeps the matching-rule reference byte-stable alongside it.
@@ -25,6 +26,14 @@ tool/first_slice/runner.dart text eol=lf
 # The #65 HTML/JSON no-match oracle pins the on-device corpus and harness
 # source bytes as well as its reports; keep those hashes stable on every host.
 tool/html_oracle/fixtures.json text eol=lf
+tool/html_oracle/list-fixtures.json text eol=lf
+tool/html_oracle/fixtures-selected.json text eol=lf
+tool/html_oracle/list-fixtures-selected.json text eol=lf
+# These selected producer inputs are recorded by raw SHA-256 in the APK.
+tool/html_oracle/SelectedHtmlOracle.java text eol=lf
+tool/html_oracle/AndroidManifest-selected.xml text eol=lf
+tool/html_oracle/build.ps1 text eol=lf
+tool/html_oracle/capture.py text eol=lf
 tool/html_oracle/evidence/** text eol=lf
 tool/nested_oracle/HtmlOracle.java text eol=lf
 tool/nested_oracle/build.ps1 text eol=lf
@@ -77,3 +86,11 @@ packages/fjs/liber_html/tests/data/** text eol=lf
 tool/html_get_elements_oracle/**/*.json -text
 tool/html_get_elements_oracle/**/*.log -text
 tool/html_get_elements_oracle/**/*.kt -text
+
+tool/result_field_oracle/book-url-markers-fixtures-selected.json text eol=lf
+tool/result_field_oracle/chapter-lifecycle-fixtures-selected.json text eol=lf
+tool/result_field_oracle/chapter-relative-fixtures-selected.json text eol=lf
+tool/result_field_oracle/chapter-identity-fixtures-selected.json text eol=lf
+tool/result_field_oracle/reader-followthrough-fixtures-selected.json text eol=lf
+tool/result_field_oracle/reader-json-replace-fixtures-selected.json text eol=lf
+tool/result_field_oracle/reader-title-lifecycle-fixtures-selected.json text eol=lf

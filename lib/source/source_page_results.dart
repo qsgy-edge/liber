@@ -20,7 +20,7 @@
 /// refuses a repeated URL by name where the frozen stops silently.
 ///
 /// The product fetches the pages one at a time. The frozen's declared walk is
-/// `mapAsync(AppConfig.threadCount)`, whose default is 16, an app preference
+/// `mapAsync(AppConfig.threadCount)`, whose default is 32, an app preference
 /// this product has no setting for; one page in flight is that walk at
 /// concurrency 1, with the declared order kept and every request still going
 /// through the source's own rate limit. Real concurrency would need a pipeline
@@ -87,12 +87,14 @@ bool _declaresNothing(String address) {
 ///
 /// [dropSelf] is the TOC stage's own filter (`BookChapterList.kt:96-100`),
 /// which removes an item equal to the page it was read from; the content stage
-/// keeps such an item and stops on it through [maxPages]' cycle refusal.
+/// keeps such an item and refuses it through the visited-URL cycle check.
 /// [nextChapterUrl] is the content stage's guard (`BookContent.kt:85-88`),
 /// null in the TOC stage; the frozen reads it only in the sequential walk.
 ///
-/// [maxPages] bounds the sequential walk alone; a repeated URL or a walk past
-/// the bound fails with [cycleError]. The declared walk fetches each URL it was
+/// [maxPages] optionally bounds the sequential walk; `null` leaves its count
+/// unbounded. Empty next-page declarations still end the walk, and repeated
+/// URLs still fail with [cycleError]. Passing a non-null bound also fails if
+/// a sequential walk exceeds it. The declared walk fetches each URL it was
 /// given once, so it neither repeats nor recurses.
 Future<int> walkSourcePages({
   required SourcePageRequest first,
@@ -106,7 +108,7 @@ Future<int> walkSourcePages({
     required bool readNext,
   })
   visit,
-  required int maxPages,
+  required int? maxPages,
   required String cycleError,
   bool dropSelf = false,
   Uri? nextChapterUrl,
@@ -176,7 +178,8 @@ Future<int> walkSourcePages({
   final visited = <Uri>{firstPage.pageUrl};
   var page = firstDeclared.pages.first;
   while (true) {
-    if (!visited.add(page.url) || visited.length > maxPages) {
+    if (!visited.add(page.url) ||
+        (maxPages != null && visited.length > maxPages)) {
       throw StateError(cycleError);
     }
     final result = await visit(page, readNext: true);
