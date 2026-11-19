@@ -26,6 +26,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: '2'
+  CARGO_BUILD_BUILD_DIR: '{cargo-cache-home}/liber/build'
   # pubspec.lock records the host every package came from, and this project
   # resolves against the mirror; the runners reach both it and its storage host
   # (probed 2026-09-16). A run without this variable rewrites all 105 `url:`
@@ -84,7 +85,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/fjs/libfjs/target
+            ~/.cargo/liber/build
           key: native-${{ matrix.target }}-${{ hashFiles('packages/fjs/libfjs/Cargo.lock', 'packages/fjs/libfjs/vendor/**', '.github/workflows/ci.yml') }}
           restore-keys: native-${{ matrix.target }}-
       - name: Linux build dependencies

@@ -82,8 +82,14 @@ conversion tables it ships are recorded in `liber_text/assets/hanlp-tc/PROVENANC
 with the decision in ADR 0010.
 
 Build through the package's existing cargokit integration when building Flutter.
-For a native diagnostic build, use `cargo build --release --locked` from
-`libfjs/`, keeping the tested target directory and loaded DLL provenance explicit.
+Cargokit defaults `CARGO_BUILD_BUILD_DIR` to `{cargo-cache-home}/liber/build`,
+and CI uses and caches the same directory. Rust intermediates are shared across
+worktrees and Flutter harnesses; final libraries stay in each build's existing
+target directory. An explicit `CARGO_BUILD_BUILD_DIR` overrides the default.
+Concurrent builds using the shared directory wait for Cargo's build lock.
+For a native diagnostic build, set `CARGO_BUILD_BUILD_DIR` to the same value and
+use `cargo build --release --locked` from `libfjs/`, keeping the tested target
+directory and loaded DLL provenance explicit.
 Generated bindings can be reproduced with `flutter_rust_bridge_codegen` 2.12.0
 and this directory's `flutter_rust_bridge.yaml`; never hand-edit generated code
 or disable the content-hash check to accommodate a mismatched DLL.

@@ -38,45 +38,43 @@ This repo uses a single-context layout. See `docs/agents/domain.md`.
 
 <!-- agents-md-author:begin lane-dispatch -->
 
-## Batch scope and spec dispatch
+## Spec execution
 
-- Define a batch by its operator-approved multi-ticket scope and dependency graph on the migration map,
-  using the existing specs and contracts. Freeze its number, starting SHA, per-ticket acceptance and test
-  interfaces; retain every graph ticket in the active task list. Components, repairs and reviews remain under
-  their original ticket and batch; changes to the number or scope return to the operator.
-- Execute approved implementation graphs with `implement-spec`; use `subagent-delegation` and
-  `pi-subagents` for Pi execution. The migration map remains the route; investigation and decision tickets
-  keep their own acceptance and execution paths, with decision tickets using the interactive path below.
-- Implementation and repair workers use `cline/cline-pass/deepseek-v4.1-flash:max`. The controller uses the
+- Scope each implementation run to an operator-approved spec or an independently deliverable ticket slice.
+  Use `to-spec` and `to-tickets` when missing scope or dependencies must be prepared, and execute multi-ticket
+  graphs with `implement-spec`. Merge each verified ticket or runnable slice onto `master` incrementally once
+  its automated checks and required gate pass, rather than holding the whole spec graph on a long-lived
+  integration branch.
+- Reuse existing specs, tickets and shared contracts. Freeze the starting SHA, acceptance and test interfaces.
+  Evidence-backed spec or graph amendments use `amend-spec`; changes to approved scope or behavior return to
+  the operator. Investigation and decision tickets keep their own acceptance and execution paths.
+- Implementation and repair workers use `mistral-vibe/deepseek-v4-1-flash-1017:max`. The controller uses the
   operator-selected main-session model. Fresh Standards and Spec reviewers use that session's selected
   provider/model and thinking level, explicitly pinned at dispatch. An unavailable requested model is a
   dispatch blocker.
-- Use one short-lived `integration/<batch>` branch in a separate worktree for the whole implementation graph.
-  Run one async workflow: implementers have isolated ticket worktrees based on its current tip; the controller owns both the main
-  checkout and serial merges in the integration worktree. Incorporate the integration tip into an implementer's
-  own branch before reporting ready; preserve existing work when the starting ref is wrong.
-- Dispatch the graph's open, unblocked, unassigned implementation frontier in parallel; accepted merges
-  automatically refill the same batch with newly unblocked graph tickets. An integrated runnable slice must pass its automated checks and the existing Windows driven-run
-  requirement before starting the next slice. Merging onto the integration branch does not close a ticket.
-- Each brief points to the spec, ticket, relevant contracts, agreed test interfaces and validation. Implementers
-  use `tdd` for behavioral changes, `diagnosing-bugs` for failures and `flutter-dart-mcp` for Dart/Flutter checks.
-  Use `anti-overengineering-review` when an abstraction's value is unresolved. Give every child an explicit
-  `timeoutMs` and `checkpointBeforeDeadlineMs`; implementation lanes receive three hours.
-- An implementer commits locally and leaves one evidence comment with actual checks, acceptance and residuals.
-  Children use `contact_supervisor` for unresolved boundaries. Integration merges, final acceptance,
-  publication, ticket closure and map changes belong to the controller. Evidence stays branch-scoped until
-  accepted and integrated into `master`.
-- Once the graph is complete, freeze the integration head and run one `code-review` over the whole change from
-  the starting SHA: fresh, independent Standards and Spec reviewers. Independent review occurs at graph
-  completion. Send accepted findings to one isolated repair writer, then re-review the affected changes.
-  The controller checks each ticket's raw diff before an integration merge and independently reproduces the
-  headline results before final acceptance.
-- After acceptance, the controller merges `--no-ff` into `master`, verifies the final integrated tree with the
-  verification matrix and claim gate in `docs/compatibility/delivery-phases.md`, pushes once and waits for every
-  platform row. Then close the tickets with resolution comments, update the map, open and link follow-ups,
-  archive retired commits and remove completed ticket and integration worktrees/branches. Report batch
-  completion after the whole approved graph meets its acceptance and cleanup; unresolved blockers remain in
-  the batch until resolved or the operator approves a scope change.
+- For Pi execution use `subagent-delegation` and `pi-subagents`: one async workflow and, when coordinating
+  parallel tickets, a short-lived `integration/<spec>` worktree. The controller owns the main checkout and
+  serial integration merges, replacing the skill's merger subagent. Check each ticket's raw diff before
+  merging and preserve existing work when its starting ref is wrong. Apply the Windows driven-run gate above
+  to runnable UI slices.
+- Briefs point to the spec, ticket, shared contracts, test interfaces and validation. Dart/Flutter work uses
+  `flutter-dart-mcp` under the project's MCP/CLI split. Give every child an explicit `timeoutMs` and
+  `checkpointBeforeDeadlineMs`; implementation lanes receive three hours. Implementers commit locally and
+  leave an evidence comment with actual checks, acceptance and residuals; unresolved boundaries use
+  `contact_supervisor`. Final acceptance, publication, ticket closure and map changes belong to the controller.
+- Co-locate product regressions in the owning module's existing `test/*_test.dart` file with shared fixtures,
+  asserting observable product behavior rather than script or harness source SHA-256 hashes. Keep `tool/`
+  oracle capture and comparison scripts focused on producing and comparing committed `golden.json` evidence;
+  never write meta-tests (unit tests for `capture.py`, fake-Android-SDK JVM tests for oracle harnesses, or
+  synthetic corrupted-JSON negative-control matrices for comparators).
+- Scope `code-review` (Standards and Spec reviewers) to `lib/` product behavior, contract compliance and core
+  regression tests, with at most one repair-and-re-review round for genuine product bugs, crashes or contract
+  violations. Exclude `tool/` capture scripts and comparator internals from defensive review expansion. The
+  controller independently reproduces headline results before final acceptance.
+- After acceptance, the controller merges `--no-ff` into `master`, verifies the integrated tree with
+  `docs/compatibility/delivery-phases.md`'s verification matrix and claim gate, pushes once and waits for every
+  platform row. Then resolve the tickets with evidence comments, update the map, link follow-ups and perform
+  the branch/worktree cleanup above.
 - A decision ticket gets its own interactive session with a briefing and `grilling`; it never runs as an
   implementation lane. Open that session in a Herdr pane beside the controller so the operator answers directly.
 - Briefings, evidence and resolution comments reference artifacts rather than repeat them. Continue in the

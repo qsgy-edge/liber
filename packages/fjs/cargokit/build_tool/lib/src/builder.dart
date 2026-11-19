@@ -155,6 +155,9 @@ class RustBuilder {
     final manifestPath = path.join(environment.manifestDir, 'Cargo.toml');
     final buildEnvironment = await _buildEnvironment();
     buildEnvironment['RUSTC'] = _toolchainRustc();
+    buildEnvironment['CARGO_BUILD_BUILD_DIR'] =
+        Platform.environment['CARGO_BUILD_BUILD_DIR'] ??
+            '{cargo-cache-home}/liber/build';
     runCommand(
       'rustup',
       [
