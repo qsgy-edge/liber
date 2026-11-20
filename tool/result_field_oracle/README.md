@@ -181,7 +181,7 @@ golden.
 The WebView environment is profile-exact. Both the live capture and the retained
 command admission require exactly one `Current WebView package (name, version)`
 line naming `com.google.android.webview` with the version that profile runs on:
-`159.0.8154.4` for the title-lifecycle corpus and `158.0.8127.2` for every other
+`159.0.8154.18` for the title-lifecycle corpus and `158.0.8127.2` for every other
 selected corpus, whose retained evidence was captured on it. The version comes
 from the fixture's own profile, never from a request flag or from a packet's
 self-declared value. An available-provider mention is not a current-provider

@@ -67,7 +67,7 @@ OWNED_PREFERENCE_PREFIX = 'liber_fields_02_'
 # profiles keep the 158 provider their retained evidence was captured with, and
 # the title-lifecycle profile runs on the currently approved 159 provider.
 SELECTED_WEBVIEW_PACKAGE = 'com.google.android.webview'
-SELECTED_WEBVIEW_VERSIONS = {'ordinary': '158.0.8127.2', 'title': '159.0.8154.4'}
+SELECTED_WEBVIEW_VERSIONS = {'ordinary': '158.0.8127.2', 'title': '159.0.8154.18'}
 # The retained preflight receipt plan the current producer emits. The eleven
 # base receipts are fixed; a lifecycle corpus additionally disassembles the
 # exact target DEX files that carry the reflected classes, in the producer's
