@@ -396,7 +396,14 @@ class _OnlineBookshelfState extends State<OnlineBookshelf> {
             sourceName: '${source['bookSourceName'] ?? ''}',
             run: () => pipeline.details(entry.htmlBook),
           );
-          await widget.service.updateCatalog(entry.sourceRef, book, chapters);
+          if (!mounted) return;
+          await widget.service.updateCatalog(
+            entry.sourceRef,
+            book,
+            chapters,
+            expectedBookId: entry.id,
+            expectedRevision: entry.chapterCatalogRevision,
+          );
         } finally {
           pipeline.cancel();
         }

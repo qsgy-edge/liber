@@ -91,6 +91,22 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   }
 }
 
+class _LookupGateShelf extends ShelfService {
+  _LookupGateShelf(super.store);
+  final lookupStarted = Completer<void>();
+  final releaseLookup = Completer<void>();
+
+  @override
+  Future<ShelfEntry?> find(String bookSourceUrl, String bookUrl) async {
+    final entry = await super.find(bookSourceUrl, bookUrl);
+    if (!lookupStarted.isCompleted) {
+      lookupStarted.complete();
+      await releaseLookup.future;
+    }
+    return entry;
+  }
+}
+
 class _UnusedTransport implements BookSourceTransport {
   const _UnusedTransport();
   @override
@@ -477,6 +493,70 @@ void main() {
     expect(find.text('A章'), findsOneWidget);
     expect(find.text('B章'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a slow refresh cannot overwrite a newer catalog', (
+    tester,
+  ) async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = ShelfService(store);
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: '旧详情');
+    final old = SourceChapter('旧目录', Uri.parse('$bookUrl/1'));
+    await shelf.add(source, book, [old]);
+    final gate = Completer<void>();
+    final pipeline = ScriptedPipeline(detailsGate: gate);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          service: shelf,
+          directBook: book,
+          pipeline: pipeline,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(pipeline.detailsCalls, ['旧详情']);
+    await shelf.updateCatalog(sourceUrl, book, [old.withName('新目录')]);
+    gate.complete();
+    await tester.pumpAndSettle();
+    final entry = (await shelf.find(sourceUrl, bookUrl))!;
+    expect(entry.chapters.single.name, '新目录');
+    expect(find.text('旧详情章'), findsNothing);
+  });
+
+  testWidgets('a TOC cannot renew its version after the book lookup', (
+    tester,
+  ) async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = _LookupGateShelf(store);
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: '旧详情');
+    final old = SourceChapter('旧目录', Uri.parse('$bookUrl/1'));
+    await shelf.add(source, book, [old]);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          service: shelf,
+          directBook: book,
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(shelf.lookupStarted.isCompleted, isTrue);
+    final fresh = HtmlBook(url: book.url, title: '新详情');
+    await shelf.updateCatalog(sourceUrl, fresh, [old.withName('新目录')]);
+    shelf.releaseLookup.complete();
+    await tester.pumpAndSettle();
+    final entry = (await shelf.find(sourceUrl, bookUrl))!;
+    expect(entry.chapters.single.name, '新目录');
+    expect(entry.title, '新详情');
+    expect(find.text('旧详情章'), findsNothing);
   });
 
   testWidgets('a stored chapter address resumes with its options', (

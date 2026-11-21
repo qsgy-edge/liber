@@ -3264,46 +3264,49 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // the state those scripts wrote is visible and the body scripts saw the
     // incoming chapter title. Its document is the first post-login response,
     // not the last page's.
-    final titleRule = _rule('ruleContent', 'title', optional: true);
     final firstHtml = firstPageHtml;
-    if (titleRule.trim().isNotEmpty && firstHtml != null) {
-      final title = await _field(
-        titleRule,
-        content: firstHtml,
-        label: 'ruleContent.title',
-      );
-      final titleBatch = HtmlRuleBatch(firstHtml);
-      final titleValue = _declare(titleBatch, 'title', title);
-      await titleBatch.run();
-      final extracted = await _documentValue(titleValue, title, firstHtml);
-      if (extracted.trim().isNotEmpty) {
-        contentTitle = _chapterTitle = extracted;
-        _chapter = SourceChapter(
-          extracted,
-          chapter.url,
-          rawAddress: chapter.rawAddress,
-          storedKey: chapter.storedKey,
-          addressBase: chapter.addressBase,
-          variable: chapter.variable,
-          fetchContext: chapter.fetchContext,
-        );
+    if (firstHtml != null) {
+      try {
+        final titleRule = _rule('ruleContent', 'title', optional: true);
+        if (titleRule.trim().isNotEmpty) {
+          final title = await _field(
+            titleRule,
+            content: firstHtml,
+            label: 'ruleContent.title',
+          );
+          final titleBatch = HtmlRuleBatch(firstHtml);
+          final titleValue = _declare(titleBatch, 'title', title);
+          await titleBatch.run();
+          final extracted = await _documentValue(titleValue, title, firstHtml);
+          if (extracted.trim().isNotEmpty) {
+            contentTitle = _chapterTitle = extracted;
+            _chapter = chapter.withName(extracted);
+          }
+        }
+      } on Object catch (error) {
+        if (!sourceTitleFailureIsOrdinary(error)) rethrow;
+        onHostMessage?.call(SourceHostMessage('ruleContent.title', '$error'));
       }
     }
+    _cancellation.throwIfCancelled();
+    // The final entity snapshots of this content request, pagination and all:
+    // every page wrote through the same candidate draft (#132).
+    final bookVariable = contentBookKey == null
+        ? null
+        : await _entityVariables.bookVariable(_sourceRef, contentBookKey);
+    final chapterVariable = await _entityVariables.chapterVariable(
+      _sourceRef,
+      contentBookKey ?? '',
+      chapter.storeKey,
+    );
+    _cancellation.throwIfCancelled();
     return HtmlChapterBody(
       text,
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
-      // The final entity snapshots of this content request, pagination and all:
-      // every page wrote through the same candidate draft (#132).
-      bookVariable: contentBookKey == null
-          ? null
-          : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
-      chapterVariable: await _entityVariables.chapterVariable(
-        _sourceRef,
-        contentBookKey ?? '',
-        chapter.storeKey,
-      ),
+      bookVariable: bookVariable,
+      chapterVariable: chapterVariable,
     );
   }
 

@@ -112,6 +112,108 @@ void main() {
     },
   );
 
+  test('ordinary HTML title failure keeps body and reports once', () async {
+    final messages = <SourceHostMessage>[];
+    final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));
+    final pipeline = HtmlSourcePipeline({
+      'bookSourceUrl': 'https://a.test',
+      'ruleContent': {
+        'content': '@CSS:p@text',
+        'title': '@js: throw new Error("optional title failed")',
+      },
+    }, SitePages({'/c/1': '<p>HTML BODY</p>'}))..onHostMessage = messages.add;
+
+    final body = await pipeline.chapter(chapter);
+    expect(body.text.trim(), 'HTML BODY');
+    expect(body.title ?? chapter.name, '目录标题');
+    expect(messages.single.message, contains('optional title failed'));
+  });
+
+  for (final cancelInNotice in [false, true]) {
+    test(
+      '${cancelInNotice ? "cancel on title diagnostic" : "refuse hatch scheme"} in HTML title',
+      () async {
+        final rule = cancelInNotice
+            ? '@js: throw new Error("optional title")'
+            : '@js: java.openUrl("file:///not-an-http-address", "title")';
+        const base = 'https://a.test';
+        final pipeline = HtmlSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {'content': '@CSS:p@text', 'title': rule},
+        }, SitePages({'/c/1': '<p>BODY</p>'}));
+        final notices = <SourceHostMessage>[];
+        pipeline.onHostMessage = (notice) {
+          notices.add(notice);
+          if (cancelInNotice && notice.kind == 'ruleContent.title') {
+            pipeline.cancel();
+          }
+        };
+        addTearDown(pipeline.cancel);
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            cancelInNotice
+                ? isA<SourceRequestCancelled>()
+                : isA<SourceScriptError>()
+                      .having((e) => e.category, 'category', 'host-input')
+                      .having((e) => e.message, 'member', contains('java.openUrl')),
+          ),
+        );
+        expect(notices.where((m) => m.kind == 'ruleContent.title'),
+            hasLength(cancelInNotice ? 1 : 0));
+      },
+    );
+  }
+
+  for (final (category, rule) in [
+    ('policy', '@js: java.readFile("not-used.txt")'),
+    ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
+    ('timeout', '@js: while (true) {}'),
+  ]) {
+    test(
+      'HTML title $category still fails the chapter load',
+      () async {
+        const base = 'https://a.test';
+        final pipeline = HtmlSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {'content': '@CSS:p@text', 'title': rule},
+        }, SitePages({'/c/1': '<p>HTML BODY</p>'}));
+        final messages = <SourceHostMessage>[];
+        pipeline.onHostMessage = (message) {
+          messages.add(message);
+          if (category == 'cancelled' && message.kind == 'toast') {
+            pipeline.cancel();
+          }
+        };
+        addTearDown(pipeline.cancel);
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        final error = isA<SourceScriptError>().having(
+          (error) => error.category,
+          'category',
+          category,
+        );
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            category == 'policy'
+                ? error.having(
+                    (error) => error.message,
+                    'member',
+                    contains('java.readFile'),
+                  )
+                : error,
+          ),
+        );
+        expect(messages.where((m) => m.kind == 'ruleContent.title'), isEmpty);
+        if (category == 'cancelled') {
+          expect(messages.single.message, 'cancel title');
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 55)),
+    );
+  }
+
   test(
     'the content title reads after the joined body and replacement',
     () async {

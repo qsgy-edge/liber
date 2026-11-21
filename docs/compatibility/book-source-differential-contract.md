@@ -295,6 +295,18 @@ Liber MUST preserve behavior that a source can observe through requests, state, 
 
 A behavior prohibited by an approved security or data-integrity policy is not silently normalized into a pass. Its fixture receives `policy-rejected`, and every source that requires it remains incompatible.
 
+### Content title and catalog name
+
+In Spec A / #138, an ordinary content-title rule error keeps the readable body
+and incoming title, with one diagnostic. Cancellation, an actual timeout, and
+named refusals still propagate. A successful nonblank content title is displayed
+and normally saved as the existing chapter name, without changing the chapter
+key, request text, or progress. A readable volume keeps its catalog name if
+saving the content title would make the stored address start with the new name
+and switch reopening to the volume's tag instead of fetching the body. This
+exception applies to the shelf write and to off-shelf handoff, not to display.
+Refreshing the catalog publishes the new TOC names.
+
 ### TOC chapter-variable restoration
 
 For the selected reference, `BookChapterList.upChapterInfo` restores stored chapter

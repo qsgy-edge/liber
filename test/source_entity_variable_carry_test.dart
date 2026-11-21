@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
@@ -8,12 +9,14 @@ import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
+import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/source/source_host_state.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
+import 'l10n_support.dart';
 import 'native_library.dart';
 
 /// #132 entity-variable transport: the carrier/runtime contract that carries a
@@ -100,6 +103,261 @@ void main() {
     },
     'ruleContent': {'content': contentScript},
   };
+
+  for (final replaced in [false, true]) {
+    testWidgets(
+      'reader entity writes ${replaced ? 'cannot touch a replacement catalog' : 'still reach the current catalog'}',
+      (tester) => tester.runAsync(() async {
+        final entered = Completer<void>();
+        final release = Completer<void>();
+        final finished = Completer<void>();
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final shelf = ShelfService(store);
+        final source = htmlSource(
+          infoScript: '',
+          tocScript: '',
+          contentScript:
+              '@js:book.putVariable("who", "reader book"); '
+              'chapter.putVariable("who", "reader"); '
+              'book.getVariable("who") + ":" + chapter.getVariable("who")',
+        );
+        final chapter = SourceChapter(
+          '目录名',
+          Uri.parse(chapterUrl),
+          variable: variableText({'who': 'initial'}),
+        );
+        final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+        await shelf.add(source, book, [chapter]);
+        final entry = (await shelf.find(origin, bookUrl))!;
+        final pages = _Pages(
+          {'/c/1': '<p>正文</p>'},
+          beforeResponse: () async {
+            entered.complete();
+            await release.future;
+          },
+        );
+        final pipeline = _FinishingHtml(
+          source,
+          pages,
+          shelf.hostState,
+          finished,
+        );
+        await tester.pumpWidget(
+          localizedApp(
+            home: OnlineReaderPage(
+              pipeline: pipeline,
+              book: book,
+              bookId: entry.id,
+              chapters: [chapter],
+              service: shelf,
+              convert: (text, _) => text,
+            ),
+          ),
+        );
+        await tester.pump();
+        try {
+          await Future.any([
+            entered.future,
+            finished.future,
+          ]).timeout(const Duration(seconds: 8));
+          expect(entered.isCompleted, isTrue);
+          if (replaced) {
+            await shelf.updateCatalog(
+              origin,
+              book.withVariable(variableText({'who': 'new book'})),
+              [
+                chapter.withVariable(variableText({'who': 'new catalog'})),
+              ],
+            );
+          }
+        } finally {
+          release.complete();
+        }
+        await finished.future.timeout(const Duration(seconds: 8));
+        await tester.pumpAndSettle();
+        final current = (await store.chaptersOf(entry.id)).single;
+        expect(
+          jsonDecode(current.variable!)['who'],
+          replaced ? 'new catalog' : 'reader',
+        );
+        final storedBook = (await store.bookById(entry.id))!;
+        expect(
+          jsonDecode(storedBook.variable!)['who'],
+          replaced ? 'new book' : 'reader book',
+        );
+        expect(
+          find.textContaining('reader book:reader'),
+          replaced ? findsNothing : findsOneWidget,
+        );
+      }),
+    );
+  }
+
+  for (final json in [false, true]) {
+    for (final replaced in [false, true]) {
+      final callback = json ? 'JSON initUrl' : 'HTML getStrResponse';
+      testWidgets(
+        'reader login re-entry via $callback with ${replaced ? 'a replaced' : 'the current'} catalog',
+        (tester) => tester.runAsync(() async {
+          // Warm the native callback port outside any reader draft. The login
+          // hook below must carry the initiating reader's context on re-entry.
+          final warm = InProcessSourceScriptRuntime();
+          expect(
+            await warm.evaluate(
+              source: 'java.get("warmCallbackPort"); 1',
+              input: const {},
+              timeout: const Duration(seconds: 3),
+            ),
+            1,
+          );
+          final entered = Completer<void>();
+          final release = Completer<void>();
+          final finished = Completer<void>();
+          final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+          addTearDown(store.close);
+          final shelf = ShelfService(store);
+          final createSource = json ? jsonSource : htmlSource;
+          final source = createSource(
+            infoScript: '',
+            tocScript: '',
+            contentScript:
+                '@js:book.getVariable("who") + ":" + chapter.getVariable("who")',
+          );
+          const write = '''
+if (source.get("retry") === "yes") {
+  book.putVariable("who", "nested book");
+  chapter.putVariable("who", "nested chapter");
+}
+''';
+          source['loginCheckJs'] =
+              'source.put("retry", "yes"); '
+              '${json ? 'java.initUrl(); ' : ''}java.getStrResponse();';
+          if (!json) {
+            source['header'] =
+                '@js:$write JSON.stringify({"X-Retry": source.get("retry") || "no"});';
+          }
+          final address = json
+              ? '$chapterUrl,${jsonEncode({'js': '$write result;'})}'
+              : chapterUrl;
+          final chapter = SourceChapter.fromAddress(
+            '目录名',
+            address,
+            bookUrl: Uri.parse(bookUrl),
+            variable: variableText({'who': 'initial chapter'}),
+          );
+          final book = HtmlBook(
+            url: Uri.parse(bookUrl),
+            title: '书',
+            variable: variableText({'who': 'initial book'}),
+          );
+          await shelf.add(source, book, [chapter]);
+          final entry = (await shelf.find(origin, bookUrl))!;
+          final pages = _Pages(
+            {'/c/1': json ? '{"text":"正文"}' : '<p>正文</p>'},
+            beforeResponse: () async {
+              if (!entered.isCompleted) {
+                entered.complete();
+                await release.future;
+              }
+            },
+          );
+          final pipeline = json
+              ? _FinishingJson(source, pages, shelf.hostState, finished)
+              : _FinishingHtml(source, pages, shelf.hostState, finished);
+          final handedOff = <(HtmlBook, List<SourceChapter>)>[];
+          await tester.pumpWidget(
+            localizedApp(
+              home: OnlineReaderPage(
+                pipeline: pipeline,
+                book: book,
+                bookId: entry.id,
+                chapters: [
+                  for (final row in entry.chapters)
+                    SourceChapter.fromAddress(
+                      row.name,
+                      row.url ?? row.chapterKey,
+                      bookUrl: book.url,
+                      chapterKey: row.chapterKey,
+                      variable: row.variable,
+                    ),
+                ],
+                chapterCatalogRevision: entry.chapterCatalogRevision,
+                service: shelf,
+                convert: (text, _) => text,
+                onEntityState: (book, chapters) =>
+                    handedOff.add((book, chapters)),
+              ),
+            ),
+          );
+          await tester.pump();
+          try {
+            await Future.any([
+              entered.future,
+              finished.future,
+            ]).timeout(const Duration(seconds: 8));
+            expect(entered.isCompleted, isTrue);
+            if (replaced) {
+              await shelf.updateCatalog(
+                origin,
+                book.withVariable(variableText({'who': 'replacement book'})),
+                [
+                  chapter.withVariable(
+                    variableText({'who': 'replacement chapter'}),
+                  ),
+                ],
+              );
+            }
+          } finally {
+            release.complete();
+          }
+          await finished.future.timeout(const Duration(seconds: 8));
+          await tester.pumpAndSettle();
+          expect(pages.requests.map((request) => request.url.path), [
+            '/c/1',
+            '/c/1',
+          ]);
+          if (!json) {
+            expect(
+              pages.requests.map((request) => request.headers['X-Retry']),
+              ['no', 'yes'],
+            );
+          }
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'retry'),
+            ),
+            'yes',
+          );
+          expect(
+            variableMapOf((await store.bookById(entry.id))!.variable)['who'],
+            replaced ? 'replacement book' : 'nested book',
+          );
+          expect(
+            variableMapOf(
+              (await store.chaptersOf(entry.id)).single.variable,
+            )['who'],
+            replaced ? 'replacement chapter' : 'nested chapter',
+          );
+          expect(
+            find.textContaining('nested book:nested chapter'),
+            replaced ? findsNothing : findsOneWidget,
+          );
+          if (replaced) {
+            expect(handedOff, isEmpty);
+          } else {
+            final (savedBook, savedChapters) = handedOff.single;
+            expect(variableMapOf(savedBook.variable)['who'], 'nested book');
+            expect(
+              variableMapOf(savedChapters.single.variable)['who'],
+              'nested chapter',
+            );
+          }
+        }),
+      );
+    }
+  }
 
   HtmlBook hitWith(String? variable) => HtmlBook(
     url: Uri.parse(bookUrl),
@@ -1631,17 +1889,75 @@ void main() {
   }
 }
 
+class _FinishingHtml extends HtmlSourcePipeline {
+  _FinishingHtml(
+    super.source,
+    super.transport,
+    SourceHostState state,
+    this.finished,
+  ) : super(hostState: state);
+
+  final Completer<void> finished;
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    try {
+      return await super.chapter(
+        chapter,
+        book: book,
+        nextChapterUrl: nextChapterUrl,
+      );
+    } finally {
+      finished.complete();
+    }
+  }
+}
+
+class _FinishingJson extends JsonSourcePipeline {
+  _FinishingJson(
+    super.source,
+    super.transport,
+    SourceHostState state,
+    this.finished,
+  ) : super(hostState: state);
+
+  final Completer<void> finished;
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    try {
+      return await super.chapter(
+        chapter,
+        book: book,
+        nextChapterUrl: nextChapterUrl,
+      );
+    } finally {
+      finished.complete();
+    }
+  }
+}
+
 /// Answers one page per path and records every request.
 class _Pages implements BookSourceTransport, SourceHttpTransport {
-  _Pages(this.pages, {this.onRequest});
+  _Pages(this.pages, {this.onRequest, this.beforeResponse});
   final Map<String, String> pages;
   final void Function(Uri)? onRequest;
+  final Future<void> Function()? beforeResponse;
   final requests = <SourceHttpRequest>[];
 
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
     requests.add(request);
     onRequest?.call(request.url);
+    if (beforeResponse != null) await beforeResponse!();
     return SourceHttpResponse(
       statusCode: 200,
       headers: const {},
@@ -1658,6 +1974,7 @@ class _Pages implements BookSourceTransport, SourceHttpTransport {
     final url = Uri.parse(path);
     requests.add(SourceHttpRequest(method: 'GET', url: url));
     onRequest?.call(url);
+    if (beforeResponse != null) await beforeResponse!();
     return _body(url);
   }
 
