@@ -1041,12 +1041,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       final chained =
           (key == 'ruleToc' && entry.key == 'nextTocUrl') ||
           (key == 'ruleContent' && entry.key == 'nextContentUrl');
-      // `imageStyle` is a *value* this tree already reads off the source
-      // (`sourceImageStyle`), and `replaceRegex` is a frozen content-stage field
-      // this product does not execute on the JSON path; neither is an
-      // extraction, so neither is validated as one. Refusing either refused the
-      // whole group — the same defect #81 fixed for `downloadUrls` (the
-      // operator's audit, #82/#83).
+      // `imageStyle` is a layout value (`sourceImageStyle`). The supported
+      // `replaceRegex` form runs on joined text, not on a JSON response, so
+      // neither field is validated as a JSON extraction.
       if (entry.key != 'checkKeyWord' &&
           entry.key != 'canReName' &&
           entry.key != 'imageStyle' &&
@@ -2374,8 +2371,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
         );
       },
     );
-    // The frozen joins a chapter's pages with a newline (`BookContent.kt:129`).
-    final text = parts.join('\n');
+    final text = _replaceJoinedContent(
+      parts.join('\n'),
+      content['replaceRegex'],
+    );
     // The selected title read is after the joined body, so the source state the
     // content scripts wrote is visible and those scripts saw the incoming
     // chapter title. Its document is the first post-login response, not the last
@@ -2436,6 +2435,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
       bookVariable: bookVariable,
       chapterVariable: chapterVariable,
     );
+  }
+
+  /// The selected `BookContent.kt:169-177` trims the joined body before
+  /// replacement, then indents every line, including lines emptied by it.
+  String _replaceJoinedContent(String text, String? rule) {
+    if (rule == null) return text;
+    final fields = RuleField.staticReplacement(rule);
+    if (fields == null) return text;
+    _cancellation.throwIfCancelled();
+    final trimmed = text.split('\n').map((line) => line.trim()).join('\n');
+    final replaced = unescapeHtml4(applyRuleReplacement(trimmed, fields));
+    return replaced.split('\n').map((line) => '　　$line').join('\n');
   }
 
   /// One chapter image's bytes, through the same source session the JSON stages

@@ -272,6 +272,51 @@ void main() {
     },
   );
 
+  for (final (label, rule, expectedText) in [
+    ('static replacement', r'##@@AD@@|tail\nsecond##', '　　first\n　　\n　　 page'),
+    ('no replacement', null, '　　first@@AD@@\n　　@@AD@@\n　　tail\nsecond page'),
+    (
+      'scripted replacement remains unexecuted',
+      '##@@AD@@@js: throw new Error("unexpected replacement script")',
+      '　　first@@AD@@\n　　@@AD@@\n　　tail\nsecond page',
+    ),
+  ]) {
+    test('JSON joined content: $label', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        final body = request.uri.path == '/c/1'
+            ? {
+                'body': '  first@@AD@@  \n@@AD@@\ntail',
+                'next': '/c/2',
+                'title': 'first title',
+              }
+            : {'body': 'second page', 'title': 'second title'};
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'ruleContent': {
+          'content': r'$.body',
+          'nextContentUrl': r'$.next',
+          'title': r'$.title',
+          'replaceRegex': ?rule,
+        },
+      }, HttpSourceTransport());
+      final body = await pipeline.chapter(
+        SourceChapter('TOC', Uri.parse('$base/c/1')),
+      );
+      expect(body.text, expectedText);
+      expect(body.title, 'first title');
+      expect(body.pages, 2);
+      expect(paths, ['/c/1', '/c/2']);
+    });
+  }
+
   test(
     'a valid JSON null root still reads the declared title after the body',
     () async {
