@@ -2739,7 +2739,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _sourceRef,
       book.identityAddress,
     );
-    final handoff = await _entityVariables
+    final publishHandoff = await _entityVariables
         .prepareTocHandoff(_sourceRef, book.identityAddress, [
           for (var i = 0; i < restored.length; i++)
             (
@@ -2749,7 +2749,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             ),
         ]);
     _cancellation.throwIfCancelled();
-    _entityVariables.publishTocHandoff(handoff);
+    publishHandoff();
     return (book.withVariable(bookVariable), restored);
   }
 

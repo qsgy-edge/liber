@@ -706,6 +706,109 @@ if (source.get("retry") === "yes") {
     }
   }
 
+  test(
+    'JSON TOC first read uses the fresh carrier after a key becomes duplicated',
+    () async {
+      final source = jsonSource(
+        infoScript: '',
+        tocScript:
+            '@js:if (chapter.title != "Second") chapter.putVariable("token", chapter.title == "First" ? "new" : "old"); ""',
+        contentScript: '@js:"token:" + chapter.getVariable("token")',
+      );
+      final pages = jsonPages();
+      final state = SourceHostState();
+      JsonSourcePipeline open() =>
+          JsonSourcePipeline(source, pages, hostState: state);
+      pages.pages['/toc'] = '{"list":[{"name":"old","url":"/c/1"}]}';
+      final initial = open();
+      addTearDown(initial.cancel);
+      final (_, original) = await initial.details(hitWith(null));
+      expect(original.single.variable, variableText({'token': 'old'}));
+      expect(original.single.progressKey, chapterUrl);
+
+      pages.pages['/toc'] =
+          '{"list":[{"name":"First","url":"/c/1"},{"name":"Second","url":"c/1"}]}';
+      final refresh = open();
+      addTearDown(refresh.cancel);
+      final (book, chapters) = await refresh.details(hitWith(null));
+      expect(chapters.map((chapter) => chapter.address), ['/c/1', 'c/1']);
+      expect(chapters.map((chapter) => chapter.progressKey), [
+        chapterUrl,
+        chapterUrl,
+      ]);
+      expect(chapters.first.variable, variableText({'token': 'new'}));
+      expect(chapters.last.variable, isNull);
+      expect(pages.requests.map((request) => request.url.path), [
+        '/book',
+        '/toc',
+        '/book',
+        '/toc',
+      ]);
+
+      final reader = open();
+      addTearDown(reader.cancel);
+      final body = await reader.chapter(chapters.first, book: book);
+      expect(body.text, 'token:new');
+      expect(body.chapterVariable, chapters.first.variable);
+    },
+  );
+
+  for (final readerWrites in [false, true]) {
+    test(
+      'JSON TOC ambiguity preserves ${readerWrites ? 'the reader write' : 'the previous raw write'}',
+      () async {
+        final source = jsonSource(
+          infoScript: '',
+          tocScript:
+              '@js:if (chapter.title != "Second") chapter.putVariable("token", chapter.title); ""',
+          contentScript: '@js:chapter.getVariable("token")',
+        );
+        final pages = jsonPages();
+        final state = SourceHostState();
+        JsonSourcePipeline open([Map<String, dynamic>? options]) {
+          final pipeline = JsonSourcePipeline(
+            options ?? source,
+            pages,
+            hostState: state,
+          );
+          addTearDown(pipeline.cancel);
+          return pipeline;
+        }
+
+        String catalog(String name, String url) => jsonEncode({
+          'list': [
+            {'name': name, 'url': url},
+          ],
+        });
+        pages.pages['/toc'] = catalog('raw', chapterUrl);
+        await open().details(hitWith(null));
+        pages.pages['/toc'] = catalog('override', '/c/1');
+        final (book, unique) = await open().details(hitWith(null));
+        expect(
+          (await open().chapter(unique.single, book: book)).text,
+          'override',
+        );
+        if (readerWrites) {
+          final writer = open({
+            ...source,
+            'ruleContent': {
+              'content': '@js:chapter.putVariable("token", "reader"); "reader"',
+            },
+          });
+          await writer.chapter(unique.single, book: book);
+        }
+
+        pages.pages['/toc'] =
+            '{"list":[{"name":"First","url":"/c/1"},{"name":"Second","url":"c/1"}]}';
+        final (refreshedBook, duplicate) = await open().details(hitWith(null));
+        expect(duplicate.first.progressKey, duplicate.last.progressKey);
+        expect(duplicate.first.variable, variableText({'token': 'First'}));
+        final body = await open().chapter(duplicate.first, book: refreshedBook);
+        expect(body.text, readerWrites ? 'reader' : 'raw');
+      },
+    );
+  }
+
   test('JSON TOC duplicate resolved keys keep their existing handoff', () async {
     final source = jsonSource(
       infoScript: '',
