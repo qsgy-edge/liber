@@ -68,7 +68,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   String? _catalogBookId;
   bool busy = true;
   Completer<void>? _adding;
-  final _pendingCatalogAdds = <(HtmlBook, List<SourceChapter>, int)>{};
+  final _pendingCatalogAdds =
+      <(HtmlBook, List<SourceChapter>, int), Future<void>>{};
 
   /// What the page last did, or null before it has done anything: the
   /// initial line is the build's, because it is copy (`lib/l10n/`).
@@ -244,8 +245,19 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       status = AppLocalizations.of(context).readingDetailsAndToc;
     });
     final shelf = widget.service;
-    final revision = shelf.store.chapterCatalogRevision;
     try {
+      // A reopened book must start its analysis after its queued publication,
+      // not adopt the revision of a different set of chapters afterwards.
+      final identity = hit.identityAddress;
+      final pending = [
+        for (final entry in _pendingCatalogAdds.entries)
+          if (entry.key.$1.identityAddress == identity) entry.value,
+      ];
+      if (pending.isNotEmpty) {
+        await Future.wait(pending);
+        if (!mounted) return;
+      }
+      final revision = shelf.store.chapterCatalogRevision;
       final (book, items) = await _withTls(() => pipeline.details(hit));
       if (!mounted) return;
       final existing = await shelf.find(sourceUrl, book.identityAddress);
@@ -286,10 +298,12 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     // A repeat of this selection shares its pending catalog publication.
     // Distinct adds still queue with their original revision.
     final revision = items.isEmpty ? null : _catalogRevision;
+    final expectedBookId = _catalogBookId;
     final catalog = revision == null ? null : (book, items, revision);
-    if (catalog != null && !_pendingCatalogAdds.add(catalog)) return;
+    if (catalog != null && _pendingCatalogAdds.containsKey(catalog)) return;
     final previousAdd = _adding;
     final adding = _adding = Completer<void>();
+    if (catalog != null) _pendingCatalogAdds[catalog] = adding.future;
     try {
       if (previousAdd != null) await previousAdd.future;
       final shelf = widget.service;
@@ -304,9 +318,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           );
           final id = row?.id;
           if (!mounted ||
-              selected != book ||
-              chapters != items ||
-              (_catalogBookId != null && _catalogBookId != id) ||
+              (expectedBookId != null && expectedBookId != id) ||
               (id != null && !store.isChapterCatalogCurrent(id, revision!))) {
             throw const SourceRequestCancelled();
           }
@@ -319,7 +331,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       }
       if (!mounted) return;
       setState(() {
-        if (selected?.url == book.url) inShelf = true;
+        if (selected?.identityAddress == book.identityAddress) inShelf = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
