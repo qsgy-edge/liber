@@ -23,6 +23,7 @@ Future<SourceStageResponse> fetchContentWithLoginCheck({
   required Uri url,
   required Future<SourceStageResponse> Function() fetch,
   required Future<SourceStageResponse> Function(SourceStageResponse) check,
+  Future<SourceStageResponse> Function(SourceStageResponse)? checkRecovery,
   required SourceCancellation cancellation,
 }) async {
   final SourceStageResponse response;
@@ -38,7 +39,7 @@ Future<SourceStageResponse> fetchContentWithLoginCheck({
     cancellation.throwIfCancelled();
     SourceStageResponse? recovered;
     try {
-      recovered = await check(
+      recovered = await (checkRecovery ?? check)(
         SourceStageResponse(body: body, url: url, statusCode: 500),
       );
     } on SourceRequestCancelled {

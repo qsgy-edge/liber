@@ -864,6 +864,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String? address,
     Uri? base,
     bool diagnoseRequest = true,
+    bool diagnoseBootstrap = false,
   }) async {
     _stageRequest = (
       url: url,
@@ -891,9 +892,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
         method: method,
         headers: headers,
         cancellation: _cancellation,
-        bootstrap: () => host!
-            .forExecution(_cancellation)
-            .request(method, '$url', headers: headers, body: body),
+        bootstrap: () => sourceStageRequest(
+          diagnose: diagnoseBootstrap,
+          stage: stage,
+          url: url,
+          request: () => host!
+              .forExecution(_cancellation)
+              .request(method, '$url', headers: headers, body: body),
+        ),
       );
       final result = host == null
           ? await render()
@@ -2307,6 +2313,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           options: pageOptions,
           address: request.address,
           base: request.base,
+          diagnoseBootstrap: isFirstPage,
         );
         final contentPage =
             retainedFirst ??
@@ -2370,7 +2377,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _responseRoot = firstPageDocument;
       _responseText = firstBody;
       // The first document and its complete chapter address share one context.
-      _contentTitleBase = sourceAbsoluteRequestText(chapterBase, requestText);
+      _contentTitleBase = sourceAbsoluteRequestText(
+        chapterBase,
+        requestText,
+        normalizeOptionSeparator: true,
+      );
       try {
         if (rawTitle is! String) {
           throw const FormatException('Invalid ruleContent.title');

@@ -9,6 +9,7 @@ import 'package:liber/source/book_source_service.dart' show BookSourceTransport;
 import 'package:liber/source/book_source_webview_adapter.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
+import 'package:liber/source/json_source_pipeline.dart' show JsonSourcePipeline;
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
@@ -253,9 +254,10 @@ void main() {
   test(
     'HTML chapter applies POST, charset and option JS only when fetched',
     () async {
-      const tail =
-          ',{"method":"POST","charset":"gbk","body":"v=书",'
+      const options =
+          '{"method":"POST","charset":"gbk","body":"v=书",'
           '"js":"result.replace(\'/original\',\'/actual\')"}';
+      const tail = ' , $options';
       final site = await _Site.start({
         '/book': [const _Page('<h1>书</h1><a class="toc" href="/toc">目录</a>')],
         '/toc': [
@@ -266,7 +268,9 @@ void main() {
         '/chapter/actual': [const _Page('<div id="content">正文</div>')],
       });
       addTearDown(site.close);
-      final pipeline = _pipeline(_htmlSource(site.origin));
+      final source = _htmlSource(site.origin);
+      (source['ruleContent'] as Map<String, String>)['title'] = '@js:baseUrl';
+      final pipeline = _pipeline(source);
       final (book, toc) = await pipeline.details(
         HtmlBook(title: '书', url: Uri.parse('${site.origin}/book')),
       );
@@ -280,7 +284,9 @@ void main() {
         chapterKey: chapter.storeKey,
       );
       expect(site.seen.map((r) => r.path), ['/book', '/toc']);
-      expect((await pipeline.chapter(reopened, book: book)).text, '正文');
+      final result = await pipeline.chapter(reopened, book: book);
+      expect(result.text, '正文');
+      expect(result.title, '${site.origin}/chapter/original,$options');
       expect(site.seen.map((r) => r.path), [
         '/book',
         '/toc',
@@ -311,11 +317,15 @@ if (result.code() !== 500 || result.url() !== "$url" || result.body() !== 'conne
 }
 java.getStrResponse();
 ''';
-      final pipeline = _pipeline(
-        json
-            ? _jsonSource(site.origin, check)
-            : _htmlSource(site.origin, checkJs: check),
-      );
+      final source = json
+          ? _jsonSource(site.origin, check)
+          : _htmlSource(site.origin, checkJs: check);
+      source['header'] = '''@js:
+var calls = Number(source.get('header-calls') || '0') + 1;
+source.put('header-calls', String(calls));
+JSON.stringify({'X-Header-Eval': String(calls)});
+''';
+      final pipeline = _pipeline(source);
       final response = await pipeline.chapter(
         SourceChapter('第一章', Uri.parse(url)),
       );
@@ -324,7 +334,59 @@ java.getStrResponse();
         'GET /chapter/1',
         'GET /chapter/1',
       ]);
+      expect(site.seen.map((r) => r.headers['x-header-eval']), ['1', '1']);
     });
+
+    test(
+      '$adapter first content WebView POST recovers its HTTP bootstrap',
+      () async {
+        final site = await _Site.start({
+          '/chapter/1': [
+            const _Page('', disconnect: true),
+            const _Page('bootstrap'),
+          ],
+        });
+        addTearDown(site.close);
+        final address = '${site.origin}/chapter/1';
+        const check = '''
+if (result.code() !== 500 || result.body() !== 'connection') {
+  throw new Error('expected a bootstrap connection diagnosis');
+}
+java.getStrResponse();
+''';
+        final engine = _RenderedAdapter(
+          json ? '{"text":"rendered"}' : '<div id="content">rendered</div>',
+        );
+        final adapterFactory = _RenderedFactory(engine);
+        final transport = HttpSourceTransport();
+        final hostState = SourceHostState();
+        final pipeline = json
+            ? JsonSourcePipeline(
+                _jsonSource(site.origin, check),
+                transport,
+                hostState: hostState,
+                webViewFactory: adapterFactory,
+              )
+            : HtmlSourcePipeline(
+                _htmlSource(site.origin, checkJs: check),
+                transport,
+                hostState: hostState,
+                webViewFactory: adapterFactory,
+              );
+        final result = await pipeline.chapter(
+          SourceChapter.fromAddress(
+            '第一章',
+            '$address,{"method":"POST","body":"v=1","webView":true}',
+          ),
+        );
+        expect(result.text, 'rendered');
+        expect(site.seen.map((r) => '${r.method} ${r.path}'), [
+          'POST /chapter/1',
+          'POST /chapter/1',
+        ]);
+        expect(engine.requests.single.html, 'bootstrap');
+      },
+    );
   }
 
   for (final json in [false, true]) {

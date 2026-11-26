@@ -620,7 +620,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// The hook runs once per stage, on the stage's first response — the frozen
   /// call sites are the four stage entries, and the `nextTocUrl`/
   /// `nextContentUrl` pages `BookChapterList`/`BookContent` fetch never run it.
-  Future<SourceStageResponse> _loginCheck(SourceStageResponse response) async {
+  Future<SourceStageResponse> _loginCheck(
+    SourceStageResponse response, {
+    Map<String, String>? resendHeaders,
+  }) async {
     final checkJs = '${source['loginCheckJs'] ?? ''}';
     if (checkJs.trim().isEmpty) return response;
     return _runtime.evaluateLoginCheck(
@@ -628,7 +631,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       input: _scriptInput(_keyword, response.toJson()),
       stage: SourceStageRequest(
         initialResponse: response,
-        resend: _resendStage,
+        resend: () => _resendStage(sourceHeaders: resendHeaders),
         reanalyze: _reanalyzeStage,
       ),
       timeout: const Duration(seconds: 30),
@@ -638,7 +641,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   /// Frozen `AnalyzeUrl.getStrResponse` (`AnalyzeUrl.kt:465`): the stage's own
   /// request, with its own options and headers, sent again.
-  Future<SourceStageResponse> _resendStage() {
+  Future<SourceStageResponse> _resendStage({
+    Map<String, String>? sourceHeaders,
+  }) {
     final stage = _stageRequest!;
     return _fetch(
       stage.url,
@@ -647,6 +652,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       options: stage.options,
       address: stage.address,
       base: stage.base,
+      sourceHeaders: sourceHeaders,
     );
   }
 
@@ -1595,6 +1601,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String? address,
     Uri? base,
     bool diagnoseRequest = true,
+    bool diagnoseBootstrap = false,
     Map<String, String>? sourceHeaders,
   }) async {
     _stageRequest = (
@@ -1621,9 +1628,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         method: method,
         headers: headers,
         cancellation: _cancellation,
-        bootstrap: () => host!
-            .forExecution(_cancellation)
-            .request(method, '$url', headers: headers, body: body),
+        bootstrap: () => sourceStageRequest(
+          diagnose: diagnoseBootstrap,
+          stage: stage,
+          url: url,
+          request: () => host!
+              .forExecution(_cancellation)
+              .request(method, '$url', headers: headers, body: body),
+        ),
       );
       final result = host == null
           ? await render()
@@ -3173,6 +3185,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           address: request.address,
           base: request.base,
           sourceHeaders: sourceHeaders,
+          diagnoseBootstrap: isFirstPage,
         );
         final fetched =
             retainedFirst ??
@@ -3181,6 +3194,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                     url: target,
                     fetch: fetch,
                     check: _loginCheck,
+                    checkRecovery: (response) =>
+                        _loginCheck(response, resendHeaders: sourceHeaders),
                     cancellation: _cancellation,
                   )
                 : await fetch());
@@ -3242,7 +3257,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     if (firstHtml != null) {
       // BookContent binds the first document to the chapter's complete
       // address, not to the source root or the final HTTP response URL.
-      _contentTitleBase = sourceAbsoluteRequestText(chapterBase, requestText);
+      _contentTitleBase = sourceAbsoluteRequestText(
+        chapterBase,
+        requestText,
+        normalizeOptionSeparator: true,
+      );
       try {
         final titleRule = _rule('ruleContent', 'title', optional: true);
         if (titleRule.trim().isNotEmpty) {

@@ -502,12 +502,19 @@ String sourceUrlOptionTailOf(String address) {
   return boundary == null ? '' : address.substring(boundary);
 }
 
-/// Complete pre-option text for the chapter's native absolute address.
-String sourceAbsoluteRequestText(Uri base, String address) {
+/// Resolves the chapter target without reading its options. Keep the exact
+/// tail for storage; title analysis uses the delimiter from `getAbsoluteURL`.
+String sourceAbsoluteRequestText(
+  Uri base,
+  String address, {
+  bool normalizeOptionSeparator = false,
+}) {
   final boundary = sourceUrlOptionBoundaryOf(address);
   if (boundary == null) return sourceUrlTextResolved(base, address);
-  return '${sourceUrlTextResolved(base, address.substring(0, boundary))}'
-      '${address.substring(boundary)}';
+  final tail = normalizeOptionSeparator
+      ? ',${address.substring(address.indexOf('{', boundary))}'
+      : address.substring(boundary);
+  return '${sourceUrlTextResolved(base, address.substring(0, boundary))}$tail';
 }
 
 /// The request facts a target conversion reads from an address text's own
