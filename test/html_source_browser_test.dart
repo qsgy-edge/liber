@@ -91,6 +91,23 @@ class ScriptedPipeline extends HtmlSourcePipeline {
   }
 }
 
+class _AddGateShelf extends ShelfService {
+  _AddGateShelf(super.store);
+  final addStarted = Completer<void>();
+  final releaseAdd = Completer<void>();
+
+  @override
+  Future<({String bookId, int? revision})> add(
+    Map<String, dynamic> source,
+    HtmlBook book, [
+    List<SourceChapter> chapters = const [],
+  ]) async {
+    addStarted.complete();
+    await releaseAdd.future;
+    return super.add(source, book, chapters);
+  }
+}
+
 class _LookupGateShelf extends ShelfService {
   _LookupGateShelf(super.store);
   final lookupStarted = Completer<void>();
@@ -493,6 +510,51 @@ void main() {
     expect(find.text('A章'), findsOneWidget);
     expect(find.text('B章'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opening after an in-flight add uses its published catalog', (
+    tester,
+  ) async {
+    final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(store.close);
+    final shelf = _AddGateShelf(store);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          service: shelf,
+          directBook: HtmlBook(url: Uri.parse(bookUrl), title: 'Book'),
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Book章'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OnlineReaderPage), findsOneWidget);
+    Navigator.of(tester.element(find.byType(OnlineReaderPage))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.playlist_add));
+    await tester.pump();
+    expect(shelf.addStarted.isCompleted, isTrue);
+    await tester.tap(find.text('Book章'));
+    await tester.pump();
+    expect(find.byType(OnlineReaderPage), findsNothing);
+    shelf.releaseAdd.complete();
+    await tester.pumpAndSettle();
+
+    final reader = tester.widget<OnlineReaderPage>(
+      find.byType(OnlineReaderPage),
+    );
+    expect(
+      store.isChapterCatalogCurrent(
+        reader.bookId,
+        reader.chapterCatalogRevision!,
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('a slow refresh cannot overwrite a newer catalog', (

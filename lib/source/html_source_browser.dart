@@ -67,6 +67,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   late int _catalogRevision;
   String? _catalogBookId;
   bool busy = true;
+  Completer<void>? _adding;
 
   /// What the page last did, or null before it has done anything: the
   /// initial line is the build's, because it is copy (`lib/l10n/`).
@@ -281,6 +282,8 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     HtmlBook book, [
     List<SourceChapter> items = const [],
   ]) async {
+    if (_adding != null) return;
+    final adding = _adding = Completer<void>();
     try {
       final shelf = widget.service;
       final store = shelf.store;
@@ -323,6 +326,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           () => error = AppLocalizations.of(context).addToShelfFailed('$e'),
         );
       }
+    } finally {
+      _adding = null;
+      adding.complete();
     }
   }
 
@@ -331,6 +337,17 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     final book = selected!;
     final openingPipeline = pipeline;
     final openedChapters = chapters;
+    final adding = _adding;
+    if (adding != null) {
+      await adding.future;
+      if (!mounted ||
+          busy ||
+          selected != book ||
+          chapters != openedChapters ||
+          pipeline != openingPipeline) {
+        return;
+      }
+    }
     final revision = _catalogRevision;
     var handedBook = book;
     var handedChapters = openedChapters;
