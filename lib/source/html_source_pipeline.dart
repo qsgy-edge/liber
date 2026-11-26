@@ -1486,14 +1486,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
-    // For a content request with a charset, AnalyzeUrl passes the resolved
-    // text to JS before query encoding, not Dart's percent-encoded Uri.
-    final scriptTarget = rawScriptUrl && split.options.charset != null
-        ? sourceUrlTextResolved(base, split.path)
-        : '${_resolve(base, split.path, keepFragment: true)}';
+    // For an initial content request, AnalyzeUrl passes the resolved text to
+    // option JS before query encoding, whether or not a charset was declared.
     final text = script == null
         ? split.path
-        : (await _evalJs(script, keyword, scriptTarget))?.toString() ??
+        : (await _evalJs(
+                script,
+                keyword,
+                rawScriptUrl
+                    ? sourceUrlTextResolved(base, split.path)
+                    : '${_resolve(base, split.path, keepFragment: true)}',
+              ))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
