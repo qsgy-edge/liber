@@ -505,6 +505,67 @@ void main() {
   );
 
   test(
+    'JSON keeps unsupported chapter options until the actual fetch',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      const options = ',{"unsupportedTestOption":true}';
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        final body = switch (request.uri.path) {
+          '/book' => {'title': '书', 'toc': '/toc'},
+          '/toc' => {
+            'list': [
+              {'name': '第一章', 'href': '/chapter/1$options'},
+              {'name': '第二章', 'href': '/chapter/2'},
+            ],
+          },
+          _ => {'body': '正文'},
+        };
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'ruleBookInfo': {'name': r'$.title', 'tocUrl': r'$.toc'},
+        'ruleToc': {
+          'chapterList': r'$.list',
+          'chapterName': r'$.name',
+          'chapterUrl': r'$.href',
+        },
+        'ruleContent': {'content': r'$.body'},
+      }, HttpSourceTransport());
+      final (book, chapters) = await pipeline.details(
+        HtmlBook(title: '书', url: Uri.parse('$base/book')),
+      );
+      final first = chapters.first;
+      expect(first.persistedAddress, '$base/chapter/1$options');
+      final reopened = SourceChapter.fromAddress(
+        first.name,
+        first.persistedAddress,
+        bookUrl: book.url,
+        chapterKey: first.storeKey,
+      );
+      for (final chapter in [first, reopened]) {
+        await expectLater(
+          pipeline.chapter(chapter, book: book),
+          throwsA(
+            isA<UnsupportedError>().having(
+              (error) => error.message,
+              'option name',
+              contains('unsupportedTestOption'),
+            ),
+          ),
+        );
+      }
+      expect((await pipeline.chapter(chapters.last, book: book)).text, '正文');
+      expect(paths, ['/book', '/toc', '/chapter/2']);
+    },
+  );
+
+  test(
     'a reopened relative JSON chapter fetches against the owning book',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

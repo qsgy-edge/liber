@@ -489,14 +489,18 @@ int? sourceUrlOptionBoundaryOf(String address) =>
 /// option tail.
 ///
 /// The frozen `AnalyzeUrl.analyzeUrl` computes its `urlNoOption` the same way
-/// for every stage, so text that was stored as a chapter's own address (the
-/// frozen `BookChapter.url`) turns back into the URL a request targets.
-String sourceUrlTargetOf(String address) => splitSourceUrlOptions(address).path;
+/// for every stage. The catalog only locates the target; a request validates
+/// the option tail when it analyzes the complete address.
+String sourceUrlTargetOf(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  return (boundary == null ? address : address.substring(0, boundary)).trim();
+}
 
-/// The `,{…}` option tail of an address text verbatim, or an empty string when
-/// it has none. Used by the row that persists an address text.
-String sourceUrlOptionTailOf(String address) =>
-    splitSourceUrlOptions(address).tail;
+/// The `,{…}` option tail verbatim, without validating a saved chapter's options.
+String sourceUrlOptionTailOf(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  return boundary == null ? '' : address.substring(boundary);
+}
 
 /// The request facts a target conversion reads from an address text's own
 /// `,{…}` option tail: the method the frozen request would use, the charset its

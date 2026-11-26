@@ -1133,18 +1133,17 @@ class JsonSourcePipeline implements BookSourcePipeline {
     Uri base,
     String address,
   ) {
-    final parts = splitSourceUrlOptions(address);
     final resolved = resolveSourceTocUrl(
       address: address,
       base: base,
       fallbackAddress: address,
     );
-    final bare = splitSourceUrlOptions(resolved).path;
+    final bare = sourceUrlTargetOf(resolved);
     if (!_isPendingAddressText(address)) {
       return (text: resolved, target: _url(base, bare));
     }
     return (
-      text: parts.path.startsWith('@js:') ? address : resolved,
+      text: sourceUrlTargetOf(address).startsWith('@js:') ? address : resolved,
       target: SourceHttpUri.parse(bare),
     );
   }
