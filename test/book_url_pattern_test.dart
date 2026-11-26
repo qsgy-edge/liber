@@ -6464,7 +6464,7 @@ void main() {
 
   for (final (json, scriptResult) in [
     for (final json in [false, true])
-      for (final scriptResult in ['no script', 'relative', 'absolute'])
+      for (final scriptResult in ['no script', 'null', 'relative', 'absolute'])
         (json, scriptResult),
   ]) {
     test(
@@ -6477,6 +6477,7 @@ void main() {
         const landed = '/redirect/landed?key=two';
         const bodyPath = '/body/child';
         final script = switch (scriptResult) {
+          'null' => 'chapter == null ? result : null',
           'relative' => "chapter == null ? result : 'child'",
           'absolute' => "chapter == null ? result : '$origin$bodyPath'",
           _ => null,

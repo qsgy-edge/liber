@@ -56,6 +56,10 @@ class SourceUrlOptions {
   bool get isPost => method == 'POST';
 }
 
+final class SourceRelativeOptionUrlError extends FormatException {
+  const SourceRelativeOptionUrlError() : super('正文 URL 选项 js 必须返回绝对地址');
+}
+
 /// A null script result keeps the original input. For ordinary content,
 /// the frozen request builder consumes a replacement without a base URL.
 String sourceUrlOptionTarget(
@@ -66,7 +70,7 @@ String sourceUrlOptionTarget(
   if (result == null) return original;
   final text = result.toString();
   if (requireAbsolute && !(Uri.tryParse(text)?.hasScheme ?? false)) {
-    throw const FormatException('正文 URL 选项 js 必须返回绝对地址');
+    throw const SourceRelativeOptionUrlError();
   }
   return text;
 }

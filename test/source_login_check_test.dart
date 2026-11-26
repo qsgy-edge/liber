@@ -484,6 +484,75 @@ pass == 1 ? result : 'child';
       },
     );
 
+    for (final reanalyze in [false, true]) {
+      test(
+        '$adapter recovery after a relative option URL (valid reanalysis: $reanalyze)',
+        () async {
+          final site = await _Site.start({
+            '/chapter/1': [
+              const _Page('', disconnect: true),
+              _Page(
+                json
+                    ? '{"text":"stale target"}'
+                    : '<div id="content">stale target</div>',
+              ),
+            ],
+            '/chapter/fixed': [
+              _Page(
+                json
+                    ? '{"text":"correct page"}'
+                    : '<div id="content">correct page</div>',
+              ),
+            ],
+          });
+          addTearDown(site.close);
+          final check = reanalyze
+              ? 'java.initUrl(); java.initUrl(); java.getStrResponse();'
+              : 'try { java.initUrl(); } catch (_) {} java.getStrResponse();';
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          final options = jsonEncode({
+            'js': '''
+var pass = Number(cache.get('option-called') || '0') + 1;
+cache.put('option-called', String(pass));
+pass === 1 ? result : pass === 2 ? 'child' : '${site.origin}/chapter/fixed';
+''',
+          });
+          final chapter = SourceChapter.fromAddress(
+            '第一章',
+            '${site.origin}/chapter/1,$options',
+          );
+          final pipeline = _pipeline(source);
+          addTearDown(pipeline.cancel);
+          Object? failure;
+          String? body;
+          try {
+            body = (await pipeline.chapter(chapter)).text;
+          } catch (error) {
+            failure = error;
+          }
+          expect(
+            site.seen.map((request) => '${request.method} ${request.target}'),
+            ['GET /chapter/1', if (reanalyze) 'GET /chapter/fixed'],
+          );
+          if (reanalyze) {
+            expect(failure, isNull);
+            expect(body, 'correct page');
+          } else {
+            expect(
+              failure,
+              isA<SourceStageDiagnostic>().having(
+                (error) => error.kind,
+                'kind',
+                SourceStageFailureKind.connection,
+              ),
+            );
+          }
+        },
+      );
+    }
+
     for (final rewrite in [false, true]) {
       test(
         '$adapter recovery sees the chapter origin before option JS (rewrite: $rewrite)',

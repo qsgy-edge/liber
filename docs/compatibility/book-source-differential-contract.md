@@ -304,9 +304,11 @@ parser and transport for supported options, including POST, body, `js` and
 charset. For the first ordinary HTTP(S) content request (including
 `java.initUrl()` reanalysis), a non-null URL-option `js` result replaces the
 address and must not be relative. A relative result fails before a request is
-sent; it is not resolved against the book, catalog, or redirect target. Null
-leaves the resolved address in place. This does not change how chapter links
-are resolved. Unsupported or invalid options retain their own errors at request
+sent; it is not resolved against the book, catalog, or redirect target. When
+`java.initUrl()` produces a relative replacement, the next send fails instead
+of falling back to the previous target. A new successful reanalysis can supply
+a valid target. Null leaves the resolved address in place. This does not change
+how chapter links are resolved. Unsupported or invalid options retain their own errors at request
 time. Reusing an eligible retained body does not analyze its address or send a
 request.
 

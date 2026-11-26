@@ -505,6 +505,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     Uri base,
   })?
   _stageRequest;
+  bool _stageTargetRejected = false;
 
   bool get cancelled => _cancellation.isCancelled;
   @override
@@ -650,6 +651,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     Map<String, String>? sourceHeaders,
   }) {
     final stage = _stageRequest!;
+    if (_stageTargetRejected) throw const SourceRelativeOptionUrlError();
     return _fetch(
       stage.url,
       stage.stage,
@@ -666,23 +668,30 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(
-      stage.base,
-      stage.address,
-      _keyword,
-      // Repeat the content request's pre-encoding script input and keep its
-      // declared fragment through GET query encoding.
-      keepGetFragment: stage.stage == BookSourceStage.content,
-      rawScriptUrl: stage.stage == BookSourceStage.content,
-      requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
-    );
-    _stageRequest = (
-      url: url,
-      stage: stage.stage,
-      options: options,
-      address: stage.address,
-      base: stage.base,
-    );
+    try {
+      final (url, options) = await _request(
+        stage.base,
+        stage.address,
+        _keyword,
+        // Repeat the content request's pre-encoding script input and keep its
+        // declared fragment through GET query encoding.
+        keepGetFragment: stage.stage == BookSourceStage.content,
+        rawScriptUrl: stage.stage == BookSourceStage.content,
+        requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
+      );
+      _stageRequest = (
+        url: url,
+        stage: stage.stage,
+        options: options,
+        address: stage.address,
+        base: stage.base,
+      );
+      _stageTargetRejected = false;
+    } on SourceRelativeOptionUrlError {
+      // Frozen initUrl accepts the replacement; its request builder rejects
+      // it on the next send. Keep the input for another initUrl, not the target.
+      _stageTargetRejected = true;
+    }
   }
 
   /// The shared rule-field path's edges for this adapter: the scripts go through
@@ -1635,6 +1644,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       address: address ?? '$url',
       base: base ?? url,
     );
+    _stageTargetRejected = false;
     _cancellation.throwIfCancelled();
     final resolvedHeaders = sourceHeaders ?? await _headers();
     final merged = {...resolvedHeaders, ...options.headers};

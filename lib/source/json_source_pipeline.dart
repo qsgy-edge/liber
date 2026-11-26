@@ -223,6 +223,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     Uri base,
   })?
   _stageRequest;
+  bool _stageTargetRejected = false;
 
   final _cancellation = SourceCancellation();
 
@@ -416,6 +417,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// request, with its own options and headers, sent again.
   Future<SourceStageResponse> _resendStage() {
     final stage = _stageRequest!;
+    if (_stageTargetRejected) throw const SourceRelativeOptionUrlError();
     return _fetch(
       stage.stage,
       stage.url,
@@ -431,19 +433,26 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(
-      stage.base,
-      stage.address,
-      _keyword,
-      requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
-    );
-    _stageRequest = (
-      url: url,
-      stage: stage.stage,
-      options: options,
-      address: stage.address,
-      base: stage.base,
-    );
+    try {
+      final (url, options) = await _request(
+        stage.base,
+        stage.address,
+        _keyword,
+        requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
+      );
+      _stageRequest = (
+        url: url,
+        stage: stage.stage,
+        options: options,
+        address: stage.address,
+        base: stage.base,
+      );
+      _stageTargetRejected = false;
+    } on SourceRelativeOptionUrlError {
+      // Frozen initUrl accepts the replacement; its request builder rejects
+      // it on the next send. Keep the input for another initUrl, not the target.
+      _stageTargetRejected = true;
+    }
   }
 
   /// The shared rule-field path's edges for this adapter: the scripts go through
@@ -886,6 +895,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       address: address ?? '$url',
       base: base ?? url,
     );
+    _stageTargetRejected = false;
     _cancellation.throwIfCancelled();
     // This request's own map: its stage read the source header before it
     // analysed the address, and a `java.initUrl` reanalysis or a repeated send
