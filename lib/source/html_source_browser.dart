@@ -282,15 +282,18 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     HtmlBook book, [
     List<SourceChapter> items = const [],
   ]) async {
-    if (_adding != null) return;
+    // Keep every admitted add in order; a queued catalog retains the revision
+    // it was built from, rather than adopting a newer external refresh.
+    final previousAdd = _adding;
+    final revision = items.isEmpty ? null : _catalogRevision;
     final adding = _adding = Completer<void>();
     try {
+      if (previousAdd != null) await previousAdd.future;
       final shelf = widget.service;
       final store = shelf.store;
       if (items.isEmpty) {
         await shelf.add(widget.source, book);
       } else {
-        final revision = _catalogRevision;
         final published = await store.transaction(() async {
           final row = await store.bookByNaturalKey(
             sourceUrl,
@@ -301,7 +304,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
               selected != book ||
               chapters != items ||
               (_catalogBookId != null && _catalogBookId != id) ||
-              (id != null && !store.isChapterCatalogCurrent(id, revision))) {
+              (id != null && !store.isChapterCatalogCurrent(id, revision!))) {
             throw const SourceRequestCancelled();
           }
           return shelf.add(widget.source, book, items);
@@ -327,7 +330,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         );
       }
     } finally {
-      _adding = null;
+      if (identical(_adding, adding)) _adding = null;
       adding.complete();
     }
   }
@@ -337,8 +340,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     final book = selected!;
     final openingPipeline = pipeline;
     final openedChapters = chapters;
-    final adding = _adding;
-    if (adding != null) {
+    while (true) {
+      final adding = _adding;
+      if (adding == null) break;
       await adding.future;
       if (!mounted ||
           busy ||
