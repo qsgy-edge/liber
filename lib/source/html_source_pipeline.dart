@@ -2559,6 +2559,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               final tagValue = await fieldValue('updateTime', index);
               final volumeValue = await fieldValue('isVolume', index);
               final isVolume = sourceIsTrue(volumeValue);
+              final tag = sourceTocTag(tagValue, isVolume: isVolume);
               // Tag/volume observe the raw address; VIP/pay observe its fallback.
               publishTocChapter(
                 title,
@@ -2571,7 +2572,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               if (title.isEmpty) continue;
               final vipValue = await fieldValue('isVip', index);
               final payValue = await fieldValue('isPay', index);
-              final tag = tagValue;
               final isVip = sourceIsTrue(vipValue);
               final isPay = sourceIsTrue(payValue);
               // The chapter's own variable text the item scripts wrote, keyed by
