@@ -1435,6 +1435,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
+    bool rawScriptUrl = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
     return _analyzeRequest(
@@ -1445,6 +1446,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       captureRequestOrigin: captureRequestOrigin,
       rawBase: rawBase,
       keepGetFragment: keepGetFragment,
+      rawScriptUrl: rawScriptUrl,
     );
   }
 
@@ -1464,6 +1466,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
+    bool rawScriptUrl = false,
   }) async {
     var address = expandedAddress;
     final raw = rawBase;
@@ -1482,10 +1485,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
-    final rawTarget = _resolve(base, split.path, keepFragment: true);
+    // For a content request with a charset, AnalyzeUrl passes the resolved
+    // text to JS before query encoding, not Dart's percent-encoded Uri.
+    final scriptTarget = rawScriptUrl && split.options.charset != null
+        ? sourceUrlTextResolved(base, split.path)
+        : '${_resolve(base, split.path, keepFragment: true)}';
     final text = script == null
         ? split.path
-        : (await _evalJs(script, keyword, '$rawTarget'))?.toString() ??
+        : (await _evalJs(script, keyword, scriptTarget))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
@@ -3104,6 +3111,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             _keyword,
             captureRequestOrigin: (origin) => recoveryOrigin = origin,
             keepGetFragment: true,
+            rawScriptUrl: true,
           );
     // The retained first page's complete native text is the base its declared
     // addresses resolve against; a fetched page's own response base takes over as

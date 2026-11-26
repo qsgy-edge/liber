@@ -299,6 +299,40 @@ void main() {
 
   for (final json in [false, true]) {
     final adapter = json ? 'JSON' : 'HTML';
+    for (final query in ['中', '%D6%D0']) {
+      test('$adapter content option script sees raw query $query', () async {
+        final site = await _Site.start({
+          '/chapter': [
+            _Page(json ? '{"text":"正文"}' : '<div id="content">正文</div>'),
+          ],
+        });
+        addTearDown(site.close);
+        final source = json
+            ? _jsonSource(site.origin, '')
+            : _htmlSource(site.origin);
+        final expected = '${site.origin}/chapter?q=$query#part';
+        final script =
+            'if (result !== ${jsonEncode(expected)}) throw new Error(result); result';
+        final address =
+            '$expected,${jsonEncode({'charset': 'gbk', 'js': script})}';
+        final chapter = SourceChapter.fromAddress(
+          '第一章',
+          address,
+          bookUrl: Uri.parse('${site.origin}/book'),
+          chapterKey: 'stable-key',
+        );
+        final key = chapter.storeKey;
+        final persistedAddress = chapter.persistedAddress;
+        final pipeline = _pipeline(source);
+        final body = await pipeline.chapter(chapter);
+        expect(body.text, '正文');
+        expect(chapter.storeKey, key);
+        expect(chapter.persistedAddress, persistedAddress);
+        expect(site.seen.map((r) => '${r.method} ${r.target}'), [
+          'GET /chapter?q=%D6%D0%23part',
+        ]);
+      });
+    }
     test('$adapter content recovers one disconnected first request', () async {
       final site = await _Site.start({
         '/chapter/1': [
