@@ -297,8 +297,69 @@ void main() {
     },
   );
 
+  test('HTML rejects an invalid chapter address before option JS runs', () async {
+    final site = await _Site.start({});
+    addTearDown(site.close);
+    final state = SourceHostState();
+    final invalid = Uri.parse(site.origin).replace(
+      userInfo: 'probe',
+      path: '/chapter',
+    );
+    final options = jsonEncode({
+      'js': 'cache.put("invalid-address-script", true); result',
+    });
+    final chapter = SourceChapter.fromAddress('第一章', '$invalid,$options');
+    final pipeline = _pipeline(_htmlSource(site.origin), state: state);
+    await expectLater(
+      pipeline.chapter(chapter),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          '非法书源地址：$invalid',
+        ),
+      ),
+    );
+    expect(await state.entry(site.origin, 'invalid-address-script'), isNull);
+    expect(site.seen, isEmpty);
+  });
+
   for (final json in [false, true]) {
     final adapter = json ? 'JSON' : 'HTML';
+    for (final query in ['中', '%D6%D0']) {
+      test('$adapter content option script sees raw query $query', () async {
+        final site = await _Site.start({
+          '/chapter': [
+            _Page(json ? '{"text":"正文"}' : '<div id="content">正文</div>'),
+          ],
+        });
+        addTearDown(site.close);
+        final source = json
+            ? _jsonSource(site.origin, '')
+            : _htmlSource(site.origin);
+        final expected = '${site.origin}/chapter?q=$query#part';
+        final script =
+            'if (result !== ${jsonEncode(expected)}) throw new Error(result); result';
+        final address =
+            '$expected,${jsonEncode({'charset': 'gbk', 'js': script})}';
+        final chapter = SourceChapter.fromAddress(
+          '第一章',
+          address,
+          bookUrl: Uri.parse('${site.origin}/book'),
+          chapterKey: 'stable-key',
+        );
+        final key = chapter.storeKey;
+        final persistedAddress = chapter.persistedAddress;
+        final pipeline = _pipeline(source);
+        final body = await pipeline.chapter(chapter);
+        expect(body.text, '正文');
+        expect(chapter.storeKey, key);
+        expect(chapter.persistedAddress, persistedAddress);
+        expect(site.seen.map((r) => '${r.method} ${r.target}'), [
+          'GET /chapter?q=%D6%D0%23part',
+        ]);
+      });
+    }
     test('$adapter content recovers one disconnected first request', () async {
       final site = await _Site.start({
         '/chapter/1': [
@@ -337,6 +398,49 @@ JSON.stringify({'X-Header-Eval': String(calls)});
       ]);
       expect(site.seen.map((r) => r.headers['x-header-eval']), ['1', '1']);
     });
+
+    for (final charset in ['gbk', null]) {
+      test(
+        '$adapter content option sees raw query on recovery (${charset ?? 'default'})',
+        () async {
+          final site = await _Site.start({
+            '/chapter': [
+              const _Page('', disconnect: true),
+              _Page(
+                json
+                    ? '{"text":"recovered"}'
+                    : '<div id="content">recovered</div>',
+              ),
+            ],
+          });
+          addTearDown(site.close);
+          const check = 'java.initUrl(); java.getStrResponse();';
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          final options = jsonEncode({
+            'charset': ?charset,
+            'js': '''
+var pass = Number(cache.get('url-option-pass') || '0') + 1;
+cache.put('url-option-pass', String(pass));
+result.replace('中', '中&pass=' + pass);
+''',
+          });
+          final chapter = SourceChapter.fromAddress(
+            '第一章',
+            '${site.origin}/chapter?q=中,$options',
+          );
+          final body = await _pipeline(source).chapter(chapter);
+          expect(body.text, 'recovered');
+          final query = charset == 'gbk' ? '%D6%D0' : '%E4%B8%AD';
+          final target = 'GET /chapter?q=$query';
+          expect(
+            site.seen.map((request) => '${request.method} ${request.target}'),
+            ['$target&pass=1', '$target&pass=2'],
+          );
+        },
+      );
+    }
 
     for (final rewrite in [false, true]) {
       test(

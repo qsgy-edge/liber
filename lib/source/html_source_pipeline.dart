@@ -669,9 +669,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       stage.base,
       stage.address,
       _keyword,
-      // The content stage carries a declared fragment past its own GET query
-      // re-encoding; a POST request keeps it on the wire either way.
+      // Repeat the content request's pre-encoding script input and keep its
+      // declared fragment through GET query encoding.
       keepGetFragment: stage.stage == BookSourceStage.content,
+      rawScriptUrl: stage.stage == BookSourceStage.content,
     );
     _stageRequest = (
       url: url,
@@ -1435,6 +1436,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
+    bool rawScriptUrl = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
     return _analyzeRequest(
@@ -1445,6 +1447,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       captureRequestOrigin: captureRequestOrigin,
       rawBase: rawBase,
       keepGetFragment: keepGetFragment,
+      rawScriptUrl: rawScriptUrl,
     );
   }
 
@@ -1464,6 +1467,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
+    bool rawScriptUrl = false,
   }) async {
     var address = expandedAddress;
     final raw = rawBase;
@@ -1482,10 +1486,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
-    final rawTarget = _resolve(base, split.path, keepFragment: true);
+    // Validate before any option-script effects. For the initial content
+    // request, JS still receives the text before query encoding.
+    final resolved = _resolve(base, split.path, keepFragment: true);
     final text = script == null
         ? split.path
-        : (await _evalJs(script, keyword, '$rawTarget'))?.toString() ??
+        : (await _evalJs(
+                script,
+                keyword,
+                rawScriptUrl
+                    ? sourceUrlTextResolved(base, split.path)
+                    : '$resolved',
+              ))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
@@ -3104,6 +3116,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             _keyword,
             captureRequestOrigin: (origin) => recoveryOrigin = origin,
             keepGetFragment: true,
+            rawScriptUrl: true,
           );
     // The retained first page's complete native text is the base its declared
     // addresses resolve against; a fetched page's own response base takes over as
