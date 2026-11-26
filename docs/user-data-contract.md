@@ -89,13 +89,6 @@ adoption, update or relocation and never grants file access. These keys can
 change while the minted book ID, groups, settings and progress stay attached to
 the same book (#121; ADR 0006 amendment).
 
-Network books also carry one nullable logical `sourceTocUrl` for the first
-content request's login-recovery context (#138). Keep the full TOC address as
-text, independently of the book identity and chapter keys. A successful
-catalog refresh updates it with the catalog; Legado import preserves its
-available network TOC addresses. A missing value does not reset existing
-metadata, chapters or progress, or trigger a new TOC request.
-
 **Retained files (#127).** A positively verified previous file association offers
 update, keep both, or cancel before admitting an otherwise unowned file. That
 association does not establish which content is newer. Update preserves the

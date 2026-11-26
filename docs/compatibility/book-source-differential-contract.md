@@ -313,13 +313,12 @@ and stack trace. A valid result other than status 500 becomes the first content
 response. A status 500, invalid result, or failed recovery preserves the original
 request diagnostic. Cancellation can still stop recovery, and cancellation, TLS
 trust refusal, redirect limits and invalid request options do not initiate it.
-The recovery hook's `baseUrl` is the book's logical `tocUrl` with the option
-separator and tail removed, as in `AnalyzeUrl`; it is not the TOC redirect or
-pagination URL. Preserve the full logical TOC address on the book across add,
-successful catalog refresh, Legado import and reopen. An absent address remains
-unknown until a successful refresh: older rows stay intact, and recovery then
-uses the existing source-root fallback. Do not request information or TOC just
-to recover content, or change chapter keys, requests, or `fetchContext`.
+For a resolved HTTP(S) chapter URL, the recovery hook's `baseUrl` is its
+scheme and authority before the URL-option `js` or an HTTP redirect changes
+its target. This is the initialized `AnalyzeUrl` binding; the synthetic
+response's `url()` still reports the attempted request URL. Sharing a source
+or a TOC does not imply sharing the chapter's origin. This adds no TOC request,
+persistence field, migration, chapter-key change, or change to `fetchContext`.
 Later pages do not run the hook, and other stages and normal HTTP responses
 retain their existing behavior. Compare the actual attempts, state, final body
 and failure category under the named diagnostic difference.
