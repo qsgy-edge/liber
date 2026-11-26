@@ -2400,7 +2400,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           rawTitle,
           label: 'ruleContent.title',
         );
-        if (title.trim().isNotEmpty) {
+        if (!sourceKotlinIsBlank(title)) {
           contentTitle = _chapterTitle = title;
           _chapter = chapter.withName(title);
         }

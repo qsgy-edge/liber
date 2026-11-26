@@ -21,6 +21,7 @@ import 'content_processing.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
+import 'source_url_rules.dart' show sourceKotlinIsBlank;
 
 /// The reader's reading column: the body's own text style, the widest column it
 /// is set in, and the padding around it. The image shapes below are expressed
@@ -390,7 +391,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       if (!isCurrent()) return;
       requireCatalog();
       final title = result.title;
-      final hasTitle = title != null && title.trim().isNotEmpty;
+      final hasTitle = title != null && !sourceKotlinIsBlank(title);
       final content = (
         title: hasTitle ? title : chapter.name,
         text: result.text,

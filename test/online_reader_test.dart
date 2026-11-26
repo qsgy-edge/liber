@@ -276,6 +276,42 @@ void main() {
     expect(find.text('正文标题'), findsOneWidget);
   });
 
+  for (final (label, title, expected) in [
+    ('U+0085', '\u0085', '\u0085'),
+    ('U+001C', '\u001C', '目录标题'),
+  ]) {
+    testWidgets('reader content title uses selected blankness: $label', (
+      tester,
+    ) async {
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final chapter = SourceChapter('目录标题', Uri.parse('$sourceUrl/1'));
+      await shelf.add(source, book, [chapter]);
+      final before = (await store.chaptersOf(bookId)).single;
+      List<SourceChapter>? handed;
+
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: ScriptedPipeline(contentTitle: title),
+            book: book,
+            bookId: bookId,
+            chapters: [chapter],
+            service: shelf,
+            onEntityState: (_, updated) => handed = updated,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final row = (await store.chaptersOf(bookId)).single;
+      expect(row.name.codeUnits, expected.codeUnits);
+      expect(row, before.copyWith(name: expected));
+      expect(handed!.single.name, expected);
+      expect(find.text(expected), findsOneWidget);
+    });
+  }
+
   test(
     'title publication leaves a replaced chapter and another source alone',
     () async {

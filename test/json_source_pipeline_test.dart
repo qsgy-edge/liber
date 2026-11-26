@@ -182,6 +182,37 @@ void main() {
     },
   );
 
+  for (final (label, title, expected) in [
+    ('U+0085', '\u0085', '\u0085'),
+    ('U+001C', '\u001C', null),
+    ('mixed text', ' \u001CTitle\u0085 ', ' \u001CTitle\u0085 '),
+  ]) {
+    test('JSON content title uses selected blankness: $label', () async {
+      const base = 'https://a.test';
+      final url = Uri.parse('$base/c/1');
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'ruleContent': {'content': r'$.body', 'title': r'$.title'},
+      }, const _UnusedTransport());
+      final body = await pipeline.chapter(
+        SourceChapter(
+          '目录标题',
+          url,
+          fetchContext: (
+            requestAddress: '$url',
+            retainedPage: SourceStageResponse(
+              body: jsonEncode({'body': 'JSON BODY', 'title': title}),
+              url: url,
+            ),
+          ),
+        ),
+      );
+
+      expect(body.text, 'JSON BODY');
+      expect(body.title?.codeUnits, expected?.codeUnits);
+    });
+  }
+
   test('ordinary JSON title failure keeps body and reports once', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
