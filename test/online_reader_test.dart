@@ -784,6 +784,42 @@ void main() {
     },
   );
 
+  testWidgets('reload cannot overlap a next-chapter fetch', (tester) async {
+    final gate = Completer<void>();
+    final pipeline = ScriptedPipeline(gate: gate);
+    await tester.pumpWidget(
+      localizedApp(
+        home: OnlineReaderPage(
+          pipeline: pipeline,
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
+          chapters: [
+            SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+            SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
+          ],
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Both buttons still have their old callbacks until the next frame.
+    await tester.tap(find.text('下一章'));
+    await tester.tap(find.text('重新加载'));
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(pipeline.fetches, 2);
+    expect(find.text('第二章'), findsOneWidget);
+    expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/2');
+
+    await tester.tap(find.text('重新加载'));
+    await tester.pumpAndSettle();
+    expect(pipeline.fetches, 3);
+    expect(find.text('第二章'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('reader blanks the chapter name while a chapter loads', (
     tester,
   ) async {

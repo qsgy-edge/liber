@@ -580,6 +580,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('repeating a pending catalog add reports one successful add', (
+    tester,
+  ) async {
+    final gatedShelf = _AddGateShelf(store);
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: 'Book');
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          service: gatedShelf,
+          directBook: book,
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('加入书架'));
+    await tester.pump();
+    expect(gatedShelf.addStarted.isCompleted, isTrue);
+    await tester.tap(find.text('加入书架'));
+    gatedShelf.releaseAdd.complete();
+    await tester.pumpAndSettle();
+
+    final entry = (await shelf.onlineShelf()).single;
+    expect(entry.title, 'Book');
+    expect(
+      (await shelf.find(sourceUrl, bookUrl))!.chapters.single.name,
+      'Book章',
+    );
+    expect(find.text('已加入书架：Book'), findsOneWidget);
+    expect(find.textContaining('加入书架失败'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('queued catalog add cannot overwrite an external refresh', (
     tester,
   ) async {

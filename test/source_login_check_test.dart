@@ -580,7 +580,7 @@ result;
     }
 
     test(
-      '$adapter first content WebView POST recovers its HTTP bootstrap',
+      '$adapter first content WebView POST preserves HTTP bootstrap failure',
       () async {
         final site = await _Site.start({
           '/chapter/1': [
@@ -615,18 +615,17 @@ java.getStrResponse();
                 hostState: hostState,
                 webViewFactory: adapterFactory,
               );
-        final result = await pipeline.chapter(
-          SourceChapter.fromAddress(
-            '第一章',
-            '$address,{"method":"POST","body":"v=1","webView":true}',
+        await expectLater(
+          pipeline.chapter(
+            SourceChapter.fromAddress(
+              '第一章',
+              '$address,{"method":"POST","body":"v=1","webView":true}',
+            ),
           ),
+          throwsA(anyOf(isA<HttpException>(), isA<SocketException>())),
         );
-        expect(result.text, 'rendered');
-        expect(site.seen.map((r) => '${r.method} ${r.path}'), [
-          'POST /chapter/1',
-          'POST /chapter/1',
-        ]);
-        expect(engine.requests.single.html, 'bootstrap');
+        expect(site.seen.map((r) => '${r.method} ${r.path}'), ['POST /chapter/1']);
+        expect(engine.requests, isEmpty);
       },
     );
   }
