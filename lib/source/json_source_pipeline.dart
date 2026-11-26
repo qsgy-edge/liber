@@ -873,7 +873,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String? address,
     Uri? base,
     bool diagnoseRequest = true,
-    bool diagnoseBootstrap = false,
   }) async {
     _stageRequest = (
       url: url,
@@ -901,14 +900,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
         method: method,
         headers: headers,
         cancellation: _cancellation,
-        bootstrap: () => sourceStageRequest(
-          diagnose: diagnoseBootstrap,
-          stage: stage,
-          url: url,
-          request: () => host!
-              .forExecution(_cancellation)
-              .request(method, '$url', headers: headers, body: body),
-        ),
+        bootstrap: () => host!
+            .forExecution(_cancellation)
+            .request(method, '$url', headers: headers, body: body),
       );
       final result = host == null
           ? await render()
@@ -2337,7 +2331,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
           options: pageOptions,
           address: request.address,
           base: request.base,
-          diagnoseBootstrap: isFirstPage,
         );
         final contentPage =
             retainedFirst ??

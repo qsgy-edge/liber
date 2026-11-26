@@ -68,6 +68,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   String? _catalogBookId;
   bool busy = true;
   Completer<void>? _adding;
+  final _pendingCatalogAdds = <(HtmlBook, List<SourceChapter>, int)>{};
 
   /// What the page last did, or null before it has done anything: the
   /// initial line is the build's, because it is copy (`lib/l10n/`).
@@ -282,10 +283,12 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     HtmlBook book, [
     List<SourceChapter> items = const [],
   ]) async {
-    // Keep every admitted add in order; a queued catalog retains the revision
-    // it was built from, rather than adopting a newer external refresh.
-    final previousAdd = _adding;
+    // A repeat of this selection shares its pending catalog publication.
+    // Distinct adds still queue with their original revision.
     final revision = items.isEmpty ? null : _catalogRevision;
+    final catalog = revision == null ? null : (book, items, revision);
+    if (catalog != null && !_pendingCatalogAdds.add(catalog)) return;
+    final previousAdd = _adding;
     final adding = _adding = Completer<void>();
     try {
       if (previousAdd != null) await previousAdd.future;
@@ -330,6 +333,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         );
       }
     } finally {
+      if (catalog != null) _pendingCatalogAdds.remove(catalog);
       if (identical(_adding, adding)) _adding = null;
       adding.complete();
     }

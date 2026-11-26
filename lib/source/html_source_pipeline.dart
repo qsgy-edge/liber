@@ -1622,7 +1622,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String? address,
     Uri? base,
     bool diagnoseRequest = true,
-    bool diagnoseBootstrap = false,
     Map<String, String>? sourceHeaders,
   }) async {
     _stageRequest = (
@@ -1649,14 +1648,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         method: method,
         headers: headers,
         cancellation: _cancellation,
-        bootstrap: () => sourceStageRequest(
-          diagnose: diagnoseBootstrap,
-          stage: stage,
-          url: url,
-          request: () => host!
-              .forExecution(_cancellation)
-              .request(method, '$url', headers: headers, body: body),
-        ),
+        bootstrap: () => host!
+            .forExecution(_cancellation)
+            .request(method, '$url', headers: headers, body: body),
       );
       final result = host == null
           ? await render()
@@ -3217,7 +3211,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           address: request.address,
           base: request.base,
           sourceHeaders: sourceHeaders,
-          diagnoseBootstrap: isFirstPage,
         );
         final fetched =
             retainedFirst ??

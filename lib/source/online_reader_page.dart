@@ -260,6 +260,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     await load(
       widget.chapterIndex,
       widget.textOffset,
+      opening: true,
       clearError: built != null,
     );
   }
@@ -336,8 +337,19 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     }
   }
 
-  Future<void> load(int next, int resume, {bool clearError = true}) async {
-    if (_updatingScript || next < 0 || next >= widget.chapters.length) return;
+  Future<void> load(
+    int next,
+    int resume, {
+    bool opening = false,
+    bool clearError = true,
+  }) async {
+    // Callbacks from the previous frame can still run after a load was admitted.
+    if ((busy && !opening) ||
+        _updatingScript ||
+        next < 0 ||
+        next >= widget.chapters.length) {
+      return;
+    }
     final owner = widget;
     final generation = ++_loadGeneration;
     final chapter = _chapterAt(next);
