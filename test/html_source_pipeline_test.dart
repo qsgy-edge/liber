@@ -218,6 +218,28 @@ void main() {
     },
   );
 
+  for (final (label, title, expected) in [
+    ('U+0085', '\u0085', '\u0085'),
+    ('U+001C', '\u001C', null),
+    ('mixed text', ' \u001CTitle\u0085 ', ' \u001CTitle\u0085 '),
+  ]) {
+    test('HTML content title uses selected blankness: $label', () async {
+      final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));
+      final codes = title.codeUnits.join(',');
+      final pipeline = HtmlSourcePipeline({
+        'bookSourceUrl': 'https://a.test',
+        'ruleContent': {
+          'content': '@CSS:p@text',
+          'title': '@js: String.fromCharCode($codes)',
+        },
+      }, SitePages({'/c/1': '<p>HTML BODY</p>'}));
+
+      final body = await pipeline.chapter(chapter);
+      expect(body.text, 'HTML BODY');
+      expect(body.title?.codeUnits, expected?.codeUnits);
+    });
+  }
+
   test('ordinary HTML title failure keeps body and reports once', () async {
     final messages = <SourceHostMessage>[];
     final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));

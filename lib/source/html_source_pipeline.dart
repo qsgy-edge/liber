@@ -3280,7 +3280,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           final titleValue = _declare(titleBatch, 'title', title);
           await titleBatch.run();
           final extracted = await _documentValue(titleValue, title, firstHtml);
-          if (extracted.trim().isNotEmpty) {
+          if (!sourceKotlinIsBlank(extracted)) {
             contentTitle = _chapterTitle = extracted;
             _chapter = chapter.withName(extracted);
           }

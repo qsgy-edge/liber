@@ -148,6 +148,35 @@ void main() {
     },
   );
 
+  for (final (label, title, accepted) in [
+    ('U+0085', '\u0085', true),
+    ('U+001C', '\u001C', false),
+  ]) {
+    test('shelf content title uses selected blankness: $label', () async {
+      final hit = book('A');
+      final toc = chapters('A');
+      await shelf.add(source, hit, toc);
+      final before = await entryOf('A');
+      final saved = await shelf.saveChapterTitle(
+        bookId: before.id,
+        sourceRef: sourceUrl,
+        book: hit,
+        chapter: toc.first,
+        chapterIndex: 0,
+        title: title,
+        isCurrent: () => true,
+      );
+
+      expect(saved?.codeUnits, accepted ? title.codeUnits : null);
+      await restart();
+      final first = before.chapters.first;
+      expect((await entryOf('A')).chapters, [
+        accepted ? first.copyWith(name: title) : first,
+        before.chapters.last,
+      ]);
+    });
+  }
+
   test('加入的书、目录与各自的位置来自存储，重启后仍在', () async {
     await shelf.add(source, book('A', title: '甲'), chapters('A'));
     await shelf.add(source, book('B', title: '乙'), chapters('B'));

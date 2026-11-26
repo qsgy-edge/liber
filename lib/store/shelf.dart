@@ -8,6 +8,7 @@ import '../source/html_source_pipeline.dart';
 import '../source/js_source_runtime.dart' show variableMapOf, variableTextOf;
 import '../source/json_source_pipeline.dart' show SourceChapter;
 import '../source/source_host_state.dart';
+import '../source/source_url_rules.dart' show sourceKotlinIsBlank;
 import 'database.dart';
 import 'host_state.dart';
 import 'ids.dart';
@@ -257,7 +258,7 @@ class ShelfService {
     required String title,
     required bool Function() isCurrent,
   }) async {
-    if (title.trim().isEmpty || !isCurrent()) return null;
+    if (sourceKotlinIsBlank(title) || !isCurrent()) return null;
     // Reopening tests the *stored* address against the stored name. Preserve
     // the catalog name only if the new name would divert a fetch to the tag.
     bool hidesBodyOnReopen(String address) =>
