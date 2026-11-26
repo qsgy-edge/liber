@@ -197,9 +197,14 @@ class _RelativeCarrierPipeline extends HtmlSourcePipeline {
 /// while a chapter the reader never fetched keeps the variable its stored row
 /// carried.
 class _ResumePipeline extends ScriptedPipeline {
-  _ResumePipeline(this.loadedVariable);
+  _ResumePipeline(
+    this.loadedVariable, {
+    this.contentTitle,
+    super.chapterText = '已读章节正文',
+  });
 
   final String? loadedVariable;
+  final String? contentTitle;
 
   @override
   Future<HtmlChapterBody> chapter(
@@ -208,7 +213,12 @@ class _ResumePipeline extends ScriptedPipeline {
     String? nextChapterUrl,
   }) async {
     chapterCalls.add('${chapter.url}');
-    return HtmlChapterBody('已读章节正文', 1, chapterVariable: loadedVariable);
+    return HtmlChapterBody(
+      chapterText,
+      1,
+      title: contentTitle,
+      chapterVariable: loadedVariable,
+    );
   }
 }
 
@@ -1157,6 +1167,74 @@ void main() {
     await tester.pumpAndSettle();
     return store.chaptersOf(resume.id);
   }
+
+  testWidgets('re-adding a reopened chapter keeps its saved request and key', (
+    tester,
+  ) async {
+    const key = '$sourceUrl/chapter?q=%E4%B8%AD';
+    const address = '/chapter?q=中#part,{"charset":"gbk","js":"result"}';
+    const first = '　　第一段';
+    final offset = first.length + 1;
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: '原书');
+    final id = (await shelf.add(source, book)).bookId;
+    await store.putChapters(id, [
+      BookChapter(
+        bookId: id,
+        chapterKey: key,
+        name: '目录标题',
+        url: address,
+        chapterIndex: 0,
+        isVolume: false,
+        isVip: false,
+        isPay: false,
+        variable: '{"loaded":"old"}',
+      ),
+    ]);
+    await shelf.saveProgress(
+      id,
+      chapterKey: key,
+      chapterIndex: 0,
+      textOffset: offset,
+    );
+    await shelf.remove(id);
+    final resume = (await shelf.lastRead())!;
+    final pipeline = _ResumePipeline(
+      '{"loaded":"new"}',
+      contentTitle: '正文标题',
+      chapterText: '$first\n　　第二段\n　　第三段',
+    );
+
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          resume: resume,
+          pipeline: pipeline,
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('正文标题'), findsOneWidget);
+    expect(pipeline.detailsCalls, isEmpty);
+    expect(pipeline.chapterCalls, ['$key#part']);
+    final read = (await store.progressOf(id))!;
+    expect(read.textOffset, offset);
+    await tapBack(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('加入书架'));
+    await tester.pumpAndSettle();
+
+    final entry = (await shelf.onlineShelf()).single;
+    expect(entry.id, id);
+    final row = (await store.chaptersOf(id)).single;
+    expect((row.chapterKey, row.url), (key, address));
+    expect(row.name, '正文标题');
+    expect(row.variable, '{"loaded":"new"}');
+    expect(await store.progressOf(id), read);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'resuming a removed book keeps unread chapter variables through read then add',

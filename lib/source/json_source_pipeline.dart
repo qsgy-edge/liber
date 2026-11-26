@@ -2715,7 +2715,7 @@ class SourceChapter {
   );
 
   /// Rebuilds a stored address. Imported relative addresses resolve against
-  /// their owning book at fetch time; the raw address remains the store's key.
+  /// their owning book at fetch time; an existing row's key stays separate.
   ///
   /// A saved `{{…}}` template or `@js:` program is pending text rather than a
   /// URI: it resolves against the book as text alone, so rebuilding it runs
@@ -2808,10 +2808,8 @@ class SourceChapter {
   SourceChapter withName(String name) =>
       name == this.name ? this : SourceChapter._copy(this, name, variable);
 
-  /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
-  /// resolved target, except a volume the rules left without a URL: it has no
-  /// page, so the frozen identity text is what the row keeps and what tells it
-  /// apart from its siblings on the same TOC page.
+  /// Identity derived from the TOC target. An addressless volume instead uses
+  /// its frozen identity text, which distinguishes volumes on the same page.
   String get storeKey => rendersTagAsContent ? address : '$url';
 
   String get progressKey => storedKey ?? storeKey;
@@ -2835,18 +2833,12 @@ class SourceChapter {
   /// A chapter that carries [fetchContext] keeps exactly its
   /// `fetchContext.requestAddress`, which is that complete text: the key stays
   /// the bare target while the row keeps the options the content stage
-  /// reanalyses. Every other chapter keeps the tail behind [url].
+  /// reanalyses. A chapter rebuilt from a stored row keeps its exact saved
+  /// address, independent of how [url] resolves or encodes it. A new chapter
+  /// without a fetch context uses its resolved target and original option tail.
   ///
-  /// A stored row has no TOC page left to resolve a relative address against, so
-  /// the target is written absolute. The frozen stores the rule's own text and
-  /// resolves it against the book's URL when it fetches the chapter; the options
-  /// and the URL a request targets are the same either way, and a row written by
-  /// [SourceChapter.fromAddress] keeps parsing to itself.
-  ///
-  /// A stored `{{…}}` template or `@js:` program is the exception: that text is
-  /// pending analysis, so the row keeps it exactly as it was saved. Re-deriving
-  /// it from [url] would re-encode its braces and pipes and lose the form the
-  /// request has to analyse.
+  /// A `{{…}}` template or `@js:` program is still pending analysis, so the row
+  /// also keeps that text verbatim, including its braces and pipes.
   ///
   /// A volume the rules left without a URL has no target to write absolute
   /// (`rendersTagAsContent`): the frozen keeps the identity text
@@ -2856,7 +2848,7 @@ class SourceChapter {
     if (rendersTagAsContent) return address;
     final context = fetchContext;
     if (context != null) return context.requestAddress;
-    if (_isPendingAddressText(address)) return address;
+    if (storedKey != null || _isPendingAddressText(address)) return address;
     return '$url${sourceUrlOptionTailOf(address)}';
   }
 
