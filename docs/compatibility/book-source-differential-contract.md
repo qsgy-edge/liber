@@ -295,6 +295,28 @@ Liber MUST preserve behavior that a source can observe through requests, state, 
 
 A behavior prohibited by an approved security or data-integrity policy is not silently normalized into a pass. Its fixture receives `policy-rejected`, and every source that requires it remains incompatible.
 
+### Chapter request options and login recovery (#138)
+
+TOC analysis and catalog reopening preserve the complete pre-option chapter
+address and derive its stable key without validating or executing request
+options. An actual HTML or JSON chapter request uses the existing request
+parser and transport for supported options, including POST, body, `js` and
+charset. Unsupported or invalid options retain their own errors at request
+time. Reusing an eligible retained body does not analyze its address or send a
+request.
+
+On an ordinary connection failure or timeout in the first actual content
+request, a configured `loginCheckJs` runs once with a synthetic response: status
+500, the attempted URL, and the stable diagnostic `connection` or `timeout` as
+the body. This intentionally omits the selected runtime's exception message
+and stack trace. A valid result other than status 500 becomes the first content
+response. A status 500, invalid result, or failed recovery preserves the original
+request diagnostic. Cancellation can still stop recovery, and cancellation, TLS
+trust refusal, redirect limits and invalid request options do not initiate it.
+Later pages do not run the hook, and other stages and normal HTTP responses
+retain their existing behavior. Compare the actual attempts, state, final body
+and failure category under this named diagnostic difference.
+
 ### Content title and catalog name
 
 In Spec A / #138, an ordinary content-title rule error keeps the readable body
