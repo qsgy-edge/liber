@@ -63,6 +63,7 @@ class SpaceStore {
   Future<void>? _closing;
 
   Future<void> close() {
+    if (!db.usesBackgroundIsolate) return db.close();
     if (_pendingCatalogs != null) {
       return Future.error(
         StateError('Cannot close a store inside its transaction'),
@@ -104,6 +105,18 @@ class SpaceStore {
       });
     }
 
+    // Publish the in-memory revisions only after SQLite commits, while the
+    // connection is still locked against the next catalog read or write.
+    Future<T> publishAfterCommit() async {
+      final result = await run();
+      if (pending.latest != 0) {
+        _chapterCatalogChanges.addAll(pending.revisions);
+        _chapterCatalogRevision = pending.latest;
+      }
+      return result;
+    }
+
+    if (!db.usesBackgroundIsolate) return db.exclusively(publishAfterCommit);
     if (_closing != null) {
       return Future.error(
         StateError('Cannot start a transaction on a closing store'),
@@ -112,17 +125,10 @@ class SpaceStore {
     if (_activeTransactions++ == 0) {
       _transactionsIdle = Completer<void>();
     }
-    // Publish the in-memory revisions only after SQLite commits, while the
-    // connection is still locked against the next catalog read or write.
     return db
-        .exclusively(() async {
+        .exclusively(() {
           _openedExclusiveScope = true;
-          final result = await run();
-          if (pending.latest != 0) {
-            _chapterCatalogChanges.addAll(pending.revisions);
-            _chapterCatalogRevision = pending.latest;
-          }
-          return result;
+          return publishAfterCommit();
         })
         .whenComplete(() {
           if (--_activeTransactions == 0) _transactionsIdle!.complete();
