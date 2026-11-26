@@ -611,23 +611,24 @@ void main() {
   ) async {
     final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
     addTearDown(store.close);
+    final seed = ShelfService(store);
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: 'Book');
+    final chapter = SourceChapter('Book章', Uri.parse('$bookUrl/1'));
+    final seeded = await seed.add(source, book, [chapter]);
+    await seed.remove(seeded.bookId);
     final shelf = _AddGateShelf(store);
+    final pipeline = ScriptedPipeline(chapterText: '等待加书后读到的正文');
     await tester.pumpWidget(
       localizedApp(
         home: HtmlSourceBrowser(
           source: source,
           keyword: '',
           service: shelf,
-          directBook: HtmlBook(url: Uri.parse(bookUrl), title: 'Book'),
-          pipeline: ScriptedPipeline(),
+          directBook: book,
+          pipeline: pipeline,
         ),
       ),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Book章'));
-    await tester.pumpAndSettle();
-    expect(find.byType(OnlineReaderPage), findsOneWidget);
-    Navigator.of(tester.element(find.byType(OnlineReaderPage))).pop();
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.playlist_add));
@@ -639,16 +640,11 @@ void main() {
     shelf.releaseAdd.complete();
     await tester.pumpAndSettle();
 
-    final reader = tester.widget<OnlineReaderPage>(
-      find.byType(OnlineReaderPage),
-    );
-    expect(
-      store.isChapterCatalogCurrent(
-        reader.bookId,
-        reader.chapterCatalogRevision!,
-      ),
-      isTrue,
-    );
+    expect(pipeline.chapterCalls, ['$bookUrl/1']);
+    expect(find.textContaining('等待加书后读到的正文'), findsOneWidget);
+    final progress = (await store.progressOf(seeded.bookId))!;
+    expect(progress.chapterKey, chapter.progressKey);
+    expect(progress.chapterIndex, 0);
   });
 
   testWidgets('a slow refresh cannot overwrite a newer catalog', (

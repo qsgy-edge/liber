@@ -225,6 +225,68 @@ void main() {
     },
   );
 
+  for (final replaceCatalog in [false, true]) {
+    testWidgets(
+      replaceCatalog
+          ? 'a queued reader position cannot update a replaced catalog'
+          : 'leaving the reader preserves a queued visible position',
+      (tester) async {
+        const source = {'bookSourceUrl': sourceUrl};
+        final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+        final chapter = SourceChapter('第一章', Uri.parse('$sourceUrl/1'));
+        await shelf.add(source, book, [chapter]);
+        await tester.pumpWidget(
+          localizedApp(
+            home: OnlineReaderPage(
+              pipeline: ScriptedPipeline(),
+              book: book,
+              bookId: bookId,
+              chapters: [chapter],
+              service: shelf,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final before = (await store.progressOf(bookId))!;
+        expect(before.textOffset, 0);
+
+        final locked = Completer<void>();
+        final release = Completer<void>();
+        final blocker = store.transaction(() async {
+          locked.complete();
+          await release.future;
+          if (replaceCatalog) {
+            await shelf.updateCatalog(sourceUrl, book, [
+              chapter.withName('刷新后的目录标题'),
+            ]);
+          }
+        });
+        await locked.future;
+        try {
+          await tester.drag(
+            find.byType(SingleChildScrollView),
+            const Offset(0, -800),
+          );
+          await tester.pumpAndSettle();
+          await tester.pumpWidget(const SizedBox());
+        } finally {
+          release.complete();
+          await blocker;
+        }
+        await store.transaction(() async {});
+
+        final position = (await store.progressOf(bookId))!;
+        expect(position.chapterKey, chapter.progressKey);
+        if (replaceCatalog) {
+          expect((await store.chaptersOf(bookId)).single.name, '刷新后的目录标题');
+          expect(position, before);
+        } else {
+          expect(position.textOffset, greaterThan(0));
+        }
+      },
+    );
+  }
+
   testWidgets('reader saves the source title on the chapter it loaded', (
     tester,
   ) async {
