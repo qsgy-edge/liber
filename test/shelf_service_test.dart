@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
@@ -9,6 +10,24 @@ import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
 import 'space_test_support.dart';
+
+class _ProgressSnapshotGateStore extends SpaceStore {
+  _ProgressSnapshotGateStore(super.db);
+
+  bool pauseNextProgressRead = false;
+  final snapshotTaken = Completer<void>();
+  final resumeSwitch = Completer<void>();
+
+  @override
+  Future<ReadingProgress?> progressOf(String bookId) async {
+    if (!pauseNextProgressRead) return super.progressOf(bookId);
+    pauseNextProgressRead = false;
+    final snapshot = await super.progressOf(bookId);
+    snapshotTaken.complete();
+    await resumeSwitch.future;
+    return snapshot;
+  }
+}
 
 /// The shelf reads and writes one space's store: membership is `books.shelved`,
 /// a book is its natural key, the TOC is `chapters` and the position is the
@@ -112,6 +131,75 @@ void main() {
       );
     },
   );
+
+  for (final switchFirst in [false, true]) {
+    test(
+      switchFirst
+          ? 'a source switch cannot overwrite a concurrently saved position'
+          : 'a source switch maps the position saved before it commits',
+      () async {
+        final gated = _ProgressSnapshotGateStore(
+          SpaceDatabase(NativeDatabase.memory()),
+        );
+        addTearDown(gated.close);
+        final service = ShelfService(gated);
+        final oldChapters = chapters('A');
+        final newChapters = chapters('B');
+        final id = (await service.add(source, book('A'), oldChapters)).bookId;
+        await service.saveProgress(
+          id,
+          chapterKey: oldChapters.first.progressKey,
+          chapterIndex: 0,
+          textOffset: 7,
+        );
+        final revision = gated.chapterCatalogRevision;
+        final other = {...source, 'bookSourceUrl': '$sourceUrl/other'};
+        Future<ShelfEntry> changeSource() =>
+            service.switchSource(id, other, book('B'), newChapters);
+
+        final entered = Completer<void>();
+        final release = Completer<void>();
+        Future<bool> savePosition() => gated.transaction(() async {
+          if (!switchFirst) {
+            entered.complete();
+            await release.future;
+          }
+          if (!gated.isChapterCatalogCurrent(id, revision)) return false;
+          await service.saveProgress(
+            id,
+            chapterKey: oldChapters.last.progressKey,
+            chapterIndex: 1,
+            textOffset: 73,
+          );
+          return true;
+        });
+
+        final Future<ShelfEntry> switching;
+        final Future<bool> saving;
+        if (switchFirst) {
+          gated.pauseNextProgressRead = true;
+          switching = changeSource();
+          await gated.snapshotTaken.future;
+          saving = savePosition();
+          gated.resumeSwitch.complete();
+        } else {
+          saving = savePosition();
+          await entered.future;
+          switching = changeSource();
+          release.complete();
+        }
+        final admitted = await saving;
+        final switched = await switching;
+        final progress = (await gated.progressOf(id))!;
+        final expectedIndex = admitted ? 1 : 0;
+        expect(switched.id, id);
+        expect(progress.textOffset, admitted ? 73 : 7);
+        expect(progress.chapterIndex, expectedIndex);
+        expect(progress.chapterKey, newChapters[expectedIndex].progressKey);
+        expect(admitted, !switchFirst);
+      },
+    );
+  }
 
   test(
     'a shelf lookup queued during a replacement returns a usable catalog',

@@ -397,28 +397,30 @@ class ShelfService {
       if (isCancelled?.call() == true) throw const SourceRequestCancelled();
     }
 
-    final existing = await store.bookById(bookId);
-    if (existing == null) throw StateError('书籍不存在：$bookId');
-    if (existing.kind != 'network') {
-      throw StateError('只有网络书籍可以换源：${existing.title}');
-    }
-    final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
-    if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
-    if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
-    final bookUrl = book.identityAddress;
-    final oldChapters = await store.chaptersOf(bookId);
-    final progress = await store.progressOf(bookId);
-    final oldIndex = progress?.chapterIndex ?? 0;
-    final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
-        ? oldChapters[oldIndex].name
-        : null;
-    final newIndex = mapChapterIndex(
-      oldIndex: oldIndex,
-      oldTitle: oldTitle,
-      newTitles: [for (final chapter in chapters) chapter.name],
-      oldChapterCount: oldChapters.length,
-    );
     return store.transaction(() async {
+      final existing = await store.bookById(bookId);
+      if (existing == null) throw StateError('书籍不存在：$bookId');
+      if (existing.kind != 'network') {
+        throw StateError('只有网络书籍可以换源：${existing.title}');
+      }
+      final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
+      if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
+      if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
+      final bookUrl = book.identityAddress;
+      // Map the position from the same transaction that replaces the catalog.
+      // Otherwise a reader can save between this read and publication.
+      final oldChapters = await store.chaptersOf(bookId);
+      final progress = await store.progressOf(bookId);
+      final oldIndex = progress?.chapterIndex ?? 0;
+      final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
+          ? oldChapters[oldIndex].name
+          : null;
+      final newIndex = mapChapterIndex(
+        oldIndex: oldIndex,
+        oldTitle: oldTitle,
+        newTitles: [for (final chapter in chapters) chapter.name],
+        oldChapterCount: oldChapters.length,
+      );
       final existingSource = await store.sourceByUrl(sourceUrl);
       final sourceRow = existingSource ?? await store.putSourceJson(source);
       final clash = await store.bookByNaturalKey(sourceUrl, bookUrl);
