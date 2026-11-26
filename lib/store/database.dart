@@ -512,12 +512,15 @@ class SourceTlsExceptions extends Table {
   ],
 )
 class SpaceDatabase extends _$SpaceDatabase {
-  /// A database over an existing executor (an in-memory one in tests).
-  SpaceDatabase(super.executor);
+  /// A database over a local executor (an in-memory one in tests).
+  SpaceDatabase(super.executor) : usesBackgroundIsolate = false;
 
   /// The space's SQLite file, opened in a background isolate.
   SpaceDatabase.file(File file)
-    : super(NativeDatabase.createInBackground(file, setup: _waitOutLocks));
+    : usesBackgroundIsolate = true,
+      super(NativeDatabase.createInBackground(file, setup: _waitOutLocks));
+
+  final bool usesBackgroundIsolate;
 
   @override
   int get schemaVersion => latestVersion;

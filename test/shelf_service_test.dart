@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/html_source_pipeline.dart';
@@ -54,6 +56,97 @@ void main() {
     shelf = ShelfService(store);
     return shelf;
   }
+
+  test(
+    'a rolled-back source switch leaves the previously acquired catalog current',
+    () async {
+      await shelf.add(source, book('A'), chapters('A'));
+      final acquired = await entryOf('A');
+      final replacement = book('B');
+      final otherSource = {...source, 'bookSourceUrl': '$sourceUrl/other'};
+      await expectLater(
+        store.transaction(() async {
+          await shelf.switchSource(
+            acquired.id,
+            otherSource,
+            replacement,
+            chapters('B'),
+          );
+          throw StateError('abort the outer transaction');
+        }),
+        throwsStateError,
+      );
+      final current = await entryOf('A');
+      expect(current.chapters, acquired.chapters);
+      expect(
+        store.isChapterCatalogCurrent(
+          acquired.id,
+          acquired.chapterCatalogRevision!,
+        ),
+        isTrue,
+      );
+      await shelf.switchSource(
+        acquired.id,
+        otherSource,
+        replacement,
+        chapters('B'),
+      );
+      expect(
+        store.isChapterCatalogCurrent(
+          acquired.id,
+          acquired.chapterCatalogRevision!,
+        ),
+        isFalse,
+      );
+      final switched = (await shelf.find('$sourceUrl/other', bookUrl('B')))!;
+      expect(switched.chapters.map((row) => row.url), [
+        '$sourceUrl/B/1',
+        '$sourceUrl/B/2',
+      ]);
+      expect(
+        store.isChapterCatalogCurrent(
+          switched.id,
+          switched.chapterCatalogRevision!,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'a shelf lookup queued during a replacement returns a usable catalog',
+    () async {
+      await shelf.add(source, book('A'), chapters('A'));
+      final before = await entryOf('A');
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final fresh = chapters(
+        'A',
+      ).map((chapter) => chapter.withName('新${chapter.name}')).toList();
+      final writer = store.transaction(() async {
+        entered.complete();
+        await release.future;
+        await shelf.updateCatalog(sourceUrl, book('A'), fresh);
+      });
+      await entered.future;
+      final reading = entryOf('A');
+      release.complete();
+      await writer;
+      final entry = await reading;
+      expect(entry.chapters.map((row) => row.name), ['新第一章', '新第二章']);
+      expect(
+        store.isChapterCatalogCurrent(entry.id, entry.chapterCatalogRevision!),
+        isTrue,
+      );
+      expect(
+        store.isChapterCatalogCurrent(
+          before.id,
+          before.chapterCatalogRevision!,
+        ),
+        isFalse,
+      );
+    },
+  );
 
   test('加入的书、目录与各自的位置来自存储，重启后仍在', () async {
     await shelf.add(source, book('A', title: '甲'), chapters('A'));

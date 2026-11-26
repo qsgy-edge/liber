@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'registrable_domain.dart';
@@ -576,6 +577,63 @@ class SourceHostState implements SourceEntityVariableStore {
     await _persistence?.deleteCacheEntry(sourceRef, key);
   }
 
+  SourceEntityVariableDraft? get _readerVariables =>
+      Zone.current[this] as SourceEntityVariableDraft?;
+
+  /// A pending reader chapter sees its own entity writes, while other host
+  /// operations and reads of unstaged fields retain their ordinary behavior.
+  Future<(T, SourceEntityVariableDraft)> stageReaderVariables<T>(
+    Future<T> Function() read,
+  ) async {
+    final draft = SourceEntityVariableDraft();
+    final result = await runZoned(read, zoneValues: {this: draft});
+    return (result, draft);
+  }
+
+  /// Writes accepted entity changes inside the reader's store transaction.
+  /// The returned handoff updates the in-process cache only after commit.
+  Future<void Function()> saveReaderVariables(
+    SourceEntityVariableDraft draft,
+  ) async {
+    final storedBooks = <(String, String)>{};
+    final storedChapters = <(String, String, String)>{};
+    for (final entry in draft._books.entries) {
+      final (source, book) = entry.key;
+      if (await _persistence?.saveBookVariable(source, book, entry.value) ==
+          true) {
+        storedBooks.add(entry.key);
+      }
+    }
+    for (final entry in draft._chapters.entries) {
+      final (source, book, chapter) = entry.key;
+      if (await _persistence?.saveChapterVariable(
+            source,
+            book,
+            chapter,
+            entry.value,
+          ) ==
+          true) {
+        storedChapters.add(entry.key);
+      }
+    }
+    return () {
+      for (final entry in draft._books.entries) {
+        if (storedBooks.contains(entry.key)) {
+          _unwrittenBookVariables.remove(entry.key);
+        } else {
+          _unwrittenBookVariables[entry.key] = entry.value;
+        }
+      }
+      for (final entry in draft._chapters.entries) {
+        if (storedChapters.contains(entry.key)) {
+          _unwrittenChapterVariables.remove(entry.key);
+        } else {
+          _unwrittenChapterVariables[entry.key] = entry.value;
+        }
+      }
+    };
+  }
+
   /// The book row's own variable text (the frozen `Book.variable` column,
   /// `Book.kt:115`), or null when the space holds no such row or it carries
   /// none.
@@ -587,6 +645,8 @@ class SourceHostState implements SourceEntityVariableStore {
   @override
   Future<String?> bookVariable(String sourceRef, String bookUrl) async {
     final key = (sourceRef, bookUrl);
+    final staged = _readerVariables?._books;
+    if (staged != null && staged.containsKey(key)) return staged[key];
     final stored = await _persistence?.loadBookVariable(sourceRef, bookUrl);
     if (stored != null) return stored.variable;
     return _unwrittenBookVariables[key];
@@ -607,6 +667,10 @@ class SourceHostState implements SourceEntityVariableStore {
     String? variable,
   ) async {
     final key = (sourceRef, bookUrl);
+    final draft = _readerVariables;
+    if (draft != null) {
+      return draft.putBookVariable(sourceRef, bookUrl, variable);
+    }
     if (await _persistence?.saveBookVariable(sourceRef, bookUrl, variable) ==
         true) {
       _unwrittenBookVariables.remove(key);
@@ -637,13 +701,17 @@ class SourceHostState implements SourceEntityVariableStore {
     String bookUrl,
     String chapterKey,
   ) async {
+    final key = (sourceRef, bookUrl, chapterKey);
+    final staged = _readerVariables?._chapters;
+    if (staged != null && staged.containsKey(key)) {
+      return SourceEntityVariableRow(staged[key]);
+    }
     final stored = await _persistence?.loadChapterVariable(
       sourceRef,
       bookUrl,
       chapterKey,
     );
     if (stored != null) return stored;
-    final key = (sourceRef, bookUrl, chapterKey);
     if (_unwrittenChapterVariables.containsKey(key)) {
       return SourceEntityVariableRow(_unwrittenChapterVariables[key]);
     }
@@ -660,6 +728,10 @@ class SourceHostState implements SourceEntityVariableStore {
     String? variable,
   ) async {
     final key = (sourceRef, bookUrl, chapterKey);
+    final draft = _readerVariables;
+    if (draft != null) {
+      return draft.putChapterVariable(sourceRef, bookUrl, chapterKey, variable);
+    }
     if (await _persistence?.saveChapterVariable(
           sourceRef,
           bookUrl,

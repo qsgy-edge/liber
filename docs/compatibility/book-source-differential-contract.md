@@ -295,6 +295,37 @@ Liber MUST preserve behavior that a source can observe through requests, state, 
 
 A behavior prohibited by an approved security or data-integrity policy is not silently normalized into a pass. Its fixture receives `policy-rejected`, and every source that requires it remains incompatible.
 
+### Content title and catalog name
+
+In Spec A / #138, an ordinary content-title rule error keeps the readable body
+and incoming title, with one diagnostic. Cancellation, an actual timeout, and
+named refusals still propagate. A successful nonblank content title is displayed
+and normally saved as the existing chapter name, without changing the chapter
+key, request text, or progress. A readable volume keeps its catalog name if
+saving the content title would make the stored address start with the new name
+and switch reopening to the volume's tag instead of fetching the body. This
+exception applies to the shelf write and to off-shelf handoff, not to display.
+Refreshing the catalog publishes the new TOC names.
+
+### Chapter body image layout (#138)
+
+For the selected body-image scenario, `TEXT` renders the image inline between
+its preceding and following text in reading order. The text and image may wrap
+naturally across lines or pages. The image preserves its source aspect ratio.
+
+- Selected Android reference: require one non-block image column and check the
+  recorded edges of any adjacent text columns on its line. The rendered pixels
+  must match the image column's width and be vertically centered on the line.
+- Windows Flutter reader: center the whole image, without cropping or
+  distortion, at the largest size that fits its inline slot. The slot still
+  participates in line wrapping without covering adjacent text. Unused space
+  on either axis is an accepted Windows difference; the painted pixels need
+  not fill the slot's width.
+
+`DEFAULT`, `FULL`, and `SINGLE` retain their block layout checks. Require the
+four rendered modes and all 20 bound requests; native and Windows evidence
+and the reader progress gate stay separate.
+
 ### TOC chapter-variable restoration
 
 For the selected reference, `BookChapterList.upChapterInfo` restores stored chapter

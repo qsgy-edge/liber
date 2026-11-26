@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,6 +6,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/workspace.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import 'temp_directory.dart';
 
@@ -39,6 +41,65 @@ void main() {
     expect(book!.title, '斗破苍穹');
     expect(book.author, '天蚕土豆');
     await reopened.close();
+  });
+
+  test(
+    'closing lets an admitted transaction finish before reopening',
+    () async {
+      final workspace = await Workspace.open(root: root);
+      final store = await workspace.openSpace();
+      final started = Completer<void>();
+      final finish = Completer<void>();
+      final write = store.transaction(() async {
+        await store.putBook(
+          BooksCompanion.insert(id: 'book', title: 'Initial'),
+        );
+        started.complete();
+        await finish.future;
+        await store.transaction(() async {
+          await store.putBook(
+            BooksCompanion.insert(id: 'book', title: 'Saved'),
+          );
+        });
+      });
+      final written = expectLater(write, completes);
+      await started.future;
+
+      final closing = workspace.close();
+      final closedWhileWriting = await Future.any([
+        closing.then((_) => true),
+        Future<bool>.delayed(const Duration(milliseconds: 50), () => false),
+      ]);
+      finish.complete();
+      await written;
+      await closing;
+      expect(closedWhileWriting, isFalse);
+
+      final reopened = await Workspace.open(root: root);
+      addTearDown(reopened.close);
+      final reopenedStore = await reopened.openSpace();
+      expect((await reopenedStore.bookById('book'))?.title, 'Saved');
+    },
+  );
+
+  test('workspace closes its other stores after a rejected first open', () async {
+    final workspace = await Workspace.open(root: root);
+    final newer = await workspace.openSpace('newer');
+    final file = sqlite3.open(workspace.databaseFile('newer').path);
+    try {
+      file.execute('PRAGMA user_version = ${SpaceDatabase.latestVersion + 1}');
+    } finally {
+      file.close();
+    }
+    final later = await workspace.openSpace();
+    await later.putBook(BooksCompanion.insert(id: 'saved', title: 'Saved'));
+    await expectLater(
+      newer.transaction(() async => fail('A newer schema must not open')),
+      throwsA(predicate<Object>((error) => '$error'.contains('拒绝降级读取'))),
+    );
+
+    await workspace.close();
+    await expectLater(later.transaction(() async {}), throwsStateError);
   });
 
   test(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -33,6 +34,17 @@ bool matchesBookIdentity(String? stored, String identity) =>
 /// depending on the native library.
 typedef TextIndexAnchor = ({int byteOffset, int codeUnitOffset, int lineIndex});
 
+class _PendingCatalogs {
+  _PendingCatalogs(this.parent);
+
+  final _PendingCatalogs? parent;
+  final revisions = <String, int>{};
+  int latest = 0;
+
+  int? revisionOf(String bookId) =>
+      revisions[bookId] ?? parent?.revisionOf(bookId);
+}
+
 /// Intent-level access to one space's store.
 ///
 /// The drift tables are the schema; this class is where the contract's rules
@@ -45,16 +57,83 @@ class SpaceStore {
 
   final SpaceDatabase db;
   final String spaceId;
+  int _activeTransactions = 0;
+  Completer<void>? _transactionsIdle;
+  bool _openedExclusiveScope = false;
+  Future<void>? _closing;
 
-  Future<void> close() => db.close();
+  Future<void> close() {
+    if (!db.usesBackgroundIsolate) return db.close();
+    if (_pendingCatalogs != null) {
+      return Future.error(
+        StateError('Cannot close a store inside its transaction'),
+      );
+    }
+    return _closing ??= _close();
+  }
+
+  Future<void> _close() async {
+    try {
+      await _transactionsIdle?.future;
+      if (_openedExclusiveScope) {
+        // Drift returns from exclusively() before the remote executor's
+        // release is acknowledged. A root statement waits for those scopes.
+        await db.customStatement('SELECT 1');
+      }
+    } finally {
+      await db.close();
+    }
+  }
 
   /// Runs [action] as one store transaction: every intent-level write inside it
   /// lands together, and a failure rolls all of them back, so no caller sees a
   /// half-written step. A caller that needs two writes to be one user-visible
   /// action (a source's host-surface reclaim and its row removal, #53) composes
   /// them here instead of opening the database itself.
-  Future<T> transaction<T>(Future<T> Function() action) =>
-      db.transaction(action);
+  Future<T> transaction<T>(Future<T> Function() action) {
+    final parent = _pendingCatalogs;
+    final pending = _PendingCatalogs(parent);
+    Future<T> run() =>
+        db.transaction(() => runZoned(action, zoneValues: {this: pending}));
+    if (parent != null) {
+      return run().then((result) {
+        if (pending.latest != 0) {
+          parent.revisions.addAll(pending.revisions);
+          parent.latest = pending.latest;
+        }
+        return result;
+      });
+    }
+
+    // Publish the in-memory revisions only after SQLite commits, while the
+    // connection is still locked against the next catalog read or write.
+    Future<T> publishAfterCommit() async {
+      final result = await run();
+      if (pending.latest != 0) {
+        _chapterCatalogChanges.addAll(pending.revisions);
+        _chapterCatalogRevision = pending.latest;
+      }
+      return result;
+    }
+
+    if (!db.usesBackgroundIsolate) return db.exclusively(publishAfterCommit);
+    if (_closing != null) {
+      return Future.error(
+        StateError('Cannot start a transaction on a closing store'),
+      );
+    }
+    if (_activeTransactions++ == 0) {
+      _transactionsIdle = Completer<void>();
+    }
+    return db
+        .exclusively(() {
+          _openedExclusiveScope = true;
+          return publishAfterCommit();
+        })
+        .whenComplete(() {
+          if (--_activeTransactions == 0) _transactionsIdle!.complete();
+        });
+  }
 
   // --- Book Sources (D7) ---------------------------------------------------
 
@@ -482,21 +561,74 @@ class SpaceStore {
 
   // --- Chapters (D4) -------------------------------------------------------
 
-  /// A book's chapters are its TOC: replacing the list replaces the rows.
-  Future<void> putChapters(String bookId, List<BookChapter> chapters) async {
-    await db.transaction(() async {
-      await (db.delete(
-        db.chapters,
-      )..where((c) => c.bookId.equals(bookId))).go();
-      await db.batch((b) => b.insertAll(db.chapters, chapters));
-    });
+  int _chapterCatalogRevision = 0;
+  int _nextChapterCatalogRevision = 0;
+  final _chapterCatalogChanges = <String, int>{};
+  _PendingCatalogs? get _pendingCatalogs =>
+      Zone.current[this] as _PendingCatalogs?;
+
+  /// Capture beside the catalog rows in a transaction, or before a fetch that
+  /// intends to replace them. Only the owning transaction sees pending writes.
+  int get chapterCatalogRevision {
+    for (
+      var pending = _pendingCatalogs;
+      pending != null;
+      pending = pending.parent
+    ) {
+      if (pending.latest != 0) return pending.latest;
+    }
+    return _chapterCatalogRevision;
   }
+
+  bool isChapterCatalogCurrent(String bookId, int revision) =>
+      (_pendingCatalogs?.revisionOf(bookId) ??
+          _chapterCatalogChanges[bookId] ??
+          0) <=
+      revision;
+
+  /// Replaces the rows and returns the revision of exactly that catalog.
+  Future<int> putChapters(String bookId, List<BookChapter> chapters) =>
+      transaction(() async {
+        await (db.delete(
+          db.chapters,
+        )..where((c) => c.bookId.equals(bookId))).go();
+        await db.batch((b) => b.insertAll(db.chapters, chapters));
+        final revision = ++_nextChapterCatalogRevision;
+        final pending = _pendingCatalogs!;
+        pending.revisions[bookId] = revision;
+        pending.latest = revision;
+        return revision;
+      });
 
   Future<List<BookChapter>> chaptersOf(String bookId) =>
       (db.select(db.chapters)
             ..where((c) => c.bookId.equals(bookId))
             ..orderBy([(c) => OrderingTerm(expression: c.chapterIndex)]))
           .get();
+
+  Future<BookChapter?> chapterByKey(String bookId, String chapterKey) =>
+      (db.select(db.chapters)..where(
+            (row) =>
+                row.bookId.equals(bookId) & row.chapterKey.equals(chapterKey),
+          ))
+          .getSingleOrNull();
+
+  Future<bool> hasChapters(String bookId) async =>
+      await (db.select(db.chapters)
+            ..where((row) => row.bookId.equals(bookId))
+            ..limit(1))
+          .getSingleOrNull() !=
+      null;
+
+  /// Updates only the name; the caller checks ownership in the same transaction.
+  Future<void> updateChapterName(BookChapter chapter, String name) async {
+    await (db.update(db.chapters)..where(
+          (row) =>
+              row.bookId.equals(chapter.bookId) &
+              row.chapterKey.equals(chapter.chapterKey),
+        ))
+        .write(ChaptersCompanion(name: Value(name)));
+  }
 
   // --- Progress (D4) -------------------------------------------------------
 

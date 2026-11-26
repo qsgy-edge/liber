@@ -165,7 +165,7 @@ class LegacyImport {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     final losses = <StoreMessage>[];
     late LegacyImportReport report;
-    await store.db.transaction(() async {
+    await store.transaction(() async {
       final online = await _importOnlineReading(store, now, losses);
       final local = await _importLocalLibrary(store, now, losses);
       final migrated = await _importMigrationState(store, now, losses);

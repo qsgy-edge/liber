@@ -1021,6 +1021,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (raw is! Map) throw FormatException('Missing $key');
     final rules = <String, String>{};
     for (final entry in raw.entries) {
+      // The optional content title is prepared only after the body succeeds.
+      if (key == 'ruleContent' && entry.key == 'title') continue;
       if (entry.value == null || entry.value == '') continue;
       if (entry.value is! String) {
         throw FormatException('Invalid $key.${entry.key}');
@@ -1039,12 +1041,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
       final chained =
           (key == 'ruleToc' && entry.key == 'nextTocUrl') ||
           (key == 'ruleContent' && entry.key == 'nextContentUrl');
-      // `imageStyle` is a *value* this tree already reads off the source
-      // (`sourceImageStyle`), and `replaceRegex` is a frozen content-stage field
-      // this product does not execute on the JSON path; neither is an
-      // extraction, so neither is validated as one. Refusing either refused the
-      // whole group — the same defect #81 fixed for `downloadUrls` (the
-      // operator's audit, #82/#83).
+      // `imageStyle` is a layout value (`sourceImageStyle`). The supported
+      // `replaceRegex` form runs on joined text, not on a JSON response, so
+      // neither field is validated as a JSON extraction.
       if (entry.key != 'checkKeyWord' &&
           entry.key != 'canReName' &&
           entry.key != 'imageStyle' &&
@@ -2372,56 +2371,82 @@ class JsonSourcePipeline implements BookSourcePipeline {
         );
       },
     );
-    // The frozen joins a chapter's pages with a newline (`BookContent.kt:129`).
-    final text = parts.join('\n');
+    final text = _replaceJoinedContent(
+      parts.join('\n'),
+      content['replaceRegex'],
+    );
     // The selected title read is after the joined body, so the source state the
     // content scripts wrote is visible and those scripts saw the incoming
     // chapter title. Its document is the first post-login response, not the last
     // page's; restoring it makes the reader's own content context the one the
     // title rule reads (`BookContent.kt:65-69`, `:169-182`).
-    final titleRule = content['title'];
     // The captured first response is its non-null raw body; the decoded root may
     // itself be JSON null, which is a value, not an absent response. Restore
     // that raw-text context and let the ordinary optional read receive the
     // nullable root.
     final firstBody = firstPageBody;
-    if (titleRule != null && firstBody != null) {
+    final rawTitle = (source['ruleContent'] as Map)['title'];
+    if (firstBody != null && rawTitle != null && rawTitle != '') {
       _responseRoot = firstPageDocument;
       _responseText = firstBody;
-      final title = await _optional(
-        firstPageDocument,
-        titleRule,
-        label: 'ruleContent.title',
-      );
-      if (title.trim().isNotEmpty) {
-        contentTitle = _chapterTitle = title;
-        _chapter = SourceChapter(
-          title,
-          chapter.url,
-          rawAddress: chapter.rawAddress,
-          storedKey: chapter.storedKey,
-          addressBase: chapter.addressBase,
-          variable: chapter.variable,
-          fetchContext: chapter.fetchContext,
+      try {
+        if (rawTitle is! String) {
+          throw const FormatException('Invalid ruleContent.title');
+        }
+        final extraction = RuleField.extractionText(rawTitle);
+        if (extraction != null) {
+          try {
+            JsonSourceRules.validate(extraction);
+          } on UnsupportedError catch (error) {
+            throw UnsupportedError('ruleContent.title: $error');
+          }
+        }
+        final title = await _optional(
+          firstPageDocument,
+          rawTitle,
+          label: 'ruleContent.title',
         );
+        if (title.trim().isNotEmpty) {
+          contentTitle = _chapterTitle = title;
+          _chapter = chapter.withName(title);
+        }
+      } on Object catch (error) {
+        if (!sourceTitleFailureIsOrdinary(error)) rethrow;
+        onHostMessage?.call(SourceHostMessage('ruleContent.title', '$error'));
       }
     }
+    _cancellation.throwIfCancelled();
+    // The final entity snapshots of this content request, pagination and all:
+    // every page wrote through the same candidate draft (#132).
+    final bookVariable = contentBookKey == null
+        ? null
+        : await _entityVariables.bookVariable(_sourceRef, contentBookKey);
+    final chapterVariable = await _entityVariables.chapterVariable(
+      _sourceRef,
+      contentBookKey ?? '',
+      chapter.storeKey,
+    );
+    _cancellation.throwIfCancelled();
     return HtmlChapterBody(
       text,
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
-      // The final entity snapshots of this content request, pagination and all:
-      // every page wrote through the same candidate draft (#132).
-      bookVariable: contentBookKey == null
-          ? null
-          : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
-      chapterVariable: await _entityVariables.chapterVariable(
-        _sourceRef,
-        contentBookKey ?? '',
-        chapter.storeKey,
-      ),
+      bookVariable: bookVariable,
+      chapterVariable: chapterVariable,
     );
+  }
+
+  /// The selected `BookContent.kt:169-177` trims the joined body before
+  /// replacement, then indents every line, including lines emptied by it.
+  String _replaceJoinedContent(String text, String? rule) {
+    if (rule == null) return text;
+    final fields = RuleField.staticReplacement(rule);
+    if (fields == null) return text;
+    _cancellation.throwIfCancelled();
+    final trimmed = text.split('\n').map((line) => line.trim()).join('\n');
+    final replaced = unescapeHtml4(applyRuleReplacement(trimmed, fields));
+    return replaced.split('\n').map((line) => '　　$line').join('\n');
   }
 
   /// One chapter image's bytes, through the same source session the JSON stages
@@ -2616,7 +2641,21 @@ class SourceChapter {
     this.isPay = false,
     this.variable,
     this.fetchContext,
-  });
+  }) : _rendersTagAsContent = null;
+
+  SourceChapter._copy(SourceChapter chapter, this.name, this.variable)
+    : url = chapter.url,
+      rawAddress = chapter.rawAddress,
+      storedKey = chapter.storedKey,
+      addressBase = chapter.addressBase,
+      tag = chapter.tag,
+      isVolume = chapter.isVolume,
+      isVip = chapter.isVip,
+      isPay = chapter.isPay,
+      fetchContext = chapter.fetchContext,
+      _rendersTagAsContent = chapter.rendersTagAsContent;
+
+  final bool? _rendersTagAsContent;
 
   /// A volume chapter whose URL rule produced nothing.
   ///
@@ -2732,19 +2771,13 @@ class SourceChapter {
   /// This carrier with [variable] replaced, every identity, address and marker
   /// field retained. A metadata or content-stage copy must not drop the
   /// variable it started from.
-  SourceChapter withVariable(String? variable) => SourceChapter(
-    name,
-    url,
-    rawAddress: rawAddress,
-    storedKey: storedKey,
-    addressBase: addressBase,
-    tag: tag,
-    isVolume: isVolume,
-    isVip: isVip,
-    isPay: isPay,
-    variable: variable,
-    fetchContext: fetchContext,
-  );
+  SourceChapter withVariable(String? variable) =>
+      SourceChapter._copy(this, name, variable);
+
+  /// Changes the name without reclassifying the original TOC address. A
+  /// readable volume must not start using its tag because of a content title.
+  SourceChapter withName(String name) =>
+      name == this.name ? this : SourceChapter._copy(this, name, variable);
 
   /// The key a TOC write keeps for this chapter (D4). A chapter keys by its
   /// resolved target, except a volume the rules left without a URL: it has no
@@ -2803,7 +2836,8 @@ class SourceChapter {
   /// title has no page behind it, so the chapter's `tag` is its content and
   /// nothing is fetched. The empty-URL fallback (`BookChapterList.kt:229-243`)
   /// writes exactly `title + index` into the URL, which is the shape this reads.
-  bool get rendersTagAsContent => isVolume && address.startsWith(name);
+  bool get rendersTagAsContent =>
+      _rendersTagAsContent ?? (isVolume && address.startsWith(name));
 }
 
 class SourceReadingResult {

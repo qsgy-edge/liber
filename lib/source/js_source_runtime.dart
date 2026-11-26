@@ -462,9 +462,13 @@ String variableTextOf(Map<String, String?> map) =>
     });
 
 class SourceScriptError implements Exception {
-  const SourceScriptError(this.category, [this.message = '']);
+  const SourceScriptError(this.category, [this.message = ''])
+    : _namedRefusal = false;
+  const SourceScriptError._(this.category, this.message, this._namedRefusal);
+
   final String category;
   final String message;
+  final bool _namedRefusal;
 
   /// The same failure as the rule field that hit it reports it: [field] is the
   /// rule field's name (`ruleBookInfo.kind`), and the runtime's own message is
@@ -474,11 +478,32 @@ class SourceScriptError implements Exception {
   SourceScriptError inRuleField(String field) =>
       field.isEmpty || message.isEmpty
       ? this
-      : SourceScriptError(category, '$field: $message');
+      : SourceScriptError._(category, '$field: $message', _namedRefusal);
 
   @override
   String toString() => message.isEmpty ? category : '$category: $message';
 }
+
+/// Whether one `ruleContent.title` failure is the ordinary rule/script error
+/// the approved disposition keeps local to the title (issue #138 comment
+/// 6738724387): the selected content stage wraps its title read in
+/// `runCatching`, logs the failure and keeps the readable body and the incoming
+/// chapter name (`BookContent.kt:169-201`).
+///
+/// Ordinary means the source's own rule or script was wrong: a JavaScript error
+/// (the closed `js` category, which keeps the engine's message), a host input
+/// the script passed to a member (`host-input`), or malformed rule text the
+/// evaluator refused with [FormatException]. Everything else propagates
+/// unchanged, because the disposition does not authorize a catch-all:
+/// cancellation, a real timeout, the named `policy`/`verification` refusals and
+/// the runtime's own `host-method`, I/O-cap, `network`, `host` and `cleanup`
+/// failures are all the stage's own failures, not the title's.
+bool sourceTitleFailureIsOrdinary(Object error) => switch (error) {
+  SourceScriptError(:final category, :final _namedRefusal) =>
+    !_namedRefusal && (category == 'js' || category == 'host-input'),
+  FormatException() => true,
+  _ => false,
+};
 
 /// Shared libraries keep their engine and closures; each eval gets fresh bindings.
 class InProcessSourceScriptRuntime implements SourceScriptRuntime {
@@ -770,6 +795,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (engine.closed) {
         throw const SourceScriptError('cancelled', 'shared runtime closed');
       }
+      // The native callback port can deliver in a different zone. Dispatch
+      // in the initiating execution's zone so re-entry (such as retrying a
+      // stage request) also inherits its analysis and reader variable draft.
+      final executionZone = Zone.current;
       Future<void> perform(BridgeRequest request) async {
         JsResult result;
         try {
@@ -961,7 +990,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       session.starts[executionId] = (request) {
         // Never throw through FRB's non-fallible callback ABI.
         if (token.isCancelled) return;
-        final work = perform(request);
+        final work = executionZone.run(() => perform(request));
         pending[request.id] = work;
         unawaited(
           work.then<void>((_) {
@@ -1320,7 +1349,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final message =
         '$member 需要一个绝对的 http(s) 地址：${address is String ? address : ''}';
     _record(SourceHostMessage('verification', message));
-    return SourceScriptError('host-input', message);
+    return SourceScriptError._('host-input', message, true);
   }
 
   /// One named refusal of a member that exists but cannot be served here: the

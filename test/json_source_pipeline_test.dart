@@ -98,6 +98,133 @@ void main() {
     },
   );
 
+  test('ordinary JSON title failure keeps body and reports once', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      request.response.write('{"body":"JSON BODY"}');
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final messages = <SourceHostMessage>[];
+    final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+    final pipeline = JsonSourcePipeline({
+      'bookSourceUrl': base,
+      'ruleContent': {
+        'content': r'$.body',
+        'title': '@js: throw new Error("optional title failed")',
+      },
+    }, HttpSourceTransport())..onHostMessage = messages.add;
+
+    final body = await pipeline.chapter(chapter);
+    expect(body.text.trim(), 'JSON BODY');
+    expect(body.title ?? chapter.name, '目录标题');
+    expect(messages.single.message, contains('optional title failed'));
+  });
+
+  for (final cancelInNotice in [false, true]) {
+    test(
+      '${cancelInNotice ? "cancel on title diagnostic" : "refuse hatch scheme"} in JSON title',
+      () async {
+        final rule = cancelInNotice
+            ? '@js: throw new Error("optional title")'
+            : '@js: java.openUrl("file:///not-an-http-address", "title")';
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        server.listen((request) async {
+          request.response.write('{"body":"BODY"}');
+          await request.response.close();
+        });
+        final base = 'http://127.0.0.1:${server.port}';
+        final pipeline = JsonSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {'content': r'$.body', 'title': rule},
+        }, HttpSourceTransport());
+        final notices = <SourceHostMessage>[];
+        pipeline.onHostMessage = (notice) {
+          notices.add(notice);
+          if (cancelInNotice && notice.kind == 'ruleContent.title') {
+            pipeline.cancel();
+          }
+        };
+        addTearDown(pipeline.cancel);
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            cancelInNotice
+                ? isA<SourceRequestCancelled>()
+                : isA<SourceScriptError>()
+                      .having((e) => e.category, 'category', 'host-input')
+                      .having(
+                        (e) => e.message,
+                        'member',
+                        contains('java.openUrl'),
+                      ),
+          ),
+        );
+        expect(
+          notices.where((m) => m.kind == 'ruleContent.title'),
+          hasLength(cancelInNotice ? 1 : 0),
+        );
+      },
+    );
+  }
+
+  for (final (category, rule) in [
+    ('policy', '@js: java.readFile("not-used.txt")'),
+    ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
+    ('timeout', '@js: while (true) {}'),
+  ]) {
+    test(
+      'JSON title $category still fails the chapter load',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        server.listen((request) async {
+          request.response.write('{"body":"JSON BODY"}');
+          await request.response.close();
+        });
+        final base = 'http://127.0.0.1:${server.port}';
+        final pipeline = JsonSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {'content': r'$.body', 'title': rule},
+        }, HttpSourceTransport());
+        final messages = <SourceHostMessage>[];
+        pipeline.onHostMessage = (message) {
+          messages.add(message);
+          if (category == 'cancelled' && message.kind == 'toast') {
+            pipeline.cancel();
+          }
+        };
+        addTearDown(pipeline.cancel);
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        final error = isA<SourceScriptError>().having(
+          (error) => error.category,
+          'category',
+          category,
+        );
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            category == 'policy'
+                ? error.having(
+                    (error) => error.message,
+                    'member',
+                    contains('java.readFile'),
+                  )
+                : error,
+          ),
+        );
+        expect(messages.where((m) => m.kind == 'ruleContent.title'), isEmpty);
+        if (category == 'cancelled') {
+          expect(messages.single.message, 'cancel title');
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 55)),
+    );
+  }
+
   test(
     'the JSON content title reads after all pages against the first page',
     () async {
@@ -144,6 +271,51 @@ void main() {
       expect(body.text, 'JSON BODY\nJSON PAGE2');
     },
   );
+
+  for (final (label, rule, expectedText) in [
+    ('static replacement', r'##@@AD@@|tail\nsecond##', '　　first\n　　\n　　 page'),
+    ('no replacement', null, '　　first@@AD@@\n　　@@AD@@\n　　tail\nsecond page'),
+    (
+      'scripted replacement remains unexecuted',
+      '##@@AD@@@js: throw new Error("unexpected replacement script")',
+      '　　first@@AD@@\n　　@@AD@@\n　　tail\nsecond page',
+    ),
+  ]) {
+    test('JSON joined content: $label', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      server.listen((request) async {
+        paths.add(request.uri.path);
+        final body = request.uri.path == '/c/1'
+            ? {
+                'body': '  first@@AD@@  \n@@AD@@\ntail',
+                'next': '/c/2',
+                'title': 'first title',
+              }
+            : {'body': 'second page', 'title': 'second title'};
+        request.response.write(jsonEncode(body));
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': base,
+        'ruleContent': {
+          'content': r'$.body',
+          'nextContentUrl': r'$.next',
+          'title': r'$.title',
+          'replaceRegex': ?rule,
+        },
+      }, HttpSourceTransport());
+      final body = await pipeline.chapter(
+        SourceChapter('TOC', Uri.parse('$base/c/1')),
+      );
+      expect(body.text, expectedText);
+      expect(body.title, 'first title');
+      expect(body.pages, 2);
+      expect(paths, ['/c/1', '/c/2']);
+    });
+  }
 
   test(
     'a valid JSON null root still reads the declared title after the body',
