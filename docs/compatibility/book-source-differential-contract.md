@@ -460,8 +460,11 @@ attempt and missing return/terminal/cleanup observations remain incomplete after
 recovery. The archived native crash records the timeout path, not a successful
 restart. Selected comparison requires both independently bound producer roles,
 all fifteen product observations, exact successful partition cleanup, and the
-existing named timeout/refusal dispositions; no unexecuted native row is
-promoted. The successful fourteen-case lifetime remains not-run until captured.
+existing named timeout/refusal dispositions. The successful fourteen-case
+lifetime was captured with cleanup verified (golden SHA-256 `93016fc9…`). A
+Windows re-comparison on `9e084f7` recorded 13 `pass`, 0 `fail` and two named
+`notCompared` rows (`timeout` and `refusal`). The timeout witness remains an
+incomplete native observation; neither result establishes other platforms.
 
 ## Verdict Aggregation
 
