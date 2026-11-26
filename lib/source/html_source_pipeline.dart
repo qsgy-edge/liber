@@ -1486,8 +1486,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
     // notice answers nothing, so the address the rule wrote stands; stringifying
     // that nothing into `'null'` sent the request to `/null` (#94).
-    // For an initial content request, AnalyzeUrl passes the resolved text to
-    // option JS before query encoding, whether or not a charset was declared.
+    // Validate before any option-script effects. For the initial content
+    // request, JS still receives the text before query encoding.
+    final resolved = _resolve(base, split.path, keepFragment: true);
     final text = script == null
         ? split.path
         : (await _evalJs(
@@ -1495,7 +1496,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 keyword,
                 rawScriptUrl
                     ? sourceUrlTextResolved(base, split.path)
-                    : '${_resolve(base, split.path, keepFragment: true)}',
+                    : '$resolved',
               ))?.toString() ??
               split.path;
     var url = _resolve(base, text, keepFragment: true);

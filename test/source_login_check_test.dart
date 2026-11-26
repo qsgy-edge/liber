@@ -297,6 +297,33 @@ void main() {
     },
   );
 
+  test('HTML rejects an invalid chapter address before option JS runs', () async {
+    final site = await _Site.start({});
+    addTearDown(site.close);
+    final state = SourceHostState();
+    final invalid = Uri.parse(site.origin).replace(
+      userInfo: 'probe',
+      path: '/chapter',
+    );
+    final options = jsonEncode({
+      'js': 'cache.put("invalid-address-script", true); result',
+    });
+    final chapter = SourceChapter.fromAddress('第一章', '$invalid,$options');
+    final pipeline = _pipeline(_htmlSource(site.origin), state: state);
+    await expectLater(
+      pipeline.chapter(chapter),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          '非法书源地址：$invalid',
+        ),
+      ),
+    );
+    expect(await state.entry(site.origin, 'invalid-address-script'), isNull);
+    expect(site.seen, isEmpty);
+  });
+
   for (final json in [false, true]) {
     final adapter = json ? 'JSON' : 'HTML';
     for (final query in ['中', '%D6%D0']) {
@@ -393,7 +420,11 @@ JSON.stringify({'X-Header-Eval': String(calls)});
               : _htmlSource(site.origin, checkJs: check);
           final options = jsonEncode({
             'charset': ?charset,
-            'js': 'result.replace("中", "中&raw=1")',
+            'js': '''
+var pass = Number(cache.get('url-option-pass') || '0') + 1;
+cache.put('url-option-pass', String(pass));
+result.replace('中', '中&pass=' + pass);
+''',
           });
           final chapter = SourceChapter.fromAddress(
             '第一章',
@@ -402,10 +433,10 @@ JSON.stringify({'X-Header-Eval': String(calls)});
           final body = await _pipeline(source).chapter(chapter);
           expect(body.text, 'recovered');
           final query = charset == 'gbk' ? '%D6%D0' : '%E4%B8%AD';
-          final target = 'GET /chapter?q=$query&raw=1';
+          final target = 'GET /chapter?q=$query';
           expect(
             site.seen.map((request) => '${request.method} ${request.target}'),
-            [target, target],
+            ['$target&pass=1', '$target&pass=2'],
           );
         },
       );
