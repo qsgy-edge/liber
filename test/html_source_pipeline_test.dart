@@ -9,6 +9,7 @@ import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_stage_diagnostic.dart';
 
 import 'native_library.dart';
 
@@ -74,6 +75,111 @@ HtmlBook _hit() =>
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
+
+  test(
+    'reader regression: HTML body script precedes next rule substitution',
+    () async {
+      final transport = SitePages({
+        '/chapter/1':
+            '<div class="con">FIRST</div><a class="next" href="/chapter/2">next</a>',
+        '/chapter/2': '<div class="con">SECOND</div>',
+      });
+      final source = _pageSource(
+        nextContentUrl: '{{source.get("nextRule") || "/missing"}}',
+      );
+      (source['ruleContent'] as Map)['content'] =
+          '@js: source.put("nextRule", java.getString(".con@text") == "FIRST" ? "/chapter/2" : "/chapter/3"); java.getString(".con@text")';
+      final body = await HtmlSourcePipeline(source, transport).chapter(
+        SourceChapter('TOC', Uri.parse('https://a.test/chapter/1')),
+        nextChapterUrl: 'https://a.test/chapter/3',
+      );
+      expect(body.text, contains('SECOND'));
+      expect(transport.requests, ['/chapter/1', '/chapter/2']);
+    },
+  );
+
+  test(
+    'reader regression: erased HTML content fails and volume survives',
+    () async {
+      final transport = SitePages({
+        '/chapter/1': '<div class="con"><p>ADVERTISEMENT</p></div>',
+      });
+      final source = _pageSource();
+      (source['ruleContent'] as Map)['replaceRegex'] = '##ADVERTISEMENT##';
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      await expectLater(
+        HtmlSourcePipeline(source, transport).chapter(chapter),
+        throwsA(isA<SourceStageDiagnostic>()),
+      );
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(
+          SourceChapter('TOC', chapter.url, isVolume: true),
+        )).text.trim(),
+        isEmpty,
+      );
+    },
+  );
+  test(
+    'reader regression: joined HTML replacement unescapes entities',
+    () async {
+      final transport = SitePages({
+        '/chapter/1': '<div class="con"><p>ADVERTISEMENT</p></div>',
+      });
+      final source = _pageSource();
+      (source['ruleContent'] as Map)['replaceRegex'] =
+          '##ADVERTISEMENT##&copy;';
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(chapter)).text,
+        contains('©'),
+      );
+    },
+  );
+
+  test(
+    'reader regression: blank page, erased body and HTML4 replacement',
+    () async {
+      final transport = SitePages({
+        '/chapter/1': '<div class="con"></div><a href="/chapter/2">next</a>',
+        '/chapter/2': '<div class="con"><p>READABLE</p></div>',
+      });
+      final source = _pageSource(nextContentUrl: '@CSS:a@href');
+      final pipeline = HtmlSourcePipeline(source, transport);
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      final body = await pipeline.chapter(chapter);
+      expect(body.text, contains('READABLE'));
+      expect(transport.requests, ['/chapter/1', '/chapter/2']);
+
+      transport.pages['/chapter/1'] =
+          '<div class="con"><p>ADVERTISEMENT</p></div>';
+      (source['ruleContent'] as Map)['replaceRegex'] = '##ADVERTISEMENT##';
+      (source['ruleContent'] as Map)['title'] = '@js: "NEW TITLE"';
+      await expectLater(
+        HtmlSourcePipeline(source, transport).chapter(chapter),
+        throwsA(isA<SourceStageDiagnostic>()),
+      );
+      final volume = SourceChapter('TOC', chapter.url, isVolume: true);
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(volume)).title,
+        'NEW TITLE',
+      );
+      (source['ruleContent'] as Map)['replaceRegex'] =
+          '##ADVERTISEMENT##&copy;';
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(chapter)).text,
+        contains('©'),
+      );
+    },
+  );
 
   test(
     'source JSON drives all directory pages and only same-chapter content pages',
