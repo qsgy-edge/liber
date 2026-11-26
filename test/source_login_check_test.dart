@@ -372,6 +372,33 @@ JSON.stringify({'X-Header-Eval': String(calls)});
       expect(site.seen.map((r) => r.headers['x-header-eval']), ['1', '1']);
     });
 
+    test('$adapter content recovery reanalyzes the GBK request', () async {
+      final site = await _Site.start({
+        '/chapter': [
+          const _Page('', disconnect: true),
+          _Page(
+            json ? '{"text":"recovered"}' : '<div id="content">recovered</div>',
+          ),
+        ],
+      });
+      addTearDown(site.close);
+      const check = 'java.initUrl(); java.getStrResponse();';
+      final source = json
+          ? _jsonSource(site.origin, check)
+          : _htmlSource(site.origin, checkJs: check);
+      final options = jsonEncode({'charset': 'gbk', 'js': 'result'});
+      final chapter = SourceChapter.fromAddress(
+        '第一章',
+        '${site.origin}/chapter?q=中,$options',
+      );
+      final body = await _pipeline(source).chapter(chapter);
+      expect(body.text, 'recovered');
+      expect(
+        site.seen.map((request) => '${request.method} ${request.target}'),
+        ['GET /chapter?q=%D6%D0', 'GET /chapter?q=%D6%D0'],
+      );
+    });
+
     for (final rewrite in [false, true]) {
       test(
         '$adapter recovery sees the chapter origin before option JS (rewrite: $rewrite)',

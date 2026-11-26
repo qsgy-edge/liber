@@ -669,9 +669,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       stage.base,
       stage.address,
       _keyword,
-      // The content stage carries a declared fragment past its own GET query
-      // re-encoding; a POST request keeps it on the wire either way.
+      // Repeat the content request's pre-encoding script input and keep its
+      // declared fragment through GET query encoding.
       keepGetFragment: stage.stage == BookSourceStage.content,
+      rawScriptUrl: stage.stage == BookSourceStage.content,
     );
     _stageRequest = (
       url: url,
