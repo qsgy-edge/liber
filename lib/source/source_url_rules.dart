@@ -1007,6 +1007,20 @@ String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
   return output.toString();
 }
 
+/// `AnalyzeUrl` binds the site root before the request's option script runs.
+/// Keep the resolved authority text, including an explicitly written port.
+String? sourceRequestOrigin(Uri base, String path) {
+  final text = sourceUrlTextResolved(base, path);
+  final origin = RegExp(
+    r'^https?://[^/?#]+',
+    caseSensitive: false,
+  ).firstMatch(text)?.group(0);
+  if (origin == null || Uri.tryParse(origin)?.host.isNotEmpty != true) {
+    return null;
+  }
+  return origin;
+}
+
 /// The frozen `AnalyzeRule.getString(rule, isUrl = true)` text for one finished
 /// rule result (`AnalyzeRule.kt:315-323`): an absolute value stays verbatim,
 /// every other value goes through the native URL operation. A blank result is

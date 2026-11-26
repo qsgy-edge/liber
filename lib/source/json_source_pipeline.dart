@@ -389,12 +389,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// The hook runs once per stage, on the stage's first response — the frozen
   /// call sites are the four stage entries, and the `nextTocUrl`/
   /// `nextContentUrl` pages `BookChapterList`/`BookContent` fetch never run it.
-  Future<SourceStageResponse> _loginCheck(SourceStageResponse response) async {
+  Future<SourceStageResponse> _loginCheck(
+    SourceStageResponse response, {
+    String? recoveryOrigin,
+  }) async {
     final checkJs = '${source['loginCheckJs'] ?? ''}';
     if (checkJs.trim().isEmpty) return response;
     return _runtime.evaluateLoginCheck(
       script: checkJs,
-      input: _scriptInput(_keyword, response.toJson()),
+      input: {
+        ..._scriptInput(_keyword, response.toJson()),
+        'baseUrl': ?recoveryOrigin,
+      },
       stage: SourceStageRequest(
         initialResponse: response,
         resend: _resendStage,
@@ -773,6 +779,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     String template,
     String keyword, {
     void Function(Uri preOptionUrl, String expandedAddress)? captureIdentity,
+    void Function(String?)? captureRequestOrigin,
     String? rawBase,
   }) async {
     final expandedAddress = await _expand(template, keyword);
@@ -788,6 +795,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
           '${sourceUrlTextResolved(base, parts.before, rawBase: raw)}${parts.tail}';
     }
     final split = splitSourceUrlOptions(address);
+    captureRequestOrigin?.call(sourceRequestOrigin(base, split.path));
     Uri? capturedPreOption;
     if (captureIdentity != null) {
       capturedPreOption = _url(base, split.path);
@@ -2260,9 +2268,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // it reads none and sends nothing.
       _activeHeaders = await _readHeaders();
     }
+    String? recoveryOrigin;
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
-        : await _request(chapterBase, requestText, _keyword);
+        : await _request(
+            chapterBase,
+            requestText,
+            _keyword,
+            captureRequestOrigin: (origin) => recoveryOrigin = origin,
+          );
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
@@ -2322,6 +2336,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     url: pageUrl,
                     fetch: fetch,
                     check: _loginCheck,
+                    checkRecovery: (response) =>
+                        _loginCheck(response, recoveryOrigin: recoveryOrigin),
                     cancellation: _cancellation,
                   )
                 : await fetch());

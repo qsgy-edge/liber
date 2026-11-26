@@ -623,12 +623,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<SourceStageResponse> _loginCheck(
     SourceStageResponse response, {
     Map<String, String>? resendHeaders,
+    String? recoveryOrigin,
   }) async {
     final checkJs = '${source['loginCheckJs'] ?? ''}';
     if (checkJs.trim().isEmpty) return response;
     return _runtime.evaluateLoginCheck(
       script: checkJs,
-      input: _scriptInput(_keyword, response.toJson()),
+      input: {
+        ..._scriptInput(_keyword, response.toJson()),
+        'baseUrl': ?recoveryOrigin,
+      },
       stage: SourceStageRequest(
         initialResponse: response,
         resend: () => _resendStage(sourceHeaders: resendHeaders),
@@ -1428,6 +1432,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String keyword, {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
+    void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
   }) async {
@@ -1437,6 +1442,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       expandedAddress,
       keyword,
       captureIdentity: captureIdentity,
+      captureRequestOrigin: captureRequestOrigin,
       rawBase: rawBase,
       keepGetFragment: keepGetFragment,
     );
@@ -1455,6 +1461,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String keyword, {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
+    void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
   }) async {
@@ -1469,6 +1476,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       address = '${sourceUrlTextResolved(base, before, rawBase: raw)}$tail';
     }
     final split = splitSourceUrlOptions(address);
+    captureRequestOrigin?.call(sourceRequestOrigin(base, split.path));
     final script = split.options.js;
     // The frozen replaces the URL with the option script's result only when that
     // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
@@ -3079,12 +3087,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // this content consumer carries a declared fragment past its own GET query
     // re-encoding.
     final requestText = chapterContext?.requestAddress ?? chapter.address;
+    String? recoveryOrigin;
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
         : await _request(
             chapterBase,
             requestText,
             _keyword,
+            captureRequestOrigin: (origin) => recoveryOrigin = origin,
             keepGetFragment: true,
           );
     // The retained first page's complete native text is the base its declared
@@ -3194,8 +3204,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                     url: target,
                     fetch: fetch,
                     check: _loginCheck,
-                    checkRecovery: (response) =>
-                        _loginCheck(response, resendHeaders: sourceHeaders),
+                    checkRecovery: (response) => _loginCheck(
+                      response,
+                      resendHeaders: sourceHeaders,
+                      recoveryOrigin: recoveryOrigin,
+                    ),
                     cancellation: _cancellation,
                   )
                 : await fetch());

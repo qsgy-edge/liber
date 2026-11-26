@@ -312,7 +312,8 @@ void main() {
       final url = '${site.origin}/chapter/1';
       final check =
           '''
-if (result.code() !== 500 || result.url() !== "$url" || result.body() !== 'connection') {
+if (result.code() !== 500 || result.url() !== "$url" ||
+    result.body() !== 'connection' || baseUrl !== '${site.origin}') {
   throw new Error('unexpected initial response');
 }
 java.getStrResponse();
@@ -336,6 +337,54 @@ JSON.stringify({'X-Header-Eval': String(calls)});
       ]);
       expect(site.seen.map((r) => r.headers['x-header-eval']), ['1', '1']);
     });
+
+    for (final rewrite in [false, true]) {
+      test(
+        '$adapter recovery sees the chapter origin before option JS (rewrite: $rewrite)',
+        () async {
+          final site = await _Site.start({
+            '/chapter/1': [
+              const _Page('', disconnect: true),
+              _Page(
+                json ? '{"text":"recovered"}' : '<div id="content">recovered</div>',
+              ),
+            ],
+          });
+          addTearDown(site.close);
+          const sourceOrigin = 'http://source.test:8080';
+          final attempted = '${site.origin}/chapter/1';
+          final initialOrigin = rewrite ? 'https://CHAPTER.test:443' : site.origin;
+          final initial = '$initialOrigin/start/1?x=1';
+          final text = rewrite
+              ? '$initial,${jsonEncode({'js': jsonEncode(attempted)})}'
+              : attempted;
+          final check = '''
+if (result.code() === 500) {
+  if (result.url() !== "$attempted" || result.body() !== 'connection' ||
+      baseUrl !== "$initialOrigin") throw new Error('incorrect recovery inputs');
+  result = java.getStrResponse();
+} else if (baseUrl !== '$sourceOrigin') {
+  throw new Error('ordinary response binding changed');
+}
+result;
+''';
+          final source = json
+              ? _jsonSource(sourceOrigin, check)
+              : _htmlSource(sourceOrigin, checkJs: check);
+          final chapter = SourceChapter.fromAddress('第一章', text);
+          final pipeline = _pipeline(source);
+          final response = await pipeline.chapter(chapter);
+          expect(response.text, 'recovered');
+          expect(site.seen.map((r) => '${r.method} ${r.target}'), [
+            'GET /chapter/1',
+            'GET /chapter/1',
+          ]);
+          final ordinary = await _pipeline(source).chapter(chapter);
+          expect(ordinary.text, 'recovered');
+          expect(site.seen, hasLength(3));
+        },
+      );
+    }
 
     test(
       '$adapter first content WebView POST recovers its HTTP bootstrap',
