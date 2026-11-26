@@ -1132,19 +1132,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// wherever a request actually resolves its target.
   static ({String text, Uri target}) _pendingChapterAddress(
     Uri base,
-    String address,
-  ) {
-    final resolved = resolveSourceTocUrl(
-      address: address,
-      base: base,
-      fallbackAddress: address,
-    );
+    String address, {
+    String? rawBase,
+  }) {
+    final resolved = sourceAbsoluteRequestText(base, address);
     final bare = sourceUrlTargetOf(resolved);
+    final text = rawBase == null
+        ? resolved
+        : sourceAbsoluteRequestText(base, address, rawBase: rawBase);
     if (!_isPendingAddressText(address)) {
-      return (text: resolved, target: _url(base, bare));
+      return (text: text, target: _url(base, bare));
     }
     return (
-      text: sourceUrlTargetOf(address).startsWith('@js:') ? address : resolved,
+      text: sourceUrlTargetOf(address).startsWith('@js:') ? address : text,
       target: SourceHttpUri.parse(bare),
     );
   }
@@ -1508,10 +1508,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final retainedPageUrl = retainedFirstPage
         ? Uri.tryParse(retainedLogicalText)
         : null;
-    final retainedChapterBase = retainedFirstPage
-        ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
-              retainedPageUrl
+    final retainedChapterBaseText = retainedFirstPage
+        ? _sourceUrlStringBase(retainedLogicalText)
         : null;
+    final retainedChapterBase = retainedChapterBaseText == null
+        ? null
+        : Uri.tryParse(retainedChapterBaseText) ?? retainedPageUrl;
     // The complete `BookChapter.getAbsoluteURL()` text an ordinary empty chapter
     // of a retained page hands its content analysis (`BookChapter.kt:143-155`):
     // the book's own native text before its frozen option boundary, resolved
@@ -1841,7 +1843,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 final chapterBase = cachedFirstPage
                     ? (retainedChapterBase ?? tocPage.url)
                     : tocPage.url;
-                final pending = _pendingChapterAddress(chapterBase, chapterUrl);
+                final pending = _pendingChapterAddress(
+                  chapterBase,
+                  chapterUrl,
+                  rawBase: cachedFirstPage ? retainedChapterBaseText : null,
+                );
                 chapter = SourceChapter(
                   name,
                   pending.target,

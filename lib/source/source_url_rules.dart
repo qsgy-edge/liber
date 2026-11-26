@@ -508,13 +508,21 @@ String sourceAbsoluteRequestText(
   Uri base,
   String address, {
   bool normalizeOptionSeparator = false,
+  String? rawBase,
 }) {
   final boundary = sourceUrlOptionBoundaryOf(address);
-  if (boundary == null) return sourceUrlTextResolved(base, address);
+  if (boundary == null) {
+    return sourceUrlTextResolved(base, address, rawBase: rawBase);
+  }
   final tail = normalizeOptionSeparator
       ? ',${address.substring(address.indexOf('{', boundary))}'
       : address.substring(boundary);
-  return '${sourceUrlTextResolved(base, address.substring(0, boundary))}$tail';
+  final path = sourceUrlTextResolved(
+    base,
+    address.substring(0, boundary),
+    rawBase: rawBase,
+  );
+  return '$path$tail';
 }
 
 /// The request facts a target conversion reads from an address text's own

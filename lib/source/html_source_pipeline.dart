@@ -2237,10 +2237,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final retainedPageUrl = retainedFirstPage
         ? Uri.tryParse(retainedLogicalText)
         : null;
-    final retainedChapterBase = retainedFirstPage
-        ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
-              retainedPageUrl
+    final retainedChapterBaseText = retainedFirstPage
+        ? _sourceUrlStringBase(retainedLogicalText)
         : null;
+    final retainedChapterBase = retainedChapterBaseText == null
+        ? null
+        : Uri.tryParse(retainedChapterBaseText) ?? retainedPageUrl;
     // A real TOC request evaluates the source header map once, before it analyzes
     // its own address text, and the send carries that same map
     // (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`); a retained same-page
@@ -2655,7 +2657,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                   base,
                   sourceUrlTargetOf(rawAddress),
                 );
-                final requestText = sourceAbsoluteRequestText(base, rawAddress);
+                final requestText = sourceAbsoluteRequestText(
+                  base,
+                  rawAddress,
+                  rawBase: cachedFirstPage ? retainedChapterBaseText : null,
+                );
                 final retained = retainedChapterPage(
                   rawAddress,
                   requestText,
