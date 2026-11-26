@@ -286,6 +286,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     // A repeat of this selection shares its pending catalog publication.
     // Distinct adds still queue with their original revision.
     final revision = items.isEmpty ? null : _catalogRevision;
+    final expectedBookId = _catalogBookId;
     final catalog = revision == null ? null : (book, items, revision);
     if (catalog != null && !_pendingCatalogAdds.add(catalog)) return;
     final previousAdd = _adding;
@@ -304,9 +305,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           );
           final id = row?.id;
           if (!mounted ||
-              selected != book ||
-              chapters != items ||
-              (_catalogBookId != null && _catalogBookId != id) ||
+              (expectedBookId != null && expectedBookId != id) ||
               (id != null && !store.isChapterCatalogCurrent(id, revision!))) {
             throw const SourceRequestCancelled();
           }
@@ -319,7 +318,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       }
       if (!mounted) return;
       setState(() {
-        if (selected?.url == book.url) inShelf = true;
+        if (selected?.identityAddress == book.identityAddress) inShelf = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -748,31 +748,39 @@ class _LiberHomePageState extends State<LiberHomePage> {
       ),
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: _libraryBusy
-                ? null
-                : (index) {
-                    setState(() => _selectedIndex = index);
-                  },
-            labelType: NavigationRailLabelType.all,
-            destinations: [
-              NavigationRailDestination(
-                icon: const Icon(Icons.menu_book_outlined),
-                selectedIcon: const Icon(Icons.menu_book),
-                label: Text(l10n.shelfTitle),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.folder_outlined),
-                selectedIcon: const Icon(Icons.folder),
-                label: Text(l10n.navLocalLibrary),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.import_export_outlined),
-                selectedIcon: const Icon(Icons.import_export),
-                label: Text(l10n.navMigration),
-              ),
-            ],
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: compactToolbar ? 112 : double.infinity,
+            ),
+            child: NavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _libraryBusy
+                  ? null
+                  : (index) {
+                      setState(() => _selectedIndex = index);
+                    },
+              labelType: NavigationRailLabelType.all,
+              destinations: [
+                NavigationRailDestination(
+                  icon: const Icon(Icons.menu_book_outlined),
+                  selectedIcon: const Icon(Icons.menu_book),
+                  label: Text(l10n.shelfTitle, textAlign: TextAlign.center),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.folder_outlined),
+                  selectedIcon: const Icon(Icons.folder),
+                  label: Text(
+                    l10n.navLocalLibrary,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.import_export_outlined),
+                  selectedIcon: const Icon(Icons.import_export),
+                  label: Text(l10n.navMigration, textAlign: TextAlign.center),
+                ),
+              ],
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(child: pages[_selectedIndex]),
@@ -1113,7 +1121,7 @@ class _StageList extends StatelessWidget {
                     : null,
               ),
               const SizedBox(width: 8),
-              Text(stages[i].$2),
+              Flexible(child: Text(stages[i].$2)),
             ],
           ),
       ],

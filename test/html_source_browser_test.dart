@@ -616,6 +616,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('queued catalog add survives returning to search results', (
+    tester,
+  ) async {
+    final gatedShelf = _AddGateShelf(store);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '书',
+          service: gatedShelf,
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.playlist_add).first);
+    await tester.pump();
+    expect(gatedShelf.addStarted.isCompleted, isTrue);
+    try {
+      await tester.tap(find.text('B'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('加入书架'));
+      await tester.pump();
+      await tester.tap(find.text('返回搜索结果'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.playlist_add), findsNWidgets(2));
+    } finally {
+      gatedShelf.releaseAdd.complete();
+    }
+    await tester.pumpAndSettle();
+    final entry = await shelf.find(sourceUrl, '$sourceUrl/b');
+    expect(entry, isNotNull);
+    expect(entry!.shelved, isTrue);
+    expect(entry.chapters.single.name, 'B章');
+    expect(find.textContaining('加入书架失败'), findsNothing);
+  });
+
   testWidgets('queued catalog add cannot overwrite an external refresh', (
     tester,
   ) async {

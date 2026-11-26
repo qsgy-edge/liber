@@ -119,6 +119,22 @@ void defaultAppTest(Directory Function() root) {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('narrow English shelf wraps stage labels at 2x', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      LiberApp(workspaceRoot: root(), interfaceLanguage: const Locale('en')),
+    );
+    final toc = find.text('Table of contents');
+    expect(toc, findsOneWidget);
+    await tester.ensureVisible(toc);
+    await tester.pump();
+    expect(toc.hitTestable(), findsOneWidget);
+  });
+
   testWidgets(
     'CJK fallback reaches shelf text only on Linux',
     (tester) async {
