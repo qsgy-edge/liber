@@ -653,6 +653,46 @@ void main() {
     expect(find.textContaining('加入书架失败'), findsNothing);
   });
 
+  testWidgets('reopening a book with a queued catalog add can read it', (
+    tester,
+  ) async {
+    final gatedShelf = _AddGateShelf(store);
+    final pipeline = ScriptedPipeline(chapterText: '重新打开后可以读到的正文');
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '书',
+          service: gatedShelf,
+          pipeline: pipeline,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.playlist_add).first);
+    await tester.pump();
+    expect(gatedShelf.addStarted.isCompleted, isTrue);
+    try {
+      await tester.tap(find.text('B'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('加入书架'));
+      await tester.pump();
+      await tester.tap(find.text('返回搜索结果'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('B'));
+      await tester.pump(const Duration(milliseconds: 350));
+    } finally {
+      gatedShelf.releaseAdd.complete();
+    }
+    await tester.pumpAndSettle();
+    expect(pipeline.detailsCalls, ['B', 'B']);
+    expect((await shelf.find(sourceUrl, '$sourceUrl/b'))?.shelved, isTrue);
+    await tester.tap(find.text('B章'));
+    await tester.pumpAndSettle();
+    expect(pipeline.chapterCalls, ['$sourceUrl/b/1']);
+    expect(find.textContaining('重新打开后可以读到的正文'), findsOneWidget);
+  });
+
   testWidgets('queued catalog add cannot overwrite an external refresh', (
     tester,
   ) async {
