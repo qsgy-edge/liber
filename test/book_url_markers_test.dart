@@ -1,7 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:liber/source/book_source_pipeline.dart';
+import 'package:liber/source/book_source_service.dart';
+import 'package:liber/source/html_source_pipeline.dart' show HtmlSourcePipeline;
+import 'package:liber/source/json_source_pipeline.dart' show JsonSourcePipeline;
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_url_rules.dart';
 
 import '../tool/result_field_runner.dart';
 import 'native_library.dart';
@@ -104,6 +109,70 @@ void main() {
       expect(receipt['redirect'], '/a/detail/73');
     },
   );
+
+  const updateTimes = [
+    (raw: '更新 字数：1.2万字 34字', tag: '更新  34字', volume: false),
+    (raw: '更新 字数：1.2万字 34字', tag: '更新 字数：1.2万字 34字', volume: true),
+    (raw: '123字', tag: '', volume: false),
+    (raw: '更新123字', tag: '更新123字', volume: false),
+    (raw: '更新\u0085123字完', tag: '更新完', volume: false),
+    (raw: '更新\uFEFF123字', tag: '更新\uFEFF123字', volume: false),
+  ];
+
+  for (final html in [true, false]) {
+    test(
+      '${html ? 'HTML' : 'JSON'} TOC publishes the frozen updateTime tag',
+      () async {
+        final source = {
+          'bookSourceUrl': _origin,
+          'ruleToc': {
+            'chapterList': html ? 'li' : r'$.chapters',
+            'chapterName': html ? 'a@text' : r'$.title',
+            'chapterUrl': html ? 'a@href' : r'$.url',
+            'updateTime': html ? 'em@text' : r'$.time',
+            'isVolume': html ? 'span@text' : r'$.volume',
+          },
+        };
+        const transport = ControlledReplayTransport();
+        final BookSourcePipeline pipeline = html
+            ? HtmlSourcePipeline(source, transport)
+            : JsonSourcePipeline(source, transport);
+        final tocBody = html
+            ? '<ul>${[for (final (index, row) in updateTimes.indexed) '<li><a href="/c/$index">第$index章</a>'
+                    '<em>${row.raw}</em><span>${row.volume}</span></li>'].join()}</ul>'
+            : jsonEncode({
+                'chapters': [
+                  for (final (index, row) in updateTimes.indexed)
+                    {
+                      'title': '第$index章',
+                      'url': '/c/$index',
+                      'time': row.raw,
+                      'volume': row.volume,
+                    },
+                ],
+              });
+        final bookUrl = Uri.parse('$_origin/book');
+        final (_, chapters) = await pipeline.tableOfContents(
+          SourceBookInfo(
+            book: HtmlBook(url: bookUrl, title: '书'),
+            tocAddress: '',
+            tocBase: bookUrl,
+            bookUrl: bookUrl,
+            bookOptions: const SourceUrlOptions(),
+            bookAddress: bookUrl.toString(),
+            keyword: '',
+            page: null,
+            tocHtml: tocBody,
+          ),
+        );
+
+        expect(pipeline.trace, isEmpty);
+        expect(chapters.map((chapter) => (chapter.isVolume, chapter.tag)), [
+          for (final row in updateTimes) (row.volume, row.tag),
+        ]);
+      },
+    );
+  }
 
   test(
     'reader follow-through corpus records three cases and fourteen GETs',

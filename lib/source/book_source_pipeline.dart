@@ -61,6 +61,21 @@ bool sourceIsTrue(String? value) {
   ).hasMatch(sourceKotlinTrim(value));
 }
 
+// Frozen AppPattern.wordCountRegex; Android Pattern's \s uses White_Space.
+final _tocWordCountToken = RegExp(
+  r'(?:^|字数[：:、]?|\p{White_Space}+)[0-9万千百.]{1,6}字',
+  unicode: true,
+);
+
+/// The visible `BookChapter.tag` in the frozen default-enabled `tocCountWords`
+/// path (`BookChapterList.kt:236-260`). Remove only the first matched text,
+/// including its prefix, without trimming; volume tags bypass decomposition.
+String sourceTocTag(String updateTime, {required bool isVolume}) {
+  if (isVolume) return updateTime;
+  final token = _tocWordCountToken.firstMatch(updateTime)?.group(0);
+  return token == null ? updateTime : updateTime.replaceFirst(token, '');
+}
+
 /// `HtmlFormatter.wrapHtmlRegex`: the tag family that stands for a paragraph
 /// break in the frozen formatter.
 final RegExp _wrapHtmlRegex = RegExp(

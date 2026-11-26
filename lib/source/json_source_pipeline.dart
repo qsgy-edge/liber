@@ -1727,7 +1727,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 );
               }
               publishTocChapter(name, chapterUrl);
-              final tag = await _optional(
+              final tagValue = await _optional(
                 entry,
                 toc['updateTime'] ?? '',
                 label: 'ruleToc.updateTime',
@@ -1739,6 +1739,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
                   label: 'ruleToc.isVolume',
                 ),
               );
+              final tag = sourceTocTag(tagValue, isVolume: isVolume);
               // Tag/volume observe the raw address; VIP/pay observe its fallback.
               publishTocChapter(
                 name,
