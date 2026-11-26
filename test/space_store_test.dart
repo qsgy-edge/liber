@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/workspace.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import 'temp_directory.dart';
 
@@ -80,6 +81,26 @@ void main() {
       expect((await reopenedStore.bookById('book'))?.title, 'Saved');
     },
   );
+
+  test('workspace closes its other stores after a rejected first open', () async {
+    final workspace = await Workspace.open(root: root);
+    final newer = await workspace.openSpace('newer');
+    final file = sqlite3.open(workspace.databaseFile('newer').path);
+    try {
+      file.execute('PRAGMA user_version = ${SpaceDatabase.latestVersion + 1}');
+    } finally {
+      file.close();
+    }
+    final later = await workspace.openSpace();
+    await later.putBook(BooksCompanion.insert(id: 'saved', title: 'Saved'));
+    await expectLater(
+      newer.transaction(() async => fail('A newer schema must not open')),
+      throwsA(predicate<Object>((error) => '$error'.contains('拒绝降级读取'))),
+    );
+
+    await workspace.close();
+    await expectLater(later.transaction(() async {}), throwsStateError);
+  });
 
   test(
     'source group strings normalize four separators on put and batch re-import',

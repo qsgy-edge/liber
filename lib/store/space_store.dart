@@ -59,6 +59,7 @@ class SpaceStore {
   final String spaceId;
   int _activeTransactions = 0;
   Completer<void>? _transactionsIdle;
+  bool _openedExclusiveScope = false;
   Future<void>? _closing;
 
   Future<void> close() {
@@ -72,9 +73,8 @@ class SpaceStore {
 
   Future<void> _close() async {
     try {
-      final idle = _transactionsIdle;
-      if (idle != null) {
-        await idle.future;
+      await _transactionsIdle?.future;
+      if (_openedExclusiveScope) {
         // Drift returns from exclusively() before the remote executor's
         // release is acknowledged. A root statement waits for those scopes.
         await db.customStatement('SELECT 1');
@@ -116,6 +116,7 @@ class SpaceStore {
     // connection is still locked against the next catalog read or write.
     return db
         .exclusively(() async {
+          _openedExclusiveScope = true;
           final result = await run();
           if (pending.latest != 0) {
             _chapterCatalogChanges.addAll(pending.revisions);
