@@ -2274,27 +2274,14 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
     }
 
-    /// The complete native request text of one saved address: its text before
-    /// the frozen option boundary, resolved against the base it was read from,
-    /// with that tail kept verbatim (`BookChapter.getAbsoluteURL`,
-    /// `AnalyzeUrl.kt:214-222`). No script runs here.
-    String pendingRequestText(String address, Uri base) {
-      final boundary = sourceUrlOptionBoundaryOf(address);
-      final before = boundary == null
-          ? address
-          : address.substring(0, boundary);
-      final tail = boundary == null ? '' : address.substring(boundary);
-      return '${sourceUrlTextResolved(base, before)}$tail';
-    }
-
     // The retained page's own complete native base: the book's finished native
     // text resolved against this TOC analysis's own base, with its tail verbatim.
     // A later page resolves against that whole text, never against a bare target
     // and never against the retained page's response URL.
     final retainedContentBaseText = retainedFirstPage
-        ? pendingRequestText(
-            retainedLogicalText,
+        ? sourceAbsoluteRequestText(
             retainedChapterBase ?? retainedPageUrl ?? info.tocBase,
+            retainedLogicalText,
           )
         : null;
 
@@ -2639,30 +2626,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 final base = cachedFirstPage
                     ? (retainedChapterBase ?? pageUrl)
                     : pageUrl;
-                final parts = splitSourceUrlOptions(rawAddress);
-                // The address text's options are the chapter's own: the frozen
-                // `AnalyzeUrl` parses them when the chapter is fetched, and this
-                // adapter keeps them in the raw address (`SourceChapter.options`,
-                // `persistedAddress`) so a restart keeps them (#58). Per-chapter
-                // headers and the retry count are applied by the content request
-                // itself; a POST body and a post-resolution `js` are the two
-                // families the content stage does not express yet, so they keep
-                // their named refusal (#58's test pins the body case). Headers used
-                // to be refused here with them, which refused a whole TOC for a tail
-                // the transport sends happily — the operator's real source run hit
-                // it (零点看书's `ruleToc.chapterUrl`, batch 17).
-                if (parts.options.isPost ||
-                    parts.options.body != null ||
-                    parts.options.js != null) {
-                  throw UnsupportedError('暂不支持章节地址的 URL 选项');
-                }
                 // The stable identity is this chapter's own text resolved before
                 // any request processing of its own — the same default resolution
                 // every other chapter identity uses, so a fragment the address
                 // declares stays that request's own fact, not the row's
                 // (`BookChapterList.kt:219-222`, `BookChapter.kt:143-155`).
-                final chapterUrl = _resolve(base, parts.path);
-                final requestText = pendingRequestText(rawAddress, base);
+                final chapterUrl = _resolve(
+                  base,
+                  sourceUrlTargetOf(rawAddress),
+                );
+                final requestText = sourceAbsoluteRequestText(base, rawAddress);
                 final retained = retainedChapterPage(
                   rawAddress,
                   requestText,
@@ -3193,23 +3166,25 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           target = url;
           targetOptions = options;
         }
-        var fetched =
+        Future<SourceStageResponse> fetch() => _fetch(
+          target,
+          BookSourceStage.content,
+          options: targetOptions,
+          address: request.address,
+          base: request.base,
+          sourceHeaders: sourceHeaders,
+        );
+        final fetched =
             retainedFirst ??
-            await _fetch(
-              target,
-              BookSourceStage.content,
-              options: targetOptions,
-              address: request.address,
-              base: request.base,
-              sourceHeaders: sourceHeaders,
-            );
-        // The frozen content stage checks login once, on its first response
-        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A
-        // retained first page made no request for a check to read.
-        if (isFirstPage) {
-          if (retainedFirst == null) fetched = await _loginCheck(fetched);
-          firstPage = false;
-        }
+            (isFirstPage
+                ? await fetchContentWithLoginCheck(
+                    url: target,
+                    fetch: fetch,
+                    check: _loginCheck,
+                    cancellation: _cancellation,
+                  )
+                : await fetch());
+        firstPage = false;
         final html = fetched.body;
         final pageUrl = fetched.url;
         if (parts.isEmpty) {
@@ -3267,7 +3242,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     if (firstHtml != null) {
       // BookContent binds the first document to the chapter's complete
       // address, not to the source root or the final HTTP response URL.
-      _contentTitleBase = requestText;
+      _contentTitleBase = sourceAbsoluteRequestText(chapterBase, requestText);
       try {
         final titleRule = _rule('ruleContent', 'title', optional: true);
         if (titleRule.trim().isNotEmpty) {
@@ -3416,7 +3391,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<String> _shapeJoinedContent(String text) async {
     final replaceRegex = _rule('ruleContent', 'replaceRegex', optional: true);
     if (replaceRegex.isEmpty) return text;
-    final trimmed = text.split('\n').map((line) => line.trim()).join('\n');
+    final trimmed = text.split('\n').map(sourceKotlinTrim).join('\n');
     final replaced = await _applyReplaceRegex(trimmed, replaceRegex);
     return replaced.split('\n').map((line) => '　　$line').join('\n');
   }

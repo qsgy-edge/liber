@@ -71,19 +71,6 @@ Uri _declaredPageUrl(Uri base, String address, {String? rawBase}) {
   return uri;
 }
 
-/// One chapter's complete native `BookChapter.getAbsoluteURL()` text
-/// (`BookChapter.kt:143-155`): [address] before its own frozen option boundary,
-/// resolved against [base], then that same tail verbatim behind it.
-///
-/// The frozen content branch hands this whole text to its analysis as both of its
-/// URLs (`WebBook.kt:311-329`), so the tail is part of the page base a later
-/// page resolves against and its `..` segments take part in that resolution.
-/// Deriving it here reads no option object and runs no script.
-String _sourceAbsoluteText(String address, Uri base) {
-  final parts = _sourceAddressParts(address);
-  return '${sourceUrlTextResolved(base, parts.before)}${parts.tail}';
-}
-
 /// Whether an address text is pending analysis rather than a URI: a `{{…}}`
 /// template in its address part, or one of the request-program spellings the
 /// frozen grammar recognises — `@js:` or a closed `<js>…</js>` block, in either
@@ -1518,9 +1505,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // therefore resolves against the whole native text, never against a bare
     // target and never against this page's response URL.
     final retainedEmptyFallbackText = retainedFirstPage
-        ? _sourceAbsoluteText(
-            retainedLogicalText,
+        ? sourceAbsoluteRequestText(
             retainedChapterBase ?? retainedPageUrl ?? info.tocBase,
+            retainedLogicalText,
           )
         : null;
     if (!retainedFirstPage) {
@@ -2314,24 +2301,24 @@ class JsonSourcePipeline implements BookSourcePipeline {
             : isFirstPage
             ? (request.url, request.options)
             : await _analyzeDeclaredPage(request, rawBase: pageRawBase);
-        var contentPage =
+        Future<SourceStageResponse> fetch() => _fetch(
+          BookSourceStage.content,
+          pageUrl,
+          options: pageOptions,
+          address: request.address,
+          base: request.base,
+        );
+        final contentPage =
             retainedFirst ??
-            await _fetch(
-              BookSourceStage.content,
-              pageUrl,
-              options: pageOptions,
-              address: request.address,
-              base: request.base,
-            );
-        // The frozen content stage checks login once, on its first response
-        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A retained
-        // first page made no request of this stage for a check to read.
-        if (isFirstPage) {
-          if (retainedFirst == null) {
-            contentPage = await _loginCheck(contentPage);
-          }
-          firstPage = false;
-        }
+            (isFirstPage
+                ? await fetchContentWithLoginCheck(
+                    url: pageUrl,
+                    fetch: fetch,
+                    check: _loginCheck,
+                    cancellation: _cancellation,
+                  )
+                : await fetch());
+        firstPage = false;
         final document = _document(BookSourceStage.content, contentPage);
         if (parts.isEmpty) {
           firstPageDocument = document;
@@ -2383,7 +2370,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _responseRoot = firstPageDocument;
       _responseText = firstBody;
       // The first document and its complete chapter address share one context.
-      _contentTitleBase = requestText;
+      _contentTitleBase = sourceAbsoluteRequestText(chapterBase, requestText);
       try {
         if (rawTitle is! String) {
           throw const FormatException('Invalid ruleContent.title');
@@ -2450,7 +2437,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final fields = RuleField.staticReplacement(rule);
     if (fields == null) return text;
     _cancellation.throwIfCancelled();
-    final trimmed = text.split('\n').map((line) => line.trim()).join('\n');
+    final trimmed = text.split('\n').map(sourceKotlinTrim).join('\n');
     final replaced = unescapeHtml4(applyRuleReplacement(trimmed, fields));
     return replaced.split('\n').map((line) => '　　$line').join('\n');
   }

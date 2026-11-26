@@ -7779,15 +7779,7 @@ void main() {
           rawAddress: address,
         );
         try {
-          final HtmlChapterBody body;
-          try {
-            body = await pipeline.chapter(chapter);
-          } on UnsupportedError catch (error) {
-            if (error.message != '暂不支持章节地址的 URL 选项') rethrow;
-            fail(
-              'target: the first real request also expands before interpreting inactive option-shaped data',
-            );
-          }
+          final body = await pipeline.chapter(chapter);
           expect(body.text, 'Body');
           expect(pages.requests, hasLength(1));
           expect(pages.requests.single.url.toString(), selected);

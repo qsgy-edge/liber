@@ -1071,33 +1071,32 @@ if (source.get("retry") === "yes") {
     },
   );
 
-  test('HTML keeps its named refusal for a chapter address js option', () async {
-    final pageMap = _Pages({
-      '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
-      '/toc':
-          '<ul id="list"><li><a href="/c/1,{&#34;js&#34;:&#34;void 0&#34;}">第一章</a></li></ul>',
-    });
-    final pipeline = HtmlSourcePipeline(
-      htmlSource(
-        infoScript: '@CSS:h2@text',
-        tocScript: '""',
-        contentScript: readBoth,
-      ),
-      pageMap,
-      deferEntityVariables: true,
-    );
-
-    await expectLater(
-      pipeline.details(hitWith(null)),
-      throwsA(
-        isA<UnsupportedError>().having(
-          (error) => error.message,
-          'message',
-          '暂不支持章节地址的 URL 选项',
+  test(
+    'HTML chapter option JS writes its chapter variable at fetch only',
+    () async {
+      final tail = jsonEncode({
+        'js': "chapter.putVariable('addressToken','ready'); void 0",
+      }).replaceAll('"', '&quot;');
+      final pipeline = HtmlSourcePipeline(
+        htmlSource(
+          infoScript: '@CSS:h2@text',
+          tocScript: '""',
+          contentScript: '@js:"正文"',
         ),
-      ),
-    );
-  });
+        _Pages({
+          '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+          '/toc': '<ul id="list"><li><a href="/c/1,$tail">第一章</a></li></ul>',
+          '/c/1': '<p>正文</p>',
+        }),
+        deferEntityVariables: true,
+      );
+      final (book, chapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(chapters.single.variable), isEmpty);
+      final chapter = await pipeline.chapter(chapters.single, book: book);
+      expect(chapter.text, '正文');
+      expect(variableMapOf(chapter.chapterVariable), {'addressToken': 'ready'});
+    },
+  );
 
   for (final json in [false, true]) {
     final label = json ? 'JSON' : 'HTML';

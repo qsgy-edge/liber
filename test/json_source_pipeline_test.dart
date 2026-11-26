@@ -392,6 +392,28 @@ void main() {
     },
   );
 
+  test(
+    'JSON trims Kotlin blank characters before joined replacement',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        request.response.write(jsonEncode({'body': '\u001c'}));
+        await request.response.close();
+      });
+      final origin = 'http://127.0.0.1:${server.port}';
+      final pipeline = JsonSourcePipeline({
+        'bookSourceUrl': origin,
+        'ruleContent': {
+          'content': r'$.body',
+          'replaceRegex': r'##^$##READABLE',
+        },
+      }, HttpSourceTransport());
+      final chapter = SourceChapter('TOC', Uri.parse('$origin/chapter/1'));
+      expect((await pipeline.chapter(chapter)).text, '　　READABLE');
+    },
+  );
+
   for (final (label, rule, expectedText) in [
     ('static replacement', r'##@@AD@@|tail\nsecond##', '　　first\n　　\n　　 page'),
     ('no replacement', null, '　　first@@AD@@\n　　@@AD@@\n　　tail\nsecond page'),

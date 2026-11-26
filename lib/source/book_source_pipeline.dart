@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
+import '../domain/contracts.dart';
 import 'book_source_service.dart';
 import 'html4_unescape.dart';
 import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart';
-import 'js_source_runtime.dart' show SourceHostMessage;
+import 'js_source_runtime.dart' show SourceHostMessage, SourceStageResponse;
 import 'source_host_state.dart';
 import 'source_url_rules.dart';
 
@@ -14,6 +15,45 @@ import 'source_url_rules.dart';
 export 'html_source_pipeline.dart'
     show HtmlBook, HtmlChapterBody, SourceChapterImage, extractChapterImages;
 export 'json_source_pipeline.dart' show SourceChapter;
+
+/// Fetches the first actual content response and runs its login hook once.
+/// Only diagnosed transport failures get the synthetic Legado error response;
+/// an ordinary HTTP response follows the normal check path, even if it is 500.
+Future<SourceStageResponse> fetchContentWithLoginCheck({
+  required Uri url,
+  required Future<SourceStageResponse> Function() fetch,
+  required Future<SourceStageResponse> Function(SourceStageResponse) check,
+  required SourceCancellation cancellation,
+}) async {
+  final SourceStageResponse response;
+  try {
+    response = await fetch();
+  } on SourceStageDiagnostic catch (failure) {
+    final body = switch (failure.kind) {
+      SourceStageFailureKind.connection => 'connection',
+      SourceStageFailureKind.timeout => 'timeout',
+      _ => null,
+    };
+    if (body == null) rethrow;
+    cancellation.throwIfCancelled();
+    SourceStageResponse? recovered;
+    try {
+      recovered = await check(
+        SourceStageResponse(body: body, url: url, statusCode: 500),
+      );
+    } on SourceRequestCancelled {
+      rethrow;
+    } on Exception {
+      // Recovery failure leaves the original request diagnostic authoritative.
+    } on UnsupportedError {
+      // A named refusal during recovery also leaves the original failure intact.
+    }
+    cancellation.throwIfCancelled();
+    if (recovered != null && recovered.statusCode != 500) return recovered;
+    rethrow;
+  }
+  return check(response);
+}
 
 /// The frozen source's check keyword (`BookSource.getCheckKeyword`).
 ///

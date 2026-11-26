@@ -41,10 +41,7 @@ Map<String, dynamic> _pageSource({
   String? nextContentUrl,
 }) => {
   'bookSourceUrl': 'https://a.test',
-  'ruleBookInfo': {
-    'name': '@CSS:h1 a@text',
-    'tocUrl': '@CSS:#dir a@href',
-  },
+  'ruleBookInfo': {'name': '@CSS:h1 a@text', 'tocUrl': '@CSS:#dir a@href'},
   'ruleToc': {
     'chapterList': '@CSS:#list li a',
     'chapterName': '@CSS:a@text',
@@ -57,12 +54,11 @@ Map<String, dynamic> _pageSource({
   },
 };
 
-const _bookPage =
-    '<h1><a>书</a></h1><h2 id="dir"><a href="/toc/1">目录</a></h2>';
+const _bookPage = '<h1><a>书</a></h1><h2 id="dir"><a href="/toc/1">目录</a></h2>';
 const _tocLink = '/toc/1';
-const _listPage =
-    '<div id="list"><li><a href="/chapter/1">第一章</a></li></div>';
-const _pages = '<div id="pages">'
+const _listPage = '<div id="list"><li><a href="/chapter/1">第一章</a></li></div>';
+const _pages =
+    '<div id="pages">'
     '<a class="gr" href="/toc/1">1</a>'
     '<a class="gr" href="/toc/3">3</a>'
     '<a class="gr" href="/toc/2">2</a>'
@@ -139,6 +135,24 @@ void main() {
         (await HtmlSourcePipeline(source, transport).chapter(chapter)).text,
         contains('©'),
       );
+    },
+  );
+
+  test(
+    'HTML trims Kotlin blank characters before joined replacement',
+    () async {
+      final source = _pageSource();
+      (source['ruleContent'] as Map)['content'] = '@js:String.fromCharCode(28)';
+      (source['ruleContent'] as Map)['replaceRegex'] = r'##^$##READABLE';
+      final pipeline = HtmlSourcePipeline(
+        source,
+        SitePages({'/chapter/1': '<p>unused</p>'}),
+      );
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      expect((await pipeline.chapter(chapter)).text, '　　READABLE');
     },
   );
 
@@ -285,11 +299,17 @@ void main() {
                 ? isA<SourceRequestCancelled>()
                 : isA<SourceScriptError>()
                       .having((e) => e.category, 'category', 'host-input')
-                      .having((e) => e.message, 'member', contains('java.openUrl')),
+                      .having(
+                        (e) => e.message,
+                        'member',
+                        contains('java.openUrl'),
+                      ),
           ),
         );
-        expect(notices.where((m) => m.kind == 'ruleContent.title'),
-            hasLength(cancelInNotice ? 1 : 0));
+        expect(
+          notices.where((m) => m.kind == 'ruleContent.title'),
+          hasLength(cancelInNotice ? 1 : 0),
+        );
       },
     );
   }
@@ -452,11 +472,7 @@ void main() {
         transport,
       );
       final (_, chapters) = await pipeline.details(_hit());
-      expect(chapters.map((chapter) => chapter.name), [
-        '第一章',
-        '第二章',
-        '第三章',
-      ]);
+      expect(chapters.map((chapter) => chapter.name), ['第一章', '第二章', '第三章']);
       expect(pipeline.tocPages, 3);
       expect(transport.requests, ['/book/1', _tocLink, '/x/1', '/x/2']);
     });
@@ -469,10 +485,10 @@ void main() {
           '/toc/1': _listPage,
           '/chapter/1':
               '<div class="con"><p>第一页</p></div>'
-                  '<div class="prenext">'
-                  '<a href="1-2">2</a>'
-                  '<a href="1-3">3</a>'
-                  '</div>',
+              '<div class="prenext">'
+              '<a href="1-2">2</a>'
+              '<a href="1-3">3</a>'
+              '</div>',
           '/c/1-2': '<div class="con"><p>第二页</p></div>',
           '/c/1-3': '<div class="con"><p>第三页</p></div>',
         });
@@ -522,7 +538,7 @@ void main() {
           // page's list, so page 9 must never be fetched.
           '/toc/3':
               '<div id="list"><li><a href="/chapter/3">第三章</a></li></div>'
-                  '<div id="pages"><a class="gr" href="/toc/9">9</a></div>',
+              '<div id="pages"><a class="gr" href="/toc/9">9</a></div>',
           '/toc/2':
               '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
         });
@@ -533,62 +549,60 @@ void main() {
         final (_, chapters) = await pipeline.details(_hit());
         // Declared order (3 before 2), the page's own URL dropped, and the
         // repeated `/toc/2` collapsed to its first occurrence.
-        expect(chapters.map((chapter) => chapter.name), [
-          '第一章',
-          '第三章',
-          '第二章',
-        ]);
+        expect(chapters.map((chapter) => chapter.name), ['第一章', '第三章', '第二章']);
         expect(pipeline.tocPages, 3);
         expect(transport.requests, ['/book/1', _tocLink, '/toc/3', '/toc/2']);
       },
     );
 
-    test('a followed TOC page follows only the first URL of its own list', () async {
-      final transport = SitePages({
-        '/book/1': _bookPage,
-        // One URL on the first page keeps the sequential walk.
-        '/toc/1':
-            '$_listPage<div id="pages"><a class="gr" href="/toc/2">2</a></div>',
-        // The page the walk follows declares two; the frozen follows only the
-        // first of them (`firstOrNull`), so `/toc/5` is never fetched.
-        '/toc/2':
-            '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>'
-                '<div id="pages">'
-                '<a class="gr" href="/toc/4">4</a>'
-                '<a class="gr" href="/toc/5">5</a>'
-                '</div>',
-        '/toc/4':
-            '<div id="list"><li><a href="/chapter/4">第四章</a></li></div>',
-      });
-      final pipeline = HtmlSourcePipeline(
-        _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
-        transport,
-      );
-      final (_, chapters) = await pipeline.details(_hit());
-      expect(chapters.map((chapter) => chapter.name), [
-        '第一章',
-        '第二章',
-        '第四章',
-      ]);
-      expect(transport.requests, ['/book/1', _tocLink, '/toc/2', '/toc/4']);
-    });
+    test(
+      'a followed TOC page follows only the first URL of its own list',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          // One URL on the first page keeps the sequential walk.
+          '/toc/1':
+              '$_listPage<div id="pages"><a class="gr" href="/toc/2">2</a></div>',
+          // The page the walk follows declares two; the frozen follows only the
+          // first of them (`firstOrNull`), so `/toc/5` is never fetched.
+          '/toc/2':
+              '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>'
+              '<div id="pages">'
+              '<a class="gr" href="/toc/4">4</a>'
+              '<a class="gr" href="/toc/5">5</a>'
+              '</div>',
+          '/toc/4':
+              '<div id="list"><li><a href="/chapter/4">第四章</a></li></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        expect(chapters.map((chapter) => chapter.name), ['第一章', '第二章', '第四章']);
+        expect(transport.requests, ['/book/1', _tocLink, '/toc/2', '/toc/4']);
+      },
+    );
 
-    test('a TOC page that names the first page again is refused, not looped', () async {
-      final transport = SitePages({
-        '/book/1': _bookPage,
-        '/toc/1':
-            '$_listPage<div id="pages"><a class="gr" href="/toc/2">2</a></div>',
-        '/toc/2':
-            '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>'
-                '<div id="pages"><a class="gr" href="/toc/1">1</a></div>',
-      });
-      final pipeline = HtmlSourcePipeline(
-        _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
-        transport,
-      );
-      await expectLater(pipeline.details(_hit()), throwsStateError);
-      expect(transport.requests, ['/book/1', _tocLink, '/toc/2']);
-    });
+    test(
+      'a TOC page that names the first page again is refused, not looped',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          '/toc/1':
+              '$_listPage<div id="pages"><a class="gr" href="/toc/2">2</a></div>',
+          '/toc/2':
+              '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>'
+              '<div id="pages"><a class="gr" href="/toc/1">1</a></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
+          transport,
+        );
+        await expectLater(pipeline.details(_hit()), throwsStateError);
+        expect(transport.requests, ['/book/1', _tocLink, '/toc/2']);
+      },
+    );
 
     test('a declared content list is merged in order and joined', () async {
       final transport = SitePages({
@@ -596,10 +610,10 @@ void main() {
         '/toc/1': _listPage,
         '/chapter/1':
             '<div class="con"><p>第一页</p></div>'
-                '<div class="prenext">'
-                '<a href="/chapter/1-3">3</a>'
-                '<a href="/chapter/1-2">2</a>'
-                '</div>',
+            '<div class="prenext">'
+            '<a href="/chapter/1-3">3</a>'
+            '<a href="/chapter/1-2">2</a>'
+            '</div>',
         '/chapter/1-3': '<div class="con"><p>第三页</p></div>',
         '/chapter/1-2': '<div class="con"><p>第二页</p></div>',
       });
@@ -614,49 +628,55 @@ void main() {
       expect(transport.requests.skip(3), ['/chapter/1-3', '/chapter/1-2']);
     });
 
-    test('the one-URL content walk stops before the next chapter page', () async {
-      final transport = SitePages({
-        '/book/1': _bookPage,
-        '/toc/1': _listPage,
-        '/chapter/1':
-            '<div class="con"><p>第一页</p></div>'
-                '<div class="prenext"><a href="/chapter/2">下一章</a></div>',
-        '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
-      });
-      final pipeline = HtmlSourcePipeline(
-        _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
-        transport,
-      );
-      final (_, chapters) = await pipeline.details(_hit());
-      final body = await pipeline.chapter(
-        chapters.single,
-        nextChapterUrl: 'https://a.test/chapter/2',
-      );
-      expect(body.text, '第一页');
-      expect(body.pages, 1);
-      expect(transport.requests, isNot(contains('/chapter/2')));
-    });
+    test(
+      'the one-URL content walk stops before the next chapter page',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          '/toc/1': _listPage,
+          '/chapter/1':
+              '<div class="con"><p>第一页</p></div>'
+              '<div class="prenext"><a href="/chapter/2">下一章</a></div>',
+          '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        final body = await pipeline.chapter(
+          chapters.single,
+          nextChapterUrl: 'https://a.test/chapter/2',
+        );
+        expect(body.text, '第一页');
+        expect(body.pages, 1);
+        expect(transport.requests, isNot(contains('/chapter/2')));
+      },
+    );
 
-    test('without a next chapter URL the walk has no boundary to stop at', () async {
-      final transport = SitePages({
-        '/book/1': _bookPage,
-        '/toc/1': _listPage,
-        '/chapter/1':
-            '<div class="con"><p>第一页</p></div>'
-                '<div class="prenext"><a href="/chapter/2">下一章</a></div>',
-        '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
-      });
-      final pipeline = HtmlSourcePipeline(
-        _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
-        transport,
-      );
-      final (_, chapters) = await pipeline.details(_hit());
-      // No caller supplied a next chapter, so the guard has nothing to compare
-      // with and the page is fetched: the frozen reads its store there instead.
-      final body = await pipeline.chapter(chapters.single);
-      expect(body.text, '第一页\n下一章正文');
-      expect(body.pages, 2);
-    });
+    test(
+      'without a next chapter URL the walk has no boundary to stop at',
+      () async {
+        final transport = SitePages({
+          '/book/1': _bookPage,
+          '/toc/1': _listPage,
+          '/chapter/1':
+              '<div class="con"><p>第一页</p></div>'
+              '<div class="prenext"><a href="/chapter/2">下一章</a></div>',
+          '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
+        });
+        final pipeline = HtmlSourcePipeline(
+          _pageSource(nextContentUrl: '@CSS:.prenext a@href'),
+          transport,
+        );
+        final (_, chapters) = await pipeline.details(_hit());
+        // No caller supplied a next chapter, so the guard has nothing to compare
+        // with and the page is fetched: the frozen reads its store there instead.
+        final body = await pipeline.chapter(chapters.single);
+        expect(body.text, '第一页\n下一章正文');
+        expect(body.pages, 2);
+      },
+    );
 
     test(
       'a declared content list is not stopped by the next chapter URL (frozen list branch)',
@@ -666,10 +686,10 @@ void main() {
           '/toc/1': _listPage,
           '/chapter/1':
               '<div class="con"><p>第一页</p></div>'
-                  '<div class="prenext">'
-                  '<a href="/chapter/1-2">2</a>'
-                  '<a href="/chapter/2">下一章</a>'
-                  '</div>',
+              '<div class="prenext">'
+              '<a href="/chapter/1-2">2</a>'
+              '<a href="/chapter/2">下一章</a>'
+              '</div>',
           '/chapter/1-2': '<div class="con"><p>第二页</p></div>',
           '/chapter/2': '<div class="con"><p>下一章正文</p></div>',
         });
@@ -693,14 +713,18 @@ void main() {
 
     test('cancelling between two declared pages stops the walk', () async {
       final gate = Completer<void>();
-      final transport = SitePages({
-        '/book/1': _bookPage,
-        '/toc/1': '$_listPage$_pages',
-        '/toc/3':
-            '<div id="list"><li><a href="/chapter/3">第三章</a></li></div>',
-        '/toc/2':
-            '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
-      }, gatePath: '/toc/3', gate: gate);
+      final transport = SitePages(
+        {
+          '/book/1': _bookPage,
+          '/toc/1': '$_listPage$_pages',
+          '/toc/3':
+              '<div id="list"><li><a href="/chapter/3">第三章</a></li></div>',
+          '/toc/2':
+              '<div id="list"><li><a href="/chapter/2">第二章</a></li></div>',
+        },
+        gatePath: '/toc/3',
+        gate: gate,
+      );
       final pipeline = HtmlSourcePipeline(
         _pageSource(nextTocUrl: '@CSS:#pages a.gr@href'),
         transport,
@@ -724,10 +748,7 @@ void main() {
     }) async {
       final source = <String, dynamic>{
         'bookSourceUrl': 'http://example.test',
-        'ruleContent': {
-          'content': content,
-          'replaceRegex': ?replaceRegex,
-        },
+        'ruleContent': {'content': content, 'replaceRegex': ?replaceRegex},
       };
       final pipeline = HtmlSourcePipeline(
         source,
@@ -739,13 +760,16 @@ void main() {
       return body.text;
     }
 
-    test('prefixes hard-coded indentation on every line when declared', () async {
-      final text = await read(
-        '<div class="content">第一段<br>第二段<br>第三段</div>',
-        replaceRegex: '##（广告）',
-      );
-      expect(text, '　　第一段\n　　第二段\n　　第三段');
-    });
+    test(
+      'prefixes hard-coded indentation on every line when declared',
+      () async {
+        final text = await read(
+          '<div class="content">第一段<br>第二段<br>第三段</div>',
+          replaceRegex: '##（广告）',
+        );
+        expect(text, '　　第一段\n　　第二段\n　　第三段');
+      },
+    );
 
     test('keeps the blank line a replacement leaves, as the frozen does', () async {
       // The trim the frozen stage runs before its replacement removes the
@@ -762,22 +786,28 @@ void main() {
       expect(text, '　　第一段\n　　\n　　第二段');
     });
 
-    test('shapes the trailing empty line a trailing newline produces', () async {
-      final text = await read(
-        '<div class="content">第一段<br>（广告）</div>',
-        replaceRegex: '##（广告）',
-      );
-      expect(text, '　　第一段\n　　');
-    });
+    test(
+      'shapes the trailing empty line a trailing newline produces',
+      () async {
+        final text = await read(
+          '<div class="content">第一段<br>（广告）</div>',
+          replaceRegex: '##（广告）',
+        );
+        expect(text, '　　第一段\n　　');
+      },
+    );
 
-    test('indents the paragraphs of a source that declares no replaceRegex', () async {
-      // The frozen content stage formats every page whatever the source
-      // declares, so line two carries the formatter's indent even though the
-      // `replaceRegex` branch never runs (`BookContent.kt:178`;
-      // `tool/html_content_oracle`, the `blank-lines` and `crlf-lines` rows).
-      final text = await read('<div class="content">第一段<br>第二段</div>');
-      expect(text, '第一段\n　　第二段');
-    });
+    test(
+      'indents the paragraphs of a source that declares no replaceRegex',
+      () async {
+        // The frozen content stage formats every page whatever the source
+        // declares, so line two carries the formatter's indent even though the
+        // `replaceRegex` branch never runs (`BookContent.kt:178`;
+        // `tool/html_content_oracle`, the `blank-lines` and `crlf-lines` rows).
+        final text = await read('<div class="content">第一段<br>第二段</div>');
+        expect(text, '第一段\n　　第二段');
+      },
+    );
   });
 
   test('a rule field\'s script failure names the field it ran in', () async {

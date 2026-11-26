@@ -502,6 +502,14 @@ String sourceUrlOptionTailOf(String address) {
   return boundary == null ? '' : address.substring(boundary);
 }
 
+/// Complete pre-option text for the chapter's native absolute address.
+String sourceAbsoluteRequestText(Uri base, String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  if (boundary == null) return sourceUrlTextResolved(base, address);
+  return '${sourceUrlTextResolved(base, address.substring(0, boundary))}'
+      '${address.substring(boundary)}';
+}
+
 /// The request facts a target conversion reads from an address text's own
 /// `,{…}` option tail: the method the frozen request would use, the charset its
 /// GET query encoder would consume, and whether that tail declares an option

@@ -321,27 +321,42 @@ void main() {
     },
   );
 
-
-
-
-  test('a chapter address option family this product lacks is refused by name', () async {
-    // Nothing is silently dropped: the families the TOC guard cannot express
-    // keep their named refusal, at the same place (#58).
-    final pipeline = HtmlSourcePipeline(
-      _chapterSource('tag.a@href##\$##,{"body":"a=1"}'),
-      _Pages({'/book/1': _bookPage, '/toc/1': _tocPage}),
-    );
-    await expectLater(
-      pipeline.details(_chapterHit()),
-      throwsA(
-        isA<UnsupportedError>().having(
-          (error) => error.message,
-          'message',
-          contains('章节地址的 URL 选项'),
-        ),
-      ),
-    );
-  });
+  test(
+    'HTML refuses an unsupported chapter option at the actual fetch',
+    () async {
+      const tail = ',{"unsupportedTestOption":true}';
+      final pages = _Pages({'/book/1': _bookPage, '/toc/1': _tocPage});
+      final pipeline = HtmlSourcePipeline(
+        _chapterSource('tag.a@href##\$##$tail'),
+        pages,
+      );
+      final (book, chapters) = await pipeline.details(_chapterHit());
+      final chapter = chapters.single;
+      expect(chapter.persistedAddress, endsWith(tail));
+      final reopened = SourceChapter.fromAddress(
+        chapter.name,
+        chapter.persistedAddress,
+        bookUrl: book.url,
+        chapterKey: chapter.storeKey,
+      );
+      for (final candidate in [chapter, reopened]) {
+        await expectLater(
+          pipeline.chapter(candidate, book: book),
+          throwsA(
+            isA<UnsupportedError>().having(
+              (error) => error.message,
+              'option name',
+              contains('unsupportedTestOption'),
+            ),
+          ),
+        );
+      }
+      expect(pages.requests.map((url) => Uri.parse(url).path), [
+        '/book/1',
+        '/toc/1',
+      ]);
+    },
+  );
   test(
     'a chapter address survives the shelf and comes back with its options',
     () async {
@@ -442,27 +457,30 @@ void main() {
     expect(transport.requests, contains('https://a.test/toc'));
   });
 
-  test('unmatched search and chapter URL fields append their URL fallback', () async {
-    final source = _chapterSource('a.absent@href##\$##/chapter/1');
-    source['searchUrl'] = '/search?key={{key}}';
-    source['ruleSearch'] = {
-      'bookList': 'class.item',
-      'name': 'tag.h3@tag.a@text',
-      'bookUrl': 'a.absent@href##\$##/book/1',
-    };
-    final transport = _Pages({
-      '/search': '<div class="item"><h3><a>书</a></h3></div>',
-      '/book/1': _bookPage,
-      '/toc/1': _tocPage,
-      '/chapter/1': _httpChapter,
-    });
-    final pipeline = HtmlSourcePipeline(source, transport);
-    final hits = await pipeline.search('书');
-    expect(hits.single.url, Uri.parse('https://a.test/book/1'));
-    final (_, chapters) = await pipeline.details(hits.single);
-    expect(chapters.single.url, Uri.parse('https://a.test/chapter/1'));
-    expect((await pipeline.chapter(chapters.single)).text, '纯正文');
-  });
+  test(
+    'unmatched search and chapter URL fields append their URL fallback',
+    () async {
+      final source = _chapterSource('a.absent@href##\$##/chapter/1');
+      source['searchUrl'] = '/search?key={{key}}';
+      source['ruleSearch'] = {
+        'bookList': 'class.item',
+        'name': 'tag.h3@tag.a@text',
+        'bookUrl': 'a.absent@href##\$##/book/1',
+      };
+      final transport = _Pages({
+        '/search': '<div class="item"><h3><a>书</a></h3></div>',
+        '/book/1': _bookPage,
+        '/toc/1': _tocPage,
+        '/chapter/1': _httpChapter,
+      });
+      final pipeline = HtmlSourcePipeline(source, transport);
+      final hits = await pipeline.search('书');
+      expect(hits.single.url, Uri.parse('https://a.test/book/1'));
+      final (_, chapters) = await pipeline.details(hits.single);
+      expect(chapters.single.url, Uri.parse('https://a.test/chapter/1'));
+      expect((await pipeline.chapter(chapters.single)).text, '纯正文');
+    },
+  );
 
   test('an absent next page append rule stops after the first page', () async {
     final transport = _Pages({
