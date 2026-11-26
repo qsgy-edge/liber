@@ -286,26 +286,20 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       .isChapterCatalogCurrent(owner.bookId, _catalogRevision);
 
   Future<void> save() async {
+    if (!mounted || _displayedContent == null) return;
     final owner = widget;
-    final displayedKeys = keys;
     final chapterIndex = index;
     final textOffset = offset;
-    final generation = _loadGeneration;
-    bool canSave() =>
-        mounted &&
-        widget == owner &&
-        keys == displayedKeys &&
-        generation == _loadGeneration &&
-        _ownsCatalog(owner);
-    if (!canSave() ||
-        _displayedContent == null ||
-        chapterIndex < 0 ||
-        chapterIndex >= owner.chapters.length) {
+    if (chapterIndex < 0 ||
+        chapterIndex >= owner.chapters.length ||
+        !_ownsCatalog(owner)) {
       return;
     }
     try {
       await owner.service.store.transaction(() async {
-        if (!canSave()) return;
+        // Leaving the page does not discard an already displayed position.
+        // Only a catalog replacement invalidates the queued write.
+        if (!_ownsCatalog(owner)) return;
         await owner.service.saveProgress(
           owner.bookId,
           chapterKey: owner.chapters[chapterIndex].progressKey,

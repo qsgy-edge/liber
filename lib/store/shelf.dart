@@ -283,11 +283,7 @@ class ShelfService {
             ? chapter.name
             : title;
       }
-      // A chapter rebuilt from storage retains the actual imported address, not
-      // the absolute request text that a newly discovered TOC would store.
-      final address = chapter.storedKey == null
-          ? chapter.persistedAddress
-          : chapter.address;
+      final address = chapter.persistedAddress;
       if (!isCurrent() ||
           row.chapterIndex != chapterIndex ||
           row.name != chapter.name ||
@@ -298,9 +294,7 @@ class ShelfService {
           row.isPay != chapter.isPay) {
         return null;
       }
-      if (row.name == title ||
-          hidesBodyOnReopen(address) ||
-          (!owner.shelved && hidesBodyOnReopen(chapter.persistedAddress))) {
+      if (row.name == title || hidesBodyOnReopen(address)) {
         return row.name;
       }
       await store.updateChapterName(row, title);
@@ -403,28 +397,30 @@ class ShelfService {
       if (isCancelled?.call() == true) throw const SourceRequestCancelled();
     }
 
-    final existing = await store.bookById(bookId);
-    if (existing == null) throw StateError('书籍不存在：$bookId');
-    if (existing.kind != 'network') {
-      throw StateError('只有网络书籍可以换源：${existing.title}');
-    }
-    final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
-    if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
-    if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
-    final bookUrl = book.identityAddress;
-    final oldChapters = await store.chaptersOf(bookId);
-    final progress = await store.progressOf(bookId);
-    final oldIndex = progress?.chapterIndex ?? 0;
-    final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
-        ? oldChapters[oldIndex].name
-        : null;
-    final newIndex = mapChapterIndex(
-      oldIndex: oldIndex,
-      oldTitle: oldTitle,
-      newTitles: [for (final chapter in chapters) chapter.name],
-      oldChapterCount: oldChapters.length,
-    );
     return store.transaction(() async {
+      final existing = await store.bookById(bookId);
+      if (existing == null) throw StateError('书籍不存在：$bookId');
+      if (existing.kind != 'network') {
+        throw StateError('只有网络书籍可以换源：${existing.title}');
+      }
+      final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
+      if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
+      if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
+      final bookUrl = book.identityAddress;
+      // Map the position from the same transaction that replaces the catalog.
+      // Otherwise a reader can save between this read and publication.
+      final oldChapters = await store.chaptersOf(bookId);
+      final progress = await store.progressOf(bookId);
+      final oldIndex = progress?.chapterIndex ?? 0;
+      final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
+          ? oldChapters[oldIndex].name
+          : null;
+      final newIndex = mapChapterIndex(
+        oldIndex: oldIndex,
+        oldTitle: oldTitle,
+        newTitles: [for (final chapter in chapters) chapter.name],
+        oldChapterCount: oldChapters.length,
+      );
       final existingSource = await store.sourceByUrl(sourceUrl);
       final sourceRow = existingSource ?? await store.putSourceJson(source);
       final clash = await store.bookByNaturalKey(sourceUrl, bookUrl);
@@ -461,7 +457,7 @@ class ShelfService {
         await store.putProgress(
           ProgressCompanion(
             bookId: Value(bookId),
-            chapterKey: Value(chapters[newIndex].storeKey),
+            chapterKey: Value(chapters[newIndex].progressKey),
             chapterIndex: Value(newIndex),
             textOffset: Value(progress.textOffset),
             // The line fields describe a position inside the *old* source's
@@ -733,12 +729,10 @@ class ShelfService {
   /// A network chapter's key is its URL (D4): progress refers to the chapter,
   /// not to a position in the TOC, which drifts when the TOC changes.
   ///
-  /// The key stays the bare request target, while `url` keeps the address text
-  /// with that target resolved and the TOC rule's option tail kept — the frozen
-  /// `BookChapter.url` shape — because the content request parses its options
-  /// from it (#58). A row written before this holds a bare target there, which
-  /// is address text with no options and parses to itself, so no migration is
-  /// needed and no progress key drifts.
+  /// A fresh TOC derives the key from the target and keeps the request text,
+  /// including its options, in `url` (#58). Republishing a reopened catalog
+  /// preserves both values independently so the progress key and request form
+  /// cannot change just from reopening.
   ///
   /// A volume the rules left without a URL has no target: its key and its
   /// address text are both the frozen identity text `title + index`
@@ -750,7 +744,7 @@ class ShelfService {
     for (var index = 0; index < chapters.length; index++)
       BookChapter(
         bookId: bookId,
-        chapterKey: chapters[index].storeKey,
+        chapterKey: chapters[index].progressKey,
         name: chapters[index].name,
         url: chapters[index].persistedAddress,
         chapterIndex: index,
