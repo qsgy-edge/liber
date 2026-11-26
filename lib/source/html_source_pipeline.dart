@@ -581,6 +581,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             'title': _chapter!.name,
             'url': _tocChapterAddress ?? '${_chapter!.url}',
           },
+    '__chapterVariableRowKey': ?_chapter?.storedKey,
     'headers': const <String, String>{},
   };
 
@@ -3015,8 +3016,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _tocChapterAddress = null;
     _chapter = chapter;
     // A deferred content analysis starts from the carriers it was handed: the
-    // book's variable text and this chapter's own, keyed as the content stage's
-    // `book.bookUrl`/`chapter.url` bind them (#132).
+    // book's variable text and this chapter's own, using the saved row key
+    // when the request address and row identity differ (#132).
+    final chapterKey = chapter.progressKey;
     final candidateBook = _book;
     if (candidateBook != null) {
       _entityDraft?.seedBook(
@@ -3027,7 +3029,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _entityDraft?.seedChapter(
         _sourceRef,
         candidateBook.identityAddress,
-        chapter.storeKey,
+        chapterKey,
         chapter.variable,
       );
       // The ordinary path reads and writes the space's rows, keyed by the
@@ -3037,7 +3039,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // A stored row — or an unwritten entry, even one whose text is null — is
       // present and authoritative and is never reseeded (#132).
       if (_entityDraft == null && chapter.variable != null) {
-        final chapterKey = chapter.storeKey;
         final entry = await _hostSurface.chapterVariableRow(
           _sourceRef,
           candidateBook.identityAddress,
@@ -3076,7 +3077,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         chapterVariable: await _entityVariables.chapterVariable(
           _sourceRef,
           contentBookKey ?? '',
-          chapter.storeKey,
+          chapterKey,
         ),
       );
     }
@@ -3338,7 +3339,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final chapterVariable = await _entityVariables.chapterVariable(
       _sourceRef,
       contentBookKey ?? '',
-      chapter.storeKey,
+      chapterKey,
     );
     _cancellation.throwIfCancelled();
     return HtmlChapterBody(

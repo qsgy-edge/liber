@@ -18,6 +18,7 @@ import 'package:liber/store/space_store.dart';
 
 import 'l10n_support.dart';
 import 'native_library.dart';
+import 'space_test_support.dart';
 
 /// #132 entity-variable transport: the carrier/runtime contract that carries a
 /// candidate's book and chapter variable text across stage handoffs, copies and
@@ -1786,6 +1787,84 @@ if (source.get("retry") === "yes") {
       },
     );
   }
+
+  test(
+    'HTML reopened chapter persists its variable under the saved key',
+    () async {
+      const fullAddress = '$chapterUrl#part';
+      final source = htmlSource(
+        infoScript: '@js:""',
+        tocScript: '@js:(chapter.putVariable("n","0"), "")',
+        contentScript:
+            '@js:chapter.putVariable("n", '
+            'String(Number(chapter.getVariable("n") || "0") + 1)); '
+            'chapter.url + ":" + chapter.getVariable("n")',
+      );
+      final pages = _Pages({
+        '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+        '/toc': '<ul id="list"><li><a href="/c/1#part">第一章</a></li></ul>',
+        '/c/1': '<p>正文</p>',
+      });
+      final space = await TestSpace.create();
+      addTearDown(space.delete);
+      var shelf = ShelfService(space.store);
+      final initial = HtmlSourcePipeline(
+        source,
+        pages,
+        hostState: shelf.hostState,
+      );
+      final (book, chapters) = await initial.details(hitWith(null));
+      expect(chapters.single.progressKey, chapterUrl);
+      expect(chapters.single.persistedAddress, fullAddress);
+      await shelf.add(source, book, chapters);
+      initial.cancel();
+
+      Future<String> readReopened(ShelfService service) async {
+        final entry = (await service.find(origin, book.identityAddress))!;
+        final row = entry.chapters.single;
+        expect(row.chapterKey, chapterUrl);
+        expect(row.url, fullAddress);
+        final chapter = SourceChapter.fromAddress(
+          row.name,
+          row.url!,
+          bookUrl: entry.htmlBook.url,
+          chapterKey: row.chapterKey,
+          variable: row.variable,
+        );
+        final host = service.hostState;
+        final pipeline = HtmlSourcePipeline(source, pages, hostState: host);
+        try {
+          final (body, changes) = await host.stageReaderVariables(
+            () => pipeline.chapter(chapter, book: entry.htmlBook),
+          );
+          final publish = await service.store.transaction(
+            () => host.saveReaderVariables(changes),
+          );
+          publish();
+          return body.text;
+        } finally {
+          pipeline.cancel();
+        }
+      }
+
+      shelf = ShelfService(await space.reopen());
+      final first = await readReopened(shelf);
+      final saved = (await shelf.find(origin, book.identityAddress))!;
+      shelf = ShelfService(await space.reopen());
+      final second = await readReopened(shelf);
+      expect(pages.requests.map((request) => request.url.path), [
+        '/book',
+        '/toc',
+        '/c/1',
+        '/c/1',
+      ]);
+      expect(first, '$fullAddress:1');
+      expect(
+        (variableMapOf(saved.chapters.single.variable)['n'], second),
+        ('1', '$fullAddress:2'),
+      );
+    },
+  );
 
   // A relative TOC chapter's variable is written under
   // the TOC stage's own key ('/c/1'), while the content stage reads and writes

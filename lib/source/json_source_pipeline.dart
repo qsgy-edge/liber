@@ -354,6 +354,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
             'title': _chapter!.name,
             'url': _tocChapterAddress ?? '${_chapter!.url}',
           },
+    '__chapterVariableRowKey': ?_chapter?.storedKey,
     'headers': _activeHeaders,
   };
 
@@ -2175,8 +2176,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     _tocChapterAddress = null;
     _chapter = chapter;
     // A deferred content analysis starts from the carriers it was handed: the
-    // book's variable text and this chapter's own, keyed as the content stage's
-    // `book.bookUrl`/`chapter.url` bind them (#132).
+    // book's variable text and this chapter's own, using the saved row key
+    // when the request address and row identity differ (#132).
+    final chapterKey = chapter.progressKey;
     final candidateBook = _book;
     if (candidateBook != null) {
       _entityDraft?.seedBook(
@@ -2187,7 +2189,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _entityDraft?.seedChapter(
         _sourceRef,
         candidateBook.identityAddress,
-        chapter.storeKey,
+        chapterKey,
         chapter.variable,
       );
       // The ordinary path reads and writes the space's rows, keyed by the
@@ -2197,7 +2199,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
       // A stored row — or an unwritten entry, even one whose text is null — is
       // present and authoritative and is never reseeded (#132).
       if (_entityDraft == null && chapter.variable != null) {
-        final chapterKey = chapter.storeKey;
         final entry = await _hostSurface.chapterVariableRow(
           _sourceRef,
           candidateBook.identityAddress,
@@ -2236,7 +2237,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
         chapterVariable: await _entityVariables.chapterVariable(
           _sourceRef,
           contentBookKey ?? '',
-          chapter.storeKey,
+          chapterKey,
         ),
       );
     }
@@ -2453,7 +2454,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final chapterVariable = await _entityVariables.chapterVariable(
       _sourceRef,
       contentBookKey ?? '',
-      chapter.storeKey,
+      chapterKey,
     );
     _cancellation.throwIfCancelled();
     return HtmlChapterBody(
@@ -2782,9 +2783,9 @@ class SourceChapter {
   /// column, `BookChapter.kt:58`), or null when this carrier carries none.
   ///
   /// A carrier keeps the text so an analysis can seed a candidate from it and
-  /// hand the final text on with the same identity; the runtime reads and
-  /// writes the row (or the candidate draft) under the key the script sees as
-  /// `chapter.url`, never this field directly.
+  /// hand the final text on with the same identity. Content uses [progressKey]
+  /// to read and write the row or draft without changing script-visible
+  /// `chapter.url`; the runtime never edits this field directly.
   final String? variable;
 
   /// Input for a generated chapter's content request and, when eligible, its
