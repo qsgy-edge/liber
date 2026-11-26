@@ -3074,6 +3074,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // document (`BookContent.kt:65-69`, `:169-182`). The first post-login body
     // is retained for that later read; the page walk itself never reads it.
     String? firstPageHtml;
+    SourceStageResponse? firstContentResponse;
     var firstPage = true;
     // An eligible retained response is this chapter's first content page: the
     // frozen branch reads it for what it holds — no request, no source header,
@@ -3211,19 +3212,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         }
         final html = fetched.body;
         final pageUrl = fetched.url;
-        if (parts.isEmpty) firstPageHtml = html;
+        if (parts.isEmpty) {
+          firstPageHtml = html;
+          firstContentResponse = fetched;
+        }
         final content = await _field(
           _contentRule(),
           content: html,
           label: 'ruleContent.content',
         );
-        final next = readNext
-            ? await _field(
-                _rule('ruleContent', 'nextContentUrl', optional: true),
-                content: html,
-                label: 'ruleContent.nextContentUrl',
-              )
-            : null;
         final batch = HtmlRuleBatch(html);
         final contentValue = _declare(
           batch,
@@ -3232,9 +3229,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           unescape: false,
           rawEntities: true,
         );
-        final nextValue = next == null
-            ? null
-            : _declareList(batch, 'next', next);
         await batch.run();
         final text = await _documentValue(
           contentValue,
@@ -3242,14 +3236,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           html,
           unescape: false,
         );
-        if (text.isEmpty) {
-          throw SourceStageDiagnostic.response(
-            stage: BookSourceStage.content,
-            url: fetched.url,
-            body: fetched.body,
-            httpResponse: fetched.httpResponse,
-          );
-        }
+        final next = readNext
+            ? await _field(
+                _rule('ruleContent', 'nextContentUrl', optional: true),
+                content: html,
+                label: 'ruleContent.nextContentUrl',
+              )
+            : null;
+        final nextBatch = HtmlRuleBatch(html);
+        final nextValue = next == null
+            ? null
+            : _declareList(nextBatch, 'next', next);
+        if (nextValue != null) await nextBatch.run();
         // The frozen content stage turns one page's HTML into text here, before
         // the pages are joined (`BookContent.kt:178-181`): `formatKeepImg`,
         // then the `&`-guarded `unescapeHtml4`.
@@ -3295,6 +3293,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       }
     }
     _cancellation.throwIfCancelled();
+    if (!chapter.isVolume && sourceKotlinIsBlank(text)) {
+      final response = firstContentResponse!;
+      throw SourceStageDiagnostic.response(
+        stage: BookSourceStage.content,
+        url: response.url,
+        body: response.body,
+        httpResponse: response.httpResponse,
+      );
+    }
     // The final entity snapshots of this content request, pagination and all:
     // every page wrote through the same candidate draft (#132).
     final bookVariable = contentBookKey == null
@@ -3442,6 +3449,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     if (fields.rule.isNotEmpty) {
       return '${await _eagerExtract(text, extraction) ?? ''}';
     }
-    return applyRuleReplacement(text, fields, label: 'HTML');
+    return unescapeHtml4(applyRuleReplacement(text, fields, label: 'HTML'));
   }
 }

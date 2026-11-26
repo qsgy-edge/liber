@@ -2238,6 +2238,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     // for that later read; the page walk itself never reads them.
     Object? firstPageDocument;
     String? firstPageBody;
+    SourceStageResponse? firstContentResponse;
     var firstPage = true;
     // The complete native raw base of a retained first page, while that page's
     // own declared addresses are resolved. Its later page's own response base
@@ -2335,22 +2336,19 @@ class JsonSourcePipeline implements BookSourcePipeline {
         if (parts.isEmpty) {
           firstPageDocument = document;
           firstPageBody = contentPage.body;
+          firstContentResponse = contentPage;
         }
         // The frozen content stage turns one page's value into text here, before
         // the pages are joined (`BookContent.kt:178-181`) — the same pass the HTML
         // adapter runs, `formatKeepImg` then the `&`-guarded `unescapeHtml4`,
         // because the frozen stage is adapter-agnostic.
-        parts.add(
-          formatContentPage(
-            await _text(
-              document,
-              content['content']!,
-              label: 'ruleContent.content',
-              unescape: false,
-              response: contentPage,
-            ),
-          ),
+        final value = await _field(
+          document,
+          content['content']!,
+          label: 'ruleContent.content',
+          unescape: false,
         );
+        parts.add(formatContentPage('${value ?? ''}'));
         // The frozen reads a page's next-URL rule only on the pages it walks
         // through (`BookContent.kt:114-127`).
         final nextRule = readNext ? content['nextContentUrl'] : null;
@@ -2415,6 +2413,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       }
     }
     _cancellation.throwIfCancelled();
+    if (!chapter.isVolume && sourceKotlinIsBlank(text)) {
+      final response = firstContentResponse!;
+      throw SourceStageDiagnostic.response(
+        stage: BookSourceStage.content,
+        url: response.url,
+        body: response.body,
+        httpResponse: response.httpResponse,
+      );
+    }
     // The final entity snapshots of this content request, pagination and all:
     // every page wrote through the same candidate draft (#132).
     final bookVariable = contentBookKey == null

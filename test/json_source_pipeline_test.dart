@@ -19,6 +19,90 @@ void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
   test(
+    'reader regression: erased JSON content fails and volume survives',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        request.response.write(
+          jsonEncode({'body': 'ADVERTISEMENT', 'title': 'NEW TITLE'}),
+        );
+        await request.response.close();
+      });
+      final base = 'http://127.0.0.1:${server.port}';
+      final source = <String, dynamic>{
+        'bookSourceUrl': base,
+        'ruleContent': {
+          'content': r'$.body',
+          'title': r'$.title',
+          'replaceRegex': '##ADVERTISEMENT##',
+        },
+      };
+      final chapter = SourceChapter('TOC', Uri.parse('$base/c/1'));
+      await expectLater(
+        JsonSourcePipeline(source, HttpSourceTransport()).chapter(chapter),
+        throwsA(isA<SourceStageDiagnostic>()),
+      );
+      expect(
+        (await JsonSourcePipeline(source, HttpSourceTransport()).chapter(
+          SourceChapter('TOC', chapter.url, isVolume: true),
+        )).text.trim(),
+        isEmpty,
+      );
+    },
+  );
+
+  test('reader regression: blank page and erased body', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var erased = false;
+    final paths = <String>[];
+    server.listen((request) async {
+      paths.add(request.uri.path);
+      request.response.write(
+        jsonEncode(
+          erased
+              ? {'body': 'ADVERTISEMENT', 'title': 'NEW TITLE'}
+              : request.uri.path == '/c/1'
+              ? {'body': '', 'next': '/c/2'}
+              : {'body': 'READABLE'},
+        ),
+      );
+      await request.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    final source = <String, dynamic>{
+      'bookSourceUrl': base,
+      'ruleContent': {
+        'content': r'$.body',
+        'nextContentUrl': r'$.next',
+        'title': r'$.title',
+      },
+    };
+    final chapter = SourceChapter('TOC', Uri.parse('$base/c/1'));
+    final body = await JsonSourcePipeline(
+      source,
+      HttpSourceTransport(),
+    ).chapter(chapter);
+    expect(body.text, contains('READABLE'));
+    expect(paths, ['/c/1', '/c/2']);
+    erased = true;
+    (source['ruleContent'] as Map)['replaceRegex'] = '##ADVERTISEMENT##';
+    await expectLater(
+      JsonSourcePipeline(source, HttpSourceTransport()).chapter(chapter),
+      throwsA(isA<SourceStageDiagnostic>()),
+    );
+    final volume = SourceChapter('TOC', chapter.url, isVolume: true);
+    expect(
+      (await JsonSourcePipeline(
+        source,
+        HttpSourceTransport(),
+      ).chapter(volume)).title,
+      'NEW TITLE',
+    );
+  });
+
+  test(
     'Legado JSON fields drive the four stages through the pipeline entries',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
