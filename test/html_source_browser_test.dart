@@ -92,7 +92,8 @@ class ScriptedPipeline extends HtmlSourcePipeline {
 }
 
 class _AddGateShelf extends ShelfService {
-  _AddGateShelf(super.store);
+  _AddGateShelf(super.store, {this.failFirst = false});
+  final bool failFirst;
   final addStarted = Completer<void>();
   final releaseAdd = Completer<void>();
 
@@ -102,8 +103,11 @@ class _AddGateShelf extends ShelfService {
     HtmlBook book, [
     List<SourceChapter> chapters = const [],
   ]) async {
-    addStarted.complete();
-    await releaseAdd.future;
+    if (!addStarted.isCompleted) {
+      addStarted.complete();
+      await releaseAdd.future;
+      if (failFirst) throw StateError('add failed');
+    }
     return super.add(source, book, chapters);
   }
 }
@@ -509,6 +513,96 @@ void main() {
     // to the one admitted call.
     expect(find.text('A章'), findsOneWidget);
     expect(find.text('B章'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('two search-result adds both reach the shelf', (tester) async {
+    final gatedShelf = _AddGateShelf(store);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '书',
+          service: gatedShelf,
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final addButtons = find.byIcon(Icons.playlist_add);
+    expect(addButtons, findsNWidgets(2));
+    await tester.tap(addButtons.at(0));
+    await tester.pump();
+    expect(gatedShelf.addStarted.isCompleted, isTrue);
+    await tester.tap(addButtons.at(1));
+    await tester.pump();
+    gatedShelf.releaseAdd.complete();
+    await tester.pumpAndSettle();
+    expect(
+      (await gatedShelf.onlineShelf()).map((entry) => entry.title),
+      containsAll(['A', 'B']),
+    );
+    expect(await gatedShelf.onlineShelf(), hasLength(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a failed add does not discard the next add', (tester) async {
+    final gatedShelf = _AddGateShelf(store, failFirst: true);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '书',
+          service: gatedShelf,
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final addButtons = find.byIcon(Icons.playlist_add);
+    await tester.tap(addButtons.at(0));
+    await tester.pump();
+    await tester.tap(addButtons.at(1));
+    gatedShelf.releaseAdd.complete();
+    await tester.pumpAndSettle();
+    expect((await gatedShelf.onlineShelf()).single.title, 'B');
+    expect(find.textContaining('add failed'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('queued catalog add cannot overwrite an external refresh', (
+    tester,
+  ) async {
+    final gatedShelf = _AddGateShelf(store);
+    final book = HtmlBook(url: Uri.parse('$sourceUrl/b'), title: 'B');
+    final original = SourceChapter('original', Uri.parse('$sourceUrl/b/1'));
+    await shelf.add(source, book, [original]);
+    final entry = (await shelf.find(sourceUrl, '$sourceUrl/b'))!;
+    await shelf.remove(entry.id);
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '书',
+          service: gatedShelf,
+          pipeline: ScriptedPipeline(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.playlist_add).first);
+    await tester.pump();
+    await tester.tap(find.text('B'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.playlist_add));
+    await tester.pump();
+    await shelf.updateCatalog(sourceUrl, book, [original.withName('fresh')]);
+    gatedShelf.releaseAdd.complete();
+    await tester.pumpAndSettle();
+    final result = (await shelf.find(sourceUrl, '$sourceUrl/b'))!;
+    expect(result.chapters.single.name, 'fresh');
+    expect(result.shelved, isFalse);
+    expect(find.textContaining('加入书架失败'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
