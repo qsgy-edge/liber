@@ -261,13 +261,18 @@ void main() {
           'nextContentUrl': r'$.next',
           'title':
               '@js: (source.get("seenJson") || "none") + "|" + '
-              r'java.getString("$.title")',
+              r'java.getString("$.title") + "|" + baseUrl',
         },
       }, HttpSourceTransport());
+      const options = ',{"headers":{"X-Source-Test":"own chapter"}}';
       final body = await pipeline.chapter(
-        SourceChapter('第一章', Uri.parse('$base/c/1')),
+        SourceChapter(
+          '第一章',
+          Uri.parse('$base/c/1'),
+          rawAddress: '$base/c/1$options',
+        ),
       );
-      expect(body.title, 'final|第一页标题');
+      expect(body.title, 'final|第一页标题|$base/c/1$options');
       expect(body.text, 'JSON BODY\nJSON PAGE2');
     },
   );

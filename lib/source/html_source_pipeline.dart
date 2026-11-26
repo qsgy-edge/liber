@@ -471,6 +471,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
   /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+  String? _contentTitleBase;
   // Only TOC item getters expose the unfinished chapter address verbatim.
   String? _tocChapterAddress;
 
@@ -559,7 +560,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // `java.getString` and its siblings read the object this field's own rule
     // read used when the source passes no content of its own.
     'src': ?content,
-    'baseUrl': source['bookSourceUrl'],
+    'baseUrl': _contentTitleBase ?? source['bookSourceUrl'],
     'title': _chapterTitle,
     'nextChapterUrl': _nextChapterUrl,
     'book': _book == null
@@ -3266,6 +3267,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // not the last page's.
     final firstHtml = firstPageHtml;
     if (firstHtml != null) {
+      // BookContent binds the first document to the chapter's complete
+      // address, not to the source root or the final HTTP response URL.
+      _contentTitleBase = requestText;
       try {
         final titleRule = _rule('ruleContent', 'title', optional: true);
         if (titleRule.trim().isNotEmpty) {
@@ -3286,6 +3290,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       } on Object catch (error) {
         if (!sourceTitleFailureIsOrdinary(error)) rethrow;
         onHostMessage?.call(SourceHostMessage('ruleContent.title', '$error'));
+      } finally {
+        _contentTitleBase = null;
       }
     }
     _cancellation.throwIfCancelled();

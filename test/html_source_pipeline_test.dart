@@ -252,12 +252,12 @@ void main() {
           'replaceRegex': '##（广告）##{{source.put("seenHtml","replace");""}}',
           'title':
               '@js: (source.get("seenHtml") || "none") + "|" + '
-              'java.getString(".chapter-title@text")',
+              'java.getString(".chapter-title@text") + "|" + baseUrl',
         },
       }, transport);
       final (_, chapters) = await pipeline.details(_hit());
       final body = await pipeline.chapter(chapters.single);
-      expect(body.title, 'replace|第一页标题');
+      expect(body.title, 'replace|第一页标题|https://a.test/chapter/1');
       expect(body.text, '　　HTML BODY\n　　HTML PAGE2');
     },
   );

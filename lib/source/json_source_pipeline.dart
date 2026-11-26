@@ -201,6 +201,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
   /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+  String? _contentTitleBase;
   // Only TOC item getters expose the unfinished chapter address verbatim.
   String? _tocChapterAddress;
 
@@ -339,7 +340,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     'source': _sourceFields,
     'key': keyword,
     'page': _page,
-    'baseUrl': '$_base',
+    'baseUrl': _contentTitleBase ?? '$_base',
     'result': result,
     // The frozen `AnalyzeRule.evalJS` binds the analysis's own content as `src`
     // (`AnalyzeRule.kt:759`): it is the content the field being read carries, so
@@ -2258,6 +2259,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final chapterContext = chapter.fetchContext;
     final retainedPage = chapterContext?.retainedPage;
     final chapterBase = chapter.addressBase ?? chapter.url;
+    final requestText = chapterContext?.requestAddress ?? chapter.address;
     if (retainedPage == null) {
       // This request's own source header, read before its own address options
       // run. The reuse branch reuses the response the TOC stage already read, so
@@ -2266,16 +2268,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
-        : await _request(
-            chapterBase,
-            chapterContext?.requestAddress ?? chapter.address,
-            _keyword,
-          );
+        : await _request(chapterBase, requestText, _keyword);
     final pages = await walkSourcePages(
       first: (
         url: firstUrl,
         options: firstOptions,
-        address: chapterContext?.requestAddress ?? chapter.address,
+        address: requestText,
         base: chapterBase,
       ),
       // The frozen content walk has no page-count bound either
@@ -2386,6 +2384,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
     if (firstBody != null && rawTitle != null && rawTitle != '') {
       _responseRoot = firstPageDocument;
       _responseText = firstBody;
+      // The first document and its complete chapter address share one context.
+      _contentTitleBase = requestText;
       try {
         if (rawTitle is! String) {
           throw const FormatException('Invalid ruleContent.title');
@@ -2410,6 +2410,8 @@ class JsonSourcePipeline implements BookSourcePipeline {
       } on Object catch (error) {
         if (!sourceTitleFailureIsOrdinary(error)) rethrow;
         onHostMessage?.call(SourceHostMessage('ruleContent.title', '$error'));
+      } finally {
+        _contentTitleBase = null;
       }
     }
     _cancellation.throwIfCancelled();
