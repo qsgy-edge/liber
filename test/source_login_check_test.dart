@@ -304,7 +304,8 @@ void main() {
       });
       addTearDown(site.close);
       final url = '${site.origin}/chapter/1';
-      final check = '''
+      final check =
+          '''
 if (result.code() !== 500 || result.url() !== "$url" || result.body() !== 'connection') {
   throw new Error('unexpected initial response');
 }
@@ -597,9 +598,7 @@ if (body.indexOf('1234') > -1) {
 }
 result;
 ''';
-      final pipeline = _pipeline(
-        _htmlSource(site.origin, checkJs: check),
-      );
+      final pipeline = _pipeline(_htmlSource(site.origin, checkJs: check));
       final hits = await pipeline.search('书');
       expect(hits.single.title, '书');
       // One `AnalyzeUrl` per URL (`JsExtensions.kt:111-125`): each entry keeps
@@ -685,9 +684,9 @@ result;
         expect(
           site.seen.where((request) => request.path == '/search'),
           hasLength(4),
-        ),
-      );
-    });
+        );
+      },
+    );
 
     test('the 笔趣阁 shape clears the jar and returns the response unchanged', () async {
       final site = await _Site.start({
@@ -863,22 +862,23 @@ result;
             'message',
             contains('must return a response object'),
           ),
-        );
-      },
-    );
+        ),
+      );
+    });
 
     test('a webView tail on java.ajax refuses by name', () async {
       final site = await _Site.start(_htmlPages());
       addTearDown(site.close);
-      final check =
-          '''
+      final check = '''
 var body = result.body();
 if (body.indexOf('1234') > -1) {
   java.ajax('${site.origin}/verify,' + JSON.stringify({webView: true}));
 }
 result;
 ''';
-      final pipeline = _pipeline(_htmlSource(site.origin, checkJs: check));
+      final pipeline = _pipeline(
+        _htmlSource(site.origin, checkJs: check),
+      );
       await expectLater(
         pipeline.search('书'),
         throwsA(
