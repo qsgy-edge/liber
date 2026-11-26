@@ -9,7 +9,6 @@ import 'generated_migrations/schema_v2.dart' as v2;
 import 'generated_migrations/schema_v3.dart' as v3;
 import 'generated_migrations/schema_v4.dart' as v4;
 import 'generated_migrations/schema_v5.dart' as v5;
-import 'generated_migrations/schema_v7.dart' as v7;
 
 /// The generated migration tests: the schemas in `drift_schemas/` are the
 /// released versions, `drift_dev schema steps` turns them into the upgrade
@@ -28,38 +27,6 @@ void main() {
       await database.close();
       schema.close();
     }
-  });
-
-  test('v7 → v8 keeps book, chapter address and progress with unknown TOC', () async {
-    final schema = await verifier.schemaAt(7);
-    addTearDown(schema.close);
-    final old = v7.DatabaseAtV7(schema.newConnection());
-    await old.customStatement(
-      "INSERT INTO books (id, title, source_book_url) VALUES ('b', 'Book', 'https://s/book')",
-    );
-    await old.customStatement(
-      'INSERT INTO chapters (book_id, chapter_key, chapter_index, name, url) '
-      "VALUES ('b', 'https://s/c', 0, 'Chapter', 'https://s/c,{\"webView\":false}')",
-    );
-    await old.customStatement(
-      "INSERT INTO progress (book_id, chapter_key, chapter_index, text_offset, updated_at) "
-      "VALUES ('b', 'https://s/c', 0, 19, 123)",
-    );
-    await old.close();
-
-    final database = SpaceDatabase(schema.newConnection());
-    addTearDown(database.close);
-    await verifier.migrateAndValidate(database, 8);
-    final book = await database.select(database.books).getSingle();
-    expect(book.id, 'b');
-    expect(book.sourceBookUrl, 'https://s/book');
-    expect(book.sourceTocUrl, isNull);
-    final chapter = await database.select(database.chapters).getSingle();
-    expect(chapter.chapterKey, 'https://s/c');
-    expect(chapter.url, 'https://s/c,{"webView":false}');
-    final progress = await database.select(database.progress).getSingle();
-    expect(progress.chapterKey, chapter.chapterKey);
-    expect(progress.textOffset, 19);
   });
 
   test('v1 → v2 合并重复的自然键，然后才允许唯一索引', () async {

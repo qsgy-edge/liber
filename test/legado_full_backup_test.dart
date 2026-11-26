@@ -207,35 +207,6 @@ void main() {
     ),
   );
 
-  test(
-    'Legado import fills a missing logical TOC and preserves a known one',
-    () async {
-      const bookUrl = 'https://source.example/book/1';
-      const toc = 'https://source.example/book/1/catalog , {"charset":"gbk"}';
-      await importBackup(books: [networkBook(bookUrl)]);
-      final original = (await space.store.shelf()).single;
-      expect(original.sourceTocUrl, isNull);
-
-      await importBackup(
-        books: [
-          networkBook(bookUrl, extra: {'tocUrl': toc}),
-        ],
-      );
-      await importBackup(
-        books: [
-          networkBook(
-            bookUrl,
-            extra: {'tocUrl': 'https://source.example/other'},
-          ),
-        ],
-      );
-      final imported = (await space.store.shelf()).single;
-      expect(imported.id, original.id);
-      expect(imported.sourceBookUrl, bookUrl);
-      expect(imported.sourceTocUrl, toc);
-    },
-  );
-
   group('ZIP 容器（契约家族 3）', () {
     test('四类根成员都读得到：书源、分组、书架与进度入库', () async {
       final record = await importBackup(

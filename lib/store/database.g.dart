@@ -629,17 +629,6 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _sourceTocUrlMeta = const VerificationMeta(
-    'sourceTocUrl',
-  );
-  @override
-  late final GeneratedColumn<String> sourceTocUrl = GeneratedColumn<String>(
-    'source_toc_url',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
@@ -945,7 +934,6 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
     kind,
     sourceRef,
     sourceBookUrl,
-    sourceTocUrl,
     title,
     author,
     originName,
@@ -1008,15 +996,6 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
         sourceBookUrl.isAcceptableOrUnknown(
           data['source_book_url']!,
           _sourceBookUrlMeta,
-        ),
-      );
-    }
-    if (data.containsKey('source_toc_url')) {
-      context.handle(
-        _sourceTocUrlMeta,
-        sourceTocUrl.isAcceptableOrUnknown(
-          data['source_toc_url']!,
-          _sourceTocUrlMeta,
         ),
       );
     }
@@ -1236,10 +1215,6 @@ class $BooksTable extends Books with TableInfo<$BooksTable, ShelfBook> {
         DriftSqlType.string,
         data['${effectivePrefix}source_book_url'],
       ),
-      sourceTocUrl: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}source_toc_url'],
-      ),
       title: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}title'],
@@ -1368,9 +1343,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
   /// With `sourceRef`, the natural key import and re-search match on. Null for
   /// local books, whose natural key is `rootId` + `relativePath`.
   final String? sourceBookUrl;
-
-  /// Logical TOC address of a network book, before redirects and pagination.
-  final String? sourceTocUrl;
   final String title;
   final String author;
 
@@ -1421,7 +1393,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     required this.kind,
     this.sourceRef,
     this.sourceBookUrl,
-    this.sourceTocUrl,
     required this.title,
     required this.author,
     required this.originName,
@@ -1459,9 +1430,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     }
     if (!nullToAbsent || sourceBookUrl != null) {
       map['source_book_url'] = Variable<String>(sourceBookUrl);
-    }
-    if (!nullToAbsent || sourceTocUrl != null) {
-      map['source_toc_url'] = Variable<String>(sourceTocUrl);
     }
     map['title'] = Variable<String>(title);
     map['author'] = Variable<String>(author);
@@ -1516,9 +1484,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       sourceBookUrl: sourceBookUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(sourceBookUrl),
-      sourceTocUrl: sourceTocUrl == null && nullToAbsent
-          ? const Value.absent()
-          : Value(sourceTocUrl),
       title: Value(title),
       author: Value(author),
       originName: Value(originName),
@@ -1570,7 +1535,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       kind: serializer.fromJson<String>(json['kind']),
       sourceRef: serializer.fromJson<String?>(json['sourceRef']),
       sourceBookUrl: serializer.fromJson<String?>(json['sourceBookUrl']),
-      sourceTocUrl: serializer.fromJson<String?>(json['sourceTocUrl']),
       title: serializer.fromJson<String>(json['title']),
       author: serializer.fromJson<String>(json['author']),
       originName: serializer.fromJson<String>(json['originName']),
@@ -1611,7 +1575,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       'kind': serializer.toJson<String>(kind),
       'sourceRef': serializer.toJson<String?>(sourceRef),
       'sourceBookUrl': serializer.toJson<String?>(sourceBookUrl),
-      'sourceTocUrl': serializer.toJson<String?>(sourceTocUrl),
       'title': serializer.toJson<String>(title),
       'author': serializer.toJson<String>(author),
       'originName': serializer.toJson<String>(originName),
@@ -1646,7 +1609,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     String? kind,
     Value<String?> sourceRef = const Value.absent(),
     Value<String?> sourceBookUrl = const Value.absent(),
-    Value<String?> sourceTocUrl = const Value.absent(),
     String? title,
     String? author,
     String? originName,
@@ -1680,7 +1642,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     sourceBookUrl: sourceBookUrl.present
         ? sourceBookUrl.value
         : this.sourceBookUrl,
-    sourceTocUrl: sourceTocUrl.present ? sourceTocUrl.value : this.sourceTocUrl,
     title: title ?? this.title,
     author: author ?? this.author,
     originName: originName ?? this.originName,
@@ -1720,9 +1681,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
       sourceBookUrl: data.sourceBookUrl.present
           ? data.sourceBookUrl.value
           : this.sourceBookUrl,
-      sourceTocUrl: data.sourceTocUrl.present
-          ? data.sourceTocUrl.value
-          : this.sourceTocUrl,
       title: data.title.present ? data.title.value : this.title,
       author: data.author.present ? data.author.value : this.author,
       originName: data.originName.present
@@ -1783,7 +1741,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
           ..write('kind: $kind, ')
           ..write('sourceRef: $sourceRef, ')
           ..write('sourceBookUrl: $sourceBookUrl, ')
-          ..write('sourceTocUrl: $sourceTocUrl, ')
           ..write('title: $title, ')
           ..write('author: $author, ')
           ..write('originName: $originName, ')
@@ -1820,7 +1777,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
     kind,
     sourceRef,
     sourceBookUrl,
-    sourceTocUrl,
     title,
     author,
     originName,
@@ -1856,7 +1812,6 @@ class ShelfBook extends DataClass implements Insertable<ShelfBook> {
           other.kind == this.kind &&
           other.sourceRef == this.sourceRef &&
           other.sourceBookUrl == this.sourceBookUrl &&
-          other.sourceTocUrl == this.sourceTocUrl &&
           other.title == this.title &&
           other.author == this.author &&
           other.originName == this.originName &&
@@ -1890,7 +1845,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
   final Value<String> kind;
   final Value<String?> sourceRef;
   final Value<String?> sourceBookUrl;
-  final Value<String?> sourceTocUrl;
   final Value<String> title;
   final Value<String> author;
   final Value<String> originName;
@@ -1923,7 +1877,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     this.kind = const Value.absent(),
     this.sourceRef = const Value.absent(),
     this.sourceBookUrl = const Value.absent(),
-    this.sourceTocUrl = const Value.absent(),
     this.title = const Value.absent(),
     this.author = const Value.absent(),
     this.originName = const Value.absent(),
@@ -1957,7 +1910,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     this.kind = const Value.absent(),
     this.sourceRef = const Value.absent(),
     this.sourceBookUrl = const Value.absent(),
-    this.sourceTocUrl = const Value.absent(),
     required String title,
     this.author = const Value.absent(),
     this.originName = const Value.absent(),
@@ -1992,7 +1944,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     Expression<String>? kind,
     Expression<String>? sourceRef,
     Expression<String>? sourceBookUrl,
-    Expression<String>? sourceTocUrl,
     Expression<String>? title,
     Expression<String>? author,
     Expression<String>? originName,
@@ -2026,7 +1977,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
       if (kind != null) 'kind': kind,
       if (sourceRef != null) 'source_ref': sourceRef,
       if (sourceBookUrl != null) 'source_book_url': sourceBookUrl,
-      if (sourceTocUrl != null) 'source_toc_url': sourceTocUrl,
       if (title != null) 'title': title,
       if (author != null) 'author': author,
       if (originName != null) 'origin_name': originName,
@@ -2064,7 +2014,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     Value<String>? kind,
     Value<String?>? sourceRef,
     Value<String?>? sourceBookUrl,
-    Value<String?>? sourceTocUrl,
     Value<String>? title,
     Value<String>? author,
     Value<String>? originName,
@@ -2098,7 +2047,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
       kind: kind ?? this.kind,
       sourceRef: sourceRef ?? this.sourceRef,
       sourceBookUrl: sourceBookUrl ?? this.sourceBookUrl,
-      sourceTocUrl: sourceTocUrl ?? this.sourceTocUrl,
       title: title ?? this.title,
       author: author ?? this.author,
       originName: originName ?? this.originName,
@@ -2143,9 +2091,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
     }
     if (sourceBookUrl.present) {
       map['source_book_url'] = Variable<String>(sourceBookUrl.value);
-    }
-    if (sourceTocUrl.present) {
-      map['source_toc_url'] = Variable<String>(sourceTocUrl.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -2240,7 +2185,6 @@ class BooksCompanion extends UpdateCompanion<ShelfBook> {
           ..write('kind: $kind, ')
           ..write('sourceRef: $sourceRef, ')
           ..write('sourceBookUrl: $sourceBookUrl, ')
-          ..write('sourceTocUrl: $sourceTocUrl, ')
           ..write('title: $title, ')
           ..write('author: $author, ')
           ..write('originName: $originName, ')
@@ -8178,7 +8122,6 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<String> kind,
       Value<String?> sourceRef,
       Value<String?> sourceBookUrl,
-      Value<String?> sourceTocUrl,
       required String title,
       Value<String> author,
       Value<String> originName,
@@ -8213,7 +8156,6 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<String?> sourceRef,
       Value<String?> sourceBookUrl,
-      Value<String?> sourceTocUrl,
       Value<String> title,
       Value<String> author,
       Value<String> originName,
@@ -8346,11 +8288,6 @@ class $$BooksTableFilterComposer
 
   ColumnFilters<String> get sourceBookUrl => $composableBuilder(
     column: $table.sourceBookUrl,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get sourceTocUrl => $composableBuilder(
-    column: $table.sourceTocUrl,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8614,11 +8551,6 @@ class $$BooksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get sourceTocUrl => $composableBuilder(
-    column: $table.sourceTocUrl,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get title => $composableBuilder(
     column: $table.title,
     builder: (column) => ColumnOrderings(column),
@@ -8770,11 +8702,6 @@ class $$BooksTableAnnotationComposer
 
   GeneratedColumn<String> get sourceBookUrl => $composableBuilder(
     column: $table.sourceBookUrl,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get sourceTocUrl => $composableBuilder(
-    column: $table.sourceTocUrl,
     builder: (column) => column,
   );
 
@@ -9018,7 +8945,6 @@ class $$BooksTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<String?> sourceRef = const Value.absent(),
                 Value<String?> sourceBookUrl = const Value.absent(),
-                Value<String?> sourceTocUrl = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> author = const Value.absent(),
                 Value<String> originName = const Value.absent(),
@@ -9051,7 +8977,6 @@ class $$BooksTableTableManager
                 kind: kind,
                 sourceRef: sourceRef,
                 sourceBookUrl: sourceBookUrl,
-                sourceTocUrl: sourceTocUrl,
                 title: title,
                 author: author,
                 originName: originName,
@@ -9086,7 +9011,6 @@ class $$BooksTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<String?> sourceRef = const Value.absent(),
                 Value<String?> sourceBookUrl = const Value.absent(),
-                Value<String?> sourceTocUrl = const Value.absent(),
                 required String title,
                 Value<String> author = const Value.absent(),
                 Value<String> originName = const Value.absent(),
@@ -9119,7 +9043,6 @@ class $$BooksTableTableManager
                 kind: kind,
                 sourceRef: sourceRef,
                 sourceBookUrl: sourceBookUrl,
-                sourceTocUrl: sourceTocUrl,
                 title: title,
                 author: author,
                 originName: originName,

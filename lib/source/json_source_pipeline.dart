@@ -389,18 +389,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// The hook runs once per stage, on the stage's first response — the frozen
   /// call sites are the four stage entries, and the `nextTocUrl`/
   /// `nextContentUrl` pages `BookChapterList`/`BookContent` fetch never run it.
-  Future<SourceStageResponse> _loginCheck(
-    SourceStageResponse response, {
-    String? recoveryBase,
-  }) async {
+  Future<SourceStageResponse> _loginCheck(SourceStageResponse response) async {
     final checkJs = '${source['loginCheckJs'] ?? ''}';
     if (checkJs.trim().isEmpty) return response;
     return _runtime.evaluateLoginCheck(
       script: checkJs,
-      input: {
-        ..._scriptInput(_keyword, response.toJson()),
-        'baseUrl': ?recoveryBase,
-      },
+      input: _scriptInput(_keyword, response.toJson()),
       stage: SourceStageRequest(
         initialResponse: response,
         resend: _resendStage,
@@ -1916,13 +1910,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
     final handoff = await _entityVariables.prepareTocHandoff([
       for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
     ]);
-    final completedBook = book
-        .withTocUrl(info.tocUrl)
-        .withVariable(bookVariable);
     _cancellation.throwIfCancelled();
     _entityVariables.publishTocHandoff(handoff);
-    _book = completedBook;
-    return (completedBook, restored);
+    return (book.withVariable(bookVariable), restored);
   }
 
   /// The composed entry validates the TOC group before its first request, as it
@@ -2332,10 +2322,6 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     url: pageUrl,
                     fetch: fetch,
                     check: _loginCheck,
-                    checkRecovery: (response) => _loginCheck(
-                      response,
-                      recoveryBase: _book?.contentRecoveryBase,
-                    ),
                     cancellation: _cancellation,
                   )
                 : await fetch());

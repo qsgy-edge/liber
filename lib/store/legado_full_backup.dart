@@ -459,20 +459,12 @@ class LegadoFullBackupImport {
           ? '$correlationKey\u0000$fileName'
           : '$sourceRef\u0000$bookUrl';
       if (!seen.add(naturalKey) && !local) totals.duplicateBooks++;
-      final tocUrl = book['tocUrl'];
       await store.putBook(
         BooksCompanion(
           id: Value(id),
           kind: Value(local ? 'local' : 'network'),
           sourceRef: Value(sourceRef.isEmpty ? null : sourceRef),
           sourceBookUrl: Value(local ? null : bookUrl),
-          sourceTocUrl:
-              !local &&
-                  existing?.sourceTocUrl == null &&
-                  tocUrl is String &&
-                  _httpUrl(tocUrl).isNotEmpty
-              ? Value(tocUrl)
-              : const Value.absent(),
           title: Value(
             _fill(
               _string(book['name'], fallback: local ? fileName! : bookUrl),

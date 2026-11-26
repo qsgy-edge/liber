@@ -25,7 +25,6 @@ class HtmlBook {
     required this.url,
     this.rawAddress,
     this.preOptionUrl,
-    this.sourceTocUrl,
     required this.title,
     this.author = '',
     this.intro = '',
@@ -84,17 +83,6 @@ class HtmlBook {
         : '$resolved${raw.substring(boundary)}';
   }
 
-  /// The book's logical TOC address, before redirect or pagination.
-  final String? sourceTocUrl;
-
-  /// `AnalyzeUrl` removes the option separator and tail from `Book.tocUrl`.
-  String? get contentRecoveryBase {
-    final toc = sourceTocUrl;
-    if (toc == null || toc.isEmpty) return null;
-    final boundary = sourceUrlOptionBoundaryOf(toc);
-    return boundary == null ? toc : toc.substring(0, boundary);
-  }
-
   final String title, author, intro, cover, lastChapter, wordCount;
 
   /// The source's category text, or null when the source left it unset.
@@ -126,29 +114,21 @@ class HtmlBook {
 
   /// This carrier with [variable] replaced, every identity and stage field
   /// retained. A metadata copy must not drop the variable it started from.
-  HtmlBook withVariable(String? variable) =>
-      _copy(variable: variable, sourceTocUrl: sourceTocUrl);
-
-  HtmlBook withTocUrl(String tocUrl) =>
-      _copy(variable: variable, sourceTocUrl: tocUrl);
-
-  HtmlBook _copy({required String? variable, required String? sourceTocUrl}) =>
-      HtmlBook(
-        url: url,
-        rawAddress: rawAddress,
-        preOptionUrl: preOptionUrl,
-        sourceTocUrl: sourceTocUrl,
-        title: title,
-        author: author,
-        intro: intro,
-        cover: cover,
-        kind: kind,
-        lastChapter: lastChapter,
-        wordCount: wordCount,
-        variable: variable,
-        infoHtml: infoHtml,
-        addressContext: addressContext,
-      );
+  HtmlBook withVariable(String? variable) => HtmlBook(
+    url: url,
+    rawAddress: rawAddress,
+    preOptionUrl: preOptionUrl,
+    title: title,
+    author: author,
+    intro: intro,
+    cover: cover,
+    kind: kind,
+    lastChapter: lastChapter,
+    wordCount: wordCount,
+    variable: variable,
+    infoHtml: infoHtml,
+    addressContext: addressContext,
+  );
 
   Map<String, dynamic> toJson() => {
     'url': '$url',
@@ -643,16 +623,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<SourceStageResponse> _loginCheck(
     SourceStageResponse response, {
     Map<String, String>? resendHeaders,
-    String? recoveryBase,
   }) async {
     final checkJs = '${source['loginCheckJs'] ?? ''}';
     if (checkJs.trim().isEmpty) return response;
     return _runtime.evaluateLoginCheck(
       script: checkJs,
-      input: {
-        ..._scriptInput(_keyword, response.toJson()),
-        'baseUrl': ?recoveryBase,
-      },
+      input: _scriptInput(_keyword, response.toJson()),
       stage: SourceStageRequest(
         initialResponse: response,
         resend: () => _resendStage(sourceHeaders: resendHeaders),
@@ -2739,13 +2715,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final handoff = await _entityVariables.prepareTocHandoff([
       for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
     ]);
-    final completedBook = book
-        .withTocUrl(info.tocUrl)
-        .withVariable(bookVariable);
     _cancellation.throwIfCancelled();
     _entityVariables.publishTocHandoff(handoff);
-    _book = completedBook;
-    return (completedBook, restored);
+    return (book.withVariable(bookVariable), restored);
   }
 
   @override
@@ -3222,11 +3194,8 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                     url: target,
                     fetch: fetch,
                     check: _loginCheck,
-                    checkRecovery: (response) => _loginCheck(
-                      response,
-                      resendHeaders: sourceHeaders,
-                      recoveryBase: _book?.contentRecoveryBase,
-                    ),
+                    checkRecovery: (response) =>
+                        _loginCheck(response, resendHeaders: sourceHeaders),
                     cancellation: _cancellation,
                   )
                 : await fetch());
