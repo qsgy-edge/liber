@@ -230,7 +230,9 @@ class HttpSourceTransport implements BookSourceTransport, SourceHttpTransport {
           closeClient,
           isStopped,
         );
-        if (response.statusCode >= 200 && response.statusCode < 300) {
+        // _readOnce already handled redirects; a returned 3xx is terminal
+        // and must be passed through without a source status retry.
+        if (response.statusCode >= 200 && response.statusCode < 400) {
           return response;
         }
       }

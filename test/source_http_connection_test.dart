@@ -313,6 +313,36 @@ void main() {
     expect(clients, 2);
   });
 
+  test('a terminal 302 without Location is not status-retried', () async {
+    final server = _ConnectionServer((request) {
+      final body = 'response on connection ${request.connection}';
+      return (
+        text:
+            'HTTP/1.1 302 Found\r\nContent-Length: ${body.length}\r\n'
+            'Connection: keep-alive\r\n\r\n$body',
+        close: false,
+      );
+    });
+    await server.start();
+    addTearDown(server.stop);
+    final transport = HttpSourceTransport(
+      clientFactory: ({bool useSystemProxy = false}) =>
+          server.client(useSystemProxy: useSystemProxy),
+    );
+
+    final response = await transport
+        .send(_get(_startAddress, retry: 2))
+        .timeout(const Duration(seconds: 10));
+
+    expect(
+      server.requests.map((r) => r.line),
+      ['GET /start HTTP/1.1'],
+      reason: 'returned ${response.statusCode} with body "${response.body}"',
+    );
+    expect(response.statusCode, 302);
+    expect(response.body, 'response on connection 1');
+  });
+
   test(
     'cancellation during a redirect hop closes it and starts no later hop',
     () async {
@@ -370,8 +400,8 @@ void main() {
           .timeout(const Duration(seconds: 10)),
       _preHeaderFailure(_startAddress),
     );
-    // The rule's attempts cover non-2xx responses only: a transport failure
-    // leaves exactly one request on one connection.
+    // Source status retries do not replay a transport failure: it leaves
+    // exactly one request on one connection.
     expect(server.requests, hasLength(1));
     expect(server.connections, [_startAddress]);
     expect(clients, 1);
