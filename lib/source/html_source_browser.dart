@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../domain/contracts.dart' show SourceRequestCancelled;
 import '../l10n/app_localizations.dart';
 import '../store/shelf.dart';
+import '../store/space_store.dart' show matchesBookIdentity;
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'chapter_list_tile.dart';
@@ -69,7 +70,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   bool busy = true;
   Completer<void>? _adding;
   final _pendingCatalogAdds =
-      <(HtmlBook, List<SourceChapter>, int), Future<void>>{};
+      <
+        (HtmlBook, List<SourceChapter>, int),
+        ({String? bookId, Future<void> done})
+      >{};
 
   /// What the page last did, or null before it has done anything: the
   /// initial line is the build's, because it is copy (`lib/l10n/`).
@@ -248,14 +252,25 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     try {
       // A reopened book must start its analysis after its queued publication,
       // not adopt the revision of a different set of chapters afterwards.
-      final identity = hit.identityAddress;
-      final pending = [
-        for (final entry in _pendingCatalogAdds.entries)
-          if (entry.key.$1.identityAddress == identity) entry.value,
-      ];
+      final pending = _pendingCatalogAdds.entries.toList();
       if (pending.isNotEmpty) {
-        await Future.wait(pending);
+        final identity = hit.identityAddress;
+        final row = await shelf.store.bookByNaturalKey(sourceUrl, identity);
         if (!mounted) return;
+        final sameCatalog = <Future<void>>[];
+        for (final entry in pending) {
+          final add = entry.value;
+          final address = entry.key.$1.identityAddress;
+          final sameBook = add.bookId != null
+              ? add.bookId == row?.id
+              : address == identity ||
+                    (row == null && matchesBookIdentity(address, identity));
+          if (sameBook) sameCatalog.add(add.done);
+        }
+        if (sameCatalog.isNotEmpty) {
+          await Future.wait(sameCatalog);
+          if (!mounted) return;
+        }
       }
       final revision = shelf.store.chapterCatalogRevision;
       final (book, items) = await _withTls(() => pipeline.details(hit));
@@ -303,7 +318,12 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     if (catalog != null && _pendingCatalogAdds.containsKey(catalog)) return;
     final previousAdd = _adding;
     final adding = _adding = Completer<void>();
-    if (catalog != null) _pendingCatalogAdds[catalog] = adding.future;
+    if (catalog != null) {
+      _pendingCatalogAdds[catalog] = (
+        bookId: expectedBookId,
+        done: adding.future,
+      );
+    }
     try {
       if (previousAdd != null) await previousAdd.future;
       final shelf = widget.service;
