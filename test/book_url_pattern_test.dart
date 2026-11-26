@@ -6462,6 +6462,128 @@ void main() {
     },
   );
 
+  for (final json in [false, true]) {
+    test(
+      '${json ? 'JSON' : 'HTML'} empty fetched TOC address survives shelf reopen',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        final origin = 'http://127.0.0.1:${server.port}';
+        const toc = '/toc?key=one';
+        const landed = '/landed?key=two';
+        const tail =
+            ',{"method":"POST","body":"q=chapter","headers":{"X-Chapter":"toc"}}';
+        final requests = <(String, String, String, String?)>[];
+        server.listen((request) async {
+          final input = await utf8.decoder.bind(request).join();
+          requests.add((
+            request.method,
+            '${request.uri}',
+            input,
+            request.headers.value('X-Chapter'),
+          ));
+          switch (request.uri.path) {
+            case '/book':
+              request.response.write(
+                json
+                    ? jsonEncode({'title': 'Book', 'toc': '$toc$tail'})
+                    : '<h1>Book</h1><a class="toc" href="${const HtmlEscape().convert('$toc$tail')}">TOC</a>',
+              );
+            case '/toc':
+              request.response.statusCode = HttpStatus.temporaryRedirect;
+              request.response.headers.set(HttpHeaders.locationHeader, landed);
+            case '/landed':
+              request.response.write(
+                json
+                    ? '{"list":[{"label":"One","href":""}],"text":"Body"}'
+                    : '<ul><li><a>One</a></li></ul><p id="content">Body</p>',
+              );
+            default:
+              request.response.statusCode = HttpStatus.notFound;
+          }
+          await request.response.close();
+        });
+        final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+          ..['bookSourceName'] = 'Redirecting TOC';
+        final root = await Directory.systemTemp.createTemp('liber-empty-toc-');
+        var workspace = await Workspace.open(root: root);
+        addTearDown(() async {
+          await workspace.close();
+          await root.delete(recursive: true);
+        });
+        var shelf = ShelfService(await workspace.openSpace());
+        BookSourcePipeline open() => json
+            ? JsonSourcePipeline(
+                source,
+                HttpSourceTransport(),
+                hostState: shelf.hostState,
+              )
+            : HtmlSourcePipeline(
+                source,
+                HttpSourceTransport(),
+                hostState: shelf.hostState,
+              );
+        final producer = open();
+        final (book, chapters) = await producer.details(
+          HtmlBook(url: Uri.parse('$origin/book'), title: 'Book'),
+        );
+        final chapter = chapters.single;
+        expect(chapter.address, '$origin$toc$tail');
+        expect(chapter.fetchContext?.retainedPage, isNull);
+        expect((await producer.chapter(chapter, book: book)).text, 'Body');
+        producer.cancel();
+        const redirectTrace = [
+          ('POST', toc, 'q=chapter', 'toc'),
+          ('POST', landed, 'q=chapter', 'toc'),
+        ];
+        expect(requests, [
+          ('GET', '/book', '', null),
+          ...redirectTrace,
+          ...redirectTrace,
+        ]);
+        requests.clear();
+        await shelf.add(source, book, chapters);
+        await workspace.close();
+        workspace = await Workspace.open(root: root);
+        shelf = ShelfService(await workspace.openSpace());
+        final reopened = (await shelf.find(origin, book.identityAddress))!;
+        final row = reopened.chapters.single;
+        final restored = SourceChapter.fromAddress(
+          row.name,
+          row.url!,
+          bookUrl: reopened.htmlBook.url,
+          chapterKey: row.chapterKey,
+        );
+        final reader = open();
+        expect(
+          (await reader.chapter(restored, book: reopened.htmlBook)).text,
+          'Body',
+        );
+        reader.cancel();
+        expect(
+          [
+            chapter.progressKey,
+            row.chapterKey,
+            row.url,
+            restored.progressKey,
+            restored.address,
+            requests,
+          ],
+          [
+            '$origin$toc',
+            '$origin$toc',
+            '$origin$toc$tail',
+            '$origin$toc',
+            '$origin$toc$tail',
+            redirectTrace,
+          ],
+          reason:
+              'the saved/reopened key and full input keep the actual redirect trace',
+        );
+      },
+    );
+  }
+
   // A chapter this shelf saved and a fresh analysis rebuilt from the stored row
   // carries no in-memory request context: its real content request analyses the
   // complete saved text, so the request's own option script runs once at that
