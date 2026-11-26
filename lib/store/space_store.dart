@@ -57,8 +57,32 @@ class SpaceStore {
 
   final SpaceDatabase db;
   final String spaceId;
+  int _activeTransactions = 0;
+  Completer<void>? _transactionsIdle;
+  Future<void>? _closing;
 
-  Future<void> close() => db.close();
+  Future<void> close() {
+    if (_pendingCatalogs != null) {
+      return Future.error(
+        StateError('Cannot close a store inside its transaction'),
+      );
+    }
+    return _closing ??= _close();
+  }
+
+  Future<void> _close() async {
+    try {
+      final idle = _transactionsIdle;
+      if (idle != null) {
+        await idle.future;
+        // Drift returns from exclusively() before the remote executor's
+        // release is acknowledged. A root statement waits for those scopes.
+        await db.customStatement('SELECT 1');
+      }
+    } finally {
+      await db.close();
+    }
+  }
 
   /// Runs [action] as one store transaction: every intent-level write inside it
   /// lands together, and a failure rolls all of them back, so no caller sees a
@@ -80,16 +104,28 @@ class SpaceStore {
       });
     }
 
+    if (_closing != null) {
+      return Future.error(
+        StateError('Cannot start a transaction on a closing store'),
+      );
+    }
+    if (_activeTransactions++ == 0) {
+      _transactionsIdle = Completer<void>();
+    }
     // Publish the in-memory revisions only after SQLite commits, while the
     // connection is still locked against the next catalog read or write.
-    return db.exclusively(() async {
-      final result = await run();
-      if (pending.latest != 0) {
-        _chapterCatalogChanges.addAll(pending.revisions);
-        _chapterCatalogRevision = pending.latest;
-      }
-      return result;
-    });
+    return db
+        .exclusively(() async {
+          final result = await run();
+          if (pending.latest != 0) {
+            _chapterCatalogChanges.addAll(pending.revisions);
+            _chapterCatalogRevision = pending.latest;
+          }
+          return result;
+        })
+        .whenComplete(() {
+          if (--_activeTransactions == 0) _transactionsIdle!.complete();
+        });
   }
 
   // --- Book Sources (D7) ---------------------------------------------------

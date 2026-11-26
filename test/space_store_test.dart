@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -40,6 +41,45 @@ void main() {
     expect(book.author, '天蚕土豆');
     await reopened.close();
   });
+
+  test(
+    'closing lets an admitted transaction finish before reopening',
+    () async {
+      final workspace = await Workspace.open(root: root);
+      final store = await workspace.openSpace();
+      final started = Completer<void>();
+      final finish = Completer<void>();
+      final write = store.transaction(() async {
+        await store.putBook(
+          BooksCompanion.insert(id: 'book', title: 'Initial'),
+        );
+        started.complete();
+        await finish.future;
+        await store.transaction(() async {
+          await store.putBook(
+            BooksCompanion.insert(id: 'book', title: 'Saved'),
+          );
+        });
+      });
+      final written = expectLater(write, completes);
+      await started.future;
+
+      final closing = workspace.close();
+      final closedWhileWriting = await Future.any([
+        closing.then((_) => true),
+        Future<bool>.delayed(const Duration(milliseconds: 50), () => false),
+      ]);
+      finish.complete();
+      await written;
+      await closing;
+      expect(closedWhileWriting, isFalse);
+
+      final reopened = await Workspace.open(root: root);
+      addTearDown(reopened.close);
+      final reopenedStore = await reopened.openSpace();
+      expect((await reopenedStore.bookById('book'))?.title, 'Saved');
+    },
+  );
 
   test(
     'source group strings normalize four separators on put and batch re-import',
