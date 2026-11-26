@@ -1560,10 +1560,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
-    /// The frozen `bookChapter.url = baseUrl` fallback (`BookChapterList.kt:229-243`)
-    /// writes the page's own finished TOC text into an empty chapter URL. A
-    /// retained first page publishes the approved TOC value; a fetched page
-    /// resolves the address it was read for.
+    /// The frozen empty-URL fallback uses the TOC base, not the redirect URL
+    /// (`WebBook.kt:354-361`, `BookChapterList.kt:262-274`). A retained first
+    /// page publishes the approved TOC value; a fetched page resolves its
+    /// declared address without analyzing the options again.
     String tocFallbackAddress(
       SourcePageRequest request, {
       bool retained = false,
@@ -1576,12 +1576,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
           fallbackAddress: bookAddressText,
         );
       }
-      final parts = splitSourceUrlOptions(request.address);
-      final address = Uri.parse(parts.path);
-      if (address.hasScheme) {
-        return request.address;
-      }
-      return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
+      final path = sourceUrlTargetOf(request.address);
+      if (Uri.parse(path).hasScheme) return request.address;
+      final tail = sourceUrlOptionTailOf(request.address);
+      return '${sourceUrlTextResolved(request.base, path)}$tail';
     }
 
     /// This analysis's retained page as one chapter's first content response, or
@@ -1776,16 +1774,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     isPay: isPay,
                   );
                 } else {
-                  final target =
-                      // Only a retained page's own address stands in for the
-                      // chapter text; a fetched TOC page keeps its actual
-                      // response target.
-                      cachedFirstPage
-                      ? _ordinaryChapterTarget(
-                          ordinaryFallbackAddress,
-                          tocPage.url,
-                        )
-                      : tocPage.url;
+                  final target = _ordinaryChapterTarget(
+                    ordinaryFallbackAddress,
+                    tocPage.url,
+                  );
                   // The frozen empty-URL fallback writes this TOC page's own
                   // finished address into the chapter (`BookChapterList.kt:229-243`).
                   // On a retained page that text is the book's own native text
@@ -1809,19 +1801,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
                     name,
                     target,
                     rawAddress: ordinaryFallbackAddress,
+                    // Keep the original immediate request base independent of
+                    // the key and the complete pre-option address we save.
+                    addressBase: cachedFirstPage ? null : tocPage.url,
                     tag: tag,
                     isVip: isVip,
                     isPay: isPay,
-                    // A reused page fetches nothing, and what it would have
-                    // fetched is this fallback text: the approved payload keeps
-                    // the request input and the published identity apart, so
-                    // `requestAddress` — and with it `persistedAddress` — is that
-                    // complete native text, while the target, key and progress
-                    // identity stay the published ones. The text is kept as the
-                    // rule wrote it: building a carrier reads no option object, so
-                    // a family this analysis cannot consume stays the request's
-                    // own refusal.
-                    fetchContext: fallbackText == null || retainedPage == null
+                    fetchContext:
+                        fallbackText == null ||
+                            (cachedFirstPage && retainedPage == null)
                         ? null
                         : (
                             requestAddress: fallbackText,
@@ -1919,9 +1907,15 @@ class JsonSourcePipeline implements BookSourcePipeline {
       _sourceRef,
       book.identityAddress,
     );
-    final handoff = await _entityVariables.prepareTocHandoff([
-      for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
-    ]);
+    final handoff = await _entityVariables
+        .prepareTocHandoff(_sourceRef, book.identityAddress, [
+          for (var i = 0; i < restored.length; i++)
+            (
+              key: restored[i].progressKey,
+              variable: restored[i].variable,
+              restoredVariable: old[(i, restored[i].name)],
+            ),
+        ]);
     _cancellation.throwIfCancelled();
     _entityVariables.publishTocHandoff(handoff);
     return (book.withVariable(bookVariable), restored);
@@ -2188,8 +2182,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
       );
       // The ordinary path reads and writes the space's rows, keyed by the
       // chapter's row identity. A chapter whose key holds no entry at all
-      // starts from its own carrier text: a TOC write lands under the TOC
-      // stage's own key, so the rules and the final snapshot must still see it.
+      // starts from its own carrier text when there was no TOC handoff.
       // A stored row — or an unwritten entry, even one whose text is null — is
       // present and authoritative and is never reseeded (#132).
       if (_entityDraft == null && chapter.variable != null) {

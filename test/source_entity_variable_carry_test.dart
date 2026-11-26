@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
@@ -15,6 +17,7 @@ import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
+import 'package:liber/store/workspace.dart';
 
 import 'l10n_support.dart';
 import 'native_library.dart';
@@ -571,6 +574,162 @@ if (source.get("retry") === "yes") {
       expect(await store.chapterVariable(origin, bookUrl, chapterUrl), other);
     },
   );
+
+  for (final json in [false, true]) {
+    for (final freshToken in ['new', null]) {
+      test(
+        '${json ? 'JSON' : 'HTML'} off-shelf TOC refresh hands off ${freshToken ?? 'no'} token',
+        () async {
+          final root = await Directory.systemTemp.createTemp(
+            'liber-toc-token-',
+          );
+          var workspace = await Workspace.open(root: root);
+          addTearDown(() async {
+            await workspace.close();
+            await root.delete(recursive: true);
+          });
+          var shelf = ShelfService(await workspace.openSpace());
+          final pages = json ? jsonPages() : htmlPages();
+          Map<String, dynamic> source(String? token) {
+            const content =
+                '@js:"token:" + (chapter.getVariable("token") || "missing")';
+            final source = json
+                ? jsonSource(
+                    infoScript: '',
+                    tocScript: '',
+                    contentScript: content,
+                  )
+                : htmlSource(
+                    infoScript: '',
+                    tocScript: '',
+                    contentScript: content,
+                  );
+            (source['ruleToc'] as Map)['isVip'] = token == null
+                ? '@js:false'
+                : '@js:(chapter.putVariable("token", "$token"), false)';
+            return source;
+          }
+
+          BookSourcePipeline open(
+            Map<String, dynamic> source, {
+            bool deferred = false,
+          }) => json
+              ? JsonSourcePipeline(
+                  source,
+                  pages,
+                  hostState: shelf.hostState,
+                  deferEntityVariables: deferred,
+                )
+              : HtmlSourcePipeline(
+                  source,
+                  pages,
+                  hostState: shelf.hostState,
+                  deferEntityVariables: deferred,
+                );
+          final originalToc = pages.pages['/toc']!;
+          pages.pages['/toc'] = originalToc.replaceFirst('/c/1', chapterUrl);
+          final initial = open(source('old'));
+          final (oldBook, oldChapters) = await initial.details(hitWith(null));
+          expect(oldChapters.single.variable, variableText({'token': 'old'}));
+          expect(oldChapters.single.address, chapterUrl);
+          initial.cancel();
+
+          pages.pages['/toc'] = originalToc;
+          final preview = open(source('preview'), deferred: true);
+          final (_, candidate) = await preview.details(hitWith(null));
+          expect(candidate.single.variable, variableText({'token': 'preview'}));
+          preview.cancel();
+          final oldReader = open(source(null));
+          expect(
+            (await oldReader.chapter(oldChapters.single, book: oldBook)).text,
+            'token:old',
+            reason: 'a deferred preview does not replace the shared handoff',
+          );
+          oldReader.cancel();
+
+          final freshSource = source(freshToken);
+          final refresh = open(freshSource);
+          final (book, chapters) = await refresh.details(hitWith(null));
+          final chapter = chapters.single;
+          final expectedVariable = freshToken == null
+              ? null
+              : variableText({'token': freshToken});
+          expect(chapter.address, '/c/1');
+          expect(chapter.progressKey, oldChapters.single.progressKey);
+          expect(chapter.variable, expectedVariable);
+          expect(await shelf.find(origin, bookUrl), isNull);
+          refresh.cancel();
+
+          final reader = open(freshSource);
+          final body = await reader.chapter(chapter, book: book);
+          reader.cancel();
+          // Save the content snapshot the reader hands back, not the pre-read TOC.
+          await shelf.add(freshSource, book, [
+            chapter.withVariable(body.chapterVariable),
+          ]);
+          await workspace.close();
+          workspace = await Workspace.open(root: root);
+          shelf = ShelfService(await workspace.openSpace());
+          final reopened = (await shelf.find(origin, bookUrl))!;
+          final row = reopened.chapters.single;
+          final reopenedReader = open(freshSource);
+          final reopenedBody = await reopenedReader.chapter(
+            SourceChapter.fromAddress(
+              row.name,
+              row.url!,
+              bookUrl: reopened.htmlBook.url,
+              chapterKey: row.chapterKey,
+              variable: row.variable,
+            ),
+            book: reopened.htmlBook,
+          );
+          reopenedReader.cancel();
+          expect(row.chapterKey, chapterUrl);
+          expect(row.url, chapterUrl);
+          expect(pages.requests.map((r) => r.url.path), [
+            '/book', '/toc', // initial
+            '/book', '/toc', '/c/1', // preview then old reader
+            '/book', '/toc', '/c/1', '/c/1', // refresh then read/reopen
+          ]);
+          expect(
+            (body.text, body.chapterVariable, row.variable, reopenedBody.text),
+            (
+              'token:${freshToken ?? 'missing'}',
+              expectedVariable,
+              expectedVariable,
+              'token:${freshToken ?? 'missing'}',
+            ),
+            reason: 'content, reader handoff, saved row, and reopened content',
+          );
+        },
+      );
+    }
+  }
+
+  test('JSON TOC duplicate resolved keys keep their existing handoff', () async {
+    final source = jsonSource(
+      infoScript: '',
+      tocScript:
+          '@js:chapter.title == "First" ? (chapter.putVariable("c", "first"), "") : ""',
+      contentScript: '@js:chapter.getVariable("c")',
+    );
+    final pages = jsonPages();
+    pages.pages['/toc'] = jsonEncode({
+      'list': [
+        {'name': 'First', 'url': chapterUrl},
+        {'name': 'Second', 'url': '/c/1'},
+      ],
+    });
+    final pipeline = JsonSourcePipeline(source, pages);
+    addTearDown(pipeline.cancel);
+    final (book, chapters) = await pipeline.details(hitWith(null));
+    expect(chapters.map((chapter) => chapter.progressKey), [
+      chapterUrl,
+      chapterUrl,
+    ]);
+    expect(chapters.last.variable, isNull);
+    expect((await pipeline.chapter(chapters.first, book: book)).text, 'first');
+  });
 
   for (final json in [false, true]) {
     for (final deferred in [false, true]) {
