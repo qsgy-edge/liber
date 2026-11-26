@@ -442,6 +442,48 @@ result.replace('中', '中&pass=' + pass);
       );
     }
 
+    test(
+      '$adapter recovery does not send a relative option JS result',
+      () async {
+        final site = await _Site.start({
+          '/chapter/1': [const _Page('', disconnect: true)],
+          '/chapter/child': [
+            _Page(
+              json
+                  ? '{"text":"wrong page"}'
+                  : '<div id="content">wrong page</div>',
+            ),
+          ],
+        });
+        addTearDown(site.close);
+        const check = 'java.initUrl(); java.getStrResponse();';
+        final source = json
+            ? _jsonSource(site.origin, check)
+            : _htmlSource(site.origin, checkJs: check);
+        final options = jsonEncode({
+          'js': '''
+var pass = Number(cache.get('url-option-pass') || '0') + 1;
+cache.put('url-option-pass', String(pass));
+pass == 1 ? result : 'child';
+''',
+        });
+        final chapter = SourceChapter.fromAddress(
+          '第一章',
+          '${site.origin}/chapter/1,$options',
+        );
+        final pipeline = _pipeline(source);
+        addTearDown(pipeline.cancel);
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(isA<SourceStageDiagnostic>()),
+        );
+        expect(
+          site.seen.map((request) => '${request.method} ${request.target}'),
+          ['GET /chapter/1'],
+        );
+      },
+    );
+
     for (final rewrite in [false, true]) {
       test(
         '$adapter recovery sees the chapter origin before option JS (rewrite: $rewrite)',

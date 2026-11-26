@@ -674,6 +674,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       // declared fragment through GET query encoding.
       keepGetFragment: stage.stage == BookSourceStage.content,
       rawScriptUrl: stage.stage == BookSourceStage.content,
+      requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
     );
     _stageRequest = (
       url: url,
@@ -1438,6 +1439,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String? rawBase,
     bool keepGetFragment = false,
     bool rawScriptUrl = false,
+    bool requireAbsoluteOptionResult = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
     return _analyzeRequest(
@@ -1449,6 +1451,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       rawBase: rawBase,
       keepGetFragment: keepGetFragment,
       rawScriptUrl: rawScriptUrl,
+      requireAbsoluteOptionResult: requireAbsoluteOptionResult,
     );
   }
 
@@ -1469,6 +1472,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String? rawBase,
     bool keepGetFragment = false,
     bool rawScriptUrl = false,
+    bool requireAbsoluteOptionResult = false,
   }) async {
     var address = expandedAddress;
     final raw = rawBase;
@@ -1483,23 +1487,23 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final split = splitSourceUrlOptions(address);
     captureRequestOrigin?.call(sourceRequestOrigin(base, split.path));
     final script = split.options.js;
-    // The frozen replaces the URL with the option script's result only when that
-    // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
-    // notice answers nothing, so the address the rule wrote stands; stringifying
-    // that nothing into `'null'` sent the request to `/null` (#94).
     // Validate before any option-script effects. For the initial content
     // request, JS still receives the text before query encoding.
     final resolved = _resolve(base, split.path, keepFragment: true);
-    final text = script == null
-        ? split.path
-        : (await _evalJs(
-                script,
-                keyword,
-                rawScriptUrl
-                    ? sourceUrlTextResolved(base, split.path)
-                    : '$resolved',
-              ))?.toString() ??
-              split.path;
+    final result = script == null
+        ? null
+        : await _evalJs(
+            script,
+            keyword,
+            rawScriptUrl
+                ? sourceUrlTextResolved(base, split.path)
+                : '$resolved',
+          );
+    final text = sourceUrlOptionTarget(
+      split.path,
+      result,
+      requireAbsolute: requireAbsoluteOptionResult && !split.options.webView,
+    );
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
       final encoded = _resolve(
@@ -3121,6 +3125,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             captureRequestOrigin: (origin) => recoveryOrigin = origin,
             keepGetFragment: true,
             rawScriptUrl: true,
+            requireAbsoluteOptionResult: true,
           );
     // The retained first page's complete native text is the base its declared
     // addresses resolve against; a fetched page's own response base takes over as

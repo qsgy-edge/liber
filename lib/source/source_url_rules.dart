@@ -56,6 +56,21 @@ class SourceUrlOptions {
   bool get isPost => method == 'POST';
 }
 
+/// A null script result keeps the original input. For ordinary content,
+/// the frozen request builder consumes a replacement without a base URL.
+String sourceUrlOptionTarget(
+  String original,
+  Object? result, {
+  required bool requireAbsolute,
+}) {
+  if (result == null) return original;
+  final text = result.toString();
+  if (requireAbsolute && !(Uri.tryParse(text)?.hasScheme ?? false)) {
+    throw const FormatException('正文 URL 选项 js 必须返回绝对地址');
+  }
+  return text;
+}
+
 /// Options that need a request path this product does not have.
 const _unsupportedUrlOptions = <String, String>{
   'type': 'type 选项属于 WebView/表单上传路径',

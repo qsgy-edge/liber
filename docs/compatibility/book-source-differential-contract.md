@@ -301,7 +301,12 @@ TOC analysis and catalog reopening preserve the complete pre-option chapter
 address and derive its stable key without validating or executing request
 options. An actual HTML or JSON chapter request uses the existing request
 parser and transport for supported options, including POST, body, `js` and
-charset. Unsupported or invalid options retain their own errors at request
+charset. For the first ordinary HTTP(S) content request (including
+`java.initUrl()` reanalysis), a non-null URL-option `js` result replaces the
+address and must not be relative. A relative result fails before a request is
+sent; it is not resolved against the book, catalog, or redirect target. Null
+leaves the resolved address in place. This does not change how chapter links
+are resolved. Unsupported or invalid options retain their own errors at request
 time. Reusing an eligible retained body does not analyze its address or send a
 request.
 

@@ -6462,17 +6462,32 @@ void main() {
     },
   );
 
-  for (final json in [false, true]) {
+  for (final (json, scriptResult) in [
+    for (final json in [false, true])
+      for (final scriptResult in ['no script', 'relative', 'absolute'])
+        (json, scriptResult),
+  ]) {
     test(
-      '${json ? 'JSON' : 'HTML'} empty fetched TOC address survives shelf reopen',
+      '${json ? 'JSON' : 'HTML'} redirected empty TOC chapter before and after shelf reopen ($scriptResult)',
       () async {
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         addTearDown(() => server.close(force: true));
         final origin = 'http://127.0.0.1:${server.port}';
-        const toc = '/toc?key=one';
-        const landed = '/landed?key=two';
-        const tail =
-            ',{"method":"POST","body":"q=chapter","headers":{"X-Chapter":"toc"}}';
+        const toc = '/catalog/toc?key=one';
+        const landed = '/redirect/landed?key=two';
+        const bodyPath = '/body/child';
+        final script = switch (scriptResult) {
+          'relative' => "chapter == null ? result : 'child'",
+          'absolute' => "chapter == null ? result : '$origin$bodyPath'",
+          _ => null,
+        };
+        final tail =
+            ',${jsonEncode({
+              'method': 'POST',
+              'body': 'q=chapter',
+              'headers': {'X-Chapter': 'toc'},
+              'js': ?script,
+            })}';
         final requests = <(String, String, String, String?)>[];
         server.listen((request) async {
           final input = await utf8.decoder.bind(request).join();
@@ -6489,10 +6504,14 @@ void main() {
                     ? jsonEncode({'title': 'Book', 'toc': '$toc$tail'})
                     : '<h1>Book</h1><a class="toc" href="${const HtmlEscape().convert('$toc$tail')}">TOC</a>',
               );
-            case '/toc':
+            case '/catalog/toc':
               request.response.statusCode = HttpStatus.temporaryRedirect;
-              request.response.headers.set(HttpHeaders.locationHeader, landed);
-            case '/landed':
+              request.response.headers.set(
+                HttpHeaders.locationHeader,
+                landed,
+              );
+            case '/redirect/landed':
+            case bodyPath:
               request.response.write(
                 json
                     ? '{"list":[{"label":"One","href":""}],"text":"Body"}'
@@ -6505,7 +6524,9 @@ void main() {
         });
         final source = (json ? _jsonSource(origin) : _htmlSource(origin))
           ..['bookSourceName'] = 'Redirecting TOC';
-        final root = await Directory.systemTemp.createTemp('liber-empty-toc-');
+        final root = await Directory.systemTemp.createTemp(
+          'liber-empty-toc-',
+        );
         var workspace = await Workspace.open(root: root);
         addTearDown(() async {
           await workspace.close();
@@ -6530,16 +6551,42 @@ void main() {
         final chapter = chapters.single;
         expect(chapter.address, '$origin$toc$tail');
         expect(chapter.fetchContext?.retainedPage, isNull);
-        expect((await producer.chapter(chapter, book: book)).text, 'Body');
-        producer.cancel();
         const redirectTrace = [
           ('POST', toc, 'q=chapter', 'toc'),
           ('POST', landed, 'q=chapter', 'toc'),
         ];
+        final contentTrace = switch (scriptResult) {
+          'relative' => <(String, String, String, String?)>[],
+          'absolute' => [('POST', bodyPath, 'q=chapter', 'toc')],
+          _ => redirectTrace,
+        };
+        final invalidResult = isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('正文 URL 选项 js'),
+        );
+        Future<void> readBody(
+          BookSourcePipeline pipeline,
+          SourceChapter chapter,
+          HtmlBook book,
+        ) async {
+          try {
+            final body = pipeline.chapter(chapter, book: book);
+            if (scriptResult == 'relative') {
+              await expectLater(body, throwsA(invalidResult));
+            } else {
+              expect((await body).text, 'Body');
+            }
+          } finally {
+            pipeline.cancel();
+          }
+        }
+
+        await readBody(producer, chapter, book);
         expect(requests, [
           ('GET', '/book', '', null),
           ...redirectTrace,
-          ...redirectTrace,
+          ...contentTrace,
         ]);
         requests.clear();
         await shelf.add(source, book, chapters);
@@ -6554,12 +6601,7 @@ void main() {
           bookUrl: reopened.htmlBook.url,
           chapterKey: row.chapterKey,
         );
-        final reader = open();
-        expect(
-          (await reader.chapter(restored, book: reopened.htmlBook)).text,
-          'Body',
-        );
-        reader.cancel();
+        await readBody(open(), restored, reopened.htmlBook);
         expect(
           [
             chapter.progressKey,
@@ -6575,10 +6617,10 @@ void main() {
             '$origin$toc$tail',
             '$origin$toc',
             '$origin$toc$tail',
-            redirectTrace,
+            contentTrace,
           ],
           reason:
-              'the saved/reopened key and full input keep the actual redirect trace',
+              'the saved key and full input preserve the request behavior',
         );
       },
     );

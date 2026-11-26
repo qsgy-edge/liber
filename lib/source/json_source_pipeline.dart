@@ -431,7 +431,12 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(stage.base, stage.address, _keyword);
+    final (url, options) = await _request(
+      stage.base,
+      stage.address,
+      _keyword,
+      requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
+    );
     _stageRequest = (
       url: url,
       stage: stage.stage,
@@ -782,6 +787,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
     void Function(Uri preOptionUrl, String expandedAddress)? captureIdentity,
     void Function(String?)? captureRequestOrigin,
     String? rawBase,
+    bool requireAbsoluteOptionResult = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
     // A retained first page hands a later-page rule the complete native text as
@@ -812,19 +818,18 @@ class JsonSourcePipeline implements BookSourcePipeline {
     }
     var url = _url(base, split.path);
     final script = split.options.js;
-    // The frozen replaces the URL with the option script's result only when that
-    // result is not null (`AnalyzeUrl.kt:238-242`: `evalJS(jsStr, url)
-    // ?.toString()?.let { url = it }`). A script that only shows a toast answers
-    // nothing, so the URL it was given stands — stringifying that nothing into
-    // `'null'` sent the request to `/null` (a real source's search, #94).
-    final text = script == null
-        ? split.path
-        : (await _evalJs(
-                script,
-                keyword,
-                sourceUrlTextResolved(base, split.path),
-              ))?.toString() ??
-              split.path;
+    final result = script == null
+        ? null
+        : await _evalJs(
+            script,
+            keyword,
+            sourceUrlTextResolved(base, split.path),
+          );
+    final text = sourceUrlOptionTarget(
+      split.path,
+      result,
+      requireAbsolute: requireAbsoluteOptionResult && !split.options.webView,
+    );
     url = _url(base, text);
     if (!split.options.isPost) {
       url = _url(
@@ -2273,6 +2278,7 @@ class JsonSourcePipeline implements BookSourcePipeline {
             requestText,
             _keyword,
             captureRequestOrigin: (origin) => recoveryOrigin = origin,
+            requireAbsoluteOptionResult: true,
           );
     final pages = await walkSourcePages(
       first: (
