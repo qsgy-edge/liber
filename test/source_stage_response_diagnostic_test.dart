@@ -12,6 +12,7 @@ import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_host_state.dart';
 
 import 'native_library.dart';
 import 'tls_localhost_fixture.dart';
@@ -666,12 +667,21 @@ void main() {
       );
 
       for (final toc in [true, false]) {
-        test('${toc ? 'TOC' : 'content'} later page owns its diagnostic', () async {
+        final keepsReadableContent = !json && !toc;
+        final name = keepsReadableContent
+            ? 'later page without content keeps the readable first page'
+            : '${toc ? 'TOC' : 'content'} later page owns its diagnostic';
+        test(name, () async {
           final site = await _Site.start(json);
           addTearDown(site.close);
           final source = _source(json, site.origin);
-          source['loginCheckJs'] =
-              'if (result.url().indexOf("-later") >= 0) { throw new Error("later page must not check login"); } result;';
+          final hostState = keepsReadableContent ? SourceHostState() : null;
+          source['loginCheckJs'] = keepsReadableContent
+              ? r'''
+cache.put("login-check-urls", (cache.get("login-check-urls") || "") + result.url() + "\n");
+result;
+'''
+              : 'if (result.url().indexOf("-later") >= 0) { throw new Error("later page must not check login"); } result;';
           if (toc) {
             (source['ruleToc'] as Map)['nextTocUrl'] = json
                 ? r'$.next'
@@ -700,10 +710,23 @@ void main() {
           final stage = toc
               ? BookSourceStage.tableOfContents
               : BookSourceStage.content;
-          final result = await _outcome(
-            _until(openBookSourcePipeline(source, _ObservedTransport()), stage),
+          final pipeline = openBookSourcePipeline(
+            source,
+            _ObservedTransport(),
+            hostState: hostState,
           );
+          final result = await _outcome(_until(pipeline, stage));
           _requestSequence(site, [..._paths.take(toc ? 3 : 4), later]);
+          if (keepsReadableContent) {
+            expect(result.error, isNull);
+            expect((result.value as HtmlChapterBody).text, 'Content\n');
+            expect(
+              await hostState!.entry(site.origin, 'login-check-urls'),
+              _paths.map((path) => '${site.origin}$path\n').join(),
+              reason: 'loginCheckJs runs only on the first response per stage',
+            );
+            return;
+          }
           _diagnostic(
             result.error,
             stage,
