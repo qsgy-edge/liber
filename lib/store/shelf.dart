@@ -107,6 +107,7 @@ class ShelfEntry {
   HtmlBook get htmlBook => HtmlBook(
     url: Uri.parse(book.sourceBookUrl ?? ''),
     rawAddress: book.sourceBookUrl,
+    sourceTocUrl: book.sourceTocUrl,
     title: book.title,
     author: book.author,
     intro: book.intro,
@@ -208,7 +209,7 @@ class ShelfService {
     Map<String, dynamic> source,
     HtmlBook book, [
     List<SourceChapter> chapters = const <SourceChapter>[],
-  ]) async {
+  ]) => store.transaction(() async {
     final row = await _ensureBook(source, book, shelved: true);
     // An existing row keeps its position, its `raw` and its source reference:
     // the fields a Legado import carried must survive an update (D2).
@@ -219,6 +220,7 @@ class ShelfService {
     await store.putBook(
       BooksCompanion(
         id: Value(row.id),
+        sourceTocUrl: _providedTocUrl(book),
         title: Value(book.title),
         author: Value(book.author),
         intro: Value(book.intro),
@@ -231,7 +233,12 @@ class ShelfService {
         ? null
         : await store.putChapters(row.id, _chapterRows(row.id, chapters));
     return (bookId: row.id, revision: revision);
-  }
+  });
+
+  static Value<String?> _providedTocUrl(HtmlBook book) =>
+      book.sourceTocUrl == null
+      ? const Value.absent()
+      : Value(book.sourceTocUrl);
 
   /// The book a source URL and book URL resolve to, created *off* the shelf
   /// when the space does not have it yet.
@@ -332,6 +339,7 @@ class ShelfService {
     await store.putBook(
       BooksCompanion(
         id: Value(existing.id),
+        sourceTocUrl: _providedTocUrl(book),
         title: Value(book.title),
         author: Value(book.author),
         intro: Value(book.intro),
@@ -443,6 +451,8 @@ class ShelfService {
           id: Value(bookId),
           sourceRef: Value(sourceRow.bookSourceUrl),
           sourceBookUrl: Value(bookUrl),
+          // Do not carry the old source's TOC address into the association.
+          sourceTocUrl: Value(book.sourceTocUrl),
           originName: Value(sourceRow.name),
           title: Value(book.title),
           author: Value(book.author),
@@ -696,6 +706,7 @@ class ShelfService {
         kind: const Value('network'),
         sourceRef: Value(sourceRow.bookSourceUrl),
         sourceBookUrl: Value(bookUrl),
+        sourceTocUrl: Value(book.sourceTocUrl),
         title: book.title,
         author: Value(book.author),
         intro: Value(book.intro),

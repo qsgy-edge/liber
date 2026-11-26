@@ -17,6 +17,7 @@ import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/source_http_uri.dart';
 import 'package:liber/source/source_stage_diagnostic.dart';
 import 'package:liber/store/host_state.dart';
+import 'package:liber/store/shelf.dart';
 import 'package:liber/store/workspace.dart';
 
 import 'native_library.dart';
@@ -25,10 +26,16 @@ import 'temp_directory.dart';
 
 /// One answer of a fixture path: the status it is sent with and its body.
 class _Page {
-  const _Page(this.body, {this.status = 200, this.disconnect = false});
+  const _Page(
+    this.body, {
+    this.status = 200,
+    this.disconnect = false,
+    this.location,
+  });
   final String body;
   final int status;
   final bool disconnect;
+  final String? location;
 }
 
 /// One request the fixture site saw, so a test asserts the wire — the method,
@@ -95,6 +102,9 @@ class _Site {
         return;
       }
       request.response.statusCode = page.status;
+      if (page.location case final location?) {
+        request.response.headers.set(HttpHeaders.locationHeader, location);
+      }
       request.response.write(page.body);
     }
     await request.response.close();
@@ -385,6 +395,128 @@ java.getStrResponse();
           'POST /chapter/1',
         ]);
         expect(engine.requests.single.html, 'bootstrap');
+      },
+    );
+  }
+
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+    test(
+      '$label login recovery uses the saved logical TOC after reopen',
+      () async {
+        const options = ' , {"headers":{"X-TOC":"catalog"}}';
+        final site = await _Site.start({
+          '/book/1': [
+            _Page(
+              json
+                  ? jsonEncode({'name': '书', 'toc': '/catalog/42$options'})
+                  : '<h1>书</h1><a class="toc" href="/catalog/42${options.replaceAll('"', '&quot;')}">目录</a>',
+            ),
+          ],
+          '/catalog/42': [
+            const _Page('', status: 302, location: '/toc-served'),
+          ],
+          '/toc-served': [
+            _Page(
+              json
+                  ? '{"items":[{"name":"第一章","url":"/chapter/1"}]}'
+                  : '<li><a href="/chapter/1">第一章</a></li>',
+            ),
+          ],
+          '/chapter/1': [
+            const _Page('', disconnect: true),
+            _Page(
+              json
+                  ? '{"text":"recovered"}'
+                  : '<div id="content">recovered</div>',
+            ),
+          ],
+          '/catalog/42/verify': [const _Page('ok')],
+        });
+        addTearDown(site.close);
+        final root = await Directory.systemTemp.createTemp(
+          'liber-toc-recovery-',
+        );
+        addTearDown(() => deleteTempDirectory(root));
+        final origin = site.origin;
+        final expectedToc = '$origin/catalog/42';
+        final check =
+            '''
+if (result.code() === 500) {
+  if (baseUrl !== '$expectedToc') throw new Error('wrong recovery base');
+  java.ajax(baseUrl + '/verify');
+  result = java.getStrResponse();
+}
+result;
+''';
+        final source = json
+            ? _jsonSource(origin, check)
+            : _htmlSource(origin, checkJs: check);
+        final pipeline = _pipeline(source);
+        final (book, chapters) = await pipeline.details(
+          HtmlBook(title: '书', url: Uri.parse('$origin/book/1')),
+        );
+        expect(book.sourceTocUrl, '$expectedToc$options');
+        final first = ShelfService(
+          await (await Workspace.open(root: root)).openSpace(),
+        );
+        final saved = await first.add(source, book, chapters);
+        await first.close();
+        final reopened = ShelfService(
+          await (await Workspace.open(root: root)).openSpace(),
+        );
+        addTearDown(reopened.close);
+        final entry = (await reopened.find(origin, book.identityAddress))!;
+        expect(entry.book.id, saved.bookId);
+        expect(entry.htmlBook.sourceTocUrl, '$expectedToc$options');
+        final chapter = SourceChapter.fromAddress(
+          entry.chapters.single.name,
+          entry.chapters.single.url!,
+          chapterKey: entry.chapters.single.chapterKey,
+          bookUrl: entry.htmlBook.url,
+        );
+        expect(chapter.storeKey, chapters.single.storeKey);
+        expect(
+          (await _pipeline(source).chapter(chapter, book: entry.htmlBook)).text,
+          'recovered',
+        );
+        expect(site.seen.map((r) => r.path), [
+          '/book/1',
+          '/catalog/42',
+          '/toc-served',
+          '/chapter/1',
+          '/catalog/42/verify',
+          '/chapter/1',
+        ]);
+        final updated = book.withTocUrl('$origin/catalog/43');
+        final revision = await reopened.updateCatalog(
+          origin,
+          updated,
+          chapters,
+        );
+        expect(
+          (await reopened.find(
+            origin,
+            book.identityAddress,
+          ))!.htmlBook.sourceTocUrl,
+          '$origin/catalog/43',
+        );
+        await expectLater(
+          reopened.updateCatalog(
+            origin,
+            book,
+            chapters,
+            expectedRevision: revision! - 1,
+          ),
+          throwsA(isA<SourceRequestCancelled>()),
+        );
+        expect(
+          (await reopened.find(
+            origin,
+            book.identityAddress,
+          ))!.htmlBook.sourceTocUrl,
+          '$origin/catalog/43',
+        );
       },
     );
   }

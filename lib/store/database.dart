@@ -91,6 +91,9 @@ class Books extends Table {
   /// local books, whose natural key is `rootId` + `relativePath`.
   TextColumn get sourceBookUrl => text().nullable()();
 
+  /// Logical TOC address of a network book, before redirects and pagination.
+  TextColumn get sourceTocUrl => text().nullable()();
+
   TextColumn get title => text()();
 
   TextColumn get author => text().withDefault(const Constant(''))();
@@ -527,7 +530,7 @@ class SpaceDatabase extends _$SpaceDatabase {
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 7;
+  static const latestVersion = 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -551,6 +554,7 @@ class SpaceDatabase extends _$SpaceDatabase {
       // `is_volume`, `is_vip`, `is_pay`, #13).
       // v6 → v7 keeps grants/file locators separate from stable root/book IDs
       // and preserves the old local import correlation during adoption (#121).
+      // v7 → v8 adds the nullable logical TOC address for content recovery (#138).
       await stepByStep(
         from1To2: migrateToV2,
         from2To3: migrateToV3,
@@ -558,6 +562,7 @@ class SpaceDatabase extends _$SpaceDatabase {
         from4To5: migrateToV5,
         from5To6: migrateToV6,
         from6To7: migrateToV7,
+        from7To8: migrateToV8,
       )(m, from, to);
     },
     beforeOpen: (details) async {

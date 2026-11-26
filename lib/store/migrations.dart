@@ -269,3 +269,7 @@ Future<void> migrateToV7(Migrator m, Schema7 schema) async {
   await m.addColumn(schema.books, schema.books.originalRelativePath);
   await m.createIndex(schema.booksLocalOrigin);
 }
+
+/// v7 → v8: older rows have no recorded TOC address until refreshed.
+Future<void> migrateToV8(Migrator m, Schema8 schema) =>
+    m.addColumn(schema.books, schema.books.sourceTocUrl);
