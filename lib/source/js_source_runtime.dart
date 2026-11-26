@@ -725,9 +725,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     bool checkResponse = false,
     SourceStageRequest? stage,
   }) async {
-    // Stage-only transport mode is consumed before any source-visible binding.
+    // Consume Dart-only stage metadata before exposing the input to scripts.
     input = {...input};
     final elementsResult = input.remove('__elementsResult') == true;
+    final chapterVariableRowKey =
+        input.remove('__chapterVariableRowKey') as String?;
     final provenance = checkResponse ? _StageResponseProvenance() : null;
     final initialHandle = provenance?.register(
       stage?.initialResponse?.httpResponse,
@@ -850,7 +852,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           } else if (method == 'cache') {
             answer = await _handleCache(payload, sourceRef);
           } else if (method == 'variable') {
-            answer = await _handleVariable(payload, input, sourceRef);
+            answer = await _handleVariable(
+              payload,
+              input,
+              sourceRef,
+              chapterVariableRowKey,
+            );
           } else if (method == 'cookie') {
             answer = await _handleCookie(payload, cookies);
           } else if (method == 'loginHeader') {
@@ -1508,19 +1515,15 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// JSON text (`ShelfService` writes the row; [SourceHostState] reads and
   /// writes the column through the space's store).
   ///
-  /// The row is the one the snapshot's own URL names, because that is what a
-  /// script sees: the book's `bookUrl` and the chapter's `url`. Those are the
-  /// values the space's identities are built from — a book row's
-  /// `sourceBookUrl` holds the resolved raw address exposed as `book.bookUrl`
-  /// (#99), and a chapter row's `chapterKey` is the target its `url` names
-  /// (#58). A chapter's row is found through its book, so a chapter binding
-  /// with no book binding fails as a
-  /// boundary error; the content stage always binds both (the reader hands the
-  /// book with the chapter), and a snapshot that is absent has no row at all.
+  /// Entity variables use the snapshot's URL unless a chapter came from a
+  /// saved row. In that case the existing row key is authoritative even if the
+  /// saved request text resolves differently. The script still sees its own
+  /// chapter URL. A chapter binding without its book has no row to address.
   Future<Object?> _handleVariable(
     Object? payload,
     Map<String, Object?> input,
     String sourceRef,
+    String? chapterVariableRowKey,
   ) async {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid variable call');
@@ -1542,7 +1545,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final chapterUrl = chapter is Map && chapter['url'] is String
         ? chapter['url'] as String
         : null;
-    final rowKey = target == 'book' ? bookUrl : chapterUrl;
+    final chapterKey = chapterUrl == null || chapterUrl.isEmpty
+        ? chapterUrl
+        : chapterVariableRowKey ?? chapterUrl;
+    final rowKey = target == 'book' ? bookUrl : chapterKey;
     if (bookUrl == null ||
         bookUrl.isEmpty ||
         rowKey == null ||
