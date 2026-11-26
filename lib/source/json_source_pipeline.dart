@@ -1133,13 +1133,14 @@ class JsonSourcePipeline implements BookSourcePipeline {
   static ({String text, Uri target}) _pendingChapterAddress(
     Uri base,
     String address, {
-    String? rawBase,
+    String? inheritAuthorityFrom,
   }) {
-    final resolved = sourceAbsoluteRequestText(base, address);
-    final bare = sourceUrlTargetOf(resolved);
-    final text = rawBase == null
-        ? resolved
-        : sourceAbsoluteRequestText(base, address, rawBase: rawBase);
+    final text = sourceAbsoluteRequestText(
+      base,
+      address,
+      inheritAuthorityFrom: inheritAuthorityFrom,
+    );
+    final bare = sourceUrlTargetOf(text);
     if (!_isPendingAddressText(address)) {
       return (text: text, target: _url(base, bare));
     }
@@ -1846,7 +1847,9 @@ class JsonSourcePipeline implements BookSourcePipeline {
                 final pending = _pendingChapterAddress(
                   chapterBase,
                   chapterUrl,
-                  rawBase: cachedFirstPage ? retainedChapterBaseText : null,
+                  inheritAuthorityFrom: cachedFirstPage
+                      ? retainedChapterBaseText
+                      : null,
                 );
                 chapter = SourceChapter(
                   name,

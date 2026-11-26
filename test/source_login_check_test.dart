@@ -386,36 +386,47 @@ result;
       );
     }
 
-    test(
-      '$adapter recovery retains literal authority of relative chapters on a retained TOC',
-      () async {
-        const logicalOrigin = 'https://BOOK.test:443';
-        final pages = <String, List<_Page>>{
-          '/chapter': [
-            const _Page('', disconnect: true),
+    for (final (tocPath, relativePath, chapterPath) in [
+      ('/catalog/index', 'chapter/1', '/catalog/chapter/1'),
+      ('/root/a/%2E%2E/index', '../chapter', '/chapter'),
+    ]) {
+      test(
+        '$adapter recovery retains literal authority and chapter path from $tocPath',
+        () async {
+          const logicalOrigin = 'https://BOOK.test:443';
+          const query = '?q=a%23b';
+          final pages = <String, List<_Page>>{
+            chapterPath: [
+              const _Page('', disconnect: true),
+              _Page(
+                json
+                    ? '{"text":"recovered"}'
+                    : '<div id="content">recovered</div>',
+              ),
+            ],
+          };
+          final site = await _Site.start(pages);
+          addTearDown(site.close);
+          final attempted = '${site.origin}$chapterPath$query';
+          final rewrite =
+              'result.replace(new RegExp("^https?://[^/]+"), '
+              '${jsonEncode(site.origin)})';
+          final tail = ',${jsonEncode({'js': rewrite})}';
+          final relative = '$relativePath$query$tail';
+          pages['/book'] = [
             _Page(
               json
-                  ? '{"text":"recovered"}'
-                  : '<div id="content">recovered</div>',
+                  ? jsonEncode({
+                      'name': '书',
+                      'items': [
+                        {'name': '第一章', 'url': relative},
+                      ],
+                    })
+                  : '<h1>书</h1><li><a href="${relative.replaceAll('"', '&quot;')}">第一章</a></li>',
             ),
-          ],
-        };
-        final site = await _Site.start(pages);
-        addTearDown(site.close);
-        final attempted = '${site.origin}/chapter';
-        final tail = ',${jsonEncode({'js': jsonEncode(attempted)})}';
-        final relative = 'chapter/1$tail';
-        pages['/book'] = [
-          _Page(
-            json
-                ? jsonEncode({
-                    'name': '书',
-                    'items': [{'name': '第一章', 'url': relative}],
-                  })
-                : '<h1>书</h1><li><a href="${relative.replaceAll('"', '&quot;')}">第一章</a></li>',
-          ),
-        ];
-        final check = '''
+          ];
+          final check =
+              '''
 if (result.code() === 500) {
   if (baseUrl !== '$logicalOrigin' || result.url() !== '$attempted') {
     throw new Error('wrong recovery context');
@@ -424,36 +435,45 @@ if (result.code() === 500) {
 }
 result;
 ''';
-        final source = json
-            ? _jsonSource(site.origin, check)
-            : _htmlSource(site.origin, checkJs: check);
-        const bookUrl = '$logicalOrigin/catalog/index';
-        final pipeline = _pipeline(source);
-        final (book, chapters) = await pipeline.details(
-          HtmlBook(
-            title: '书',
-            url: Uri.parse(bookUrl),
-            rawAddress:
-                '$bookUrl,${jsonEncode({'js': jsonEncode('${site.origin}/book')})}',
-          ),
-        );
-        final chapter = chapters.single;
-        final storedKey = chapter.storeKey;
-        expect(storedKey, 'https://book.test/catalog/chapter/1');
-        expect(site.seen.map((r) => r.path), ['/book']);
-        final reopened = SourceChapter.fromAddress(
-          chapter.name,
-          chapter.persistedAddress,
-          bookUrl: book.url,
-          chapterKey: storedKey,
-        );
-        final result = await _pipeline(source).chapter(reopened, book: book);
-        expect(result.text, 'recovered');
-        expect(chapter.persistedAddress, '$logicalOrigin/catalog/chapter/1$tail');
-        expect(reopened.progressKey, storedKey);
-        expect(site.seen.map((r) => r.path), ['/book', '/chapter', '/chapter']);
-      },
-    );
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          final bookUrl = '$logicalOrigin$tocPath';
+          final pipeline = _pipeline(source);
+          final (book, chapters) = await pipeline.details(
+            HtmlBook(
+              title: '书',
+              url: Uri.parse(bookUrl),
+              rawAddress:
+                  '$bookUrl,${jsonEncode({'js': jsonEncode('${site.origin}/book')})}',
+            ),
+          );
+          final chapter = chapters.single;
+          final storedKey = chapter.storeKey;
+          expect(storedKey, 'https://book.test$chapterPath$query');
+          expect(site.seen.map((r) => r.path), ['/book']);
+          final reopened = SourceChapter.fromAddress(
+            chapter.name,
+            chapter.persistedAddress,
+            bookUrl: book.url,
+            chapterKey: storedKey,
+          );
+          final result = await _pipeline(source).chapter(reopened, book: book);
+          expect(result.text, 'recovered');
+          expect(
+            chapter.persistedAddress,
+            '$logicalOrigin$chapterPath$query$tail',
+          );
+          expect(reopened.storeKey, storedKey);
+          expect(reopened.progressKey, storedKey);
+          expect(site.seen.map((r) => r.target), [
+            '/book',
+            '$chapterPath$query',
+            '$chapterPath$query',
+          ]);
+        },
+      );
+    }
 
     test(
       '$adapter first content WebView POST recovers its HTTP bootstrap',

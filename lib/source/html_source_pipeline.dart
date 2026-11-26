@@ -2660,7 +2660,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 final requestText = sourceAbsoluteRequestText(
                   base,
                   rawAddress,
-                  rawBase: cachedFirstPage ? retainedChapterBaseText : null,
+                  inheritAuthorityFrom: cachedFirstPage
+                      ? retainedChapterBaseText
+                      : null,
                 );
                 final retained = retainedChapterPage(
                   rawAddress,

@@ -508,21 +508,47 @@ String sourceAbsoluteRequestText(
   Uri base,
   String address, {
   bool normalizeOptionSeparator = false,
-  String? rawBase,
+  String? inheritAuthorityFrom,
 }) {
   final boundary = sourceUrlOptionBoundaryOf(address);
-  if (boundary == null) {
-    return sourceUrlTextResolved(base, address, rawBase: rawBase);
-  }
+  final target = boundary == null ? address : address.substring(0, boundary);
+  final resolvedTarget = sourceUrlTextResolved(base, target);
+  final path = inheritAuthorityFrom == null
+      ? resolvedTarget
+      : _withInheritedAuthority(
+          base,
+          target,
+          resolvedTarget,
+          inheritAuthorityFrom,
+        );
+  if (boundary == null) return path;
   final tail = normalizeOptionSeparator
       ? ',${address.substring(address.indexOf('{', boundary))}'
       : address.substring(boundary);
-  final path = sourceUrlTextResolved(
-    base,
-    address.substring(0, boundary),
-    rawBase: rawBase,
-  );
   return '$path$tail';
+}
+
+// A retained TOC has the original authority. Leave the existing resolved path
+// and query alone: the original base path may have escaped dot segments.
+String _withInheritedAuthority(
+  Uri base,
+  String target,
+  String resolved,
+  String baseText,
+) {
+  if (_javaUrlEdgeText(target).startsWith('//') ||
+      Uri.tryParse(sourceKotlinTrim(target))?.hasScheme == true) {
+    return resolved;
+  }
+  final literalOrigin = sourceRequestOrigin(base, baseText);
+  final canonicalOrigin = '${base.scheme}://${base.authority}';
+  if (literalOrigin == null ||
+      !resolved.startsWith(canonicalOrigin) ||
+      Uri.tryParse(literalOrigin) != Uri.tryParse(canonicalOrigin)) {
+    return resolved;
+  }
+  final authority = literalOrigin.substring(literalOrigin.indexOf('://') + 3);
+  return '${base.scheme}://$authority${resolved.substring(canonicalOrigin.length)}';
 }
 
 /// The request facts a target conversion reads from an address text's own
