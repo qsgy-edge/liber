@@ -510,6 +510,67 @@ if (source.get("retry") === "yes") {
     );
   }
 
+  test(
+    'JSON TOC restores variables only for the exact stored source key',
+    () async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      final exactSource = origin.replaceFirst(
+        Uri.parse(origin).host,
+        Uri.parse(origin).host.toUpperCase(),
+      );
+      const exact = '{"owner":"exact"}';
+      const other = '{"owner":"other"}';
+      for (final (id, sourceRef, variable) in [
+        ('a', exactSource, exact),
+        ('b', origin, other),
+      ]) {
+        await store.putBook(
+          BooksCompanion.insert(
+            id: id,
+            title: '书',
+            kind: const Value('network'),
+            sourceRef: Value(sourceRef),
+            sourceBookUrl: const Value(bookUrl),
+          ),
+        );
+        await store.putChapters(id, [
+          BookChapter(
+            bookId: id,
+            chapterKey: chapterUrl,
+            name: '第一章',
+            url: chapterUrl,
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+            variable: variable,
+          ),
+        ]);
+      }
+      final source = jsonSource(
+        infoScript: '@js:""',
+        tocScript: writeChapter,
+        contentScript: readBoth,
+      )..['bookSourceUrl'] = exactSource;
+      final pipeline = JsonSourcePipeline(
+        source,
+        jsonPages(),
+        hostState: state,
+      );
+      final (_, chapters) = await pipeline.details(hitWith(null));
+      expect(chapters.single.variable, exact);
+      expect(
+        await store.chapterVariable(exactSource, bookUrl, chapterUrl),
+        exact,
+      );
+      expect(await store.chapterVariable(origin, bookUrl, chapterUrl), other);
+    },
+  );
+
   for (final json in [false, true]) {
     for (final deferred in [false, true]) {
       test(

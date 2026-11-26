@@ -183,14 +183,11 @@ class JsonSourcePipeline implements BookSourcePipeline {
   /// with (ADR 0011 §6); empty when the caller has no installation.
   final String androidId;
 
-  /// The source this analysis speaks for: its `bookSourceUrl`, the key its TLS
-  /// exception is looked up under and the owner of its host-surface state.
-  ///
-  /// Late, not eager: a source whose URL cannot be parsed must fail inside a
-  /// stage, where the page that opened the analysis reports it, not while a
-  /// page builds its pipeline.
-  late final Uri _base = SourceHttpUri.parse(source['bookSourceUrl'] as String);
-  late final String _sourceRef = '$_base';
+  /// The exact source key used by the catalog, TLS exceptions and host state.
+  late final String _sourceRef = source['bookSourceUrl'] as String;
+
+  /// Parse only when a stage uses the source address for URL resolution.
+  late final Uri _base = SourceHttpUri.parse(_sourceRef);
 
   /// The frozen `AnalyzeUrl` page: a search carries one, every other stage is
   /// built without one, so `{{page}}` and `<a,b>` stay empty there.
