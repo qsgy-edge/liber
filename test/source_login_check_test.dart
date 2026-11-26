@@ -124,8 +124,7 @@ class _ContentTimeout implements BookSourceTransport {
 /// The 第一版主 226 shape, against the fixture's own origin: the gate page names
 /// the 1234 verification, the check POSTs the verification address with its
 /// `,{…}` option tail, and re-requests the stage URL.
-String _gateCheck(String origin, {String body = 'action=1&v=1234'}) =>
-    '''
+String _gateCheck(String origin, {String body = 'action=1&v=1234'}) => '''
 var body = result.body();
 if (body.indexOf('1234') > -1) {
   java.ajax('$origin/verify,' + JSON.stringify({charset: 'gbk', method: 'POST', body: '$body'}));
@@ -165,11 +164,7 @@ Map<String, dynamic> _htmlSource(
     'tocUrl': 'a.toc@href',
     'canReName': 'true',
   },
-  'ruleToc': {
-    'chapterList': 'li',
-    'chapterName': 'a@text',
-    'chapterUrl': 'a@href',
-  },
+  'ruleToc': {'chapterList': 'li', 'chapterName': 'a@text', 'chapterUrl': 'a@href'},
   'ruleContent': {'content': '#content@text'},
 };
 
@@ -178,12 +173,12 @@ Map<String, dynamic> _jsonSource(String origin, String checkJs) => {
   'bookSourceName': 'JSON 登录检查源',
   'loginCheckJs': checkJs,
   'searchUrl': '/search?key={{key}}',
-  'ruleSearch': {
-    'bookList': r'$.items',
+  'ruleSearch': {'bookList': r'$.items', 'name': r'$.name', 'bookUrl': r'$.url'},
+  'ruleBookInfo': {
     'name': r'$.name',
-    'bookUrl': r'$.url',
+    'tocUrl': r'$.toc',
+    'canReName': 'true',
   },
-  'ruleBookInfo': {'name': r'$.name', 'tocUrl': r'$.toc', 'canReName': 'true'},
   'ruleToc': {
     'chapterList': r'$.items',
     'chapterName': r'$.name',
@@ -216,7 +211,8 @@ Map<String, List<_Page>> _htmlPages() => {
 
 /// The same pages without any gate: the fixture a source with no hook reads.
 Map<String, List<_Page>> _ungatedPages() => {
-  for (final entry in _htmlPages().entries) entry.key: [entry.value.last],
+  for (final entry in _htmlPages().entries)
+    entry.key: [entry.value.last],
 };
 
 Map<String, List<_Page>> _jsonPages() => {
@@ -224,12 +220,18 @@ Map<String, List<_Page>> _jsonPages() => {
     const _Page(_gateJson),
     const _Page('{"items":[{"name":"书","url":"/book"}]}'),
   ],
-  '/book': [const _Page(_gateJson), const _Page('{"name":"书名","toc":"/toc"}')],
+  '/book': [
+    const _Page(_gateJson),
+    const _Page('{"name":"书名","toc":"/toc"}'),
+  ],
   '/toc': [
     const _Page(_gateJson),
     const _Page('{"items":[{"name":"第一章","url":"/chapter/1"}]}'),
   ],
-  '/chapter/1': [const _Page(_gateJson), const _Page('{"text":"正文"}')],
+  '/chapter/1': [
+    const _Page(_gateJson),
+    const _Page('{"text":"正文"}'),
+  ],
   '/verify': [const _Page('ok')],
 };
 
@@ -302,8 +304,7 @@ void main() {
       });
       addTearDown(site.close);
       final url = '${site.origin}/chapter/1';
-      final check =
-          '''
+      final check = '''
 if (result.code() !== 500 || result.url() !== "$url" || result.body() !== 'connection') {
   throw new Error('unexpected initial response');
 }
@@ -425,53 +426,45 @@ $check
       ]);
     });
 
-    test(
-      'the book information rules read the response the check returned',
-      () async {
-        final site = await _Site.start(_htmlPages());
-        addTearDown(site.close);
-        final source = _htmlSource(site.origin, checkJs: _reRequestOnGate);
-        final pipeline = _pipeline(source);
-        final hits = await pipeline.search('书');
-        final (book, _) = await pipeline.details(hits.single);
-        // `/book/` answered the gate first; only its second response carries the
-        // title the rule reads.
-        expect(book.title, '书名');
-        expect(
-          site.seen
-              .map((request) => '${request.method} ${request.path}')
-              .take(4),
-          ['GET /search', 'GET /search', 'GET /book/', 'GET /book/'],
-        );
-      },
-    );
+    test('the book information rules read the response the check returned', () async {
+      final site = await _Site.start(_htmlPages());
+      addTearDown(site.close);
+      final source = _htmlSource(site.origin, checkJs: _reRequestOnGate);
+      final pipeline = _pipeline(source);
+      final hits = await pipeline.search('书');
+      final (book, _) = await pipeline.details(hits.single);
+      // `/book/` answered the gate first; only its second response carries the
+      // title the rule reads.
+      expect(book.title, '书名');
+      expect(
+        site.seen.map((request) => '${request.method} ${request.path}').take(4),
+        ['GET /search', 'GET /search', 'GET /book/', 'GET /book/'],
+      );
+    });
 
-    test(
-      'the table-of-contents rules read the response the check returned',
-      () async {
-        final site = await _Site.start(_htmlPages());
-        addTearDown(site.close);
-        final pipeline = _pipeline(
-          _htmlSource(site.origin, checkJs: _reRequestOnGate),
-        );
-        final hits = await pipeline.search('书');
-        final (_, chapters) = await pipeline.details(hits.single);
-        // The gate page carries no `li`: an empty list would fail the stage, so
-        // the chapter list is the replacement's.
-        expect(chapters.single.name, '第一章');
-        expect(
-          site.seen.map((request) => '${request.method} ${request.path}'),
-          [
-            'GET /search',
-            'GET /search',
-            'GET /book/',
-            'GET /book/',
-            'GET /toc',
-            'GET /toc',
-          ],
-        );
-      },
-    );
+    test('the table-of-contents rules read the response the check returned', () async {
+      final site = await _Site.start(_htmlPages());
+      addTearDown(site.close);
+      final pipeline = _pipeline(
+        _htmlSource(site.origin, checkJs: _reRequestOnGate),
+      );
+      final hits = await pipeline.search('书');
+      final (_, chapters) = await pipeline.details(hits.single);
+      // The gate page carries no `li`: an empty list would fail the stage, so
+      // the chapter list is the replacement's.
+      expect(chapters.single.name, '第一章');
+      expect(
+        site.seen.map((request) => '${request.method} ${request.path}'),
+        [
+          'GET /search',
+          'GET /search',
+          'GET /book/',
+          'GET /book/',
+          'GET /toc',
+          'GET /toc',
+        ],
+      );
+    });
 
     test('the content rules read the response the check returned', () async {
       final site = await _Site.start(_htmlPages());
@@ -492,33 +485,30 @@ $check
       );
     });
 
-    test(
-      'the JSON pipeline reads the replacement at all four boundaries',
-      () async {
-        final site = await _Site.start(_jsonPages());
-        addTearDown(site.close);
-        final pipeline = _pipeline(_jsonSource(site.origin, _reRequestOnGate));
-        final hits = await pipeline.search('书');
-        expect(hits.single.title, '书');
-        final (book, chapters) = await pipeline.details(hits.single);
-        expect(book.title, '书名');
-        expect(chapters.single.name, '第一章');
-        final body = await pipeline.chapter(chapters.single);
-        expect(body.text, '正文');
-        // Every stage answered its gate first and the response the check made
-        // second, so each pair of requests is the hook's own work.
-        expect(site.seen.map((request) => request.path), [
-          '/search',
-          '/search',
-          '/book',
-          '/book',
-          '/toc',
-          '/toc',
-          '/chapter/1',
-          '/chapter/1',
-        ]);
-      },
-    );
+    test('the JSON pipeline reads the replacement at all four boundaries', () async {
+      final site = await _Site.start(_jsonPages());
+      addTearDown(site.close);
+      final pipeline = _pipeline(_jsonSource(site.origin, _reRequestOnGate));
+      final hits = await pipeline.search('书');
+      expect(hits.single.title, '书');
+      final (book, chapters) = await pipeline.details(hits.single);
+      expect(book.title, '书名');
+      expect(chapters.single.name, '第一章');
+      final body = await pipeline.chapter(chapters.single);
+      expect(body.text, '正文');
+      // Every stage answered its gate first and the response the check made
+      // second, so each pair of requests is the hook's own work.
+      expect(site.seen.map((request) => request.path), [
+        '/search',
+        '/search',
+        '/book',
+        '/book',
+        '/toc',
+        '/toc',
+        '/chapter/1',
+        '/chapter/1',
+      ]);
+    });
   });
 
   group('the response surface a check script uses', () {
@@ -533,10 +523,11 @@ $check
         final hits = await pipeline.search('书');
         expect(hits.single.title, '书');
         // The POST and the re-request are what the server saw, in order.
-        expect(
-          site.seen.map((request) => '${request.method} ${request.path}'),
-          ['GET /search', 'POST /verify', 'GET /search'],
-        );
+        expect(site.seen.map((request) => '${request.method} ${request.path}'), [
+          'GET /search',
+          'POST /verify',
+          'GET /search',
+        ]);
         final post = site.seen[1];
         expect(post.body, utf8.encode('action=1&v=1234'));
         expect(
@@ -558,8 +549,7 @@ $check
           '/retry': [const _Page('busy', status: 500), const _Page('ok')],
         });
         addTearDown(site.close);
-        final check =
-            '''
+        final check = '''
 var body = result.body();
 if (body.indexOf('1234') > -1) {
   java.ajax('${site.origin}/charset,' + JSON.stringify({
@@ -570,7 +560,9 @@ if (body.indexOf('1234') > -1) {
 }
 result;
 ''';
-        final pipeline = _pipeline(_htmlSource(site.origin, checkJs: check));
+        final pipeline = _pipeline(
+          _htmlSource(site.origin, checkJs: check),
+        );
         final hits = await pipeline.search('书');
         expect(hits.single.title, '书');
         final charset = site.seen[1];
@@ -594,8 +586,7 @@ result;
         '/verify2': [const _Page('ok')],
       });
       addTearDown(site.close);
-      final check =
-          '''
+      final check = '''
 var body = result.body();
 if (body.indexOf('1234') > -1) {
   java.ajaxAll([
@@ -606,7 +597,9 @@ if (body.indexOf('1234') > -1) {
 }
 result;
 ''';
-      final pipeline = _pipeline(_htmlSource(site.origin, checkJs: check));
+      final pipeline = _pipeline(
+        _htmlSource(site.origin, checkJs: check),
+      );
       final hits = await pipeline.search('书');
       expect(hits.single.title, '书');
       // One `AnalyzeUrl` per URL (`JsExtensions.kt:111-125`): each entry keeps
@@ -618,10 +611,9 @@ result;
       // is asserted by path below.
       final posts = site.seen.where((request) => request.method == 'POST');
       expect(posts, hasLength(2));
-      expect(
-        {for (final request in posts) request.path: utf8.decode(request.body)},
-        {'/verify': 'a=1', '/verify2': 'b=2'},
-      );
+      expect({
+        for (final request in posts) request.path: utf8.decode(request.body),
+      }, {'/verify': 'a=1', '/verify2': 'b=2'});
     });
 
     test('the hook sees a rendered document and may re-render it', () async {
@@ -684,8 +676,7 @@ result;
         expect(
           await state.entry(site.origin, 'pixiv-user'),
           '12345',
-          reason:
-              'headers().get(name) is case-insensitive, like OkHttp Headers',
+          reason: 'headers().get(name) is case-insensitive, like OkHttp Headers',
         );
         expect(await state.entry(site.origin, 'pixiv-code'), 200);
         // Each member repeats the stage URL: getResponse() twice and
@@ -694,41 +685,38 @@ result;
         expect(
           site.seen.where((request) => request.path == '/search'),
           hasLength(4),
-        );
-      },
-    );
+        ),
+      );
+    });
 
-    test(
-      'the 笔趣阁 shape clears the jar and returns the response unchanged',
-      () async {
-        final site = await _Site.start({
-          '/search': [
-            const _Page(
-              '<div class="item"><h3><a href="/book/">书</a></h3></div>',
-            ),
-          ],
-        });
-        addTearDown(site.close);
-        site.headers['set-cookie'] = 'qbi=1; Path=/';
-        final state = SourceHostState();
-        final check = '''
+    test('the 笔趣阁 shape clears the jar and returns the response unchanged', () async {
+      final site = await _Site.start({
+        '/search': [
+          const _Page(
+            '<div class="item"><h3><a href="/book/">书</a></h3></div>',
+          ),
+        ],
+      });
+      addTearDown(site.close);
+      site.headers['set-cookie'] = 'qbi=1; Path=/';
+      final state = SourceHostState();
+      final check = '''
 cache.put('qbi-before', cookie.getCookie(source.getKey()));
 cookie.removeCookie(source.getKey());
 cache.put('qbi-after', cookie.getCookie(source.getKey()));
 result;
 ''';
-        final source = _htmlSource(site.origin, checkJs: check)
-          ..['enabledCookieJar'] = true;
-        final pipeline = _pipeline(source, state: state);
-        final hits = await pipeline.search('书');
-        // The check returned the response it was handed: the first page's own
-        // rules read it, and no second request was made.
-        expect(hits.single.title, '书');
-        expect(site.seen, hasLength(1));
-        expect(await state.entry(site.origin, 'qbi-before'), 'qbi=1');
-        expect(await state.entry(site.origin, 'qbi-after'), '');
-      },
-    );
+      final source = _htmlSource(site.origin, checkJs: check)
+        ..['enabledCookieJar'] = true;
+      final pipeline = _pipeline(source, state: state);
+      final hits = await pipeline.search('书');
+      // The check returned the response it was handed: the first page's own
+      // rules read it, and no second request was made.
+      expect(hits.single.title, '书');
+      expect(site.seen, hasLength(1));
+      expect(await state.entry(site.origin, 'qbi-before'), 'qbi=1');
+      expect(await state.entry(site.origin, 'qbi-after'), '');
+    });
 
     for (final json in [false, true]) {
       test(
@@ -783,9 +771,7 @@ result;
       final site = await _Site.start({
         '/search': [
           const _Page('<div class="gate">请完成验证 1234</div>'),
-          const _Page(
-            '<div class="item"><h3><a href="/book/">书</a></h3></div>',
-          ),
+          const _Page('<div class="item"><h3><a href="/book/">书</a></h3></div>'),
         ],
       });
       addTearDown(site.close);
@@ -804,96 +790,78 @@ result;
         _htmlSource(
           site.origin,
           checkJs: check,
-          searchUrl:
-              '/search?key={{key}}&token={{JSON.parse(source.getVariable() || "{}").token || ""}}',
+          searchUrl: '/search?key={{key}}&token={{JSON.parse(source.getVariable() || "{}").token || ""}}',
         ),
       );
       final hits = await pipeline.search('书');
       expect(hits.single.title, '书');
       // The first request ran on the address before the check, the second on
       // the address the re-analysis produced from the variable it wrote.
-      expect(site.seen.map((request) => request.query), [
-        'key=%E4%B9%A6&token=',
-        'key=%E4%B9%A6&token=T1',
-      ]);
       expect(
-        await SourceHostState().entry(
-          site.origin,
-          'sourceVariable_${site.origin}',
-        ),
+        site.seen.map((request) => request.query),
+        ['key=%E4%B9%A6&token=', 'key=%E4%B9%A6&token=T1'],
+      );
+      expect(
+        await SourceHostState().entry(site.origin, 'sourceVariable_${site.origin}'),
         isNull,
-        reason:
-            'a fresh state reads nothing the check wrote through the pipeline',
+        reason: 'a fresh state reads nothing the check wrote through the pipeline',
       );
     });
   });
 
   group('a loginCheckJs source opens like any other', () {
-    test(
-      'a bare-URL loginUrl is carried and the stages work unchanged',
-      () async {
-        final site = await _Site.start(_ungatedPages());
-        addTearDown(site.close);
-        final pipeline = _pipeline(
-          _htmlSource(site.origin, loginUrl: '${site.origin}/user/login'),
-        );
-        // No hook: every request is the stage's own.
-        final hits = await pipeline.search('书');
-        final (book, chapters) = await pipeline.details(hits.single);
-        final body = await pipeline.chapter(chapters.single);
-        expect(hits.single.title, '书');
-        expect(book.title, '书名');
-        expect(chapters.single.name, '第一章');
-        expect(body.text, '正文');
-        expect(site.seen, hasLength(4));
-      },
-    );
+    test('a bare-URL loginUrl is carried and the stages work unchanged', () async {
+      final site = await _Site.start(_ungatedPages());
+      addTearDown(site.close);
+      final pipeline = _pipeline(
+        _htmlSource(site.origin, loginUrl: '${site.origin}/user/login'),
+      );
+      // No hook: every request is the stage's own.
+      final hits = await pipeline.search('书');
+      final (book, chapters) = await pipeline.details(hits.single);
+      final body = await pipeline.chapter(chapters.single);
+      expect(hits.single.title, '书');
+      expect(book.title, '书名');
+      expect(chapters.single.name, '第一章');
+      expect(body.text, '正文');
+      expect(site.seen, hasLength(4));
+    });
 
-    test(
-      'a check script that throws fails the stage and is visible in the log',
-      () async {
-        final site = await _Site.start(_htmlPages());
-        addTearDown(site.close);
-        final notices = <SourceHostMessage>[];
-        final pipeline = _pipeline(
-          _htmlSource(site.origin, checkJs: 'throw new Error("gate failed");'),
-          onHostMessage: notices.add,
-        );
-        await expectLater(
-          pipeline.search('书'),
-          throwsA(
-            isA<SourceScriptError>()
-                .having((error) => error.category, 'category', 'js')
-                .having(
-                  (error) => error.message,
-                  'message',
-                  contains('gate failed'),
-                ),
-          ),
-        );
-        // The failure is what the source log and the source's notices carry.
-        expect(notices, hasLength(1));
-        expect(notices.single.kind, 'loginCheckJs');
-        expect(notices.single.message, contains('gate failed'));
-      },
-    );
+    test('a check script that throws fails the stage and is visible in the log', () async {
+      final site = await _Site.start(_htmlPages());
+      addTearDown(site.close);
+      final notices = <SourceHostMessage>[];
+      final pipeline = _pipeline(
+        _htmlSource(site.origin, checkJs: 'throw new Error("gate failed");'),
+        onHostMessage: notices.add,
+      );
+      await expectLater(
+        pipeline.search('书'),
+        throwsA(
+          isA<SourceScriptError>()
+              .having((error) => error.category, 'category', 'js')
+              .having((error) => error.message, 'message', contains('gate failed')),
+        ),
+      );
+      // The failure is what the source log and the source's notices carry.
+      expect(notices, hasLength(1));
+      expect(notices.single.kind, 'loginCheckJs');
+      expect(notices.single.message, contains('gate failed'));
+    });
 
-    test(
-      'a value that is not a response fails the stage like the frozen cast',
-      () async {
-        final site = await _Site.start(_htmlPages());
-        addTearDown(site.close);
-        final pipeline = _pipeline(
-          _htmlSource(site.origin, checkJs: 'result.body()'),
-        );
-        await expectLater(
-          pipeline.search('书'),
-          throwsA(
-            isA<SourceScriptError>().having(
-              (error) => error.message,
-              'message',
-              contains('must return a response object'),
-            ),
+    test('a value that is not a response fails the stage like the frozen cast', () async {
+      final site = await _Site.start(_htmlPages());
+      addTearDown(site.close);
+      final pipeline = _pipeline(
+        _htmlSource(site.origin, checkJs: 'result.body()'),
+      );
+      await expectLater(
+        pipeline.search('书'),
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.message,
+            'message',
+            contains('must return a response object'),
           ),
         );
       },
@@ -928,12 +896,10 @@ result;
   });
 
   group('source.setVariable / getVariable', () {
-    test(
-      'lands in the source\'s own cache entry and a null deletes it',
-      () async {
-        final runtime = InProcessSourceScriptRuntime();
-        await runtime.evaluate(
-          source: '''
+    test('lands in the source\'s own cache entry and a null deletes it', () async {
+      final runtime = InProcessSourceScriptRuntime();
+      await runtime.evaluate(
+        source: '''
 source.setVariable(JSON.stringify({token: 'T1'}));
 var first = source.getVariable();
 source.setVariable('plain');
@@ -941,22 +907,21 @@ var second = source.getVariable();
 source.setVariable(null);
 JSON.stringify([first, second, source.getVariable()]);
 ''',
-          input: {
-            'sourceKey': 'https://a.test/source',
-            'source': {'bookSourceUrl': 'https://a.test/source'},
-          },
-          timeout: const Duration(seconds: 15),
-        );
-        expect(
-          await runtime.hostState.entry(
-            'https://a.test/source',
-            'sourceVariable_https://a.test/source',
-          ),
-          isNull,
-          reason: 'setVariable(null) deletes the entry, as frozen does',
-        );
-      },
-    );
+        input: {
+          'sourceKey': 'https://a.test/source',
+          'source': {'bookSourceUrl': 'https://a.test/source'},
+        },
+        timeout: const Duration(seconds: 15),
+      );
+      expect(
+        await runtime.hostState.entry(
+          'https://a.test/source',
+          'sourceVariable_https://a.test/source',
+        ),
+        isNull,
+        reason: 'setVariable(null) deletes the entry, as frozen does',
+      );
+    });
 
     test('round-trips across two analyses and a restart', () async {
       final root = await Directory.systemTemp.createTemp('liber-59-login-');
@@ -1010,133 +975,120 @@ result;
       );
     });
 
-    test(
-      'a check failure is recorded in the source log with the script error',
-      () async {
-        final runtime = InProcessSourceScriptRuntime();
-        await expectLater(
-          _check(
-            runtime,
-            'throw new Error("gate failed")',
-            response: {
-              'statusCode': 200,
-              'headers': const <String, List<String>>{},
-              'body': 'gate 1234',
-              'url': 'http://a.test/search',
-            },
-          ),
-          throwsA(
-            isA<SourceScriptError>().having(
-              (error) => error.message,
-              'message',
-              contains('gate failed'),
-            ),
-          ),
-        );
-        expect(runtime.messages, hasLength(1));
-        expect(runtime.messages.single.kind, 'loginCheckJs');
-        expect(runtime.messages.single.message, contains('gate failed'));
-      },
-    );
-
-    test(
-      'the stage response is result and only a response may replace it',
-      () async {
-        final response = {
-          'statusCode': 200,
-          'headers': {
-            'X-User': ['uid-1'],
-          },
-          'body': 'gate 1234',
-          'url': 'http://a.test/search',
-        };
-        await expectLater(
-          _check(
-            runtime,
-            'JSON.stringify([result.body(), result.url(), result.code(), result.headers().get("x-user")])',
-            response: response,
-          ),
-          throwsA(
-            isA<SourceScriptError>().having(
-              (error) => error.message,
-              'message',
-              contains('must return a response object'),
-            ),
-          ),
-          reason:
-              'a string is not a StrResponse and the frozen cast rejects it',
-        );
-        final replaced = await _check(runtime, 'result', response: response);
-        expect(replaced.body, 'gate 1234');
-        expect(replaced.url, SourceHttpUri.parse('http://a.test/search'));
-        expect(replaced.statusCode, 200);
-        expect(replaced.headers['X-User'], ['uid-1']);
-      },
-    );
-
-    test(
-      'getResponse and getStrResponse repeat the stage request, initUrl re-analyzes it',
-      () async {
-        var resent = 0;
-        final stage = SourceStageRequest(
-          resend: () async {
-            resent++;
-            return SourceStageResponse(
-              body: 'second page',
-              url: SourceHttpUri.parse('http://a.test/search?token=T1'),
-            );
-          },
-          reanalyze: () async {},
-        );
-        final replaced = await _check(
+    test('a check failure is recorded in the source log with the script error', () async {
+      final runtime = InProcessSourceScriptRuntime();
+      await expectLater(
+        _check(
           runtime,
-          'result = java.getStrResponse(); java.getResponse()',
+          'throw new Error("gate failed")',
           response: {
             'statusCode': 200,
             'headers': const <String, List<String>>{},
             'body': 'gate 1234',
             'url': 'http://a.test/search',
           },
-          stage: stage,
-        );
-        expect(resent, 2);
-        expect(replaced.body, 'second page');
-        expect('${replaced.url}', 'http://a.test/search?token=T1');
-      },
-    );
+        ),
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.message,
+            'message',
+            contains('gate failed'),
+          ),
+        ),
+      );
+      expect(runtime.messages, hasLength(1));
+      expect(runtime.messages.single.kind, 'loginCheckJs');
+      expect(runtime.messages.single.message, contains('gate failed'));
+    });
 
-    test(
-      'a rule script has no stage request: each member refuses by name',
-      () async {
-        for (final member in [
-          'java.getResponse()',
-          'java.getStrResponse()',
-          'java.getStrResponse(null, null)',
-          'java.initUrl()',
-        ]) {
-          await expectLater(
-            runtime.evaluate(
-              source: member,
-              input: {
-                'sourceKey': 'https://a.test/source',
-                'source': {'bookSourceUrl': 'https://a.test/source'},
-              },
-              timeout: const Duration(seconds: 15),
-            ),
-            throwsA(
-              isA<SourceScriptError>()
-                  .having((error) => error.category, 'category', 'policy')
-                  .having(
-                    (error) => error.message,
-                    'member',
-                    contains(member.split('(').first),
-                  ),
-            ),
-            reason: member,
+    test('the stage response is result and only a response may replace it', () async {
+      final response = {
+        'statusCode': 200,
+        'headers': {
+          'X-User': ['uid-1'],
+        },
+        'body': 'gate 1234',
+        'url': 'http://a.test/search',
+      };
+      await expectLater(
+        _check(
+          runtime,
+          'JSON.stringify([result.body(), result.url(), result.code(), result.headers().get("x-user")])',
+          response: response,
+        ),
+        throwsA(
+          isA<SourceScriptError>().having(
+            (error) => error.message,
+            'message',
+            contains('must return a response object'),
+          ),
+        ),
+        reason: 'a string is not a StrResponse and the frozen cast rejects it',
+      );
+      final replaced = await _check(runtime, 'result', response: response);
+      expect(replaced.body, 'gate 1234');
+      expect(replaced.url, SourceHttpUri.parse('http://a.test/search'));
+      expect(replaced.statusCode, 200);
+      expect(replaced.headers['X-User'], ['uid-1']);
+    });
+
+    test('getResponse and getStrResponse repeat the stage request, initUrl re-analyzes it', () async {
+      var resent = 0;
+      final stage = SourceStageRequest(
+        resend: () async {
+          resent++;
+          return SourceStageResponse(
+            body: 'second page',
+            url: SourceHttpUri.parse('http://a.test/search?token=T1'),
           );
-        }
-      },
-    );
+        },
+        reanalyze: () async {},
+      );
+      final replaced = await _check(
+        runtime,
+        'result = java.getStrResponse(); java.getResponse()',
+        response: {
+          'statusCode': 200,
+          'headers': const <String, List<String>>{},
+          'body': 'gate 1234',
+          'url': 'http://a.test/search',
+        },
+        stage: stage,
+      );
+      expect(resent, 2);
+      expect(replaced.body, 'second page');
+      expect('${replaced.url}', 'http://a.test/search?token=T1');
+    });
+
+    test('a rule script has no stage request: each member refuses by name', () async {
+      for (final member in [
+        'java.getResponse()',
+        'java.getStrResponse()',
+        'java.getStrResponse(null, null)',
+        'java.initUrl()',
+      ]) {
+        await expectLater(
+          runtime.evaluate(
+            source: member,
+            input: {
+              'sourceKey': 'https://a.test/source',
+              'source': {'bookSourceUrl': 'https://a.test/source'},
+            },
+            timeout: const Duration(seconds: 15),
+          ),
+          throwsA(
+            isA<SourceScriptError>()
+                .having((error) => error.category, 'category', 'policy')
+                .having(
+                  (error) => error.message,
+                  'member',
+                  contains(member.split('(').first),
+                ),
+          ),
+          reason: member,
+        );
+      }
+    });
 
     test('the getStrResponse(jsStr, …) form refuses by name', () async {
       await expectLater(
