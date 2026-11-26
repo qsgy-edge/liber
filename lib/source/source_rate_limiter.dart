@@ -181,21 +181,22 @@ class SourceRateLimiter {
           ? int.parse(rate.substring(rateIndex + 1))
           : int.parse(rate);
       final next = record.time + interval;
-      if (_clock() >= next) {
+      final now = _clock();
+      if (now >= next) {
         // The window has passed: this start opens the next one.
-        record.time = _clock();
+        record.time = now;
         record.frequency = 1;
         return 0;
       }
       if (record.isConcurrent) {
         final count = int.parse(rate.substring(0, rateIndex));
-        if (record.frequency >= count) return next - _clock();
+        if (record.frequency >= count) return next - now;
         record.frequency += 1;
         return 0;
       }
       // A plain interval is spacing only: an unfinished earlier request does not
       // add a wait once the interval has elapsed.
-      return next - _clock();
+      return next - now;
     } catch (_) {
       // Unsupported input outside the supported grammar admits the request rather
       // than inventing a wait the reference never asks for.
