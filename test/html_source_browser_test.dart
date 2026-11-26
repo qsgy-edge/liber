@@ -92,7 +92,10 @@ class ScriptedPipeline extends HtmlSourcePipeline {
 }
 
 class _AliasCatalogPipeline extends ScriptedPipeline {
-  final releaseBareDetails = Completer<void>();
+  _AliasCatalogPipeline(this.heldTitle);
+
+  final String heldTitle;
+  final releaseDetails = Completer<void>();
 
   @override
   Future<List<HtmlBook>> search(String keyword, {int page = 1}) async => [
@@ -107,7 +110,7 @@ class _AliasCatalogPipeline extends ScriptedPipeline {
 
   @override
   Future<(HtmlBook, List<SourceChapter>)> details(HtmlBook hit) async {
-    if (hit.title == 'Bare B') await releaseBareDetails.future;
+    if (hit.title == heldTitle) await releaseDetails.future;
     return super.details(hit);
   }
 }
@@ -714,62 +717,72 @@ void main() {
     expect(find.textContaining('重新打开后可以读到的正文'), findsOneWidget);
   });
 
-  testWidgets('reopening through an alias waits for the same shelf row', (
-    tester,
-  ) async {
-    final bookUrl = '$sourceUrl/b';
-    final seeded = await shelf.add(
-      source,
-      HtmlBook(url: Uri.parse(bookUrl), title: 'Existing B'),
-      [SourceChapter('previous', Uri.parse('$bookUrl/1'))],
-    );
-    await shelf.remove(seeded.bookId);
-    final gatedShelf = _AddGateShelf(store);
-    final pipeline = _AliasCatalogPipeline();
-    await tester.pumpWidget(
-      localizedApp(
-        home: HtmlSourceBrowser(
-          source: source,
-          keyword: '书',
-          service: gatedShelf,
-          pipeline: pipeline,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.playlist_add).first);
-    await tester.pump();
-    expect(gatedShelf.addStarted.isCompleted, isTrue);
-    try {
-      await tester.tap(find.text('Alias B'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('加入书架'));
-      await tester.pump();
-      await tester.tap(find.text('返回搜索结果'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Bare B'));
-      await tester.pump();
-      gatedShelf.releaseAdd.complete();
-      ShelfEntry? shelved;
-      for (var i = 0; i < 8; i++) {
-        await tester.pump();
-        shelved = await shelf.find(sourceUrl, bookUrl);
-        if (shelved?.shelved == true) break;
+  for (final rowAlreadyExists in [true, false]) {
+    testWidgets('reopening through an alias waits for the same row '
+        '(row initially present: $rowAlreadyExists)', (tester) async {
+      final bookUrl = '$sourceUrl/b';
+      final existing = HtmlBook(url: Uri.parse(bookUrl), title: 'Existing B');
+      String? existingId;
+      if (rowAlreadyExists) {
+        final seeded = await shelf.add(source, existing, [
+          SourceChapter('previous', Uri.parse('$bookUrl/1')),
+        ]);
+        await shelf.remove(seeded.bookId);
+        existingId = seeded.bookId;
       }
-      expect(shelved?.shelved, isTrue);
-      expect(shelved?.id, seeded.bookId);
-    } finally {
-      if (!gatedShelf.releaseAdd.isCompleted) gatedShelf.releaseAdd.complete();
-      pipeline.releaseBareDetails.complete();
-    }
-    await tester.pumpAndSettle();
-    expect(pipeline.detailsCalls, ['Alias B', 'Bare B']);
-    expect(find.text('Bare B章'), findsOneWidget);
-    await tester.tap(find.text('Bare B章'));
-    await tester.pumpAndSettle();
-    expect(pipeline.chapterCalls, ['$bookUrl/1']);
-    expect(find.textContaining('正文'), findsOneWidget);
-  });
+      final first = rowAlreadyExists ? 'Alias B' : 'Bare B';
+      final reopened = rowAlreadyExists ? 'Bare B' : 'Alias B';
+      final gatedShelf = _AddGateShelf(store);
+      final pipeline = _AliasCatalogPipeline(reopened);
+      await tester.pumpWidget(
+        localizedApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '书',
+            service: gatedShelf,
+            pipeline: pipeline,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.playlist_add).first);
+      await tester.pump();
+      expect(gatedShelf.addStarted.isCompleted, isTrue);
+      try {
+        await tester.tap(find.text(first));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('加入书架'));
+        await tester.pump();
+        await tester.tap(find.text('返回搜索结果'));
+        await tester.pumpAndSettle();
+        existingId ??= await shelf.ensureBook(source, existing);
+        await tester.tap(find.text(reopened));
+        await tester.pump();
+        gatedShelf.releaseAdd.complete();
+        ShelfEntry? shelved;
+        for (var i = 0; i < 8; i++) {
+          await tester.pump();
+          shelved = await shelf.find(sourceUrl, bookUrl);
+          if (shelved?.shelved == true) break;
+        }
+        expect(shelved?.shelved, isTrue);
+        expect(shelved?.id, existingId);
+      } finally {
+        if (!gatedShelf.releaseAdd.isCompleted) {
+          gatedShelf.releaseAdd.complete();
+        }
+        pipeline.releaseDetails.complete();
+      }
+      await tester.pumpAndSettle();
+      expect(pipeline.detailsCalls, [first, reopened]);
+      final chapter = find.text('$reopened章');
+      expect(chapter, findsOneWidget);
+      await tester.tap(chapter);
+      await tester.pumpAndSettle();
+      expect(pipeline.chapterCalls, ['$bookUrl/1']);
+      expect(find.textContaining('正文'), findsOneWidget);
+    });
+  }
 
   testWidgets('queued catalog add cannot overwrite an external refresh', (
     tester,

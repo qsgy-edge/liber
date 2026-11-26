@@ -261,10 +261,23 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
         for (final entry in pending) {
           final add = entry.value;
           final address = entry.key.$1.identityAddress;
-          final sameBook = add.bookId != null
-              ? add.bookId == row?.id
-              : address == identity ||
-                    (row == null && matchesBookIdentity(address, identity));
+          bool sameBook;
+          if (add.bookId != null) {
+            sameBook = add.bookId == row?.id;
+          } else if (address == identity) {
+            sameBook = true;
+          } else if (row == null) {
+            // With no row, compare what the queued add would insert to what
+            // the reopened hit can find. This comparison is directional.
+            sameBook = matchesBookIdentity(address, identity);
+          } else {
+            final pendingRow = await shelf.store.bookByNaturalKey(
+              sourceUrl,
+              address,
+            );
+            if (!mounted) return;
+            sameBook = pendingRow?.id == row.id;
+          }
           if (sameBook) sameCatalog.add(add.done);
         }
         if (sameCatalog.isNotEmpty) {
