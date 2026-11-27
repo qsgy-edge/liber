@@ -677,6 +677,54 @@ void main() {
     expect(find.textContaining('加入书架失败'), findsNothing);
   });
 
+  testWidgets('queued catalog add survives popping the browser route', (
+    tester,
+  ) async {
+    final gatedShelf = _AddGateShelf(store);
+    await tester.pumpWidget(
+      localizedApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => HtmlSourceBrowser(
+                  source: source,
+                  keyword: '书',
+                  service: gatedShelf,
+                  pipeline: ScriptedPipeline(),
+                ),
+              ),
+            ),
+            child: const Text('Open browser'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open browser'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.playlist_add).first);
+    await tester.pump();
+    expect(gatedShelf.addStarted.isCompleted, isTrue);
+    try {
+      await tester.tap(find.text('B'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('加入书架'));
+      await tester.pump();
+      Navigator.of(tester.element(find.byType(HtmlSourceBrowser))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Open browser'), findsOneWidget);
+      expect(find.byType(HtmlSourceBrowser), findsNothing);
+    } finally {
+      gatedShelf.releaseAdd.complete();
+    }
+    await tester.pumpAndSettle();
+    final entry = await shelf.find(sourceUrl, '$sourceUrl/b');
+    expect(entry, isNotNull);
+    expect(entry!.shelved, isTrue);
+    expect(entry.chapters.single.name, 'B章');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('reopening a book with a queued catalog add can read it', (
     tester,
   ) async {
