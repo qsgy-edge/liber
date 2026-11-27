@@ -463,12 +463,14 @@ String variableTextOf(Map<String, String?> map) =>
 
 class SourceScriptError implements Exception {
   const SourceScriptError(this.category, [this.message = ''])
-    : _namedRefusal = false;
-  const SourceScriptError._(this.category, this.message, this._namedRefusal);
+    : _mustPropagate = false;
+  const SourceScriptError._(this.category, this.message, this._mustPropagate);
 
   final String category;
   final String message;
-  final bool _namedRefusal;
+
+  // Some faults and refusals share a public category with ordinary rule errors.
+  final bool _mustPropagate;
 
   /// The same failure as the rule field that hit it reports it: [field] is the
   /// rule field's name (`ruleBookInfo.kind`), and the runtime's own message is
@@ -478,7 +480,7 @@ class SourceScriptError implements Exception {
   SourceScriptError inRuleField(String field) =>
       field.isEmpty || message.isEmpty
       ? this
-      : SourceScriptError._(category, '$field: $message', _namedRefusal);
+      : SourceScriptError._(category, '$field: $message', _mustPropagate);
 
   @override
   String toString() => message.isEmpty ? category : '$category: $message';
@@ -495,12 +497,12 @@ class SourceScriptError implements Exception {
 /// the script passed to a member (`host-input`), or malformed rule text the
 /// evaluator refused with [FormatException]. Everything else propagates
 /// unchanged, because the disposition does not authorize a catch-all:
-/// cancellation, a real timeout, the named `policy`/`verification` refusals and
-/// the runtime's own `host-method`, I/O-cap, `network`, `host` and `cleanup`
-/// failures are all the stage's own failures, not the title's.
+/// cancellation, a real timeout, named refusals, native heap/engine failures
+/// and the runtime's `host-method`, I/O-cap, `network`, `host` and `cleanup`
+/// failures belong to the stage, not the title.
 bool sourceTitleFailureIsOrdinary(Object error) => switch (error) {
-  SourceScriptError(:final category, :final _namedRefusal) =>
-    !_namedRefusal && (category == 'js' || category == 'host-input'),
+  SourceScriptError(:final category, :final _mustPropagate) =>
+    !_mustPropagate && (category == 'js' || category == 'host-input'),
   FormatException() => true,
   _ => false,
 };
@@ -1831,6 +1833,9 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     if (error is IOException) return const SourceScriptError('network');
     if (error is JsError_Cancelled) return const SourceScriptError('cancelled');
+    if (error is JsError_MemoryLimit || error is JsError_Engine) {
+      return const SourceScriptError._('js', '', true);
+    }
     if (error is JsError) return const SourceScriptError('js');
     return const SourceScriptError('host');
   }
@@ -1850,7 +1855,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final message = error is JsError ? _jsErrorText(error) : null;
     return message == null || message.isEmpty
         ? failure
-        : SourceScriptError('js', message);
+        : SourceScriptError._('js', message, failure._mustPropagate);
   }
 
   static String? _jsErrorText(JsError error) => switch (error) {
@@ -2056,9 +2061,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       // rule the adapter cannot run names itself instead of arriving as a bare
       // category.
       final failure = _classifyScript(error);
-      throw SourceScriptError(
+      throw SourceScriptError._(
         failure.category,
         failure.message.isEmpty ? '$member: $error' : failure.message,
+        failure._mustPropagate,
       );
     }
   }

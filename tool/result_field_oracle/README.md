@@ -489,9 +489,10 @@ python tool/result_field_oracle/capture.py --preflight-only   --fixture tool/res
 
 The lifecycle cases invoke the reference `WebBook` entry points and the
 reference chapter DAO directly. They are not a driven native reader UI and they
-publish no reader screen. The product side of this corpus is not implemented
-yet, so a public comparison of it is expected to stop at the missing product
-`titleLifecycle` until the approved reader/shelf/store slice lands.
+publish no reader screen. The product runner records `titleLifecycle` from the
+shelf and store before and after reading the chapter and refreshing its catalog.
+Those records support the lifecycle comparison; driven reader UI evidence is
+recorded separately.
 
 ## Destination side
 

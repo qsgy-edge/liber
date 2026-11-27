@@ -290,9 +290,10 @@ void main() {
     ('policy', '@js: java.readFile("not-used.txt")'),
     ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
     ('timeout', '@js: while (true) {}'),
+    ('js', '@js: new ArrayBuffer(80 * 1024 * 1024); "unpublished"'),
   ]) {
     test(
-      'JSON title $category still fails the chapter load',
+      '${category == 'js' ? 'native heap limit' : category} in JSON title still fails the chapter load',
       () async {
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         addTearDown(() => server.close(force: true));

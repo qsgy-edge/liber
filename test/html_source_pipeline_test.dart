@@ -316,9 +316,10 @@ void main() {
     ('policy', '@js: java.readFile("not-used.txt")'),
     ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
     ('timeout', '@js: while (true) {}'),
+    ('js', '@js: new ArrayBuffer(80 * 1024 * 1024); "unpublished"'),
   ]) {
     test(
-      'HTML title $category still fails the chapter load',
+      '${category == 'js' ? 'native heap limit' : category} in HTML title still fails the chapter load',
       () async {
         const base = 'https://a.test';
         final pipeline = HtmlSourcePipeline({
