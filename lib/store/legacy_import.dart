@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 
 import '../domain/contracts.dart';
 import '../domain/store_message.dart';
@@ -324,18 +324,28 @@ class LegacyImport {
       }
       if (rows.isNotEmpty) {
         if (existing != null) {
-          // A retired JSON snapshot carries a chapter URI, not the current
-          // request options, name, or read route. Keep them for the same key.
+          // The retired JSON carries a URI, not the current request options or
+          // read route. On the same key keep the published title and route,
+          // while importing the incoming tag, access markers and position.
+          final publishedVolumes =
+              await (store.db.select(store.db.chapters)..where(
+                    (row) =>
+                        row.bookId.equals(id) &
+                        row.rendersTagAsContent.isNotNull(),
+                  ))
+                  .get();
           final classified = {
-            for (final row in await store.chaptersOf(id))
-              if (row.rendersTagAsContent != null) row.chapterKey: row,
+            for (final row in publishedVolumes) row.chapterKey: row,
           };
           for (var index = 0; index < rows.length; index++) {
             final incoming = rows[index];
             final current = classified[incoming.chapterKey];
             if (current != null) {
-              rows[index] = current.copyWith(
-                chapterIndex: incoming.chapterIndex,
+              rows[index] = incoming.copyWith(
+                name: current.name,
+                url: Value(current.url),
+                isVolume: current.isVolume,
+                rendersTagAsContent: Value(current.rendersTagAsContent),
               );
             }
           }

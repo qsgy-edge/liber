@@ -370,7 +370,23 @@ void main() {
       final report = await legacy.run(store, force: true);
       expect(report.imported, isTrue);
       final rows = await store.chaptersOf(entry.id);
-      expect(rows.first, published);
+      final restored = rows.first;
+      expect(
+        (
+          restored.chapterKey,
+          restored.url,
+          restored.name,
+          restored.isVolume,
+          restored.rendersTagAsContent,
+        ),
+        (first.chapterKey, request, title, true, false),
+      );
+      expect(first.tag, isNot(published.tag));
+      expect(first.isVip, isNot(published.isVip));
+      expect(
+        (restored.tag, restored.isVip, restored.isPay, restored.variable),
+        (first.tag, first.isVip, first.isPay, first.variable),
+      );
       expect(rows.last, entry.chapters.last);
       expect((await store.progressOf(entry.id))!.chapterIndex, 1);
     },
