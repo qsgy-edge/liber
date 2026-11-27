@@ -324,24 +324,42 @@ void main() {
 
 
 
-  test('a chapter address option family this product lacks is refused by name', () async {
-    // Nothing is silently dropped: the families the TOC guard cannot express
-    // keep their named refusal, at the same place (#58).
-    final pipeline = HtmlSourcePipeline(
-      _chapterSource('tag.a@href##\$##,{"body":"a=1"}'),
-      _Pages({'/book/1': _bookPage, '/toc/1': _tocPage}),
-    );
-    await expectLater(
-      pipeline.details(_chapterHit()),
-      throwsA(
-        isA<UnsupportedError>().having(
-          (error) => error.message,
-          'message',
-          contains('章节地址的 URL 选项'),
-        ),
-      ),
-    );
-  });
+  test(
+    'HTML refuses an unsupported chapter option at the actual fetch',
+    () async {
+      const tail = ',{"unsupportedTestOption":true}';
+      final pages = _Pages({'/book/1': _bookPage, '/toc/1': _tocPage});
+      final pipeline = HtmlSourcePipeline(
+        _chapterSource('tag.a@href##\$##$tail'),
+        pages,
+      );
+      final (book, chapters) = await pipeline.details(_chapterHit());
+      final chapter = chapters.single;
+      expect(chapter.persistedAddress, endsWith(tail));
+      final reopened = SourceChapter.fromAddress(
+        chapter.name,
+        chapter.persistedAddress,
+        bookUrl: book.url,
+        chapterKey: chapter.storeKey,
+      );
+      for (final candidate in [chapter, reopened]) {
+        await expectLater(
+          pipeline.chapter(candidate, book: book),
+          throwsA(
+            isA<UnsupportedError>().having(
+              (error) => error.message,
+              'option name',
+              contains('unsupportedTestOption'),
+            ),
+          ),
+        );
+      }
+      expect(pages.requests.map((url) => Uri.parse(url).path), [
+        '/book/1',
+        '/toc/1',
+      ]);
+    },
+  );
   test(
     'a chapter address survives the shelf and comes back with its options',
     () async {

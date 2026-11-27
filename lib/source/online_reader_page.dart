@@ -5,7 +5,8 @@ import 'dart:typed_data';
 import 'package:fjs/fjs.dart' show ConvertTarget;
 import 'package:flutter/material.dart';
 
-import '../domain/contracts.dart' show SourceCancellation;
+import '../domain/contracts.dart'
+    show SourceCancellation, SourceRequestCancelled;
 import '../domain/store_message.dart';
 import '../local/reader_offset_map.dart' show ReaderOffsetMap;
 import '../local/text_engine.dart' show TextEngine;
@@ -20,6 +21,7 @@ import 'content_processing.dart';
 import 'js_source_runtime.dart' show SourceHostMessage;
 import 'source_notice.dart';
 import 'source_tls_confirmation.dart';
+import 'source_url_rules.dart' show sourceKotlinIsBlank;
 
 /// The reader's reading column: the body's own text style, the widest column it
 /// is set in, and the padding around it. The image shapes below are expressed
@@ -81,6 +83,14 @@ List<_ReaderRow> _readerRows(String body, List<SourceChapterImage> images) {
   return rows;
 }
 
+typedef _SourceChapterContent = ({
+  String title,
+  String text,
+  List<SourceChapterImage> images,
+  Uri url,
+});
+typedef _ChapterLayout = ({String title, List<_ReaderRow> rows, int target});
+
 class OnlineReaderPage extends StatefulWidget {
   const OnlineReaderPage({
     super.key,
@@ -91,6 +101,7 @@ class OnlineReaderPage extends StatefulWidget {
     required this.service,
     this.chapterIndex = 0,
     this.textOffset = 0,
+    this.chapterCatalogRevision,
     this.convert,
     this.onEntityState,
   });
@@ -100,6 +111,7 @@ class OnlineReaderPage extends StatefulWidget {
   /// The space's book row this reader reports progress for.
   final String bookId;
   final List<SourceChapter> chapters;
+  final int? chapterCatalogRevision;
   final ShelfService service;
   final int chapterIndex, textOffset;
 
@@ -136,6 +148,8 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   List<GlobalKey> keys = [];
   int index = 0, offset = 0;
   bool busy = true, tracking = false;
+  bool _updatingScript = false;
+  bool get _navigationBlocked => busy || _updatingScript;
   String? error;
 
   /// The image style this source's content rule asks for
@@ -150,11 +164,6 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// keeps them for as long as the page is open.
   final _images = <String, Future<Uint8List>>{};
 
-  /// The URL a relative image address resolves against: the chapter's own URL,
-  /// which is what the frozen download path resolves against
-  /// (`BookHelp.flowImages`).
-  Uri? _chapterUrl;
-
   /// The user's replace rules for this book, applied to the title and the body
   /// the way the frozen reader applies them. Null while the space is read;
   /// a book opens with no rules until then.
@@ -164,20 +173,20 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// or null for the source's own characters.
   ConvertTarget? script;
 
-  /// The last fetched chapter as the source returned it: a settings change
-  /// re-renders from here instead of fetching the chapter again.
-  String sourceTitle = '';
-  String sourceBody = '';
-
-  /// The content images the last fetched chapter carries, keyed to
-  /// [sourceBody]'s own offsets — the pipeline's extraction, as it returned it.
-  List<SourceChapterImage> sourceImages = const [];
+  /// Only the last displayed source content can be re-rendered by settings.
+  _SourceChapterContent? _displayedContent;
+  late final int _catalogRevision;
 
   /// The book variable the last loaded content stage returned, and the loaded
   /// chapters' own snapshots by index (#132). A chapter that has not been
   /// fetched keeps the carrier it was handed.
   String? _bookVariable;
   final Map<int, String?> _chapterVariables = {};
+  final _renamedChapters = <int, SourceChapter>{};
+  int _loadGeneration = 0;
+
+  SourceChapter _chapterAt(int index) =>
+      _renamedChapters[index] ?? widget.chapters[index];
 
   /// The current chapter's display title, replaced by the title rules.
   String chapterTitle = '';
@@ -188,6 +197,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     // A chapter fetch can toast too; this page owns the pipeline while it is
     // open, so its notices belong on this page's messenger.
     widget.pipeline.onHostMessage = _showHostNotice;
+    _catalogRevision =
+        widget.chapterCatalogRevision ??
+        widget.service.store.chapterCatalogRevision;
     index = widget.chapterIndex;
     scroll.addListener(track);
     unawaited(_open());
@@ -245,6 +257,7 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     await load(
       widget.chapterIndex,
       widget.textOffset,
+      opening: true,
       clearError: built != null,
     );
   }
@@ -267,15 +280,31 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     showSourceNotice(context, message);
   }
 
+  bool _ownsCatalog(OnlineReaderPage owner) => owner.service.store
+      .isChapterCatalogCurrent(owner.bookId, _catalogRevision);
+
   Future<void> save() async {
+    if (!mounted || _displayedContent == null) return;
+    final owner = widget;
+    final chapterIndex = index;
+    final textOffset = offset;
+    if (chapterIndex < 0 ||
+        chapterIndex >= owner.chapters.length ||
+        !_ownsCatalog(owner)) {
+      return;
+    }
     try {
-      if (index < 0 || index >= widget.chapters.length) return;
-      await widget.service.saveProgress(
-        widget.bookId,
-        chapterKey: widget.chapters[index].progressKey,
-        chapterIndex: index,
-        textOffset: offset,
-      );
+      await owner.service.store.transaction(() async {
+        // Leaving the page does not discard an already displayed position.
+        // Only a catalog replacement invalidates the queued write.
+        if (!_ownsCatalog(owner)) return;
+        await owner.service.saveProgress(
+          owner.bookId,
+          chapterKey: owner.chapters[chapterIndex].progressKey,
+          chapterIndex: chapterIndex,
+          textOffset: textOffset,
+        );
+      });
     } catch (e) {
       if (mounted) {
         setState(
@@ -305,14 +334,39 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     }
   }
 
-  Future<void> load(int next, int resume, {bool clearError = true}) async {
-    if (next < 0 || next >= widget.chapters.length) return;
+  Future<void> load(
+    int next,
+    int resume, {
+    bool opening = false,
+    bool clearError = true,
+  }) async {
+    // Callbacks from the previous frame can still run after a load was admitted.
+    if ((busy && !opening) ||
+        _updatingScript ||
+        next < 0 ||
+        next >= widget.chapters.length) {
+      return;
+    }
+    final owner = widget;
+    final generation = ++_loadGeneration;
+    final chapter = _chapterAt(next);
+    final sourceRef = '${owner.pipeline.source['bookSourceUrl'] ?? ''}';
+    bool isCurrent() =>
+        mounted &&
+        widget == owner &&
+        generation == _loadGeneration &&
+        !_processingCancellation.isCancelled;
     tracking = false;
     setState(() {
       busy = true;
       if (clearError) error = null;
     });
+    void requireCatalog() {
+      if (!_ownsCatalog(owner)) throw const SourceRequestCancelled();
+    }
+
     try {
+      requireCatalog();
       // The frozen content stage's next-chapter lookup (`BookContent.kt:49-53`):
       // the chapter after this one, falling back to the chapter at index 0 — the
       // frozen `getChapter(bookUrl, index + 1)?.url ?: getChapter(bookUrl, 0)?.url`,
@@ -323,32 +377,68 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       final nextChapterUrl = next + 1 < widget.chapters.length
           ? '${widget.chapters[next + 1].url}'
           : '${widget.chapters.first.url}';
-      final result = await withTlsExceptionConfirmation(
+      final host = owner.service.hostState;
+      final (result, variables) = await withTlsExceptionConfirmation(
         context: context,
-        hostState: widget.service.hostState,
-        sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
-        sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
-        run: () => widget.pipeline.chapter(
-          widget.chapters[next],
-          book: widget.book,
-          nextChapterUrl: nextChapterUrl,
+        hostState: host,
+        sourceRef: sourceRef,
+        sourceName: '${owner.pipeline.source['bookSourceName'] ?? ''}',
+        run: () => host.stageReaderVariables(
+          () => owner.pipeline.chapter(
+            chapter,
+            book: owner.book,
+            nextChapterUrl: nextChapterUrl,
+          ),
         ),
       );
-      if (!mounted) return;
-      sourceTitle = result.title ?? widget.chapters[next].name;
-      sourceBody = result.text;
-      sourceImages = result.images;
-      _chapterUrl = widget.chapters[next].url;
-      _images.clear();
-      // The content stage's final entity snapshots reach the page that opened
-      // the reader, so a later add publishes them rather than the stale
-      // details carriers (#132).
+      if (!isCurrent()) return;
+      requireCatalog();
+      final title = result.title;
+      final hasTitle = title != null && !sourceKotlinIsBlank(title);
+      final content = (
+        title: hasTitle ? title : chapter.name,
+        text: result.text,
+        images: result.images,
+        url: chapter.url,
+      );
+      final layout = await _layout(content, resume);
+      if (!isCurrent()) return;
+      requireCatalog();
+      final accepted = await owner.service.store.transaction(() async {
+        if (!isCurrent()) return null;
+        requireCatalog();
+        var name = chapter.name;
+        if (hasTitle) {
+          final saved = await owner.service.saveChapterTitle(
+            bookId: owner.bookId,
+            sourceRef: sourceRef,
+            book: owner.book,
+            chapter: chapter,
+            chapterIndex: next,
+            title: title,
+            isCurrent: () => isCurrent() && _ownsCatalog(owner),
+          );
+          if (saved == null) throw const SourceRequestCancelled();
+          name = saved;
+        }
+        final publish = await host.saveReaderVariables(variables);
+        if (!isCurrent()) throw const SourceRequestCancelled();
+        requireCatalog();
+        return (name: name, publish: publish);
+      });
+      if (!isCurrent()) return;
+      requireCatalog();
+      if (accepted == null) return;
+      accepted.publish();
+      if (accepted.name != chapter.name) {
+        _renamedChapters[next] = chapter.withName(accepted.name);
+      }
       _bookVariable = result.bookVariable;
       _chapterVariables[next] = result.chapterVariable;
+      _display(next, content, layout, isCurrent);
       _reportEntityState();
-      await _render(next, resume);
     } catch (e) {
-      if (mounted) {
+      if (isCurrent()) {
         setState(() {
           busy = false;
           error = AppLocalizations.of(context).chapterLoadFailed('$e');
@@ -357,63 +447,64 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
     }
   }
 
-  /// Reports the current book and chapter carriers to the page that opened the
-  /// reader (#132): the content stage's final variable snapshots for the
-  /// chapters it loaded, the handed carriers for the rest.
+  /// Hands the source title and final variable snapshots back for off-shelf add.
   void _reportEntityState() {
-    final report = widget.onEntityState;
-    if (report == null) return;
-    report(widget.book.withVariable(_bookVariable), [
+    widget.onEntityState?.call(widget.book.withVariable(_bookVariable), [
       for (var i = 0; i < widget.chapters.length; i++)
-        _chapterVariables.containsKey(i)
-            ? widget.chapters[i].withVariable(_chapterVariables[i])
-            : widget.chapters[i],
+        if (_chapterVariables.containsKey(i))
+          _chapterAt(i).withVariable(_chapterVariables[i])
+        else
+          _chapterAt(i),
     ]);
   }
 
-  /// Renders the chapter [sourceBody]/[sourceTitle] already hold the way the
-  /// frozen reader does before the text reaches the screen: the chapter's
-  /// display title (titles) and the body (content rules) — the title is what
-  /// `ReadBook.kt:694` computes, the body is what
-  /// `ContentProcessor.getContent(..., includeTitle = false)` returns.
-  ///
-  /// Both the fetch and a settings change come through here, so re-rendering in
-  /// another script needs no second fetch of the chapter.
-  Future<void> _render(int next, int resume) async {
+  /// Lays out pending content without replacing what settings can re-render.
+  Future<_ChapterLayout> _layout(
+    _SourceChapterContent content,
+    int resume,
+  ) async {
     final current = processing;
     final title = current == null
-        ? sourceTitle
-        : await current.displayTitle(sourceTitle);
-    final ProcessedContent? processed = current == null
+        ? content.title
+        : await current.displayTitle(content.title);
+    final processed = current == null
         ? null
-        // The one text entry returns the text and the run's edit script; the
-        // online reader consumes the text alone — it pages the chapter it just
-        // read, and its stored position is the source's own offset.
-        : await current.content(sourceBody, chapterTitle: sourceTitle);
-    final body = processed?.text ?? sourceBody;
-    if (!mounted) return;
+        : await current.content(content.text, chapterTitle: content.title);
+    final body = processed?.text ?? content.text;
     // The reader's rows come from the processed body, and the images the
     // pipeline extracted are keyed to the text it returned, so their offsets go
     // through the same edit script the local reader translates positions with
     // (ADR 0012: one entry, one meaning for the script).
-    final built = _readerRows(body, _placedImages(processed));
+    final built = _readerRows(body, _placedImages(content.images, processed));
     final anchor = resume.clamp(0, body.length);
     final target = built.lastIndexWhere((row) => row.offset <= anchor);
+    return (title: title, rows: built, target: target < 0 ? 0 : target);
+  }
+
+  void _display(
+    int next,
+    _SourceChapterContent content,
+    _ChapterLayout layout,
+    bool Function() isCurrent,
+  ) {
+    final renderedKeys = List.generate(layout.rows.length, (_) => GlobalKey());
     setState(() {
+      if (!identical(_displayedContent, content)) _images.clear();
+      _displayedContent = content;
       index = next;
-      chapterTitle = title;
-      rows = built;
-      keys = List.generate(built.length, (_) => GlobalKey());
-      offset = built[target < 0 ? 0 : target].offset;
+      chapterTitle = layout.title;
+      rows = layout.rows;
+      keys = renderedKeys;
+      offset = layout.rows[layout.target].offset;
       busy = false;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final context = keys[target < 0 ? 0 : target].currentContext;
+      if (!isCurrent() || keys != renderedKeys) return;
+      final context = renderedKeys[layout.target].currentContext;
       if (context != null) {
         await Scrollable.ensureVisible(context, alignment: 0);
       }
-      if (!mounted) return;
+      if (!isCurrent() || keys != renderedKeys) return;
       tracking = true;
       await save();
     });
@@ -427,12 +518,14 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// the run's edit script; an element a replace rule rewrote or removed — or one
   /// a conversion re-wrote the line under — has no text of its own left, and the
   /// image is left out rather than drawn where its markup no longer is.
-  List<SourceChapterImage> _placedImages(ProcessedContent? processed) {
-    if (sourceImages.isEmpty) return const <SourceChapterImage>[];
-    if (processed == null) return sourceImages;
+  List<SourceChapterImage> _placedImages(
+    List<SourceChapterImage> images,
+    ProcessedContent? processed,
+  ) {
+    if (images.isEmpty || processed == null) return images;
     final map = ReaderOffsetMap.fromEdits(processed.edits, rawBase: 0);
     final placed = <SourceChapterImage>[];
-    for (final image in sourceImages) {
+    for (final image in images) {
       final start = map.imageOf(image.offset);
       final end = map.imageOf(image.offset + image.length);
       if (start == null || end == null || end <= start) continue;
@@ -515,7 +608,8 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       hostState: widget.service.hostState,
       sourceRef: '${widget.pipeline.source['bookSourceUrl'] ?? ''}',
       sourceName: '${widget.pipeline.source['bookSourceName'] ?? ''}',
-      run: () => widget.pipeline.chapterImage(image.src, base: _chapterUrl),
+      run: () =>
+          widget.pipeline.chapterImage(image.src, base: _displayedContent?.url),
     ),
   );
 
@@ -604,36 +698,47 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// chapter, a reload) uses it. Without the `try` the failure would leave the
   /// reader with the old text and no notice at all.
   Future<void> openScriptSettings() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => ReaderScriptPage(
-          store: widget.service.store,
-          bookId: widget.bookId,
-          bookTitle: widget.book.title,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    final target = await ReaderScriptSetting.resolve(
-      widget.service.store,
-      bookId: widget.bookId,
-    );
-    if (!mounted || target == script) return;
-    script = target;
-    processing?.script = target;
+    if (_navigationBlocked) return;
+    final owner = widget;
+    final generation = _loadGeneration;
+    bool isCurrent() =>
+        mounted && widget == owner && generation == _loadGeneration;
+    setState(() => _updatingScript = true);
     try {
-      await _render(index, offset);
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => ReaderScriptPage(
+            store: owner.service.store,
+            bookId: owner.bookId,
+            bookTitle: owner.book.title,
+          ),
+        ),
+      );
+      if (!isCurrent()) return;
+      final target = await ReaderScriptSetting.resolve(
+        owner.service.store,
+        bookId: owner.bookId,
+      );
+      if (!isCurrent() || target == script) return;
+      script = target;
+      processing?.script = target;
+      final content = _displayedContent;
+      if (content == null) return;
+      final layout = await _layout(content, offset);
+      if (isCurrent()) _display(index, content, layout, isCurrent);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          busy = false;
-          error = AppLocalizations.of(context).scriptConvertFailed('$e');
-        });
+      if (isCurrent()) {
+        setState(
+          () => error = AppLocalizations.of(context).scriptConvertFailed('$e'),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _updatingScript = false);
     }
   }
 
   Future<void> chooseChapter() async {
+    if (_navigationBlocked) return;
     final l10n = AppLocalizations.of(context);
     final choice = await showModalBottomSheet<int>(
       context: context,
@@ -654,13 +759,13 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
               child: ListView.builder(
                 itemCount: widget.chapters.length,
                 itemBuilder: (_, i) => ChapterListTile(
-                  chapter: widget.chapters[i],
+                  chapter: _chapterAt(i),
                   // The frozen list converts the title when the converter is on
                   // and applies the title rules only when
                   // `AppConfig.tocUiUseReplace` is on (`ChapterListAdapter.kt:78`,
                   // default false), which is what [ContentProcessing.listTitle]
                   // does.
-                  title: processing?.listTitle(widget.chapters[i].name),
+                  title: processing?.listTitle(_chapterAt(i).name),
                   selected: i == index,
                   onTap: () => Navigator.pop(context, i),
                 ),
@@ -692,12 +797,12 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
         title: Text(widget.book.title),
         actions: [
           IconButton(
-            onPressed: busy ? null : openScriptSettings,
+            onPressed: _navigationBlocked ? null : openScriptSettings,
             tooltip: l10n.readerScriptTitle,
             icon: const Icon(Icons.translate),
           ),
           TextButton.icon(
-            onPressed: busy ? null : chooseChapter,
+            onPressed: _navigationBlocked ? null : chooseChapter,
             icon: const Icon(Icons.list),
             label: Text(l10n.tableOfContentsAction),
           ),
@@ -759,17 +864,21 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
                 spacing: 16,
                 children: [
                   OutlinedButton(
-                    onPressed: busy || index == 0
+                    onPressed: _navigationBlocked || index == 0
                         ? null
                         : () => load(index - 1, 0),
                     child: Text(l10n.previousChapter),
                   ),
                   TextButton(
-                    onPressed: busy ? null : () => load(index, offset),
+                    onPressed: _navigationBlocked
+                        ? null
+                        : () => load(index, offset),
                     child: Text(l10n.reloadChapter),
                   ),
                   FilledButton(
-                    onPressed: busy || index + 1 == widget.chapters.length
+                    onPressed:
+                        _navigationBlocked ||
+                            index + 1 == widget.chapters.length
                         ? null
                         : () => load(index + 1, 0),
                     child: Text(l10n.nextChapter),

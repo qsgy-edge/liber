@@ -56,6 +56,25 @@ class SourceUrlOptions {
   bool get isPost => method == 'POST';
 }
 
+final class SourceRelativeOptionUrlError extends FormatException {
+  const SourceRelativeOptionUrlError() : super('正文 URL 选项 js 必须返回绝对地址');
+}
+
+/// A null script result keeps the original input. For ordinary content,
+/// the frozen request builder consumes a replacement without a base URL.
+String sourceUrlOptionTarget(
+  String original,
+  Object? result, {
+  required bool requireAbsolute,
+}) {
+  if (result == null) return original;
+  final text = result.toString();
+  if (requireAbsolute && !(Uri.tryParse(text)?.hasScheme ?? false)) {
+    throw const SourceRelativeOptionUrlError();
+  }
+  return text;
+}
+
 /// Options that need a request path this product does not have.
 const _unsupportedUrlOptions = <String, String>{
   'type': 'type 选项属于 WebView/表单上传路径',
@@ -489,14 +508,67 @@ int? sourceUrlOptionBoundaryOf(String address) =>
 /// option tail.
 ///
 /// The frozen `AnalyzeUrl.analyzeUrl` computes its `urlNoOption` the same way
-/// for every stage, so text that was stored as a chapter's own address (the
-/// frozen `BookChapter.url`) turns back into the URL a request targets.
-String sourceUrlTargetOf(String address) => splitSourceUrlOptions(address).path;
+/// for every stage. The catalog only locates the target; a request validates
+/// the option tail when it analyzes the complete address.
+String sourceUrlTargetOf(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  return (boundary == null ? address : address.substring(0, boundary)).trim();
+}
 
-/// The `,{…}` option tail of an address text verbatim, or an empty string when
-/// it has none. Used by the row that persists an address text.
-String sourceUrlOptionTailOf(String address) =>
-    splitSourceUrlOptions(address).tail;
+/// The `,{…}` option tail verbatim, without validating a saved chapter's options.
+String sourceUrlOptionTailOf(String address) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  return boundary == null ? '' : address.substring(boundary);
+}
+
+/// Resolves the chapter target without reading its options. Keep the exact
+/// tail for storage; title analysis uses the delimiter from `getAbsoluteURL`.
+String sourceAbsoluteRequestText(
+  Uri base,
+  String address, {
+  bool normalizeOptionSeparator = false,
+  String? inheritAuthorityFrom,
+}) {
+  final boundary = sourceUrlOptionBoundaryOf(address);
+  final target = boundary == null ? address : address.substring(0, boundary);
+  final resolvedTarget = sourceUrlTextResolved(base, target);
+  final path = inheritAuthorityFrom == null
+      ? resolvedTarget
+      : _withInheritedAuthority(
+          base,
+          target,
+          resolvedTarget,
+          inheritAuthorityFrom,
+        );
+  if (boundary == null) return path;
+  final tail = normalizeOptionSeparator
+      ? ',${address.substring(address.indexOf('{', boundary))}'
+      : address.substring(boundary);
+  return '$path$tail';
+}
+
+// A retained TOC has the original authority. Leave the existing resolved path
+// and query alone: the original base path may have escaped dot segments.
+String _withInheritedAuthority(
+  Uri base,
+  String target,
+  String resolved,
+  String baseText,
+) {
+  if (_javaUrlEdgeText(target).startsWith('//') ||
+      Uri.tryParse(sourceKotlinTrim(target))?.hasScheme == true) {
+    return resolved;
+  }
+  final literalOrigin = sourceRequestOrigin(base, baseText);
+  final canonicalOrigin = '${base.scheme}://${base.authority}';
+  if (literalOrigin == null ||
+      !resolved.startsWith(canonicalOrigin) ||
+      Uri.tryParse(literalOrigin) != Uri.tryParse(canonicalOrigin)) {
+    return resolved;
+  }
+  final authority = literalOrigin.substring(literalOrigin.indexOf('://') + 3);
+  return '${base.scheme}://$authority${resolved.substring(canonicalOrigin.length)}';
+}
 
 /// The request facts a target conversion reads from an address text's own
 /// `,{…}` option tail: the method the frozen request would use, the charset its
@@ -986,6 +1058,20 @@ String sourceUrlTextResolved(Uri base, String raw, {String? rawBase}) {
   if (outputQuery != null) output.write('?$outputQuery');
   if (fragment != null) output.write('#$fragment');
   return output.toString();
+}
+
+/// `AnalyzeUrl` binds the site root before the request's option script runs.
+/// Keep the resolved authority text, including an explicitly written port.
+String? sourceRequestOrigin(Uri base, String path) {
+  final text = sourceUrlTextResolved(base, path);
+  final origin = RegExp(
+    r'^https?://[^/?#]+',
+    caseSensitive: false,
+  ).firstMatch(text)?.group(0);
+  if (origin == null || Uri.tryParse(origin)?.host.isNotEmpty != true) {
+    return null;
+  }
+  return origin;
 }
 
 /// The frozen `AnalyzeRule.getString(rule, isUrl = true)` text for one finished

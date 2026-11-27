@@ -8,6 +8,7 @@ import '../source/html_source_pipeline.dart';
 import '../source/js_source_runtime.dart' show variableMapOf, variableTextOf;
 import '../source/json_source_pipeline.dart' show SourceChapter;
 import '../source/source_host_state.dart';
+import '../source/source_url_rules.dart' show sourceKotlinIsBlank;
 import 'database.dart';
 import 'host_state.dart';
 import 'ids.dart';
@@ -48,6 +49,7 @@ class ShelfEntry {
     this.source,
     this.chapters = const <BookChapter>[],
     this.progress,
+    this.chapterCatalogRevision,
   });
 
   final ShelfBook book;
@@ -58,6 +60,9 @@ class ShelfEntry {
 
   final List<BookChapter> chapters;
   final ReadingProgress? progress;
+
+  /// The store revision at which the chapter list was obtained.
+  final int? chapterCatalogRevision;
 
   String get id => book.id;
   String get title => book.title;
@@ -157,38 +162,40 @@ class ShelfService {
   /// (#53) stays in this list, marked by [ShelfEntry.sourceMissing]: the shelf
   /// keeps showing the record it has instead of dropping the row, which is what
   /// lets the same URL resolve it again.
-  Future<List<ShelfEntry>> onlineShelf() async =>
-      _entries(await store.shelf(kind: 'network', hasSource: true));
+  Future<List<ShelfEntry>> onlineShelf() => store.transaction(
+    () async => _entries(await store.shelf(kind: 'network', hasSource: true)),
+  );
 
   /// The shelf rows nothing can open: no source resolves them, and the local
   /// library does not own them either. They carry a title and a position and
   /// nothing else, so the shelf lists them as the records they are.
-  Future<List<ShelfEntry>> migratedBooks() async {
+  Future<List<ShelfEntry>> migratedBooks() => store.transaction(() async {
     final local = {for (final book in await store.localBooks()) book.id};
     final rows = (await store.shelf(
       hasSource: false,
-    )).where((book) => !local.contains(book.id)).toList();
+    )).where((book) => !local.contains(book.id));
     return _entries(rows);
-  }
+  });
 
   /// The book a source URL and book URL resolve to (D2's natural key), or null
   /// when the space does not have it.
-  Future<ShelfEntry?> find(String bookSourceUrl, String bookUrl) async {
-    final book = await store.bookByNaturalKey(bookSourceUrl, bookUrl);
-    return book == null ? null : _entry(book);
-  }
+  Future<ShelfEntry?> find(String bookSourceUrl, String bookUrl) =>
+      store.transaction(() async {
+        final book = await store.bookByNaturalKey(bookSourceUrl, bookUrl);
+        return book == null ? null : _entry(book);
+      });
 
   /// What "continue reading" resumes: the position written last. The JSON
   /// store's single `last` pointer has no column of its own — #18's import
   /// reports that as a loss — but the timestamp the reader writes answers the
   /// same question.
-  Future<ShelfEntry?> lastRead() async {
+  Future<ShelfEntry?> lastRead() => store.transaction(() async {
     final progress = await store.latestProgress();
     if (progress == null) return null;
     final book = await store.bookById(progress.bookId);
     if (book == null || book.sourceRef == null) return null;
     return _entry(book);
-  }
+  });
 
   // --- Writing -------------------------------------------------------------
 
@@ -197,7 +204,7 @@ class ShelfService {
   /// The natural key decides identity, so a re-add keeps the row it had — its
   /// chapters and its progress included — and only a new book is appended to
   /// the shelf order.
-  Future<void> add(
+  Future<({String bookId, int? revision})> add(
     Map<String, dynamic> source,
     HtmlBook book, [
     List<SourceChapter> chapters = const <SourceChapter>[],
@@ -220,9 +227,10 @@ class ShelfService {
         shelved: const Value(true),
       ),
     );
-    if (chapters.isNotEmpty) {
-      await store.putChapters(row.id, _chapterRows(row.id, chapters));
-    }
+    final revision = chapters.isEmpty
+        ? null
+        : await store.putChapters(row.id, _chapterRows(row.id, chapters));
+    return (bookId: row.id, revision: revision);
   }
 
   /// The book a source URL and book URL resolve to, created *off* the shelf
@@ -238,18 +246,79 @@ class ShelfService {
   Future<String> ensureBook(Map<String, dynamic> source, HtmlBook book) async =>
       (await _ensureBook(source, book, shelved: false)).id;
 
+  /// Returns the name to keep in the catalog, or null if publication no longer
+  /// belongs to this read. An off-shelf read can hand the name to [add].
+  Future<String?> saveChapterTitle({
+    required String bookId,
+    required String sourceRef,
+    required HtmlBook book,
+    required SourceChapter chapter,
+    required int chapterIndex,
+    required String title,
+    required bool Function() isCurrent,
+  }) async {
+    if (sourceKotlinIsBlank(title) || !isCurrent()) return null;
+    return store.transaction(() async {
+      final owner = await store.bookById(bookId);
+      if (owner == null ||
+          owner.sourceRef != sourceRef ||
+          !matchesBookIdentity(owner.sourceBookUrl, book.identityAddress) ||
+          !isCurrent()) {
+        return null;
+      }
+      final row = await store.chapterByKey(bookId, chapter.progressKey);
+      if (row == null) {
+        if (owner.shelved || await store.hasChapters(bookId) || !isCurrent()) {
+          return null;
+        }
+        return title;
+      }
+      final address = chapter.persistedAddress;
+      if (!isCurrent() ||
+          row.chapterIndex != chapterIndex ||
+          row.name != chapter.name ||
+          (row.url ?? row.chapterKey) != address ||
+          row.tag != chapter.tag ||
+          row.isVolume != chapter.isVolume ||
+          (row.rendersTagAsContent != null &&
+              row.rendersTagAsContent != chapter.rendersTagAsContent) ||
+          row.isVip != chapter.isVip ||
+          row.isPay != chapter.isPay) {
+        return null;
+      }
+      if (row.name == title) return title;
+      await store.updateChapterName(
+        row,
+        title,
+        rendersTagAsContent: row.isVolume && row.rendersTagAsContent == null
+            ? chapter.rendersTagAsContent
+            : null,
+      );
+      if (!isCurrent()) throw const SourceRequestCancelled();
+      return title;
+    });
+  }
+
   /// Refreshes a book's metadata and replaces its TOC. Membership, position and
   /// progress stay where they are: a refresh is not a re-add.
-  Future<void> updateCatalog(
+  Future<int?> updateCatalog(
     String bookSourceUrl,
     HtmlBook book,
-    List<SourceChapter> chapters,
-  ) async {
+    List<SourceChapter> chapters, {
+    String? expectedBookId,
+    int? expectedRevision,
+  }) => store.transaction(() async {
     final existing = await store.bookByNaturalKey(
       bookSourceUrl,
       book.identityAddress,
     );
-    if (existing == null) return;
+    if ((expectedBookId != null && existing?.id != expectedBookId) ||
+        (existing != null &&
+            expectedRevision != null &&
+            !store.isChapterCatalogCurrent(existing.id, expectedRevision))) {
+      throw const SourceRequestCancelled();
+    }
+    if (existing == null) return null;
     await store.putBook(
       BooksCompanion(
         id: Value(existing.id),
@@ -265,8 +334,8 @@ class ShelfService {
             : Value(book.variable),
       ),
     );
-    await store.putChapters(existing.id, _chapterRows(existing.id, chapters));
-  }
+    return store.putChapters(existing.id, _chapterRows(existing.id, chapters));
+  });
 
   /// Moves a shelved network book onto another source's copy of the same book,
   /// keeping the row the reader already has.
@@ -324,28 +393,30 @@ class ShelfService {
       if (isCancelled?.call() == true) throw const SourceRequestCancelled();
     }
 
-    final existing = await store.bookById(bookId);
-    if (existing == null) throw StateError('书籍不存在：$bookId');
-    if (existing.kind != 'network') {
-      throw StateError('只有网络书籍可以换源：${existing.title}');
-    }
-    final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
-    if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
-    if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
-    final bookUrl = book.identityAddress;
-    final oldChapters = await store.chaptersOf(bookId);
-    final progress = await store.progressOf(bookId);
-    final oldIndex = progress?.chapterIndex ?? 0;
-    final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
-        ? oldChapters[oldIndex].name
-        : null;
-    final newIndex = mapChapterIndex(
-      oldIndex: oldIndex,
-      oldTitle: oldTitle,
-      newTitles: [for (final chapter in chapters) chapter.name],
-      oldChapterCount: oldChapters.length,
-    );
-    await store.transaction(() async {
+    return store.transaction(() async {
+      final existing = await store.bookById(bookId);
+      if (existing == null) throw StateError('书籍不存在：$bookId');
+      if (existing.kind != 'network') {
+        throw StateError('只有网络书籍可以换源：${existing.title}');
+      }
+      final sourceUrl = '${source['bookSourceUrl'] ?? ''}';
+      if (sourceUrl.isEmpty) throw StateError('书源 URL 不能为空');
+      if (chapters.isEmpty) throw StateError('新书源的目录为空，不能换源');
+      final bookUrl = book.identityAddress;
+      // Map the position from the same transaction that replaces the catalog.
+      // Otherwise a reader can save between this read and publication.
+      final oldChapters = await store.chaptersOf(bookId);
+      final progress = await store.progressOf(bookId);
+      final oldIndex = progress?.chapterIndex ?? 0;
+      final oldTitle = oldIndex >= 0 && oldIndex < oldChapters.length
+          ? oldChapters[oldIndex].name
+          : null;
+      final newIndex = mapChapterIndex(
+        oldIndex: oldIndex,
+        oldTitle: oldTitle,
+        newTitles: [for (final chapter in chapters) chapter.name],
+        oldChapterCount: oldChapters.length,
+      );
       final existingSource = await store.sourceByUrl(sourceUrl);
       final sourceRow = existingSource ?? await store.putSourceJson(source);
       final clash = await store.bookByNaturalKey(sourceUrl, bookUrl);
@@ -382,7 +453,7 @@ class ShelfService {
         await store.putProgress(
           ProgressCompanion(
             bookId: Value(bookId),
-            chapterKey: Value(chapters[newIndex].storeKey),
+            chapterKey: Value(chapters[newIndex].progressKey),
             chapterIndex: Value(newIndex),
             textOffset: Value(progress.textOffset),
             // The line fields describe a position inside the *old* source's
@@ -403,9 +474,10 @@ class ShelfService {
       // aborts it before it completes: the transaction rolls back the rows it
       // already wrote, so the old book, its chapters and its progress stay as
       // they were.
+      final entry = await _entry((await store.bookById(bookId))!);
       throwIfCancelled();
+      return entry;
     });
-    return _entry((await store.bookById(bookId))!);
   }
 
   /// The candidate carrier an association analysis starts from (#132): the
@@ -575,7 +647,7 @@ class ShelfService {
     Map<String, dynamic> source,
     HtmlBook book, {
     required bool shelved,
-  }) async {
+  }) => store.transaction(() async {
     // A source the space already knows stays as it is: the shelf's job is the
     // book, and an object that arrived from a file must not re-enable a source
     // the user turned off (D7's flags are the product's).
@@ -629,35 +701,34 @@ class ShelfService {
       ),
     );
     return (await store.bookById(id))!;
-  }
+  });
 
-  Future<List<ShelfEntry>> _entries(List<ShelfBook> books) async {
-    final entries = <ShelfEntry>[];
-    for (final book in books) {
-      entries.add(await _entry(book));
-    }
-    return entries;
-  }
+  Future<List<ShelfEntry>> _entries(Iterable<ShelfBook> books) async => [
+    for (final book in books) await _entry(book),
+  ];
 
+  // Called under the same store transaction that read or wrote the book.
   Future<ShelfEntry> _entry(ShelfBook book) async {
     final sourceRef = book.sourceRef;
+    final source = sourceRef == null
+        ? null
+        : await store.sourceByUrl(sourceRef);
     return ShelfEntry(
       book: book,
-      source: sourceRef == null ? null : await store.sourceByUrl(sourceRef),
+      source: source,
       chapters: await store.chaptersOf(book.id),
       progress: await store.progressOf(book.id),
+      chapterCatalogRevision: store.chapterCatalogRevision,
     );
   }
 
   /// A network chapter's key is its URL (D4): progress refers to the chapter,
   /// not to a position in the TOC, which drifts when the TOC changes.
   ///
-  /// The key stays the bare request target, while `url` keeps the address text
-  /// with that target resolved and the TOC rule's option tail kept — the frozen
-  /// `BookChapter.url` shape — because the content request parses its options
-  /// from it (#58). A row written before this holds a bare target there, which
-  /// is address text with no options and parses to itself, so no migration is
-  /// needed and no progress key drifts.
+  /// A fresh TOC derives the key from the target and keeps the request text,
+  /// including its options, in `url` (#58). Republishing a reopened catalog
+  /// preserves both values independently so the progress key and request form
+  /// cannot change just from reopening.
   ///
   /// A volume the rules left without a URL has no target: its key and its
   /// address text are both the frozen identity text `title + index`
@@ -669,12 +740,13 @@ class ShelfService {
     for (var index = 0; index < chapters.length; index++)
       BookChapter(
         bookId: bookId,
-        chapterKey: chapters[index].storeKey,
+        chapterKey: chapters[index].progressKey,
         name: chapters[index].name,
         url: chapters[index].persistedAddress,
         chapterIndex: index,
         tag: chapters[index].tag,
         isVolume: chapters[index].isVolume,
+        rendersTagAsContent: chapters[index].catalogReadRoute,
         isVip: chapters[index].isVip,
         isPay: chapters[index].isPay,
         variable: chapters[index].variable,

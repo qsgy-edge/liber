@@ -28,13 +28,15 @@ String markTarget(String text, ConvertTarget target) =>
 /// pending bridge work; the rule semantics have their own coverage in
 /// `html_rule_adapter_test.dart` and in the HTML pipeline test.
 class ScriptedPipeline extends HtmlSourcePipeline {
-  ScriptedPipeline({this.gate})
+  ScriptedPipeline({this.gate, this.contentTitle, this.secondBody})
     : super(const {
         'bookSourceUrl': 'https://example.test',
       }, _UnusedTransport());
 
   /// Holds the second chapter response so the loading header can be observed.
   final Completer<void>? gate;
+  String? contentTitle;
+  final String? secondBody;
   int calls = 0;
 
   /// How many chapters were fetched, whatever the gate is doing: the count a
@@ -55,9 +57,40 @@ class ScriptedPipeline extends HtmlSourcePipeline {
     nextChapterUrls.add(nextChapterUrl);
     if (gate != null && calls++ > 0) await gate!.future;
     return HtmlChapterBody(
-      List.generate(60, (i) => '${chapter.url} 第$i段 中文内容。').join('\n'),
+      (fetches > 1 ? secondBody : null) ??
+          List.generate(60, (i) => '${chapter.url} 第$i段 中文内容。').join('\n'),
       1,
+      title: contentTitle,
     );
+  }
+}
+
+class _OpenGateStore extends SpaceStore {
+  _OpenGateStore(super.db, this.gate);
+  final Completer<void> gate;
+  bool waiting = false;
+
+  @override
+  Future<List<ReplaceRule>> replaceRules() async {
+    waiting = true;
+    await gate.future;
+    return super.replaceRules();
+  }
+}
+
+class _ScriptGateStore extends SpaceStore {
+  _ScriptGateStore(super.db);
+  Completer<void>? settingGate;
+  var blocked = false;
+
+  @override
+  Future<String?> setting(String key, {String bookId = ''}) async {
+    final gate = settingGate;
+    if (key == ReaderScriptSetting.key && bookId.isNotEmpty && gate != null) {
+      blocked = true;
+      await gate.future;
+    }
+    return super.setting(key, bookId: bookId);
   }
 }
 
@@ -192,6 +225,598 @@ void main() {
     },
   );
 
+  for (final replaceCatalog in [false, true]) {
+    testWidgets(
+      replaceCatalog
+          ? 'a queued reader position cannot update a replaced catalog'
+          : 'leaving the reader preserves a queued visible position',
+      (tester) async {
+        const source = {'bookSourceUrl': sourceUrl};
+        final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+        final chapter = SourceChapter('第一章', Uri.parse('$sourceUrl/1'));
+        await shelf.add(source, book, [chapter]);
+        await tester.pumpWidget(
+          localizedApp(
+            home: OnlineReaderPage(
+              pipeline: ScriptedPipeline(),
+              book: book,
+              bookId: bookId,
+              chapters: [chapter],
+              service: shelf,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final before = (await store.progressOf(bookId))!;
+        expect(before.textOffset, 0);
+
+        final locked = Completer<void>();
+        final release = Completer<void>();
+        final blocker = store.transaction(() async {
+          locked.complete();
+          await release.future;
+          if (replaceCatalog) {
+            await shelf.updateCatalog(sourceUrl, book, [
+              chapter.withName('刷新后的目录标题'),
+            ]);
+          }
+        });
+        await locked.future;
+        try {
+          await tester.drag(
+            find.byType(SingleChildScrollView),
+            const Offset(0, -800),
+          );
+          await tester.pumpAndSettle();
+          await tester.pumpWidget(const SizedBox());
+        } finally {
+          release.complete();
+          await blocker;
+        }
+        await store.transaction(() async {});
+
+        final position = (await store.progressOf(bookId))!;
+        expect(position.chapterKey, chapter.progressKey);
+        if (replaceCatalog) {
+          expect((await store.chaptersOf(bookId)).single.name, '刷新后的目录标题');
+          expect(position, before);
+        } else {
+          expect(position.textOffset, greaterThan(0));
+        }
+      },
+    );
+  }
+
+  testWidgets('reader saves the source title on the chapter it loaded', (
+    tester,
+  ) async {
+    const source = {'bookSourceUrl': sourceUrl};
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+    final chapters = [
+      SourceChapter('第一章', Uri.parse('$sourceUrl/1'), variable: 'first'),
+      SourceChapter.fromAddress(
+        '第二章',
+        '$sourceUrl/2,{"method":"GET"}',
+        bookUrl: Uri.parse(bookUrl),
+        variable: 'second',
+      ),
+    ];
+    await shelf.add(source, book, chapters);
+    final before = (await shelf.find(sourceUrl, bookUrl))!.chapters;
+    List<SourceChapter>? handed;
+    Widget page(String? title, int offset) => localizedApp(
+      home: OnlineReaderPage(
+        pipeline: ScriptedPipeline(contentTitle: title),
+        book: book,
+        bookId: bookId,
+        chapters: chapters,
+        service: shelf,
+        chapterIndex: 1,
+        textOffset: offset,
+        onEntityState: (_, updated) => handed = updated,
+      ),
+    );
+    await tester.pumpWidget(page(null, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -800),
+    );
+    await tester.pumpAndSettle();
+    final resumeOffset = (await store.progressOf(bookId))!.textOffset;
+    expect(resumeOffset, greaterThan(0));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(page('正文标题', resumeOffset));
+    await tester.pumpAndSettle();
+
+    final reopened = (await ShelfService(store).find(sourceUrl, bookUrl))!;
+    expect(reopened.chapters, [before[0], before[1].copyWith(name: '正文标题')]);
+    expect(reopened.chapterKey, before[1].chapterKey);
+    expect(reopened.textOffset, resumeOffset);
+    expect(handed!.map((chapter) => chapter.name), ['第一章', '正文标题']);
+    expect(find.text('正文标题'), findsOneWidget);
+  });
+
+  for (final (label, title, expected) in [
+    ('U+0085', '\u0085', '\u0085'),
+    ('U+001C', '\u001C', '目录标题'),
+  ]) {
+    testWidgets('reader content title uses selected blankness: $label', (
+      tester,
+    ) async {
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final chapter = SourceChapter('目录标题', Uri.parse('$sourceUrl/1'));
+      await shelf.add(source, book, [chapter]);
+      final before = (await store.chaptersOf(bookId)).single;
+      List<SourceChapter>? handed;
+
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: ScriptedPipeline(contentTitle: title),
+            book: book,
+            bookId: bookId,
+            chapters: [chapter],
+            service: shelf,
+            onEntityState: (_, updated) => handed = updated,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final row = (await store.chaptersOf(bookId)).single;
+      expect(row.name.codeUnits, expected.codeUnits);
+      expect(row, before.copyWith(name: expected));
+      expect(handed!.single.name, expected);
+      expect(find.text(expected), findsOneWidget);
+    });
+  }
+
+  test(
+    'title publication leaves a replaced chapter and another source alone',
+    () async {
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final old = SourceChapter('目录标题', Uri.parse('$sourceUrl/1'));
+      final current = SourceChapter.fromAddress(
+        old.name,
+        '$sourceUrl/1,{"method":"GET"}',
+        bookUrl: book.url,
+        variable: 'current',
+      );
+      await shelf.add(source, book, [current]);
+
+      Future<void> publish(String owner, SourceChapter chapter, bool current) =>
+          shelf.saveChapterTitle(
+            bookId: bookId,
+            sourceRef: owner,
+            book: book,
+            chapter: chapter,
+            chapterIndex: 0,
+            title: '正文标题',
+            isCurrent: () => current,
+          );
+
+      final before = (await shelf.find(sourceUrl, bookUrl))!.chapters;
+      await publish(sourceUrl, old, true);
+      await publish('https://other.test', current, true);
+      await publish(sourceUrl, current, false);
+      expect((await shelf.find(sourceUrl, bookUrl))!.chapters, before);
+    },
+  );
+
+  testWidgets('reading an imported relative chapter updates its name only', (
+    tester,
+  ) async {
+    const address = '../chapter/1,{"webView":true}';
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+    await addChapters([('目录标题', address)]);
+    final before = (await store.chaptersOf(bookId)).single;
+    final chapter = SourceChapter.fromAddress(
+      before.name,
+      address,
+      bookUrl: book.url,
+      chapterKey: before.chapterKey,
+    );
+    await tester.pumpWidget(
+      localizedApp(
+        home: OnlineReaderPage(
+          pipeline: ScriptedPipeline(contentTitle: '正文标题'),
+          book: book,
+          bookId: bookId,
+          chapters: [chapter],
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      (await store.chaptersOf(bookId)).single,
+      before.copyWith(name: '正文标题'),
+    );
+  });
+
+  for (final (sameRow, title) in [
+    (false, '晚到标题'),
+    (true, '晚到标题'),
+    (true, null),
+  ]) {
+    testWidgets(
+      'a pending read cannot publish after replacement (${sameRow ? 'same fields' : 'updated metadata'}, ${title == null ? 'no title' : 'with title'})',
+      (tester) async {
+        const source = {'bookSourceUrl': sourceUrl};
+        final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+        final uri = Uri.parse('$sourceUrl/1');
+        final before = SourceChapter('目录标题', uri, tag: '旧标记');
+        final after = SourceChapter('目录标题', uri, tag: sameRow ? '旧标记' : '刷新标记');
+        await shelf.add(source, book, [before]);
+        await shelf.saveProgress(
+          bookId,
+          chapterKey: before.progressKey,
+          chapterIndex: 0,
+          textOffset: 348,
+        );
+        final progress = await store.progressOf(bookId);
+        final gate = Completer<void>();
+        final pipeline = ScriptedPipeline(gate: gate, contentTitle: title)
+          ..calls = 1;
+        var publications = 0;
+        await tester.pumpWidget(
+          localizedApp(
+            home: OnlineReaderPage(
+              pipeline: pipeline,
+              book: book,
+              bookId: bookId,
+              chapters: [before],
+              service: shelf,
+              onEntityState: (_, _) => publications++,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(pipeline.fetches, 1);
+        await shelf.updateCatalog(sourceUrl, book, [after]);
+        final freshRow = (await store.chaptersOf(bookId)).single;
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect((await store.chaptersOf(bookId)).single, freshRow);
+        expect(publications, 0);
+        expect(await store.progressOf(bookId), progress);
+      },
+    );
+  }
+
+  testWidgets(
+    'replacement while the reader opens cannot authorize an old catalog',
+    (tester) async {
+      final openGate = Completer<void>();
+      final gatedStore = _OpenGateStore(
+        SpaceDatabase(NativeDatabase.memory()),
+        openGate,
+      );
+      addTearDown(gatedStore.close);
+      final gatedShelf = ShelfService(gatedStore);
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final chapter = SourceChapter('目录标题', Uri.parse('$sourceUrl/1'));
+      await gatedShelf.add(source, book, [chapter]);
+      final entry = (await gatedShelf.find(sourceUrl, bookUrl))!;
+      final pipeline = ScriptedPipeline(contentTitle: '旧正文标题');
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: pipeline,
+            book: book,
+            bookId: entry.id,
+            chapters: [chapter],
+            service: gatedShelf,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(gatedStore.waiting, isTrue);
+      expect(pipeline.fetches, 0);
+      await gatedShelf.updateCatalog(sourceUrl, book, [chapter]);
+      openGate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        (await gatedStore.chaptersOf(entry.id)).single,
+        entry.chapters.single,
+      );
+      expect(await gatedStore.progressOf(entry.id), isNull);
+    },
+  );
+
+  testWidgets(
+    'a shelf entry opened after catalog replacement cannot rename that catalog',
+    (tester) async {
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final chapter = SourceChapter('目录标题', Uri.parse('$sourceUrl/1'));
+      await shelf.add(source, book, [chapter]);
+      final entry = (await shelf.find(sourceUrl, bookUrl))!;
+      await shelf.updateCatalog(sourceUrl, book, [chapter]);
+      final pipeline = ScriptedPipeline(contentTitle: '旧正文标题');
+      await tester.pumpWidget(
+        localizedApp(
+          home: HtmlSourceBrowser(
+            source: source,
+            keyword: '',
+            service: shelf,
+            resume: entry,
+            pipeline: pipeline,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(OnlineReaderPage), findsOneWidget);
+      expect((await store.chaptersOf(bookId)).single, entry.chapters.single);
+      expect(await store.progressOf(bookId), isNull);
+    },
+  );
+
+  testWidgets(
+    'replacement while idle prevents a second chapter from publishing',
+    (tester) async {
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final chapters = [
+        SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+        SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
+      ];
+      await shelf.add(source, book, chapters);
+      final pipeline = ScriptedPipeline(contentTitle: '正文标题');
+      var reports = 0;
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: pipeline,
+            book: book,
+            bookId: bookId,
+            chapters: chapters,
+            service: shelf,
+            onEntityState: (_, _) => reports++,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(reports, 1);
+      await shelf.updateCatalog(sourceUrl, book, [
+        chapters.first.withName('正文标题'),
+        chapters.last,
+      ]);
+      final refreshed = await store.chaptersOf(bookId);
+      await tester.tap(find.text('下一章'));
+      await tester.pumpAndSettle();
+      expect(await store.chaptersOf(bookId), refreshed);
+      expect(reports, 1);
+      expect(
+        (await store.progressOf(bookId))!.chapterKey,
+        chapters.first.progressKey,
+      );
+    },
+  );
+
+  testWidgets(
+    'script changes cannot render a rejected chapter as the previous chapter',
+    (tester) async {
+      tester.binding.platformDispatcher.localeTestValue = const Locale(
+        'zh',
+        'CN',
+      );
+      addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      final chapters = [
+        SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+        SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
+      ];
+      await shelf.add(source, book, chapters);
+      final gate = Completer<void>();
+      final pipeline = ScriptedPipeline(
+        gate: gate,
+        contentTitle: '正文标题',
+        secondBody: 'REJECTED CHAPTER 正文',
+      );
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: pipeline,
+            book: book,
+            bookId: bookId,
+            chapters: chapters,
+            service: shelf,
+            convert: markTarget,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -800),
+      );
+      await tester.pumpAndSettle();
+      final progress = (await store.progressOf(bookId))!;
+      expect(progress.textOffset, greaterThan(0));
+      await tester.tap(find.text('下一章'));
+      await tester.pump();
+      expect(pipeline.fetches, 2);
+      await shelf.updateCatalog(sourceUrl, book, chapters);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('REJECTED CHAPTER'), findsNothing);
+      await tester.tap(find.byTooltip('中文转换'));
+      await tester.pumpAndSettle();
+      final choice = find.byKey(
+        const ValueKey('reader-script-book-traditional_generic'),
+      );
+      await tester.scrollUntilVisible(choice, 300);
+      await tester.tap(choice);
+      await tester.pumpAndSettle();
+      await tapBack(tester);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('https://example.test/1 第'), findsWidgets);
+      expect(find.textContaining('<<traditionalGeneric>>'), findsWidgets);
+      expect(find.textContaining('REJECTED CHAPTER'), findsNothing);
+      expect(await store.progressOf(bookId), progress);
+      expect(pipeline.fetches, 2);
+    },
+  );
+
+  for (final shelved in [true, false]) {
+    testWidgets(
+      'volume saves a URL-prefix title and stays readable on ${shelved ? 'shelf' : 'add'}',
+      (tester) async {
+        const address = '$sourceUrl/c/1,{"method":"GET"}';
+        const title = '$sourceUrl/c';
+        const catalogName = '目录卷';
+        const source = {'bookSourceUrl': sourceUrl};
+        final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+        final chapter = SourceChapter(
+          catalogName,
+          Uri.parse('$sourceUrl/c/1'),
+          rawAddress: '/c/1,{"method":"GET"}',
+          isVolume: true,
+          tag: '卷标',
+          isVip: true,
+          fetchContext: (requestAddress: address, retainedPage: null),
+        );
+        if (shelved) await shelf.add(source, book, [chapter]);
+        final before = await store.chaptersOf(bookId);
+        List<SourceChapter>? handed;
+        await tester.pumpWidget(
+          localizedApp(
+            home: OnlineReaderPage(
+              pipeline: ScriptedPipeline(contentTitle: title),
+              book: book,
+              bookId: bookId,
+              chapters: [chapter],
+              service: shelf,
+              onEntityState: (_, updated) => handed = updated,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(title), findsOneWidget);
+        expect(find.textContaining('第0段'), findsOneWidget);
+        final returned = handed!.single;
+        expect(returned.name, title);
+        expect(returned.progressKey, '$sourceUrl/c/1');
+        expect(returned.address, '/c/1,{"method":"GET"}');
+        expect(returned.fetchContext, same(chapter.fetchContext));
+        if (shelved) {
+          expect(
+            (await store.chaptersOf(bookId)).single,
+            before.single.copyWith(name: title),
+          );
+        } else {
+          expect(await store.chaptersOf(bookId), isEmpty);
+          await shelf.add(source, book, handed!);
+        }
+        final reopened = (await shelf.find(sourceUrl, bookUrl))!;
+        final row = reopened.chapters.single;
+        expect(row.name, title);
+        expect(row.url, address);
+        expect(row.tag, '卷标');
+        expect(row.isVip, isTrue);
+        expect(reopened.chapterKey, '$sourceUrl/c/1');
+        final reopenedChapter = SourceChapter.fromAddress(
+          row.name,
+          row.url!,
+          bookUrl: book.url,
+          chapterKey: row.chapterKey,
+          tag: row.tag,
+          isVolume: row.isVolume,
+          rendersTagAsContent: row.rendersTagAsContent,
+        );
+        expect(row.rendersTagAsContent, isFalse);
+        expect(reopenedChapter.rendersTagAsContent, isFalse);
+      },
+    );
+  }
+
+  testWidgets(
+    're-adding a legacy volume after two title changes keeps its read route',
+    (tester) async {
+      const key = '$sourceUrl/c/1';
+      const request = '$key,{"method":"GET"}';
+      const original = '目录卷';
+      const collision = '$sourceUrl/c';
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      await store.putChapters(bookId, [
+        BookChapter(
+          bookId: bookId,
+          chapterKey: key,
+          name: original,
+          url: request,
+          chapterIndex: 0,
+          isVolume: true,
+          isVip: false,
+          isPay: false,
+        ),
+      ]);
+      final chapter = SourceChapter.fromAddress(
+        original,
+        request,
+        bookUrl: book.url,
+        chapterKey: key,
+        isVolume: true,
+      );
+      final pipeline = ScriptedPipeline(contentTitle: collision);
+      List<SourceChapter>? handoff;
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: pipeline,
+            book: book,
+            bookId: bookId,
+            chapters: [chapter],
+            service: shelf,
+            onEntityState: (_, chapters) => handoff = chapters,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      var row = (await store.chaptersOf(bookId)).single;
+      expect((row.name, row.rendersTagAsContent), (collision, false));
+      pipeline.contentTitle = original;
+      await tester.tap(find.text('重新加载'));
+      await tester.pumpAndSettle();
+      row = (await store.chaptersOf(bookId)).single;
+      expect((row.name, row.rendersTagAsContent), (original, false));
+      final progress = await store.progressOf(bookId);
+      await shelf.add(source, book, handoff!);
+      expect((await store.chaptersOf(bookId)).single, row);
+      expect(await store.progressOf(bookId), progress);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test('renaming a readable volume does not turn its address into a tag', () {
+    final target = Uri.parse('$sourceUrl/c/1');
+    const address = '/c/1,{"method":"GET"}';
+    final chapter = SourceChapter(
+      '目录卷',
+      target,
+      rawAddress: address,
+      isVolume: true,
+      fetchContext: (
+        requestAddress: '$sourceUrl/c/1,{"method":"GET"}',
+        retainedPage: null,
+      ),
+    );
+    final renamed = chapter.withName('/c/1');
+    expect(renamed.name, '/c/1');
+    expect(renamed.rendersTagAsContent, isFalse);
+    expect(renamed.progressKey, '$sourceUrl/c/1');
+    expect(renamed.persistedAddress, '$sourceUrl/c/1,{"method":"GET"}');
+    expect(renamed.fetchContext, same(chapter.fetchContext));
+    expect(renamed.withVariable('updated').rendersTagAsContent, isFalse);
+  });
+
   testWidgets(
     'reader passes the frozen next-chapter URL, index-0 fallback included',
     (tester) async {
@@ -221,6 +846,42 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('reload cannot overlap a next-chapter fetch', (tester) async {
+    final gate = Completer<void>();
+    final pipeline = ScriptedPipeline(gate: gate);
+    await tester.pumpWidget(
+      localizedApp(
+        home: OnlineReaderPage(
+          pipeline: pipeline,
+          book: HtmlBook(url: Uri.parse(bookUrl), title: '书'),
+          bookId: bookId,
+          chapters: [
+            SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+            SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
+          ],
+          service: shelf,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Both buttons still have their old callbacks until the next frame.
+    await tester.tap(find.text('下一章'));
+    await tester.tap(find.text('重新加载'));
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(pipeline.fetches, 2);
+    expect(find.text('第二章'), findsOneWidget);
+    expect((await store.progressOf(bookId))!.chapterKey, '$sourceUrl/2');
+
+    await tester.tap(find.text('重新加载'));
+    await tester.pumpAndSettle();
+    expect(pipeline.fetches, 3);
+    expect(find.text('第二章'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('reader blanks the chapter name while a chapter loads', (
     tester,
@@ -461,6 +1122,68 @@ void main() {
       reason: '本书覆盖不动安装的选择',
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('conversion lookup cannot race chapter navigation', (
+    tester,
+  ) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale(
+      'zh',
+      'CN',
+    );
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+    final gated = _ScriptGateStore(SpaceDatabase(NativeDatabase.memory()));
+    addTearDown(gated.close);
+    final serviced = ShelfService(gated);
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+    final chapters = [
+      SourceChapter('第一章', Uri.parse('$sourceUrl/1')),
+      SourceChapter('第二章', Uri.parse('$sourceUrl/2')),
+    ];
+    await serviced.add(const {'bookSourceUrl': sourceUrl}, book, chapters);
+    final entry = (await serviced.find(sourceUrl, bookUrl))!;
+    final pipeline = ScriptedPipeline(secondBody: 'SECOND BODY');
+    await tester.pumpWidget(
+      localizedApp(
+        home: OnlineReaderPage(
+          pipeline: pipeline,
+          book: book,
+          bookId: entry.id,
+          chapters: chapters,
+          service: serviced,
+          convert: markTarget,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('中文转换'));
+    await tester.pumpAndSettle();
+    final option = find.byKey(
+      const ValueKey('reader-script-book-traditional_generic'),
+    );
+    await tester.scrollUntilVisible(option, 300);
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    final gate = gated.settingGate = Completer<void>();
+    await tapBack(tester);
+    await tester.pumpAndSettle();
+    expect(gated.blocked, isTrue);
+    expect(find.textContaining('<<simplifiedMainland>>'), findsWidgets);
+    await tester.tap(find.text('下一章'));
+    await tester.pumpAndSettle();
+    final requestsWhileResolving = pipeline.fetches;
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(requestsWhileResolving, 1);
+    expect(find.textContaining('<<traditionalGeneric>>'), findsWidgets);
+    await tester.tap(find.text('下一章'));
+    await tester.pumpAndSettle();
+    expect(pipeline.fetches, 2);
+    expect(
+      find.textContaining('<<traditionalGeneric>>SECOND BODY'),
+      findsOneWidget,
+    );
+    expect((await gated.progressOf(entry.id))!.chapterIndex, 1);
   });
 
   testWidgets('转换失败时页面报错，而不是让异常逃出设置回调', (tester) async {

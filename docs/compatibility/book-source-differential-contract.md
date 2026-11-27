@@ -295,6 +295,82 @@ Liber MUST preserve behavior that a source can observe through requests, state, 
 
 A behavior prohibited by an approved security or data-integrity policy is not silently normalized into a pass. Its fixture receives `policy-rejected`, and every source that requires it remains incompatible.
 
+### Chapter request options and login recovery (#138)
+
+TOC analysis and catalog reopening preserve the complete pre-option chapter
+address and derive its stable key without validating or executing request
+options. An actual HTML or JSON chapter request uses the existing request
+parser and transport for supported options, including POST, body, `js` and
+charset. For the first ordinary HTTP(S) content request (including
+`java.initUrl()` reanalysis), a non-null URL-option `js` result replaces the
+address and must not be relative. A relative result fails before a request is
+sent; it is not resolved against the book, catalog, or redirect target. When
+`java.initUrl()` produces a relative replacement, the next send fails instead
+of falling back to the previous target. A new successful reanalysis can supply
+a valid target. Null leaves the resolved address in place. This does not change
+how chapter links are resolved. Unsupported or invalid options retain their own errors at request
+time. Reusing an eligible retained body does not analyze its address or send a
+request.
+
+On an ordinary connection failure or timeout in the first actual content
+request, a configured `loginCheckJs` runs once with a synthetic response: status
+500, the attempted URL, and the stable diagnostic `connection` or `timeout` as
+the body. This intentionally omits the selected runtime's exception message
+and stack trace. A valid result other than status 500 becomes the first content
+response. A status 500, invalid result, or failed recovery preserves the original
+request diagnostic. Cancellation can still stop recovery, and cancellation, TLS
+trust refusal, redirect limits and invalid request options do not initiate it.
+For a resolved HTTP(S) chapter URL, the recovery hook's `baseUrl` is its
+scheme and authority before the URL-option `js` or an HTTP redirect changes
+its target. This is the initialized `AnalyzeUrl` binding; the synthetic
+response's `url()` still reports the attempted request URL. Sharing a source
+or a TOC does not imply sharing the chapter's origin. This adds no TOC request,
+persistence field, migration, chapter-key change, or change to `fetchContext`.
+Later pages do not run the hook, and other stages and normal HTTP responses
+retain their existing behavior. Compare the actual attempts, state, final body
+and failure category under the named diagnostic difference.
+
+### Content title and catalog name
+
+In Spec A / #138, an ordinary content-title rule error keeps the readable body
+and incoming title, with one diagnostic. Cancellation, an actual timeout, and
+named refusals still propagate. A successful nonblank content title is displayed
+and saved as the existing chapter name, including off-shelf handoff. The TOC
+classifies each volume once for publication: its tag is the content, or the
+reader fetches the body. The stored classification survives renames and
+reopening without changing the chapter key, request text/options, retained body
+handoff, or progress. Rows without a stored classification keep the existing
+inference until a normal TOC publication; an earlier title write records the
+previously inferred route together with the new name. Refresh publishes the
+new TOC names and classifications. The #146 exact index/stored-title check
+still governs variable restoration.
+
+[Named difference (#138)](https://github.com/qsgy-edge/liber/issues/138#issuecomment-7212617132):
+the frozen reference can re-evaluate the address against the new title when
+no cached body exists; Liber keeps the published read route. On the tag-only
+route, Liber still displays the tag, while [the selected reference's source](https://github.com/LegadoTeam/legado/blob/a7d37f1707a70a459ad708f4fe79341d1e42d716/app/src/main/java/io/legado/app/model/webBook/WebBook.kt#L427-L430)
+returns an empty body. Both skip the request. This adds no persistent
+chapter-content cache or prefetch.
+
+### Chapter body image layout (#138)
+
+For the selected body-image scenario, `TEXT` renders the image inline between
+its preceding and following text in reading order. The text and image may wrap
+naturally across lines or pages. The image preserves its source aspect ratio.
+
+- Selected Android reference: require one non-block image column and check the
+  recorded edges of any adjacent text columns on its line. The rendered pixels
+  must match the image column's width and be vertically centered on the line.
+- Windows Flutter reader: center the whole image, without cropping or
+  distortion, at the largest size that fits its inline slot. The slot still
+  participates in line wrapping without covering adjacent text. Unused space
+  on either axis is an accepted Windows difference; the painted pixels need
+  not fill the slot's width.
+
+`DEFAULT`, `FULL`, and `SINGLE` retain their block layout checks. Require the
+four rendered modes and all 20 bound requests; native and Windows evidence
+and the reader progress gate stay separate.
+
 ### TOC chapter-variable restoration
 
 For the selected reference, `BookChapterList.upChapterInfo` restores stored chapter
@@ -429,8 +505,11 @@ attempt and missing return/terminal/cleanup observations remain incomplete after
 recovery. The archived native crash records the timeout path, not a successful
 restart. Selected comparison requires both independently bound producer roles,
 all fifteen product observations, exact successful partition cleanup, and the
-existing named timeout/refusal dispositions; no unexecuted native row is
-promoted. The successful fourteen-case lifetime remains not-run until captured.
+existing named timeout/refusal dispositions. The successful fourteen-case
+lifetime was captured with cleanup verified (golden SHA-256 `93016fc9…`). A
+Windows re-comparison on `9e084f7` recorded 13 `pass`, 0 `fail` and two named
+`notCompared` rows (`timeout` and `refusal`). The timeout witness remains an
+incomplete native observation; neither result establishes other platforms.
 
 ## Verdict Aggregation
 

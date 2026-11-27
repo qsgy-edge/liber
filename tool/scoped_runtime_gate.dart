@@ -224,16 +224,16 @@ Future<void> main(List<String> args) async {
           )).value ==
           true;
 
-      // A never-submitted reservation is released by discard; the same discard
-      // after submission must keep the live execution.
+      // Once discard completes, a never-submitted reservation must be gone.
+      // Discard after submission must keep the live execution.
       final discardedId = await reserveScoped();
-      discardScopedExecutionGlobal(id: discardedId);
+      await discardScopedExecutionGlobal(id: discardedId);
       final discarded = await runScoped(discardedId, '"discarded"');
       checks['discardedReservationRefused'] = discarded is JsError_Bridge;
       final keptId = await reserveScoped();
       final kept = runScoped(keptId, 'fjs.bridge_call("kept")');
       final keptRequest = await enterScoped('kept');
-      discardScopedExecutionGlobal(id: keptId);
+      await discardScopedExecutionGlobal(id: keptId);
       await completeScoped(keptRequest, 'kept');
       checks['discardAfterSubmitKeepsExecution'] = await kept == 'kept';
 

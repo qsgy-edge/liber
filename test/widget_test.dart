@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:liber/main.dart';
 import 'package:liber/settings/interface_language.dart';
+import 'package:liber/source/source_trial_page.dart';
 
 import 'l10n_support.dart';
 
@@ -57,6 +58,81 @@ void defaultAppTest(Directory Function() root) {
     );
     expect(direct.tooltip, '使用系统代理');
     expect(direct.onPressed, isNull);
+  });
+
+  testWidgets('窄屏书架：竖屏不溢出，试读入口可点击', (tester) async {
+    tester.view.physicalSize = const Size(1440, 3200);
+    tester.view.devicePixelRatio = 3.5;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        LiberApp(workspaceRoot: root(), interfaceLanguage: testLocale),
+      );
+      try {
+        expect(tester.takeException(), isNull);
+        await _waitFor(tester, find.text('在线书架'));
+        expect(find.byIcon(Icons.manage_search).hitTestable(), findsOneWidget);
+        final menuLabel = MaterialLocalizations.of(
+          tester.element(find.byType(AppBar)),
+        ).showMenuTooltip;
+        final menu = find.byTooltip(menuLabel).hitTestable();
+        expect(menu, findsOneWidget);
+        await tester.tap(menu);
+        await _pumpFrames(tester);
+        for (final label in ['界面语言', '中文转换', '自动换源', '使用系统代理']) {
+          expect(find.text(label).hitTestable(), findsOneWidget);
+        }
+        await tester.tap(find.text('使用系统代理'));
+        final proxy = find.byKey(const ValueKey('system-proxy-switch'));
+        await _waitFor(tester, proxy);
+        await _pumpFrames(tester);
+        expect(proxy, findsOneWidget);
+        await tester.tap(find.byType(BackButton));
+
+        final trial = find.byIcon(Icons.travel_explore).hitTestable();
+        await _waitFor(tester, trial);
+        expect(trial, findsOneWidget);
+        await tester.tap(trial);
+        await _pumpFrames(tester);
+        expect(find.byType(SourceTrialPage), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+  });
+
+  testWidgets('窄屏书架：更窄时仍显示受控书源卡片和运行按钮', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      LiberApp(workspaceRoot: root(), interfaceLanguage: testLocale),
+    );
+    expect(tester.takeException(), isNull);
+    final run = find.widgetWithText(FilledButton, '运行受控书源');
+    await tester.ensureVisible(run);
+    await tester.pump();
+    expect(run.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('narrow English shelf wraps stage labels at 2x', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      LiberApp(workspaceRoot: root(), interfaceLanguage: const Locale('en')),
+    );
+    final toc = find.text('Table of contents');
+    expect(toc, findsOneWidget);
+    await tester.ensureVisible(toc);
+    await tester.pump();
+    expect(toc.hitTestable(), findsOneWidget);
   });
 
   testWidgets(

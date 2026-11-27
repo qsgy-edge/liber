@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'registrable_domain.dart';
@@ -250,6 +251,12 @@ class SourceEntityVariableDraft implements SourceEntityVariableStore {
   }
 }
 
+typedef _TocChapterHandoff =
+    Map<
+      (String, String, String),
+      ({SourceEntityVariableRow? rawWrite, SourceEntityVariableRow? resolved})
+    >;
+
 /// The book and chapter variable store one pipeline's runtime reads and writes
 /// (#132), composed of the analysis's [base] store and, while a TOC item is
 /// being rebuilt, that item's own chapter scope.
@@ -257,8 +264,8 @@ class SourceEntityVariableDraft implements SourceEntityVariableStore {
 /// [base] is the candidate's private [SourceEntityVariableDraft] when the
 /// analysis defers entity variables and the space's rows otherwise, so the book
 /// half and the chapter half outside a rebuild keep their existing path.
-/// Ordinary TOC item writes are staged until the complete list succeeds; a
-/// deferred analysis never publishes them to the shared host state.
+/// The ordinary TOC hands off item writes and final carrier values only after
+/// the complete list succeeds; the deferred path never publishes either.
 ///
 /// One TOC item is one [beginChapter] scope: its chapter variables start empty —
 /// a read answers only what this item's own rules wrote, never the row a
@@ -270,7 +277,7 @@ class SourceEntityVariableScope implements SourceEntityVariableStore {
   /// The book half and the chapter half outside a TOC item rebuild.
   final SourceEntityVariableStore base;
 
-  /// The row store an ordinary TOC item's chapter write also reaches.
+  /// The row store an ordinary TOC hands its final chapter variables to.
   final SourceHostState? through;
   final List<Map<(String, String, String), String?>> _tocItems = [];
   Map<(String, String, String), String?> _itemWrites = {};
@@ -281,21 +288,37 @@ class SourceEntityVariableScope implements SourceEntityVariableStore {
   /// Keeps writes only for an item that made it into the generated list.
   void recordTocChapter() => _tocItems.add(_itemWrites);
 
-  Future<Map<(String, String, String), String?>> prepareTocHandoff(
-    List<String?> restoredVariables,
+  /// Prepares the handoff without publishing it. The caller checks liveness
+  /// after the last await, then publishes synchronously.
+  Future<void Function()> prepareTocHandoff(
+    String sourceRef,
+    String bookUrl,
+    List<({String key, String? variable, String? restoredVariable})> chapters,
   ) async {
+    final host = through;
+    if (host == null) return _tocItems.clear;
     final writes = <(String, String, String), String?>{};
-    for (var i = 0; i < _tocItems.length; i++) {
+    final seenKeys = <String>{};
+    final repeatedKeys = <String>{};
+    for (var i = 0; i < chapters.length; i++) {
+      final chapter = chapters[i];
       for (final entry in _tocItems[i].entries) {
-        writes[entry.key] = restoredVariables[i] ?? entry.value;
+        writes[entry.key] = chapter.restoredVariable ?? entry.value;
       }
+      if (!seenKeys.add(chapter.key)) repeatedKeys.add(chapter.key);
     }
-    return await through?.prepareTocHandoff(writes) ?? {};
-  }
-
-  void publishTocHandoff(Map<(String, String, String), String?> writes) {
-    through?.publishTocHandoff(writes);
-    _tocItems.clear();
+    // Content reads by resolved row key. A null variable for a unique key is
+    // authoritative; for a repeated key there is no authoritative carrier.
+    final handoff = await host._prepareTocHandoff(writes, {
+      for (final chapter in chapters)
+        (sourceRef, bookUrl, chapter.key): repeatedKeys.contains(chapter.key)
+            ? null
+            : SourceEntityVariableRow(chapter.variable),
+    });
+    return () {
+      host._publishTocHandoff(handoff);
+      _tocItems.clear();
+    };
   }
 
   Map<String, String?>? _item;
@@ -415,31 +438,74 @@ class SourceHostState implements SourceEntityVariableStore {
   /// Without a persistence (a gate, a tool, a test that speaks for no space)
   /// this map is the whole store.
   final Map<(String, String), String?> _unwrittenBookVariables = {};
-  final Map<(String, String, String), String?> _unwrittenChapterVariables = {};
+  // Keep the raw TOC write behind its resolved-key override so an ambiguous
+  // rebuild can drop the override without losing the explicit raw handoff.
+  // A synthesized value without a raw write goes back to absence, not null.
+  final Map<
+    (String, String, String),
+    ({String? variable, bool fromToc, SourceEntityVariableRow? rawTocVariable})
+  >
+  _unwrittenChapterVariables = {};
 
   /// Reads stored chapters only, never the unwritten chapter cache.
   Future<List<({int index, String title, String? variable})>>
   chapterRestorationRows(String sourceRef, String bookUrl) async =>
       await _persistence?.loadChapterRestorationRows(sourceRef, bookUrl) ?? [];
 
-  /// Finds staged item writes without a stored row, without changing the cache.
-  Future<Map<(String, String, String), String?>> prepareTocHandoff(
-    Map<(String, String, String), String?> writes,
+  /// Filters out stored chapter keys without changing the unwritten cache.
+  Future<_TocChapterHandoff> _prepareTocHandoff(
+    Map<(String, String, String), String?> rawWrites,
+    Map<(String, String, String), SourceEntityVariableRow?> resolvedVariables,
   ) async {
-    final result = <(String, String, String), String?>{};
-    for (final entry in writes.entries) {
-      final key = entry.key;
+    final result = _TocChapterHandoff();
+    for (final key in {...rawWrites.keys, ...resolvedVariables.keys}) {
+      final prior = _unwrittenChapterVariables[key];
+      final priorRaw = prior?.rawTocVariable;
+      final resolved = resolvedVariables[key];
+      final rawWrite = rawWrites.containsKey(key)
+          ? SourceEntityVariableRow(rawWrites[key])
+          : null;
+      if (rawWrite == null) {
+        if (prior?.fromToc == false) continue;
+        // Publish non-null unique carriers even without a prior entry. A reader
+        // would otherwise seed an unwritten value indistinguishable from a write.
+        if (prior == null && resolved?.variable == null) continue;
+        // Without a fresh carrier, only a synthesized value needs clearing.
+        if (resolved == null &&
+            priorRaw != null &&
+            prior?.variable == priorRaw.variable) {
+          continue;
+        }
+      }
       if (await _persistence?.loadChapterVariable(key.$1, key.$2, key.$3) ==
           null) {
-        result[key] = entry.value;
+        result[key] = (rawWrite: rawWrite, resolved: resolved);
       }
     }
     return result;
   }
 
   /// Publishes the successful analysis's no-row handoff synchronously.
-  void publishTocHandoff(Map<(String, String, String), String?> writes) {
-    _unwrittenChapterVariables.addAll(writes);
+  void _publishTocHandoff(_TocChapterHandoff handoff) {
+    for (final entry in handoff.entries) {
+      final prior = _unwrittenChapterVariables[entry.key];
+      final (rawWrite: rawWrite, resolved: resolved) = entry.value;
+      // An explicit reader write is not a TOC override. Only a fresh raw write
+      // at exactly this key may replace it, as before.
+      final canOverride = prior?.fromToc != false;
+      if (!canOverride && rawWrite == null) continue;
+      final raw = rawWrite ?? prior?.rawTocVariable;
+      final useResolved = resolved != null && canOverride;
+      if (!useResolved && raw == null) {
+        _unwrittenChapterVariables.remove(entry.key);
+        continue;
+      }
+      _unwrittenChapterVariables[entry.key] = (
+        variable: useResolved ? resolved.variable : raw!.variable,
+        fromToc: true,
+        rawTocVariable: raw,
+      );
+    }
   }
 
   /// Accepted TLS exceptions, as `(sourceRef, host)` pairs (ADR 0011 §5).
@@ -576,6 +642,67 @@ class SourceHostState implements SourceEntityVariableStore {
     await _persistence?.deleteCacheEntry(sourceRef, key);
   }
 
+  SourceEntityVariableDraft? get _readerVariables =>
+      Zone.current[this] as SourceEntityVariableDraft?;
+
+  /// A pending reader chapter sees its own entity writes, while other host
+  /// operations and reads of unstaged fields retain their ordinary behavior.
+  Future<(T, SourceEntityVariableDraft)> stageReaderVariables<T>(
+    Future<T> Function() read,
+  ) async {
+    final draft = SourceEntityVariableDraft();
+    final result = await runZoned(read, zoneValues: {this: draft});
+    return (result, draft);
+  }
+
+  /// Writes accepted entity changes inside the reader's store transaction.
+  /// The returned handoff updates the in-process cache only after commit.
+  Future<void Function()> saveReaderVariables(
+    SourceEntityVariableDraft draft,
+  ) async {
+    final storedBooks = <(String, String)>{};
+    final storedChapters = <(String, String, String)>{};
+    for (final entry in draft._books.entries) {
+      final (source, book) = entry.key;
+      if (await _persistence?.saveBookVariable(source, book, entry.value) ==
+          true) {
+        storedBooks.add(entry.key);
+      }
+    }
+    for (final entry in draft._chapters.entries) {
+      final (source, book, chapter) = entry.key;
+      if (await _persistence?.saveChapterVariable(
+            source,
+            book,
+            chapter,
+            entry.value,
+          ) ==
+          true) {
+        storedChapters.add(entry.key);
+      }
+    }
+    return () {
+      for (final entry in draft._books.entries) {
+        if (storedBooks.contains(entry.key)) {
+          _unwrittenBookVariables.remove(entry.key);
+        } else {
+          _unwrittenBookVariables[entry.key] = entry.value;
+        }
+      }
+      for (final entry in draft._chapters.entries) {
+        if (storedChapters.contains(entry.key)) {
+          _unwrittenChapterVariables.remove(entry.key);
+        } else {
+          _unwrittenChapterVariables[entry.key] = (
+            variable: entry.value,
+            fromToc: false,
+            rawTocVariable: null,
+          );
+        }
+      }
+    };
+  }
+
   /// The book row's own variable text (the frozen `Book.variable` column,
   /// `Book.kt:115`), or null when the space holds no such row or it carries
   /// none.
@@ -587,6 +714,8 @@ class SourceHostState implements SourceEntityVariableStore {
   @override
   Future<String?> bookVariable(String sourceRef, String bookUrl) async {
     final key = (sourceRef, bookUrl);
+    final staged = _readerVariables?._books;
+    if (staged != null && staged.containsKey(key)) return staged[key];
     final stored = await _persistence?.loadBookVariable(sourceRef, bookUrl);
     if (stored != null) return stored.variable;
     return _unwrittenBookVariables[key];
@@ -607,6 +736,10 @@ class SourceHostState implements SourceEntityVariableStore {
     String? variable,
   ) async {
     final key = (sourceRef, bookUrl);
+    final draft = _readerVariables;
+    if (draft != null) {
+      return draft.putBookVariable(sourceRef, bookUrl, variable);
+    }
     if (await _persistence?.saveBookVariable(sourceRef, bookUrl, variable) ==
         true) {
       _unwrittenBookVariables.remove(key);
@@ -637,17 +770,21 @@ class SourceHostState implements SourceEntityVariableStore {
     String bookUrl,
     String chapterKey,
   ) async {
+    final key = (sourceRef, bookUrl, chapterKey);
+    final staged = _readerVariables?._chapters;
+    if (staged != null && staged.containsKey(key)) {
+      return SourceEntityVariableRow(staged[key]);
+    }
     final stored = await _persistence?.loadChapterVariable(
       sourceRef,
       bookUrl,
       chapterKey,
     );
     if (stored != null) return stored;
-    final key = (sourceRef, bookUrl, chapterKey);
-    if (_unwrittenChapterVariables.containsKey(key)) {
-      return SourceEntityVariableRow(_unwrittenChapterVariables[key]);
-    }
-    return null;
+    final unwritten = _unwrittenChapterVariables[key];
+    return unwritten == null
+        ? null
+        : SourceEntityVariableRow(unwritten.variable);
   }
 
   /// Writes the chapter row's own variable text, under the same rule as
@@ -660,6 +797,10 @@ class SourceHostState implements SourceEntityVariableStore {
     String? variable,
   ) async {
     final key = (sourceRef, bookUrl, chapterKey);
+    final draft = _readerVariables;
+    if (draft != null) {
+      return draft.putChapterVariable(sourceRef, bookUrl, chapterKey, variable);
+    }
     if (await _persistence?.saveChapterVariable(
           sourceRef,
           bookUrl,
@@ -670,7 +811,11 @@ class SourceHostState implements SourceEntityVariableStore {
       _unwrittenChapterVariables.remove(key);
       return;
     }
-    _unwrittenChapterVariables[key] = variable;
+    _unwrittenChapterVariables[key] = (
+      variable: variable,
+      fromToc: false,
+      rawTocVariable: null,
+    );
   }
 
   /// Drops everything one source holds (#36): its cache entries and variables,

@@ -471,6 +471,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// content stage runs; null in every other stage, exactly as `chapter?.title`
   /// is there. Book/chapter snapshots carry only existing stage result fields.
   String? _chapterTitle;
+  String? _contentTitleBase;
   // Only TOC item getters expose the unfinished chapter address verbatim.
   String? _tocChapterAddress;
 
@@ -504,6 +505,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     Uri base,
   })?
   _stageRequest;
+  bool _stageTargetRejected = false;
 
   bool get cancelled => _cancellation.isCancelled;
   @override
@@ -559,7 +561,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // `java.getString` and its siblings read the object this field's own rule
     // read used when the source passes no content of its own.
     'src': ?content,
-    'baseUrl': source['bookSourceUrl'],
+    'baseUrl': _contentTitleBase ?? source['bookSourceUrl'],
     'title': _chapterTitle,
     'nextChapterUrl': _nextChapterUrl,
     'book': _book == null
@@ -580,6 +582,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
             'title': _chapter!.name,
             'url': _tocChapterAddress ?? '${_chapter!.url}',
           },
+    '__chapterVariableRowKey': ?_chapter?.storedKey,
     'headers': const <String, String>{},
   };
 
@@ -601,6 +604,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         source: script,
         input: {
           ..._scriptInput(keyword, result, content: content),
+          if (label.isNotEmpty) '__ruleField': label,
           if (elementsResult) '__elementsResult': true,
         },
         timeout: const Duration(seconds: 30),
@@ -619,15 +623,22 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// The hook runs once per stage, on the stage's first response — the frozen
   /// call sites are the four stage entries, and the `nextTocUrl`/
   /// `nextContentUrl` pages `BookChapterList`/`BookContent` fetch never run it.
-  Future<SourceStageResponse> _loginCheck(SourceStageResponse response) async {
+  Future<SourceStageResponse> _loginCheck(
+    SourceStageResponse response, {
+    Map<String, String>? resendHeaders,
+    String? recoveryOrigin,
+  }) async {
     final checkJs = '${source['loginCheckJs'] ?? ''}';
     if (checkJs.trim().isEmpty) return response;
     return _runtime.evaluateLoginCheck(
       script: checkJs,
-      input: _scriptInput(_keyword, response.toJson()),
+      input: {
+        ..._scriptInput(_keyword, response.toJson()),
+        'baseUrl': ?recoveryOrigin,
+      },
       stage: SourceStageRequest(
         initialResponse: response,
-        resend: _resendStage,
+        resend: () => _resendStage(sourceHeaders: resendHeaders),
         reanalyze: _reanalyzeStage,
       ),
       timeout: const Duration(seconds: 30),
@@ -637,8 +648,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
 
   /// Frozen `AnalyzeUrl.getStrResponse` (`AnalyzeUrl.kt:465`): the stage's own
   /// request, with its own options and headers, sent again.
-  Future<SourceStageResponse> _resendStage() {
+  Future<SourceStageResponse> _resendStage({
+    Map<String, String>? sourceHeaders,
+  }) {
     final stage = _stageRequest!;
+    if (_stageTargetRejected) throw const SourceRelativeOptionUrlError();
     return _fetch(
       stage.url,
       stage.stage,
@@ -646,6 +660,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       options: stage.options,
       address: stage.address,
       base: stage.base,
+      sourceHeaders: sourceHeaders,
     );
   }
 
@@ -654,21 +669,30 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   /// the result.
   Future<void> _reanalyzeStage() async {
     final stage = _stageRequest!;
-    final (url, options) = await _request(
-      stage.base,
-      stage.address,
-      _keyword,
-      // The content stage carries a declared fragment past its own GET query
-      // re-encoding; a POST request keeps it on the wire either way.
-      keepGetFragment: stage.stage == BookSourceStage.content,
-    );
-    _stageRequest = (
-      url: url,
-      stage: stage.stage,
-      options: options,
-      address: stage.address,
-      base: stage.base,
-    );
+    try {
+      final (url, options) = await _request(
+        stage.base,
+        stage.address,
+        _keyword,
+        // Repeat the content request's pre-encoding script input and keep its
+        // declared fragment through GET query encoding.
+        keepGetFragment: stage.stage == BookSourceStage.content,
+        rawScriptUrl: stage.stage == BookSourceStage.content,
+        requireAbsoluteOptionResult: stage.stage == BookSourceStage.content,
+      );
+      _stageRequest = (
+        url: url,
+        stage: stage.stage,
+        options: options,
+        address: stage.address,
+        base: stage.base,
+      );
+      _stageTargetRejected = false;
+    } on SourceRelativeOptionUrlError {
+      // Frozen initUrl accepts the replacement; its request builder rejects
+      // it on the next send. Keep the input for another initUrl, not the target.
+      _stageTargetRejected = true;
+    }
   }
 
   /// The shared rule-field path's edges for this adapter: the scripts go through
@@ -1421,8 +1445,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String keyword, {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
+    void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
+    bool rawScriptUrl = false,
+    bool requireAbsoluteOptionResult = false,
   }) async {
     final expandedAddress = await _expand(template, keyword);
     return _analyzeRequest(
@@ -1430,8 +1457,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       expandedAddress,
       keyword,
       captureIdentity: captureIdentity,
+      captureRequestOrigin: captureRequestOrigin,
       rawBase: rawBase,
       keepGetFragment: keepGetFragment,
+      rawScriptUrl: rawScriptUrl,
+      requireAbsoluteOptionResult: requireAbsoluteOptionResult,
     );
   }
 
@@ -1448,8 +1478,11 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     String keyword, {
     void Function(Uri target, String address, String expandedAddress)?
     captureIdentity,
+    void Function(String?)? captureRequestOrigin,
     String? rawBase,
     bool keepGetFragment = false,
+    bool rawScriptUrl = false,
+    bool requireAbsoluteOptionResult = false,
   }) async {
     var address = expandedAddress;
     final raw = rawBase;
@@ -1462,16 +1495,25 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       address = '${sourceUrlTextResolved(base, before, rawBase: raw)}$tail';
     }
     final split = splitSourceUrlOptions(address);
+    captureRequestOrigin?.call(sourceRequestOrigin(base, split.path));
     final script = split.options.js;
-    // The frozen replaces the URL with the option script's result only when that
-    // result is not null (`AnalyzeUrl.kt:238-242`). A script that only shows a
-    // notice answers nothing, so the address the rule wrote stands; stringifying
-    // that nothing into `'null'` sent the request to `/null` (#94).
-    final rawTarget = _resolve(base, split.path, keepFragment: true);
-    final text = script == null
-        ? split.path
-        : (await _evalJs(script, keyword, '$rawTarget'))?.toString() ??
-              split.path;
+    // Validate before any option-script effects. For the initial content
+    // request, JS still receives the text before query encoding.
+    final resolved = _resolve(base, split.path, keepFragment: true);
+    final result = script == null
+        ? null
+        : await _evalJs(
+            script,
+            keyword,
+            rawScriptUrl
+                ? sourceUrlTextResolved(base, split.path)
+                : '$resolved',
+          );
+    final text = sourceUrlOptionTarget(
+      split.path,
+      result,
+      requireAbsolute: requireAbsoluteOptionResult && !split.options.webView,
+    );
     var url = _resolve(base, text, keepFragment: true);
     if (!split.options.isPost) {
       final encoded = _resolve(
@@ -1603,6 +1645,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       address: address ?? '$url',
       base: base ?? url,
     );
+    _stageTargetRejected = false;
     _cancellation.throwIfCancelled();
     final resolvedHeaders = sourceHeaders ?? await _headers();
     final merged = {...resolvedHeaders, ...options.headers};
@@ -2216,10 +2259,12 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     final retainedPageUrl = retainedFirstPage
         ? Uri.tryParse(retainedLogicalText)
         : null;
-    final retainedChapterBase = retainedFirstPage
-        ? Uri.tryParse(_sourceUrlStringBase(retainedLogicalText)) ??
-              retainedPageUrl
+    final retainedChapterBaseText = retainedFirstPage
+        ? _sourceUrlStringBase(retainedLogicalText)
         : null;
+    final retainedChapterBase = retainedChapterBaseText == null
+        ? null
+        : Uri.tryParse(retainedChapterBaseText) ?? retainedPageUrl;
     // A real TOC request evaluates the source header map once, before it analyzes
     // its own address text, and the send carries that same map
     // (`AnalyzeUrl.kt:125-145`, `BaseSource.kt:103-130`); a retained same-page
@@ -2249,10 +2294,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _tocChapterAddress = address;
     }
 
-    /// The frozen `bookChapter.url = baseUrl` fallback (`BookChapterList.kt:229-243`)
-    /// writes the page's own finished TOC text into an empty chapter URL. A
-    /// retained first page publishes the approved TOC value; a fetched page
-    /// resolves the address it was read for.
+    /// The frozen empty-URL fallback uses the TOC base, not the redirect URL
+    /// (`WebBook.kt:354-361`, `BookChapterList.kt:262-274`). A retained first
+    /// page publishes the approved TOC value; a fetched page resolves its
+    /// declared address without analyzing the options again.
     String tocFallbackAddress(
       SourcePageRequest request, {
       bool retained = false,
@@ -2265,25 +2310,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           fallbackAddress: bookAddressText,
         );
       }
-      final parts = splitSourceUrlOptions(request.address);
-      final address = Uri.parse(parts.path);
-      if (address.hasScheme) {
-        return request.address;
-      }
-      return '${sourceUrlTextResolved(request.base, parts.path)}${parts.tail}';
-    }
-
-    /// The complete native request text of one saved address: its text before
-    /// the frozen option boundary, resolved against the base it was read from,
-    /// with that tail kept verbatim (`BookChapter.getAbsoluteURL`,
-    /// `AnalyzeUrl.kt:214-222`). No script runs here.
-    String pendingRequestText(String address, Uri base) {
-      final boundary = sourceUrlOptionBoundaryOf(address);
-      final before = boundary == null
-          ? address
-          : address.substring(0, boundary);
-      final tail = boundary == null ? '' : address.substring(boundary);
-      return '${sourceUrlTextResolved(base, before)}$tail';
+      final path = sourceUrlTargetOf(request.address);
+      if (Uri.parse(path).hasScheme) return request.address;
+      final tail = sourceUrlOptionTailOf(request.address);
+      return '${sourceUrlTextResolved(request.base, path)}$tail';
     }
 
     // The retained page's own complete native base: the book's finished native
@@ -2291,9 +2321,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // A later page resolves against that whole text, never against a bare target
     // and never against the retained page's response URL.
     final retainedContentBaseText = retainedFirstPage
-        ? pendingRequestText(
-            retainedLogicalText,
+        ? sourceAbsoluteRequestText(
             retainedChapterBase ?? retainedPageUrl ?? info.tocBase,
+            retainedLogicalText,
           )
         : null;
 
@@ -2558,6 +2588,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               final tagValue = await fieldValue('updateTime', index);
               final volumeValue = await fieldValue('isVolume', index);
               final isVolume = sourceIsTrue(volumeValue);
+              final tag = sourceTocTag(tagValue, isVolume: isVolume);
               // Tag/volume observe the raw address; VIP/pay observe its fallback.
               publishTocChapter(
                 title,
@@ -2570,7 +2601,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
               if (title.isEmpty) continue;
               final vipValue = await fieldValue('isVip', index);
               final payValue = await fieldValue('isPay', index);
-              final tag = tagValue;
               final isVip = sourceIsTrue(vipValue);
               final isPay = sourceIsTrue(payValue);
               // The chapter's own variable text the item scripts wrote, keyed by
@@ -2594,9 +2624,10 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                     variable: chapterVariable,
                   );
                 } else {
-                  final target = cachedFirstPage
-                      ? _ordinaryChapterTarget(ordinaryFallbackAddress, pageUrl)
-                      : pageUrl;
+                  final target = _ordinaryChapterTarget(
+                    ordinaryFallbackAddress,
+                    pageUrl,
+                  );
                   // The fallback text is this chapter's completed native text
                   // (`BookChapterList.kt:229-243`); on a retained page it is the
                   // book's own native text (`BookInfo.kt:150-153`), while a later
@@ -2618,11 +2649,16 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                     title,
                     target,
                     rawAddress: ordinaryFallbackAddress,
+                    // Keep the original immediate request base independent of
+                    // the key and the complete pre-option address we save.
+                    addressBase: cachedFirstPage ? null : pageUrl,
                     tag: tag,
                     isVip: isVip,
                     isPay: isPay,
                     variable: chapterVariable,
-                    fetchContext: fallbackText == null || retained == null
+                    fetchContext:
+                        fallbackText == null ||
+                            (cachedFirstPage && retained == null)
                         ? null
                         : (
                             requestAddress: fallbackText,
@@ -2638,30 +2674,22 @@ class HtmlSourcePipeline implements BookSourcePipeline {
                 final base = cachedFirstPage
                     ? (retainedChapterBase ?? pageUrl)
                     : pageUrl;
-                final parts = splitSourceUrlOptions(rawAddress);
-                // The address text's options are the chapter's own: the frozen
-                // `AnalyzeUrl` parses them when the chapter is fetched, and this
-                // adapter keeps them in the raw address (`SourceChapter.options`,
-                // `persistedAddress`) so a restart keeps them (#58). Per-chapter
-                // headers and the retry count are applied by the content request
-                // itself; a POST body and a post-resolution `js` are the two
-                // families the content stage does not express yet, so they keep
-                // their named refusal (#58's test pins the body case). Headers used
-                // to be refused here with them, which refused a whole TOC for a tail
-                // the transport sends happily — the operator's real source run hit
-                // it (零点看书's `ruleToc.chapterUrl`, batch 17).
-                if (parts.options.isPost ||
-                    parts.options.body != null ||
-                    parts.options.js != null) {
-                  throw UnsupportedError('暂不支持章节地址的 URL 选项');
-                }
                 // The stable identity is this chapter's own text resolved before
                 // any request processing of its own — the same default resolution
                 // every other chapter identity uses, so a fragment the address
                 // declares stays that request's own fact, not the row's
                 // (`BookChapterList.kt:219-222`, `BookChapter.kt:143-155`).
-                final chapterUrl = _resolve(base, parts.path);
-                final requestText = pendingRequestText(rawAddress, base);
+                final chapterUrl = _resolve(
+                  base,
+                  sourceUrlTargetOf(rawAddress),
+                );
+                final requestText = sourceAbsoluteRequestText(
+                  base,
+                  rawAddress,
+                  inheritAuthorityFrom: cachedFirstPage
+                      ? retainedChapterBaseText
+                      : null,
+                );
                 final retained = retainedChapterPage(
                   rawAddress,
                   requestText,
@@ -2726,11 +2754,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _sourceRef,
       book.identityAddress,
     );
-    final handoff = await _entityVariables.prepareTocHandoff([
-      for (var i = 0; i < chapters.length; i++) old[(i, chapters[i].name)],
-    ]);
+    final publishHandoff = await _entityVariables
+        .prepareTocHandoff(_sourceRef, book.identityAddress, [
+          for (var i = 0; i < restored.length; i++)
+            (
+              key: restored[i].progressKey,
+              variable: restored[i].variable,
+              restoredVariable: old[(i, restored[i].name)],
+            ),
+        ]);
     _cancellation.throwIfCancelled();
-    _entityVariables.publishTocHandoff(handoff);
+    publishHandoff();
     return (book.withVariable(bookVariable), restored);
   }
 
@@ -3001,8 +3035,9 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     _tocChapterAddress = null;
     _chapter = chapter;
     // A deferred content analysis starts from the carriers it was handed: the
-    // book's variable text and this chapter's own, keyed as the content stage's
-    // `book.bookUrl`/`chapter.url` bind them (#132).
+    // book's variable text and this chapter's own, using the saved row key
+    // when the request address and row identity differ (#132).
+    final chapterKey = chapter.progressKey;
     final candidateBook = _book;
     if (candidateBook != null) {
       _entityDraft?.seedBook(
@@ -3013,17 +3048,15 @@ class HtmlSourcePipeline implements BookSourcePipeline {
       _entityDraft?.seedChapter(
         _sourceRef,
         candidateBook.identityAddress,
-        chapter.storeKey,
+        chapterKey,
         chapter.variable,
       );
       // The ordinary path reads and writes the space's rows, keyed by the
       // chapter's row identity. A chapter whose key holds no entry at all
-      // starts from its own carrier text: a TOC write lands under the TOC
-      // stage's own key, so the rules and the final snapshot must still see it.
+      // starts from its own carrier text when there was no TOC handoff.
       // A stored row — or an unwritten entry, even one whose text is null — is
       // present and authoritative and is never reseeded (#132).
       if (_entityDraft == null && chapter.variable != null) {
-        final chapterKey = chapter.storeKey;
         final entry = await _hostSurface.chapterVariableRow(
           _sourceRef,
           candidateBook.identityAddress,
@@ -3062,7 +3095,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         chapterVariable: await _entityVariables.chapterVariable(
           _sourceRef,
           contentBookKey ?? '',
-          chapter.storeKey,
+          chapterKey,
         ),
       );
     }
@@ -3073,6 +3106,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // document (`BookContent.kt:65-69`, `:169-182`). The first post-login body
     // is retained for that later read; the page walk itself never reads it.
     String? firstPageHtml;
+    SourceStageResponse? firstContentResponse;
     var firstPage = true;
     // An eligible retained response is this chapter's first content page: the
     // frozen branch reads it for what it holds — no request, no source header,
@@ -3092,13 +3126,17 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // this content consumer carries a declared fragment past its own GET query
     // re-encoding.
     final requestText = chapterContext?.requestAddress ?? chapter.address;
+    String? recoveryOrigin;
     final (firstUrl, firstOptions) = retainedPage != null
         ? (chapter.url, const SourceUrlOptions())
         : await _request(
             chapterBase,
             requestText,
             _keyword,
+            captureRequestOrigin: (origin) => recoveryOrigin = origin,
             keepGetFragment: true,
+            rawScriptUrl: true,
+            requireAbsoluteOptionResult: true,
           );
     // The retained first page's complete native text is the base its declared
     // addresses resolve against; a fetched page's own response base takes over as
@@ -3191,38 +3229,41 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           target = url;
           targetOptions = options;
         }
-        var fetched =
+        Future<SourceStageResponse> fetch() => _fetch(
+          target,
+          BookSourceStage.content,
+          options: targetOptions,
+          address: request.address,
+          base: request.base,
+          sourceHeaders: sourceHeaders,
+        );
+        final fetched =
             retainedFirst ??
-            await _fetch(
-              target,
-              BookSourceStage.content,
-              options: targetOptions,
-              address: request.address,
-              base: request.base,
-              sourceHeaders: sourceHeaders,
-            );
-        // The frozen content stage checks login once, on its first response
-        // (`WebBook.kt:336`); the `nextContentUrl` pages never run it. A
-        // retained first page made no request for a check to read.
-        if (isFirstPage) {
-          if (retainedFirst == null) fetched = await _loginCheck(fetched);
-          firstPage = false;
-        }
+            (isFirstPage
+                ? await fetchContentWithLoginCheck(
+                    url: target,
+                    fetch: fetch,
+                    check: _loginCheck,
+                    checkRecovery: (response) => _loginCheck(
+                      response,
+                      resendHeaders: sourceHeaders,
+                      recoveryOrigin: recoveryOrigin,
+                    ),
+                    cancellation: _cancellation,
+                  )
+                : await fetch());
+        firstPage = false;
         final html = fetched.body;
         final pageUrl = fetched.url;
-        if (parts.isEmpty) firstPageHtml = html;
+        if (parts.isEmpty) {
+          firstPageHtml = html;
+          firstContentResponse = fetched;
+        }
         final content = await _field(
           _contentRule(),
           content: html,
           label: 'ruleContent.content',
         );
-        final next = readNext
-            ? await _field(
-                _rule('ruleContent', 'nextContentUrl', optional: true),
-                content: html,
-                label: 'ruleContent.nextContentUrl',
-              )
-            : null;
         final batch = HtmlRuleBatch(html);
         final contentValue = _declare(
           batch,
@@ -3231,9 +3272,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           unescape: false,
           rawEntities: true,
         );
-        final nextValue = next == null
-            ? null
-            : _declareList(batch, 'next', next);
         await batch.run();
         final text = await _documentValue(
           contentValue,
@@ -3241,14 +3279,18 @@ class HtmlSourcePipeline implements BookSourcePipeline {
           html,
           unescape: false,
         );
-        if (text.isEmpty) {
-          throw SourceStageDiagnostic.response(
-            stage: BookSourceStage.content,
-            url: fetched.url,
-            body: fetched.body,
-            httpResponse: fetched.httpResponse,
-          );
-        }
+        final next = readNext
+            ? await _field(
+                _rule('ruleContent', 'nextContentUrl', optional: true),
+                content: html,
+                label: 'ruleContent.nextContentUrl',
+              )
+            : null;
+        final nextBatch = HtmlRuleBatch(html);
+        final nextValue = next == null
+            ? null
+            : _declareList(nextBatch, 'next', next);
+        if (nextValue != null) await nextBatch.run();
         // The frozen content stage turns one page's HTML into text here, before
         // the pages are joined (`BookContent.kt:178-181`): `formatKeepImg`,
         // then the `&`-guarded `unescapeHtml4`.
@@ -3264,46 +3306,67 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     // the state those scripts wrote is visible and the body scripts saw the
     // incoming chapter title. Its document is the first post-login response,
     // not the last page's.
-    final titleRule = _rule('ruleContent', 'title', optional: true);
     final firstHtml = firstPageHtml;
-    if (titleRule.trim().isNotEmpty && firstHtml != null) {
-      final title = await _field(
-        titleRule,
-        content: firstHtml,
-        label: 'ruleContent.title',
+    if (firstHtml != null) {
+      // BookContent binds the first document to the chapter's complete
+      // address, not to the source root or the final HTTP response URL.
+      _contentTitleBase = sourceAbsoluteRequestText(
+        chapterBase,
+        requestText,
+        normalizeOptionSeparator: true,
       );
-      final titleBatch = HtmlRuleBatch(firstHtml);
-      final titleValue = _declare(titleBatch, 'title', title);
-      await titleBatch.run();
-      final extracted = await _documentValue(titleValue, title, firstHtml);
-      if (extracted.trim().isNotEmpty) {
-        contentTitle = _chapterTitle = extracted;
-        _chapter = SourceChapter(
-          extracted,
-          chapter.url,
-          rawAddress: chapter.rawAddress,
-          storedKey: chapter.storedKey,
-          addressBase: chapter.addressBase,
-          variable: chapter.variable,
-          fetchContext: chapter.fetchContext,
-        );
+      try {
+        final titleRule = _rule('ruleContent', 'title', optional: true);
+        if (titleRule.trim().isNotEmpty) {
+          final title = await _field(
+            titleRule,
+            content: firstHtml,
+            label: 'ruleContent.title',
+          );
+          final titleBatch = HtmlRuleBatch(firstHtml);
+          final titleValue = _declare(titleBatch, 'title', title);
+          await titleBatch.run();
+          final extracted = await _documentValue(titleValue, title, firstHtml);
+          if (!sourceKotlinIsBlank(extracted)) {
+            contentTitle = _chapterTitle = extracted;
+            _chapter = chapter.withName(extracted);
+          }
+        }
+      } on Object catch (error) {
+        if (!sourceTitleFailureIsOrdinary(error)) rethrow;
+        onHostMessage?.call(SourceHostMessage('ruleContent.title', '$error'));
+      } finally {
+        _contentTitleBase = null;
       }
     }
+    _cancellation.throwIfCancelled();
+    if (!chapter.isVolume && sourceKotlinIsBlank(text)) {
+      final response = firstContentResponse!;
+      throw SourceStageDiagnostic.response(
+        stage: BookSourceStage.content,
+        url: response.url,
+        body: response.body,
+        httpResponse: response.httpResponse,
+      );
+    }
+    // The final entity snapshots of this content request, pagination and all:
+    // every page wrote through the same candidate draft (#132).
+    final bookVariable = contentBookKey == null
+        ? null
+        : await _entityVariables.bookVariable(_sourceRef, contentBookKey);
+    final chapterVariable = await _entityVariables.chapterVariable(
+      _sourceRef,
+      contentBookKey ?? '',
+      chapterKey,
+    );
+    _cancellation.throwIfCancelled();
     return HtmlChapterBody(
       text,
       pages,
       title: contentTitle,
       images: extractChapterImages(text),
-      // The final entity snapshots of this content request, pagination and all:
-      // every page wrote through the same candidate draft (#132).
-      bookVariable: contentBookKey == null
-          ? null
-          : await _entityVariables.bookVariable(_sourceRef, contentBookKey),
-      chapterVariable: await _entityVariables.chapterVariable(
-        _sourceRef,
-        contentBookKey ?? '',
-        chapter.storeKey,
-      ),
+      bookVariable: bookVariable,
+      chapterVariable: chapterVariable,
     );
   }
 
@@ -3400,7 +3463,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
   Future<String> _shapeJoinedContent(String text) async {
     final replaceRegex = _rule('ruleContent', 'replaceRegex', optional: true);
     if (replaceRegex.isEmpty) return text;
-    final trimmed = text.split('\n').map((line) => line.trim()).join('\n');
+    final trimmed = text.split('\n').map(sourceKotlinTrim).join('\n');
     final replaced = await _applyReplaceRegex(trimmed, replaceRegex);
     return replaced.split('\n').map((line) => '　　$line').join('\n');
   }
@@ -3433,6 +3496,6 @@ class HtmlSourcePipeline implements BookSourcePipeline {
     if (fields.rule.isNotEmpty) {
       return '${await _eagerExtract(text, extraction) ?? ''}';
     }
-    return applyRuleReplacement(text, fields, label: 'HTML');
+    return unescapeHtml4(applyRuleReplacement(text, fields, label: 'HTML'));
   }
 }

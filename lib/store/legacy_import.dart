@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 
 import '../domain/contracts.dart';
 import '../domain/store_message.dart';
@@ -165,7 +165,7 @@ class LegacyImport {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     final losses = <StoreMessage>[];
     late LegacyImportReport report;
-    await store.db.transaction(() async {
+    await store.transaction(() async {
       final online = await _importOnlineReading(store, now, losses);
       final local = await _importLocalLibrary(store, now, losses);
       final migrated = await _importMigrationState(store, now, losses);
@@ -323,6 +323,33 @@ class LegacyImport {
         );
       }
       if (rows.isNotEmpty) {
+        if (existing != null) {
+          // The retired JSON carries a URI, not the current request options or
+          // read route. On the same key keep the published title and route,
+          // while importing the incoming tag, access markers and position.
+          final publishedVolumes =
+              await (store.db.select(store.db.chapters)..where(
+                    (row) =>
+                        row.bookId.equals(id) &
+                        row.rendersTagAsContent.isNotNull(),
+                  ))
+                  .get();
+          final classified = {
+            for (final row in publishedVolumes) row.chapterKey: row,
+          };
+          for (var index = 0; index < rows.length; index++) {
+            final incoming = rows[index];
+            final current = classified[incoming.chapterKey];
+            if (current != null) {
+              rows[index] = incoming.copyWith(
+                name: current.name,
+                url: Value(current.url),
+                isVolume: current.isVolume,
+                rendersTagAsContent: Value(current.rendersTagAsContent),
+              );
+            }
+          }
+        }
         await store.putChapters(id, rows);
         chapters += rows.length;
       }

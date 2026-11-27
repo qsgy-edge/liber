@@ -918,10 +918,19 @@ void _registerFallbackGetCase() {
               {'chapters': items, 'variables': observed['sourceVariables']},
             );
             for (final c in chapters) {
-              final expected = row['shape'] == 'raw-options'
-                  ? Uri.parse('$origin/chapter?slot=1')
-                  : Uri.parse(row['redirectUrl'] as String);
-              expect(c.url, expected);
+              final target = switch (row['shape']) {
+                'raw-options' => '$origin/chapter?slot=1',
+                // The ordinary empty fallback uses the declared TOC address,
+                // not the redirect destination (BookChapterList.kt).
+                'redirect-options' =>
+                  (row['baseAddress'] as String).split(',{').first,
+                _ => row['redirectUrl'] as String,
+              };
+              expect(c.url, Uri.parse(target));
+              if (row['shape'] == 'redirect-options') {
+                expect(c.progressKey, target);
+                expect(c.persistedAddress, row['baseAddress']);
+              }
             }
           } else {
             final expected = (observed['items'] as List).single as Map;
@@ -1869,9 +1878,12 @@ void _registerRelativeFallback() {
               'header': row['options'] == true ? 'keep' : null,
             },
           );
-          expect(chapters.last.rawAddress, absolute);
-          expect(chapters.last.url, Uri.parse(row['responseUrl'] as String));
-          expect(chapters.last.name, 'chapter');
+          final chapter = chapters.last;
+          expect(chapter.rawAddress, absolute);
+          expect(chapter.url, Uri.parse(target));
+          expect(chapter.progressKey, target);
+          expect(chapter.persistedAddress, absolute);
+          expect(chapter.name, 'chapter');
           if (next) {
             expect(
               await state.entry(

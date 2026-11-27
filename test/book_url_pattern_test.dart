@@ -6462,6 +6462,171 @@ void main() {
     },
   );
 
+  for (final (json, scriptResult) in [
+    for (final json in [false, true])
+      for (final scriptResult in ['no script', 'null', 'relative', 'absolute'])
+        (json, scriptResult),
+  ]) {
+    test(
+      '${json ? 'JSON' : 'HTML'} redirected empty TOC chapter before and after shelf reopen ($scriptResult)',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        final origin = 'http://127.0.0.1:${server.port}';
+        const toc = '/catalog/toc?key=one';
+        const landed = '/redirect/landed?key=two';
+        const bodyPath = '/body/child';
+        final script = switch (scriptResult) {
+          'null' => 'chapter == null ? result : null',
+          'relative' => "chapter == null ? result : 'child'",
+          'absolute' => "chapter == null ? result : '$origin$bodyPath'",
+          _ => null,
+        };
+        final tail =
+            ',${jsonEncode({
+              'method': 'POST',
+              'body': 'q=chapter',
+              'headers': {'X-Chapter': 'toc'},
+              'js': ?script,
+            })}';
+        final requests = <(String, String, String, String?)>[];
+        server.listen((request) async {
+          final input = await utf8.decoder.bind(request).join();
+          requests.add((
+            request.method,
+            '${request.uri}',
+            input,
+            request.headers.value('X-Chapter'),
+          ));
+          switch (request.uri.path) {
+            case '/book':
+              request.response.write(
+                json
+                    ? jsonEncode({'title': 'Book', 'toc': '$toc$tail'})
+                    : '<h1>Book</h1><a class="toc" href="${const HtmlEscape().convert('$toc$tail')}">TOC</a>',
+              );
+            case '/catalog/toc':
+              request.response.statusCode = HttpStatus.temporaryRedirect;
+              request.response.headers.set(
+                HttpHeaders.locationHeader,
+                landed,
+              );
+            case '/redirect/landed':
+            case bodyPath:
+              request.response.write(
+                json
+                    ? '{"list":[{"label":"One","href":""}],"text":"Body"}'
+                    : '<ul><li><a>One</a></li></ul><p id="content">Body</p>',
+              );
+            default:
+              request.response.statusCode = HttpStatus.notFound;
+          }
+          await request.response.close();
+        });
+        final source = (json ? _jsonSource(origin) : _htmlSource(origin))
+          ..['bookSourceName'] = 'Redirecting TOC';
+        final root = await Directory.systemTemp.createTemp(
+          'liber-empty-toc-',
+        );
+        var workspace = await Workspace.open(root: root);
+        addTearDown(() async {
+          await workspace.close();
+          await root.delete(recursive: true);
+        });
+        var shelf = ShelfService(await workspace.openSpace());
+        BookSourcePipeline open() => json
+            ? JsonSourcePipeline(
+                source,
+                HttpSourceTransport(),
+                hostState: shelf.hostState,
+              )
+            : HtmlSourcePipeline(
+                source,
+                HttpSourceTransport(),
+                hostState: shelf.hostState,
+              );
+        final producer = open();
+        final (book, chapters) = await producer.details(
+          HtmlBook(url: Uri.parse('$origin/book'), title: 'Book'),
+        );
+        final chapter = chapters.single;
+        expect(chapter.address, '$origin$toc$tail');
+        expect(chapter.fetchContext?.retainedPage, isNull);
+        const redirectTrace = [
+          ('POST', toc, 'q=chapter', 'toc'),
+          ('POST', landed, 'q=chapter', 'toc'),
+        ];
+        final contentTrace = switch (scriptResult) {
+          'relative' => <(String, String, String, String?)>[],
+          'absolute' => [('POST', bodyPath, 'q=chapter', 'toc')],
+          _ => redirectTrace,
+        };
+        final invalidResult = isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('正文 URL 选项 js'),
+        );
+        Future<void> readBody(
+          BookSourcePipeline pipeline,
+          SourceChapter chapter,
+          HtmlBook book,
+        ) async {
+          try {
+            final body = pipeline.chapter(chapter, book: book);
+            if (scriptResult == 'relative') {
+              await expectLater(body, throwsA(invalidResult));
+            } else {
+              expect((await body).text, 'Body');
+            }
+          } finally {
+            pipeline.cancel();
+          }
+        }
+
+        await readBody(producer, chapter, book);
+        expect(requests, [
+          ('GET', '/book', '', null),
+          ...redirectTrace,
+          ...contentTrace,
+        ]);
+        requests.clear();
+        await shelf.add(source, book, chapters);
+        await workspace.close();
+        workspace = await Workspace.open(root: root);
+        shelf = ShelfService(await workspace.openSpace());
+        final reopened = (await shelf.find(origin, book.identityAddress))!;
+        final row = reopened.chapters.single;
+        final restored = SourceChapter.fromAddress(
+          row.name,
+          row.url!,
+          bookUrl: reopened.htmlBook.url,
+          chapterKey: row.chapterKey,
+        );
+        await readBody(open(), restored, reopened.htmlBook);
+        expect(
+          [
+            chapter.progressKey,
+            row.chapterKey,
+            row.url,
+            restored.progressKey,
+            restored.address,
+            requests,
+          ],
+          [
+            '$origin$toc',
+            '$origin$toc',
+            '$origin$toc$tail',
+            '$origin$toc',
+            '$origin$toc$tail',
+            contentTrace,
+          ],
+          reason:
+              'the saved key and full input preserve the request behavior',
+        );
+      },
+    );
+  }
+
   // A chapter this shelf saved and a fresh analysis rebuilt from the stored row
   // carries no in-memory request context: its real content request analyses the
   // complete saved text, so the request's own option script runs once at that
@@ -7779,15 +7944,7 @@ void main() {
           rawAddress: address,
         );
         try {
-          final HtmlChapterBody body;
-          try {
-            body = await pipeline.chapter(chapter);
-          } on UnsupportedError catch (error) {
-            if (error.message != '暂不支持章节地址的 URL 选项') rethrow;
-            fail(
-              'target: the first real request also expands before interpreting inactive option-shaped data',
-            );
-          }
+          final body = await pipeline.chapter(chapter);
           expect(body.text, 'Body');
           expect(pages.requests, hasLength(1));
           expect(pages.requests.single.url.toString(), selected);

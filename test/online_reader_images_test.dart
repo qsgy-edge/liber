@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
@@ -98,14 +99,14 @@ class _ScriptedPipeline extends HtmlSourcePipeline {
 
 /// One real PNG, encoded by the engine itself: `Image.memory` decodes it on
 /// every platform, so a hand-written fixture cannot pass as a rendered image.
-Future<Uint8List> _png(WidgetTester tester) async {
+Future<Uint8List> _png(WidgetTester tester, {int height = 20}) async {
   final bytes = await tester.runAsync(() async {
     final recorder = ui.PictureRecorder();
     Canvas(recorder).drawRect(
-      const Rect.fromLTWH(0, 0, 60, 20),
+      Rect.fromLTWH(0, 0, 60, height.toDouble()),
       Paint()..color = const Color(0xFF3355AA),
     );
-    final image = await recorder.endRecording().toImage(60, 20);
+    final image = await recorder.endRecording().toImage(60, height);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     return data!.buffer.asUint8List();
@@ -274,6 +275,55 @@ void main() {
     expect(plain, '　　第一行\uFFFC尾行');
     final image = tester.getSize(find.byType(Image));
     expect(image, const Size(20, 36));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a tall TEXT image wraps with the paragraph', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final site = _Site(image: await _png(tester, height: 120));
+    final prefix = List.filled(12, 'Before').join(' ');
+    await mount(
+      tester,
+      body: '$prefix <img src="https://img.test/one.png"> After',
+      site: site,
+      imageStyle: 'TEXT',
+    );
+    await _settleImages(tester);
+
+    final paragraphFinder = find.byWidgetPredicate(
+      (widget) =>
+          widget is RichText && widget.text.toPlainText().contains(prefix),
+    );
+    final paragraph = tester.renderObject<RenderParagraph>(paragraphFinder);
+    final text = paragraph.text.toPlainText();
+    expect(text, '　　$prefix \uFFFC After');
+    Rect wordBox(int offset, String word) => paragraph
+        .getBoxesForSelection(
+          TextSelection(baseOffset: offset, extentOffset: offset + word.length),
+        )
+        .single
+        .toRect();
+
+    final topLeft = tester.getTopLeft(paragraphFinder);
+    final image = tester.getRect(find.byType(Image)).shift(-topLeft);
+    final first = wordBox(text.indexOf('Before'), 'Before');
+    final preceding = wordBox(text.lastIndexOf('Before'), 'Before');
+    final following = wordBox(text.indexOf('After'), 'After');
+    expect(first.bottom, lessThan(image.top));
+    expect(image.left, greaterThanOrEqualTo(0));
+    expect(image.right, lessThanOrEqualTo(paragraph.size.width));
+    void expectReadingOrder(Rect earlier, Rect later) {
+      if (later.top < earlier.bottom) {
+        expect(later.bottom, greaterThan(earlier.top));
+        expect(later.left, greaterThanOrEqualTo(earlier.right));
+      }
+    }
+
+    expectReadingOrder(preceding, image);
+    expectReadingOrder(image, following);
     expect(tester.takeException(), isNull);
   });
 

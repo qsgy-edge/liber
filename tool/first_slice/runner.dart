@@ -25,15 +25,26 @@ typedef SliceResponseReceipt =
 /// port is the one the fixture's `bookSourceUrl` names, because the source
 /// object is part of the compared inputs.
 class SliceReplayServer {
-  SliceReplayServer._(this._server, this._fixture, this._onResponse);
+  SliceReplayServer._(
+    this._server,
+    this._fixture,
+    this._onResponse,
+    this._orderedResponses,
+  );
 
-  /// Starts the one declared replay listener. [onResponse] is an optional
-  /// receipt hook for a caller that needs the actual response status/redirect
-  /// and terminal; the default observer and matching rules are unchanged.
+  /// Starts the declared replay listener. [onResponse] observes the response
+  /// actually sent. [orderedResponses] pairs each expected request with the
+  /// response at the same index, even when two requests have the same URL.
   static Future<SliceReplayServer> start(
     Map<String, dynamic> fixture, {
     SliceResponseReceipt? onResponse,
+    bool orderedResponses = false,
   }) async {
+    if (orderedResponses &&
+        (fixture['expectedRequests'] as List).length !=
+            (fixture['responses'] as List).length) {
+      throw const FormatException('Expected requests and responses must align');
+    }
     final origin = Uri.parse(fixture['origin'] as String);
     final HttpServer server;
     try {
@@ -45,7 +56,12 @@ class SliceReplayServer {
         'stop whatever holds it instead of moving the corpus.',
       );
     }
-    final instance = SliceReplayServer._(server, fixture, onResponse);
+    final instance = SliceReplayServer._(
+      server,
+      fixture,
+      onResponse,
+      orderedResponses,
+    );
     server.listen((request) async {
       try {
         await instance._handle(request);
@@ -59,6 +75,7 @@ class SliceReplayServer {
   final HttpServer _server;
   final Map<String, dynamic> _fixture;
   final SliceResponseReceipt? _onResponse;
+  final bool _orderedResponses;
 
   /// Every request the server received, in order, as observed.
   final requests = <Map<String, Object?>>[];
@@ -94,8 +111,10 @@ class SliceReplayServer {
       'headers': headers,
       'body': body,
     };
+    final declared = _orderedResponses
+        ? _matchOrdered(request.method, request.uri.path, query)
+        : _match(request.method, request.uri.path, query);
     requests.add(observed);
-    final declared = _match(request.method, request.uri.path, query);
     final receipt = <String, Object?>{
       'terminal': 'pending',
       'send': 'pending',
@@ -159,6 +178,34 @@ class SliceReplayServer {
       await complete('send-failed', 'failed', error);
       rethrow;
     }
+  }
+
+  /// Never falls back to a different response after a sequence mismatch.
+  Map<String, dynamic>? _matchOrdered(
+    String method,
+    String path,
+    Map<String, String> query,
+  ) {
+    final plan = _fixture['expectedRequests'] as List;
+    final index = requests.length;
+    if (unmatched.isNotEmpty || index >= plan.length) return null;
+    final expected = plan[index] as Map;
+    final response = (_fixture['responses'] as List)[index] as Map;
+    bool matchesQuery(Map<String, String> declared) =>
+        declared.length == query.length &&
+        declared.entries.every((entry) => query[entry.key] == entry.value);
+    if (expected['method'] != method ||
+        expected['path'] != path ||
+        !matchesQuery(
+          (expected['query'] as Map?)?.cast<String, String>() ?? const {},
+        ) ||
+        response['method'] != method ||
+        response['path'] != path) {
+      return null;
+    }
+    final declared = (response['query'] as Map?)?.cast<String, String>();
+    if (declared != null && !matchesQuery(declared)) return null;
+    return response.cast<String, dynamic>();
   }
 
   /// The declared response for one request.

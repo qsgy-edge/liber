@@ -145,6 +145,31 @@ void main() {
     limiter.release(third);
   });
 
+  for (final rate in ['1000', '1/1000']) {
+    test(
+      '$rate charges the first start when the clock crosses the boundary',
+      () async {
+        var readJustBeforeBoundary = false;
+        final boundaryLimiter = SourceRateLimiter(
+          clock: () {
+            if (readJustBeforeBoundary) {
+              readJustBeforeBoundary = false;
+              return 999;
+            }
+            return clock.read();
+          },
+          wait: clock.wait,
+        );
+        await boundaryLimiter.acquire('source', rate);
+        clock.now = 1000;
+        readJustBeforeBoundary = true;
+        await boundaryLimiter.acquire('source', rate);
+        await boundaryLimiter.acquire('source', rate);
+        expect(clock.waits, [1, 1000]);
+      },
+    );
+  }
+
   test('N/T admits N starts, not N+1', () async {
     final first = await limiter.acquire('a', '1/2000');
     expect(first!.frequency, 1);

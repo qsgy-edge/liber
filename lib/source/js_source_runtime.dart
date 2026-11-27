@@ -462,9 +462,15 @@ String variableTextOf(Map<String, String?> map) =>
     });
 
 class SourceScriptError implements Exception {
-  const SourceScriptError(this.category, [this.message = '']);
+  const SourceScriptError(this.category, [this.message = ''])
+    : _mustPropagate = false;
+  const SourceScriptError._(this.category, this.message, this._mustPropagate);
+
   final String category;
   final String message;
+
+  // Some faults and refusals share a public category with ordinary rule errors.
+  final bool _mustPropagate;
 
   /// The same failure as the rule field that hit it reports it: [field] is the
   /// rule field's name (`ruleBookInfo.kind`), and the runtime's own message is
@@ -474,11 +480,32 @@ class SourceScriptError implements Exception {
   SourceScriptError inRuleField(String field) =>
       field.isEmpty || message.isEmpty
       ? this
-      : SourceScriptError(category, '$field: $message');
+      : SourceScriptError._(category, '$field: $message', _mustPropagate);
 
   @override
   String toString() => message.isEmpty ? category : '$category: $message';
 }
+
+/// Whether one `ruleContent.title` failure is the ordinary rule/script error
+/// the approved disposition keeps local to the title (issue #138 comment
+/// 6738724387): the selected content stage wraps its title read in
+/// `runCatching`, logs the failure and keeps the readable body and the incoming
+/// chapter name (`BookContent.kt:169-201`).
+///
+/// Ordinary means the source's own rule or script was wrong: a JavaScript error
+/// (the closed `js` category, which keeps the engine's message), a host input
+/// the script passed to a member (`host-input`), or malformed rule text the
+/// evaluator refused with [FormatException]. Everything else propagates
+/// unchanged, because the disposition does not authorize a catch-all:
+/// cancellation, a real timeout, named refusals, native setup failures, and
+/// the runtime's `host-method`, I/O-cap, `network`, `host` and `cleanup` failures
+/// belong to the stage, not the title.
+bool sourceTitleFailureIsOrdinary(Object error) => switch (error) {
+  SourceScriptError(:final category, :final _mustPropagate) =>
+    !_mustPropagate && (category == 'js' || category == 'host-input'),
+  FormatException() => true,
+  _ => false,
+};
 
 /// Shared libraries keep their engine and closures; each eval gets fresh bindings.
 class InProcessSourceScriptRuntime implements SourceScriptRuntime {
@@ -700,9 +727,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     bool checkResponse = false,
     SourceStageRequest? stage,
   }) async {
-    // Stage-only transport mode is consumed before any source-visible binding.
+    // Consume Dart-only stage metadata before exposing the input to scripts.
     input = {...input};
     final elementsResult = input.remove('__elementsResult') == true;
+    final chapterTitle = input.remove('__ruleField') == 'ruleContent.title';
+    final chapterVariableRowKey =
+        input.remove('__chapterVariableRowKey') as String?;
     final provenance = checkResponse ? _StageResponseProvenance() : null;
     final initialHandle = provenance?.register(
       stage?.initialResponse?.httpResponse,
@@ -770,6 +800,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       if (engine.closed) {
         throw const SourceScriptError('cancelled', 'shared runtime closed');
       }
+      // The native callback port can deliver in a different zone. Dispatch
+      // in the initiating execution's zone so re-entry (such as retrying a
+      // stage request) also inherits its analysis and reader variable draft.
+      final executionZone = Zone.current;
       Future<void> perform(BridgeRequest request) async {
         JsResult result;
         try {
@@ -821,7 +855,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
           } else if (method == 'cache') {
             answer = await _handleCache(payload, sourceRef);
           } else if (method == 'variable') {
-            answer = await _handleVariable(payload, input, sourceRef);
+            answer = await _handleVariable(
+              payload,
+              input,
+              sourceRef,
+              chapterVariableRowKey,
+            );
           } else if (method == 'cookie') {
             answer = await _handleCookie(payload, cookies);
           } else if (method == 'loginHeader') {
@@ -862,6 +901,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
               request.id,
               input,
               token,
+              chapterTitle: chapterTitle,
               provenance: responseProvenance,
             );
           } else if (method == 'connect') {
@@ -929,14 +969,26 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             // I/O boundary failures below still terminate the execution.
             result = JsResult.err(error);
           } else {
-            hostFailure = _classify(error);
-            // A refusal is the source's only view of the policy, so its message
-            // names the member and the policy instead of the bare category; the
-            // reason is also in the source log.
+            final failure = _classify(error);
+            final previous = hostFailure;
+            // Only chapter titles may recover from ordinary rule errors. A
+            // later recoverable failure must not hide a fatal title failure;
+            // elsewhere keep the existing precedence for named refusals.
+            final keepPrevious =
+                previous != null &&
+                (chapterTitle
+                    ? !sourceTitleFailureIsOrdinary(previous) &&
+                          sourceTitleFailureIsOrdinary(failure)
+                    : (previous.category == 'policy' ||
+                              (previous.category == 'host-input' &&
+                                  previous._mustPropagate)) &&
+                          failure.category == 'host-input' &&
+                          !failure._mustPropagate);
+            if (!keepPrevious) hostFailure = failure;
             result = JsResult.err(
-              hostFailure!.category == 'policy'
-                  ? JsError.bridge(hostFailure!.message)
-                  : JsError.bridge(hostFailure!.category),
+              failure.category == 'policy'
+                  ? JsError.bridge(failure.message)
+                  : JsError.bridge(failure.category),
             );
           }
         }
@@ -961,7 +1013,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       session.starts[executionId] = (request) {
         // Never throw through FRB's non-fallible callback ABI.
         if (token.isCancelled) return;
-        final work = perform(request);
+        final work = executionZone.run(() => perform(request));
         pending[request.id] = work;
         unawaited(
           work.then<void>((_) {
@@ -1320,7 +1372,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final message =
         '$member 需要一个绝对的 http(s) 地址：${address is String ? address : ''}';
     _record(SourceHostMessage('verification', message));
-    return SourceScriptError('host-input', message);
+    return SourceScriptError._('host-input', message, true);
   }
 
   /// One named refusal of a member that exists but cannot be served here: the
@@ -1479,19 +1531,15 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
   /// JSON text (`ShelfService` writes the row; [SourceHostState] reads and
   /// writes the column through the space's store).
   ///
-  /// The row is the one the snapshot's own URL names, because that is what a
-  /// script sees: the book's `bookUrl` and the chapter's `url`. Those are the
-  /// values the space's identities are built from — a book row's
-  /// `sourceBookUrl` holds the resolved raw address exposed as `book.bookUrl`
-  /// (#99), and a chapter row's `chapterKey` is the target its `url` names
-  /// (#58). A chapter's row is found through its book, so a chapter binding
-  /// with no book binding fails as a
-  /// boundary error; the content stage always binds both (the reader hands the
-  /// book with the chapter), and a snapshot that is absent has no row at all.
+  /// Entity variables use the snapshot's URL unless a chapter came from a
+  /// saved row. In that case the existing row key is authoritative even if the
+  /// saved request text resolves differently. The script still sees its own
+  /// chapter URL. A chapter binding without its book has no row to address.
   Future<Object?> _handleVariable(
     Object? payload,
     Map<String, Object?> input,
     String sourceRef,
+    String? chapterVariableRowKey,
   ) async {
     if (payload is! Map) {
       throw const SourceScriptError('host-input', 'invalid variable call');
@@ -1513,7 +1561,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final chapterUrl = chapter is Map && chapter['url'] is String
         ? chapter['url'] as String
         : null;
-    final rowKey = target == 'book' ? bookUrl : chapterUrl;
+    final chapterKey = chapterUrl == null || chapterUrl.isEmpty
+        ? chapterUrl
+        : chapterVariableRowKey ?? chapterUrl;
+    final rowKey = target == 'book' ? bookUrl : chapterKey;
     if (bookUrl == null ||
         bookUrl.isEmpty ||
         rowKey == null ||
@@ -1796,6 +1847,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     if (error is IOException) return const SourceScriptError('network');
     if (error is JsError_Cancelled) return const SourceScriptError('cancelled');
+    // Native setup failures are distinct from source-rule exceptions. The
+    // stack/heap variants can also come from those exceptions' name and text.
+    if (error is JsError_Context ||
+        error is JsError_Storage ||
+        error is JsError_Engine) {
+      return const SourceScriptError._('js', '', true);
+    }
     if (error is JsError) return const SourceScriptError('js');
     return const SourceScriptError('host');
   }
@@ -1815,7 +1873,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     final message = error is JsError ? _jsErrorText(error) : null;
     return message == null || message.isEmpty
         ? failure
-        : SourceScriptError('js', message);
+        : SourceScriptError._('js', message, failure._mustPropagate);
   }
 
   static String? _jsErrorText(JsError error) => switch (error) {
@@ -1824,6 +1882,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     JsError_Type(:final field0) => field0,
     JsError_Reference(:final field0) => field0,
     JsError_Bridge(:final field0) => field0,
+    JsError_MemoryLimit(:final field0) => field0,
+    JsError_StackOverflow(:final field0) => field0,
     JsError_Syntax(:final message) => message,
     _ => null,
   };
@@ -1851,6 +1911,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Map<String, Object?> outerInput,
     SourceCancellation token, {
     bool allowUrlOptions = false,
+    bool chapterTitle = false,
   }) async {
     final url = await expandSourceUrl(
       rawUrl,
@@ -1862,9 +1923,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // carries one keeps this product's existing refusal by name. `java.ajax`,
     // `java.ajaxAll` and `java.connect` build an `AnalyzeUrl` and parse its tail.
     if (!allowUrlOptions && (url.contains(',{') || url.contains(', {'))) {
-      throw const SourceScriptError(
+      throw SourceScriptError._(
         'host-input',
         'nested URL options unsupported',
+        chapterTitle,
       );
     }
     return url;
@@ -2021,9 +2083,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
       // rule the adapter cannot run names itself instead of arriving as a bare
       // category.
       final failure = _classifyScript(error);
-      throw SourceScriptError(
+      throw SourceScriptError._(
         failure.category,
         failure.message.isEmpty ? '$member: $error' : failure.message,
+        failure._mustPropagate,
       );
     }
   }
@@ -2134,6 +2197,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     BigInt requestId,
     Map<String, Object?> outerInput,
     SourceCancellation token, {
+    required bool chapterTitle,
     _StageResponseProvenance? provenance,
   }) async {
     if (host == null || payload is! Map) {
@@ -2144,7 +2208,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     if (method is! String || rawUrl is! String) {
       throw const SourceScriptError('host-input', 'invalid request');
     }
-    final url = await _expandHostUrl(rawUrl, requestId, outerInput, token);
+    final url = await _expandHostUrl(
+      rawUrl,
+      requestId,
+      outerInput,
+      token,
+      chapterTitle: chapterTitle,
+    );
     final rawHeaders = payload['headers'] ?? const <String, String>{};
     if (rawHeaders is! Map ||
         rawHeaders.entries.any((e) => e.key is! String || e.value is! String)) {

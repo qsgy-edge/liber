@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:drift/native.dart';
 import 'package:pointycastle/export.dart';
 
 import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/source_host_state.dart';
+import 'package:liber/store/database.dart';
+import 'package:liber/store/shelf.dart';
+import 'package:liber/store/space_store.dart';
 
 import 'first_slice/runner.dart' show SliceReplayServer;
 
@@ -137,6 +141,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
 }) async {
   final server = await SliceReplayServer.start(
     fixture,
+    orderedResponses: fixture['titleLifecycle'] is Map,
     onResponse: (request, response) {
       request['receipt'] = response;
     },
@@ -161,7 +166,10 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         'intro',
       );
       final sourceRef = '${source['bookSourceUrl']}';
-      final state = SourceHostState();
+      final shelf = terminal == 'four-stage-refresh'
+          ? ShelfService(SpaceStore(SpaceDatabase(NativeDatabase.memory())))
+          : null;
+      final state = shelf?.hostState ?? SourceHostState();
       final pipeline = openBookSourcePipeline(
         source,
         HttpSourceTransport(),
@@ -301,18 +309,89 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
           sourceRuleVariableKey(sourceRef, 'payProbe'),
         );
         record['sourceProbes'] = {'vipProbe': vipProbe, 'payProbe': payProbe};
+        ShelfEntry? stored;
+        final lifecycle = <String, Object?>{};
+        Future<List<Map<String, Object?>>> storedRows() async => [
+          for (final row in await shelf!.store.chaptersOf(stored!.id))
+            {
+              'index': row.chapterIndex,
+              'title': row.name,
+              'variable': row.variable,
+            },
+        ];
+        var chapter = chapters.first;
+        if (shelf != null) {
+          final declaration = fixture['titleLifecycle'] as Map;
+          final seeds = (declaration['seedVariables'] as List).cast<String>();
+          if (declaration['observingTerminal'] != terminal ||
+              seeds.length != chapters.length) {
+            throw StateError('Invalid title lifecycle declaration: $id');
+          }
+          final seeded = [
+            for (var i = 0; i < chapters.length; i++)
+              chapters[i].withVariable(seeds[i]),
+          ];
+          await shelf.add(source, book, seeded);
+          stored = await shelf.find(sourceRef, book.identityAddress);
+          lifecycle['beforeContent'] = await storedRows();
+          chapter = seeded.first;
+        }
         final contentRequestStart = server.requests.length;
         final contentTraceStart = pipeline.trace.length;
         final body = await observed(
           'content',
           contentRequestStart,
           contentTraceStart,
-          () => pipeline.chapter(chapters.first, book: book),
+          () => pipeline.chapter(
+            chapter,
+            book: book,
+            nextChapterUrl: shelf == null
+                ? null
+                : '${chapters.length > 1 ? chapters[1].url : chapter.url}',
+          ),
         );
         record['chapter'] = {
-          'title': body.title ?? chapters.first.name,
+          'title': body.title ?? chapter.name,
           'text': body.text,
         };
+        if (shelf != null) {
+          if (body.title case final title?) {
+            final catalogName = await shelf.saveChapterTitle(
+              bookId: stored!.id,
+              sourceRef: sourceRef,
+              book: book,
+              chapter: chapter,
+              chapterIndex: 0,
+              title: title,
+              isCurrent: () => true,
+            );
+            if (catalogName == null) {
+              throw StateError('Title publication rejected: $id');
+            }
+          }
+          lifecycle['storedAfterContent'] = await storedRows();
+          final (refreshedBook, refreshedChapters) = await observed(
+            'tableOfContents',
+            server.requests.length,
+            pipeline.trace.length,
+            () => pipeline.tableOfContents(info),
+          );
+          lifecycle['refreshedChapters'] = [
+            for (var i = 0; i < refreshedChapters.length; i++)
+              {
+                'index': i,
+                'title': refreshedChapters[i].name,
+                'variable': refreshedChapters[i].variable,
+              },
+          ];
+          await shelf.updateCatalog(
+            sourceRef,
+            refreshedBook,
+            refreshedChapters,
+          );
+          lifecycle['storedAfterRefresh'] = await storedRows();
+          record['titleLifecycle'] = lifecycle;
+        }
         record['requests'] = List<Map<String, Object?>>.unmodifiable(
           server.requests.sublist(requestStart),
         );
@@ -336,6 +415,7 @@ Future<BookUrlMarkersRun> runBookUrlMarkersCorpus({
         }
         if (failed) records.add(record);
         pipeline.cancel();
+        await shelf?.close();
       }
     }
   } finally {

@@ -269,3 +269,8 @@ Future<void> migrateToV7(Migrator m, Schema7 schema) async {
   await m.addColumn(schema.books, schema.books.originalRelativePath);
   await m.createIndex(schema.booksLocalOrigin);
 }
+
+/// v7 → v8: old and imported chapters keep an unknown volume read route.
+Future<void> migrateToV8(Migrator m, Schema8 schema) async {
+  await m.addColumn(schema.chapters, schema.chapters.rendersTagAsContent);
+}

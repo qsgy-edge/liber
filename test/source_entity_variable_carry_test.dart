@@ -1,20 +1,27 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
+import 'package:liber/source/book_source_pipeline.dart';
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/json_source_pipeline.dart';
+import 'package:liber/source/online_reader_page.dart';
 import 'package:liber/source/source_host_state.dart';
 import 'package:liber/store/database.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
+import 'package:liber/store/workspace.dart';
 
+import 'l10n_support.dart';
 import 'native_library.dart';
+import 'space_test_support.dart';
 
 /// #132 entity-variable transport: the carrier/runtime contract that carries a
 /// candidate's book and chapter variable text across stage handoffs, copies and
@@ -100,6 +107,261 @@ void main() {
     },
     'ruleContent': {'content': contentScript},
   };
+
+  for (final replaced in [false, true]) {
+    testWidgets(
+      'reader entity writes ${replaced ? 'cannot touch a replacement catalog' : 'still reach the current catalog'}',
+      (tester) => tester.runAsync(() async {
+        final entered = Completer<void>();
+        final release = Completer<void>();
+        final finished = Completer<void>();
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final shelf = ShelfService(store);
+        final source = htmlSource(
+          infoScript: '',
+          tocScript: '',
+          contentScript:
+              '@js:book.putVariable("who", "reader book"); '
+              'chapter.putVariable("who", "reader"); '
+              'book.getVariable("who") + ":" + chapter.getVariable("who")',
+        );
+        final chapter = SourceChapter(
+          '目录名',
+          Uri.parse(chapterUrl),
+          variable: variableText({'who': 'initial'}),
+        );
+        final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+        await shelf.add(source, book, [chapter]);
+        final entry = (await shelf.find(origin, bookUrl))!;
+        final pages = _Pages(
+          {'/c/1': '<p>正文</p>'},
+          beforeResponse: () async {
+            entered.complete();
+            await release.future;
+          },
+        );
+        final pipeline = _FinishingHtml(
+          source,
+          pages,
+          shelf.hostState,
+          finished,
+        );
+        await tester.pumpWidget(
+          localizedApp(
+            home: OnlineReaderPage(
+              pipeline: pipeline,
+              book: book,
+              bookId: entry.id,
+              chapters: [chapter],
+              service: shelf,
+              convert: (text, _) => text,
+            ),
+          ),
+        );
+        await tester.pump();
+        try {
+          await Future.any([
+            entered.future,
+            finished.future,
+          ]).timeout(const Duration(seconds: 8));
+          expect(entered.isCompleted, isTrue);
+          if (replaced) {
+            await shelf.updateCatalog(
+              origin,
+              book.withVariable(variableText({'who': 'new book'})),
+              [
+                chapter.withVariable(variableText({'who': 'new catalog'})),
+              ],
+            );
+          }
+        } finally {
+          release.complete();
+        }
+        await finished.future.timeout(const Duration(seconds: 8));
+        await tester.pumpAndSettle();
+        final current = (await store.chaptersOf(entry.id)).single;
+        expect(
+          jsonDecode(current.variable!)['who'],
+          replaced ? 'new catalog' : 'reader',
+        );
+        final storedBook = (await store.bookById(entry.id))!;
+        expect(
+          jsonDecode(storedBook.variable!)['who'],
+          replaced ? 'new book' : 'reader book',
+        );
+        expect(
+          find.textContaining('reader book:reader'),
+          replaced ? findsNothing : findsOneWidget,
+        );
+      }),
+    );
+  }
+
+  for (final json in [false, true]) {
+    for (final replaced in [false, true]) {
+      final callback = json ? 'JSON initUrl' : 'HTML getStrResponse';
+      testWidgets(
+        'reader login re-entry via $callback with ${replaced ? 'a replaced' : 'the current'} catalog',
+        (tester) => tester.runAsync(() async {
+          // Warm the native callback port outside any reader draft. The login
+          // hook below must carry the initiating reader's context on re-entry.
+          final warm = InProcessSourceScriptRuntime();
+          expect(
+            await warm.evaluate(
+              source: 'java.get("warmCallbackPort"); 1',
+              input: const {},
+              timeout: const Duration(seconds: 3),
+            ),
+            1,
+          );
+          final entered = Completer<void>();
+          final release = Completer<void>();
+          final finished = Completer<void>();
+          final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+          addTearDown(store.close);
+          final shelf = ShelfService(store);
+          final createSource = json ? jsonSource : htmlSource;
+          final source = createSource(
+            infoScript: '',
+            tocScript: '',
+            contentScript:
+                '@js:book.getVariable("who") + ":" + chapter.getVariable("who")',
+          );
+          const write = '''
+if (source.get("retry") === "yes") {
+  book.putVariable("who", "nested book");
+  chapter.putVariable("who", "nested chapter");
+}
+''';
+          source['loginCheckJs'] =
+              'source.put("retry", "yes"); '
+              '${json ? 'java.initUrl(); ' : ''}java.getStrResponse();';
+          if (!json) {
+            source['header'] =
+                '@js:$write JSON.stringify({"X-Retry": source.get("retry") || "no"});';
+          }
+          final address = json
+              ? '$chapterUrl,${jsonEncode({'js': '$write result;'})}'
+              : chapterUrl;
+          final chapter = SourceChapter.fromAddress(
+            '目录名',
+            address,
+            bookUrl: Uri.parse(bookUrl),
+            variable: variableText({'who': 'initial chapter'}),
+          );
+          final book = HtmlBook(
+            url: Uri.parse(bookUrl),
+            title: '书',
+            variable: variableText({'who': 'initial book'}),
+          );
+          await shelf.add(source, book, [chapter]);
+          final entry = (await shelf.find(origin, bookUrl))!;
+          final pages = _Pages(
+            {'/c/1': json ? '{"text":"正文"}' : '<p>正文</p>'},
+            beforeResponse: () async {
+              if (!entered.isCompleted) {
+                entered.complete();
+                await release.future;
+              }
+            },
+          );
+          final pipeline = json
+              ? _FinishingJson(source, pages, shelf.hostState, finished)
+              : _FinishingHtml(source, pages, shelf.hostState, finished);
+          final handedOff = <(HtmlBook, List<SourceChapter>)>[];
+          await tester.pumpWidget(
+            localizedApp(
+              home: OnlineReaderPage(
+                pipeline: pipeline,
+                book: book,
+                bookId: entry.id,
+                chapters: [
+                  for (final row in entry.chapters)
+                    SourceChapter.fromAddress(
+                      row.name,
+                      row.url ?? row.chapterKey,
+                      bookUrl: book.url,
+                      chapterKey: row.chapterKey,
+                      variable: row.variable,
+                    ),
+                ],
+                chapterCatalogRevision: entry.chapterCatalogRevision,
+                service: shelf,
+                convert: (text, _) => text,
+                onEntityState: (book, chapters) =>
+                    handedOff.add((book, chapters)),
+              ),
+            ),
+          );
+          await tester.pump();
+          try {
+            await Future.any([
+              entered.future,
+              finished.future,
+            ]).timeout(const Duration(seconds: 8));
+            expect(entered.isCompleted, isTrue);
+            if (replaced) {
+              await shelf.updateCatalog(
+                origin,
+                book.withVariable(variableText({'who': 'replacement book'})),
+                [
+                  chapter.withVariable(
+                    variableText({'who': 'replacement chapter'}),
+                  ),
+                ],
+              );
+            }
+          } finally {
+            release.complete();
+          }
+          await finished.future.timeout(const Duration(seconds: 8));
+          await tester.pumpAndSettle();
+          expect(pages.requests.map((request) => request.url.path), [
+            '/c/1',
+            '/c/1',
+          ]);
+          if (!json) {
+            expect(
+              pages.requests.map((request) => request.headers['X-Retry']),
+              ['no', 'yes'],
+            );
+          }
+          expect(
+            await shelf.hostState.entry(
+              origin,
+              sourceRuleVariableKey(origin, 'retry'),
+            ),
+            'yes',
+          );
+          expect(
+            variableMapOf((await store.bookById(entry.id))!.variable)['who'],
+            replaced ? 'replacement book' : 'nested book',
+          );
+          expect(
+            variableMapOf(
+              (await store.chaptersOf(entry.id)).single.variable,
+            )['who'],
+            replaced ? 'replacement chapter' : 'nested chapter',
+          );
+          expect(
+            find.textContaining('nested book:nested chapter'),
+            replaced ? findsNothing : findsOneWidget,
+          );
+          if (replaced) {
+            expect(handedOff, isEmpty);
+          } else {
+            final (savedBook, savedChapters) = handedOff.single;
+            expect(variableMapOf(savedBook.variable)['who'], 'nested book');
+            expect(
+              variableMapOf(savedChapters.single.variable)['who'],
+              'nested chapter',
+            );
+          }
+        }),
+      );
+    }
+  }
 
   HtmlBook hitWith(String? variable) => HtmlBook(
     url: Uri.parse(bookUrl),
@@ -251,6 +513,326 @@ void main() {
       },
     );
   }
+
+  test(
+    'JSON TOC restores variables only for the exact stored source key',
+    () async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      final state = SourceHostState(
+        persistence: SpaceHostStatePersistence(store),
+      );
+      final exactSource = origin.replaceFirst(
+        Uri.parse(origin).host,
+        Uri.parse(origin).host.toUpperCase(),
+      );
+      const exact = '{"owner":"exact"}';
+      const other = '{"owner":"other"}';
+      for (final (id, sourceRef, variable) in [
+        ('a', exactSource, exact),
+        ('b', origin, other),
+      ]) {
+        await store.putBook(
+          BooksCompanion.insert(
+            id: id,
+            title: '书',
+            kind: const Value('network'),
+            sourceRef: Value(sourceRef),
+            sourceBookUrl: const Value(bookUrl),
+          ),
+        );
+        await store.putChapters(id, [
+          BookChapter(
+            bookId: id,
+            chapterKey: chapterUrl,
+            name: '第一章',
+            url: chapterUrl,
+            chapterIndex: 0,
+            isVolume: false,
+            isVip: false,
+            isPay: false,
+            variable: variable,
+          ),
+        ]);
+      }
+      final source = jsonSource(
+        infoScript: '@js:""',
+        tocScript: writeChapter,
+        contentScript: readBoth,
+      )..['bookSourceUrl'] = exactSource;
+      final pipeline = JsonSourcePipeline(
+        source,
+        jsonPages(),
+        hostState: state,
+      );
+      final (_, chapters) = await pipeline.details(hitWith(null));
+      expect(chapters.single.variable, exact);
+      expect(
+        await store.chapterVariable(exactSource, bookUrl, chapterUrl),
+        exact,
+      );
+      expect(await store.chapterVariable(origin, bookUrl, chapterUrl), other);
+    },
+  );
+
+  for (final json in [false, true]) {
+    for (final freshToken in ['new', null]) {
+      test(
+        '${json ? 'JSON' : 'HTML'} off-shelf TOC refresh hands off ${freshToken ?? 'no'} token',
+        () async {
+          final root = await Directory.systemTemp.createTemp(
+            'liber-toc-token-',
+          );
+          var workspace = await Workspace.open(root: root);
+          addTearDown(() async {
+            await workspace.close();
+            await root.delete(recursive: true);
+          });
+          var shelf = ShelfService(await workspace.openSpace());
+          final pages = json ? jsonPages() : htmlPages();
+          Map<String, dynamic> source(String? token) {
+            const content =
+                '@js:"token:" + (chapter.getVariable("token") || "missing")';
+            final source = json
+                ? jsonSource(
+                    infoScript: '',
+                    tocScript: '',
+                    contentScript: content,
+                  )
+                : htmlSource(
+                    infoScript: '',
+                    tocScript: '',
+                    contentScript: content,
+                  );
+            (source['ruleToc'] as Map)['isVip'] = token == null
+                ? '@js:false'
+                : '@js:(chapter.putVariable("token", "$token"), false)';
+            return source;
+          }
+
+          BookSourcePipeline open(
+            Map<String, dynamic> source, {
+            bool deferred = false,
+          }) => json
+              ? JsonSourcePipeline(
+                  source,
+                  pages,
+                  hostState: shelf.hostState,
+                  deferEntityVariables: deferred,
+                )
+              : HtmlSourcePipeline(
+                  source,
+                  pages,
+                  hostState: shelf.hostState,
+                  deferEntityVariables: deferred,
+                );
+          final originalToc = pages.pages['/toc']!;
+          pages.pages['/toc'] = originalToc.replaceFirst('/c/1', chapterUrl);
+          final initial = open(source('old'));
+          final (oldBook, oldChapters) = await initial.details(hitWith(null));
+          expect(oldChapters.single.variable, variableText({'token': 'old'}));
+          expect(oldChapters.single.address, chapterUrl);
+          initial.cancel();
+
+          pages.pages['/toc'] = originalToc;
+          final preview = open(source('preview'), deferred: true);
+          final (_, candidate) = await preview.details(hitWith(null));
+          expect(candidate.single.variable, variableText({'token': 'preview'}));
+          preview.cancel();
+          final oldReader = open(source(null));
+          expect(
+            (await oldReader.chapter(oldChapters.single, book: oldBook)).text,
+            'token:old',
+            reason: 'a deferred preview does not replace the shared handoff',
+          );
+          oldReader.cancel();
+
+          final freshSource = source(freshToken);
+          final refresh = open(freshSource);
+          final (book, chapters) = await refresh.details(hitWith(null));
+          final chapter = chapters.single;
+          final expectedVariable = freshToken == null
+              ? null
+              : variableText({'token': freshToken});
+          expect(chapter.address, '/c/1');
+          expect(chapter.progressKey, oldChapters.single.progressKey);
+          expect(chapter.variable, expectedVariable);
+          expect(await shelf.find(origin, bookUrl), isNull);
+          refresh.cancel();
+
+          final reader = open(freshSource);
+          final body = await reader.chapter(chapter, book: book);
+          reader.cancel();
+          // Save the content snapshot the reader hands back, not the pre-read TOC.
+          await shelf.add(freshSource, book, [
+            chapter.withVariable(body.chapterVariable),
+          ]);
+          await workspace.close();
+          workspace = await Workspace.open(root: root);
+          shelf = ShelfService(await workspace.openSpace());
+          final reopened = (await shelf.find(origin, bookUrl))!;
+          final row = reopened.chapters.single;
+          final reopenedReader = open(freshSource);
+          final reopenedBody = await reopenedReader.chapter(
+            SourceChapter.fromAddress(
+              row.name,
+              row.url!,
+              bookUrl: reopened.htmlBook.url,
+              chapterKey: row.chapterKey,
+              variable: row.variable,
+            ),
+            book: reopened.htmlBook,
+          );
+          reopenedReader.cancel();
+          expect(row.chapterKey, chapterUrl);
+          expect(row.url, chapterUrl);
+          expect(pages.requests.map((r) => r.url.path), [
+            '/book', '/toc', // initial
+            '/book', '/toc', '/c/1', // preview then old reader
+            '/book', '/toc', '/c/1', '/c/1', // refresh then read/reopen
+          ]);
+          expect(
+            (body.text, body.chapterVariable, row.variable, reopenedBody.text),
+            (
+              'token:${freshToken ?? 'missing'}',
+              expectedVariable,
+              expectedVariable,
+              'token:${freshToken ?? 'missing'}',
+            ),
+            reason: 'content, reader handoff, saved row, and reopened content',
+          );
+        },
+      );
+    }
+  }
+
+  test(
+    'JSON TOC first read uses the fresh carrier after a key becomes duplicated',
+    () async {
+      final source = jsonSource(
+        infoScript: '',
+        tocScript:
+            '@js:if (chapter.title != "Second") chapter.putVariable("token", chapter.title == "First" ? "new" : "old"); ""',
+        contentScript: '@js:"token:" + chapter.getVariable("token")',
+      );
+      final pages = jsonPages();
+      final state = SourceHostState();
+      JsonSourcePipeline open() =>
+          JsonSourcePipeline(source, pages, hostState: state);
+      pages.pages['/toc'] = '{"list":[{"name":"old","url":"/c/1"}]}';
+      final initial = open();
+      addTearDown(initial.cancel);
+      final (_, original) = await initial.details(hitWith(null));
+      expect(original.single.variable, variableText({'token': 'old'}));
+      expect(original.single.progressKey, chapterUrl);
+
+      pages.pages['/toc'] =
+          '{"list":[{"name":"First","url":"/c/1"},{"name":"Second","url":"c/1"}]}';
+      final refresh = open();
+      addTearDown(refresh.cancel);
+      final (book, chapters) = await refresh.details(hitWith(null));
+      expect(chapters.map((chapter) => chapter.address), ['/c/1', 'c/1']);
+      expect(chapters.map((chapter) => chapter.progressKey), [
+        chapterUrl,
+        chapterUrl,
+      ]);
+      expect(chapters.first.variable, variableText({'token': 'new'}));
+      expect(chapters.last.variable, isNull);
+      expect(pages.requests.map((request) => request.url.path), [
+        '/book',
+        '/toc',
+        '/book',
+        '/toc',
+      ]);
+
+      final reader = open();
+      addTearDown(reader.cancel);
+      final body = await reader.chapter(chapters.first, book: book);
+      expect(body.text, 'token:new');
+      expect(body.chapterVariable, chapters.first.variable);
+    },
+  );
+
+  for (final readerWrites in [false, true]) {
+    test(
+      'JSON TOC ambiguity preserves ${readerWrites ? 'the reader write' : 'the previous raw write'}',
+      () async {
+        final source = jsonSource(
+          infoScript: '',
+          tocScript:
+              '@js:if (chapter.title != "Second") chapter.putVariable("token", chapter.title); ""',
+          contentScript: '@js:chapter.getVariable("token")',
+        );
+        final pages = jsonPages();
+        final state = SourceHostState();
+        JsonSourcePipeline open([Map<String, dynamic>? options]) {
+          final pipeline = JsonSourcePipeline(
+            options ?? source,
+            pages,
+            hostState: state,
+          );
+          addTearDown(pipeline.cancel);
+          return pipeline;
+        }
+
+        String catalog(String name, String url) => jsonEncode({
+          'list': [
+            {'name': name, 'url': url},
+          ],
+        });
+        pages.pages['/toc'] = catalog('raw', chapterUrl);
+        await open().details(hitWith(null));
+        pages.pages['/toc'] = catalog('override', '/c/1');
+        final (book, unique) = await open().details(hitWith(null));
+        expect(
+          (await open().chapter(unique.single, book: book)).text,
+          'override',
+        );
+        if (readerWrites) {
+          final writer = open({
+            ...source,
+            'ruleContent': {
+              'content': '@js:chapter.putVariable("token", "reader"); "reader"',
+            },
+          });
+          await writer.chapter(unique.single, book: book);
+        }
+
+        pages.pages['/toc'] =
+            '{"list":[{"name":"First","url":"/c/1"},{"name":"Second","url":"c/1"}]}';
+        final (refreshedBook, duplicate) = await open().details(hitWith(null));
+        expect(duplicate.first.progressKey, duplicate.last.progressKey);
+        expect(duplicate.first.variable, variableText({'token': 'First'}));
+        final body = await open().chapter(duplicate.first, book: refreshedBook);
+        expect(body.text, readerWrites ? 'reader' : 'raw');
+      },
+    );
+  }
+
+  test('JSON TOC duplicate resolved keys keep their existing handoff', () async {
+    final source = jsonSource(
+      infoScript: '',
+      tocScript:
+          '@js:chapter.title == "First" ? (chapter.putVariable("c", "first"), "") : ""',
+      contentScript: '@js:chapter.getVariable("c")',
+    );
+    final pages = jsonPages();
+    pages.pages['/toc'] = jsonEncode({
+      'list': [
+        {'name': 'First', 'url': chapterUrl},
+        {'name': 'Second', 'url': '/c/1'},
+      ],
+    });
+    final pipeline = JsonSourcePipeline(source, pages);
+    addTearDown(pipeline.cancel);
+    final (book, chapters) = await pipeline.details(hitWith(null));
+    expect(chapters.map((chapter) => chapter.progressKey), [
+      chapterUrl,
+      chapterUrl,
+    ]);
+    expect(chapters.last.variable, isNull);
+    expect((await pipeline.chapter(chapters.first, book: book)).text, 'first');
+  });
 
   for (final json in [false, true]) {
     for (final deferred in [false, true]) {
@@ -752,33 +1334,32 @@ void main() {
     },
   );
 
-  test('HTML keeps its named refusal for a chapter address js option', () async {
-    final pageMap = _Pages({
-      '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
-      '/toc':
-          '<ul id="list"><li><a href="/c/1,{&#34;js&#34;:&#34;void 0&#34;}">第一章</a></li></ul>',
-    });
-    final pipeline = HtmlSourcePipeline(
-      htmlSource(
-        infoScript: '@CSS:h2@text',
-        tocScript: '""',
-        contentScript: readBoth,
-      ),
-      pageMap,
-      deferEntityVariables: true,
-    );
-
-    await expectLater(
-      pipeline.details(hitWith(null)),
-      throwsA(
-        isA<UnsupportedError>().having(
-          (error) => error.message,
-          'message',
-          '暂不支持章节地址的 URL 选项',
+  test(
+    'HTML chapter option JS writes its chapter variable at fetch only',
+    () async {
+      final tail = jsonEncode({
+        'js': "chapter.putVariable('addressToken','ready'); void 0",
+      }).replaceAll('"', '&quot;');
+      final pipeline = HtmlSourcePipeline(
+        htmlSource(
+          infoScript: '@CSS:h2@text',
+          tocScript: '""',
+          contentScript: '@js:"正文"',
         ),
-      ),
-    );
-  });
+        _Pages({
+          '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+          '/toc': '<ul id="list"><li><a href="/c/1,$tail">第一章</a></li></ul>',
+          '/c/1': '<p>正文</p>',
+        }),
+        deferEntityVariables: true,
+      );
+      final (book, chapters) = await pipeline.details(hitWith(null));
+      expect(variableMapOf(chapters.single.variable), isEmpty);
+      final chapter = await pipeline.chapter(chapters.single, book: book);
+      expect(chapter.text, '正文');
+      expect(variableMapOf(chapter.chapterVariable), {'addressToken': 'ready'});
+    },
+  );
 
   for (final json in [false, true]) {
     final label = json ? 'JSON' : 'HTML';
@@ -1469,6 +2050,84 @@ void main() {
     );
   }
 
+  test(
+    'HTML reopened chapter persists its variable under the saved key',
+    () async {
+      const fullAddress = '$chapterUrl#part';
+      final source = htmlSource(
+        infoScript: '@js:""',
+        tocScript: '@js:(chapter.putVariable("n","0"), "")',
+        contentScript:
+            '@js:chapter.putVariable("n", '
+            'String(Number(chapter.getVariable("n") || "0") + 1)); '
+            'chapter.url + ":" + chapter.getVariable("n")',
+      );
+      final pages = _Pages({
+        '/book': '<h2>书</h2><div id="toc"><a href="/toc">目录</a></div>',
+        '/toc': '<ul id="list"><li><a href="/c/1#part">第一章</a></li></ul>',
+        '/c/1': '<p>正文</p>',
+      });
+      final space = await TestSpace.create();
+      addTearDown(space.delete);
+      var shelf = ShelfService(space.store);
+      final initial = HtmlSourcePipeline(
+        source,
+        pages,
+        hostState: shelf.hostState,
+      );
+      final (book, chapters) = await initial.details(hitWith(null));
+      expect(chapters.single.progressKey, chapterUrl);
+      expect(chapters.single.persistedAddress, fullAddress);
+      await shelf.add(source, book, chapters);
+      initial.cancel();
+
+      Future<String> readReopened(ShelfService service) async {
+        final entry = (await service.find(origin, book.identityAddress))!;
+        final row = entry.chapters.single;
+        expect(row.chapterKey, chapterUrl);
+        expect(row.url, fullAddress);
+        final chapter = SourceChapter.fromAddress(
+          row.name,
+          row.url!,
+          bookUrl: entry.htmlBook.url,
+          chapterKey: row.chapterKey,
+          variable: row.variable,
+        );
+        final host = service.hostState;
+        final pipeline = HtmlSourcePipeline(source, pages, hostState: host);
+        try {
+          final (body, changes) = await host.stageReaderVariables(
+            () => pipeline.chapter(chapter, book: entry.htmlBook),
+          );
+          final publish = await service.store.transaction(
+            () => host.saveReaderVariables(changes),
+          );
+          publish();
+          return body.text;
+        } finally {
+          pipeline.cancel();
+        }
+      }
+
+      shelf = ShelfService(await space.reopen());
+      final first = await readReopened(shelf);
+      final saved = (await shelf.find(origin, book.identityAddress))!;
+      shelf = ShelfService(await space.reopen());
+      final second = await readReopened(shelf);
+      expect(pages.requests.map((request) => request.url.path), [
+        '/book',
+        '/toc',
+        '/c/1',
+        '/c/1',
+      ]);
+      expect(first, '$fullAddress:1');
+      expect(
+        (variableMapOf(saved.chapters.single.variable)['n'], second),
+        ('1', '$fullAddress:2'),
+      );
+    },
+  );
+
   // A relative TOC chapter's variable is written under
   // the TOC stage's own key ('/c/1'), while the content stage reads and writes
   // the row key ('$origin/c/1'). The content stage starts from the chapter's own
@@ -1631,17 +2290,75 @@ void main() {
   }
 }
 
+class _FinishingHtml extends HtmlSourcePipeline {
+  _FinishingHtml(
+    super.source,
+    super.transport,
+    SourceHostState state,
+    this.finished,
+  ) : super(hostState: state);
+
+  final Completer<void> finished;
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    try {
+      return await super.chapter(
+        chapter,
+        book: book,
+        nextChapterUrl: nextChapterUrl,
+      );
+    } finally {
+      finished.complete();
+    }
+  }
+}
+
+class _FinishingJson extends JsonSourcePipeline {
+  _FinishingJson(
+    super.source,
+    super.transport,
+    SourceHostState state,
+    this.finished,
+  ) : super(hostState: state);
+
+  final Completer<void> finished;
+
+  @override
+  Future<HtmlChapterBody> chapter(
+    SourceChapter chapter, {
+    HtmlBook? book,
+    String? nextChapterUrl,
+  }) async {
+    try {
+      return await super.chapter(
+        chapter,
+        book: book,
+        nextChapterUrl: nextChapterUrl,
+      );
+    } finally {
+      finished.complete();
+    }
+  }
+}
+
 /// Answers one page per path and records every request.
 class _Pages implements BookSourceTransport, SourceHttpTransport {
-  _Pages(this.pages, {this.onRequest});
+  _Pages(this.pages, {this.onRequest, this.beforeResponse});
   final Map<String, String> pages;
   final void Function(Uri)? onRequest;
+  final Future<void> Function()? beforeResponse;
   final requests = <SourceHttpRequest>[];
 
   @override
   Future<SourceHttpResponse> send(SourceHttpRequest request) async {
     requests.add(request);
     onRequest?.call(request.url);
+    if (beforeResponse != null) await beforeResponse!();
     return SourceHttpResponse(
       statusCode: 200,
       headers: const {},
@@ -1658,6 +2375,7 @@ class _Pages implements BookSourceTransport, SourceHttpTransport {
     final url = Uri.parse(path);
     requests.add(SourceHttpRequest(method: 'GET', url: url));
     onRequest?.call(url);
+    if (beforeResponse != null) await beforeResponse!();
     return _body(url);
   }
 

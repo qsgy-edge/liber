@@ -181,7 +181,7 @@ golden.
 The WebView environment is profile-exact. Both the live capture and the retained
 command admission require exactly one `Current WebView package (name, version)`
 line naming `com.google.android.webview` with the version that profile runs on:
-`159.0.8154.4` for the title-lifecycle corpus and `158.0.8127.2` for every other
+`159.0.8154.18` for the title-lifecycle corpus and `158.0.8127.2` for every other
 selected corpus, whose retained evidence was captured on it. The version comes
 from the fixture's own profile, never from a request flag or from a packet's
 self-declared value. An available-provider mention is not a current-provider
@@ -489,9 +489,10 @@ python tool/result_field_oracle/capture.py --preflight-only   --fixture tool/res
 
 The lifecycle cases invoke the reference `WebBook` entry points and the
 reference chapter DAO directly. They are not a driven native reader UI and they
-publish no reader screen. The product side of this corpus is not implemented
-yet, so a public comparison of it is expected to stop at the missing product
-`titleLifecycle` until the approved reader/shelf/store slice lands.
+publish no reader screen. The product runner records `titleLifecycle` from the
+shelf and store before and after reading the chapter and refreshing its catalog.
+Those records support the lifecycle comparison; driven reader UI evidence is
+recorded separately.
 
 ## Destination side
 

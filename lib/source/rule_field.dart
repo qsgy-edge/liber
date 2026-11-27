@@ -291,6 +291,20 @@ class RuleField {
   static String? extractionText(String field) =>
       parseRuleField(field).extractionRule;
 
+  /// A `##`-only replacement field that needs no extraction or script context.
+  static RuleReplaceFields? staticReplacement(String field) {
+    final rule = field.trim();
+    if (!rule.startsWith('##') ||
+        _jsOpenPattern.hasMatch(rule) ||
+        _scriptPattern.hasMatch(rule) ||
+        _evalPattern.hasMatch(rule) ||
+        _putPattern.hasMatch(rule)) {
+      return null;
+    }
+    final fields = splitRuleFields(rule);
+    return fields.regex?.isNotEmpty == true ? fields : null;
+  }
+
   /// Splits [field] and resolves everything that runs **before** the adapter's
   /// extraction: the `@put:{...}` values and the `@get:`/`{{...}}`
   /// substitution. The `##`/`###` fields stay in [extractionRule]. Static HTML

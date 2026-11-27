@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/json_source_pipeline.dart';
@@ -7,6 +10,24 @@ import 'package:liber/store/shelf.dart';
 import 'package:liber/store/space_store.dart';
 
 import 'space_test_support.dart';
+
+class _ProgressSnapshotGateStore extends SpaceStore {
+  _ProgressSnapshotGateStore(super.db);
+
+  bool pauseNextProgressRead = false;
+  final snapshotTaken = Completer<void>();
+  final resumeSwitch = Completer<void>();
+
+  @override
+  Future<ReadingProgress?> progressOf(String bookId) async {
+    if (!pauseNextProgressRead) return super.progressOf(bookId);
+    pauseNextProgressRead = false;
+    final snapshot = await super.progressOf(bookId);
+    snapshotTaken.complete();
+    await resumeSwitch.future;
+    return snapshot;
+  }
+}
 
 /// The shelf reads and writes one space's store: membership is `books.shelved`,
 /// a book is its natural key, the TOC is `chapters` and the position is the
@@ -53,6 +74,195 @@ void main() {
     store = await space.reopen();
     shelf = ShelfService(store);
     return shelf;
+  }
+
+  test(
+    'a rolled-back source switch leaves the previously acquired catalog current',
+    () async {
+      await shelf.add(source, book('A'), chapters('A'));
+      final acquired = await entryOf('A');
+      final replacement = book('B');
+      final otherSource = {...source, 'bookSourceUrl': '$sourceUrl/other'};
+      await expectLater(
+        store.transaction(() async {
+          await shelf.switchSource(
+            acquired.id,
+            otherSource,
+            replacement,
+            chapters('B'),
+          );
+          throw StateError('abort the outer transaction');
+        }),
+        throwsStateError,
+      );
+      final current = await entryOf('A');
+      expect(current.chapters, acquired.chapters);
+      expect(
+        store.isChapterCatalogCurrent(
+          acquired.id,
+          acquired.chapterCatalogRevision!,
+        ),
+        isTrue,
+      );
+      await shelf.switchSource(
+        acquired.id,
+        otherSource,
+        replacement,
+        chapters('B'),
+      );
+      expect(
+        store.isChapterCatalogCurrent(
+          acquired.id,
+          acquired.chapterCatalogRevision!,
+        ),
+        isFalse,
+      );
+      final switched = (await shelf.find('$sourceUrl/other', bookUrl('B')))!;
+      expect(switched.chapters.map((row) => row.url), [
+        '$sourceUrl/B/1',
+        '$sourceUrl/B/2',
+      ]);
+      expect(
+        store.isChapterCatalogCurrent(
+          switched.id,
+          switched.chapterCatalogRevision!,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  for (final switchFirst in [false, true]) {
+    test(
+      switchFirst
+          ? 'a source switch cannot overwrite a concurrently saved position'
+          : 'a source switch maps the position saved before it commits',
+      () async {
+        final gated = _ProgressSnapshotGateStore(
+          SpaceDatabase(NativeDatabase.memory()),
+        );
+        addTearDown(gated.close);
+        final service = ShelfService(gated);
+        final oldChapters = chapters('A');
+        final newChapters = chapters('B');
+        final id = (await service.add(source, book('A'), oldChapters)).bookId;
+        await service.saveProgress(
+          id,
+          chapterKey: oldChapters.first.progressKey,
+          chapterIndex: 0,
+          textOffset: 7,
+        );
+        final revision = gated.chapterCatalogRevision;
+        final other = {...source, 'bookSourceUrl': '$sourceUrl/other'};
+        Future<ShelfEntry> changeSource() =>
+            service.switchSource(id, other, book('B'), newChapters);
+
+        final entered = Completer<void>();
+        final release = Completer<void>();
+        Future<bool> savePosition() => gated.transaction(() async {
+          if (!switchFirst) {
+            entered.complete();
+            await release.future;
+          }
+          if (!gated.isChapterCatalogCurrent(id, revision)) return false;
+          await service.saveProgress(
+            id,
+            chapterKey: oldChapters.last.progressKey,
+            chapterIndex: 1,
+            textOffset: 73,
+          );
+          return true;
+        });
+
+        final Future<ShelfEntry> switching;
+        final Future<bool> saving;
+        if (switchFirst) {
+          gated.pauseNextProgressRead = true;
+          switching = changeSource();
+          await gated.snapshotTaken.future;
+          saving = savePosition();
+          gated.resumeSwitch.complete();
+        } else {
+          saving = savePosition();
+          await entered.future;
+          switching = changeSource();
+          release.complete();
+        }
+        final admitted = await saving;
+        final switched = await switching;
+        final progress = (await gated.progressOf(id))!;
+        final expectedIndex = admitted ? 1 : 0;
+        expect(switched.id, id);
+        expect(progress.textOffset, admitted ? 73 : 7);
+        expect(progress.chapterIndex, expectedIndex);
+        expect(progress.chapterKey, newChapters[expectedIndex].progressKey);
+        expect(admitted, !switchFirst);
+      },
+    );
+  }
+
+  test(
+    'a shelf lookup queued during a replacement returns a usable catalog',
+    () async {
+      await shelf.add(source, book('A'), chapters('A'));
+      final before = await entryOf('A');
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final fresh = chapters(
+        'A',
+      ).map((chapter) => chapter.withName('新${chapter.name}')).toList();
+      final writer = store.transaction(() async {
+        entered.complete();
+        await release.future;
+        await shelf.updateCatalog(sourceUrl, book('A'), fresh);
+      });
+      await entered.future;
+      final reading = entryOf('A');
+      release.complete();
+      await writer;
+      final entry = await reading;
+      expect(entry.chapters.map((row) => row.name), ['新第一章', '新第二章']);
+      expect(
+        store.isChapterCatalogCurrent(entry.id, entry.chapterCatalogRevision!),
+        isTrue,
+      );
+      expect(
+        store.isChapterCatalogCurrent(
+          before.id,
+          before.chapterCatalogRevision!,
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  for (final (label, title, accepted) in [
+    ('U+0085', '\u0085', true),
+    ('U+001C', '\u001C', false),
+  ]) {
+    test('shelf content title uses selected blankness: $label', () async {
+      final hit = book('A');
+      final toc = chapters('A');
+      await shelf.add(source, hit, toc);
+      final before = await entryOf('A');
+      final saved = await shelf.saveChapterTitle(
+        bookId: before.id,
+        sourceRef: sourceUrl,
+        book: hit,
+        chapter: toc.first,
+        chapterIndex: 0,
+        title: title,
+        isCurrent: () => true,
+      );
+
+      expect(saved?.codeUnits, accepted ? title.codeUnits : null);
+      await restart();
+      final first = before.chapters.first;
+      expect((await entryOf('A')).chapters, [
+        accepted ? first.copyWith(name: title) : first,
+        before.chapters.last,
+      ]);
+    });
   }
 
   test('加入的书、目录与各自的位置来自存储，重启后仍在', () async {

@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart';
+import 'package:liber/source/book_source_service.dart' show BookSourceTransport;
 import 'package:liber/source/book_source_webview_adapter.dart';
 import 'package:liber/source/html_source_pipeline.dart';
 import 'package:liber/source/http_source_transport.dart';
+import 'package:liber/source/json_source_pipeline.dart' show JsonSourcePipeline;
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_host_dispatcher.dart';
 import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/source_http_uri.dart';
+import 'package:liber/source/source_stage_diagnostic.dart';
 import 'package:liber/store/host_state.dart';
 import 'package:liber/store/workspace.dart';
 
@@ -21,9 +25,10 @@ import 'temp_directory.dart';
 
 /// One answer of a fixture path: the status it is sent with and its body.
 class _Page {
-  const _Page(this.body, {this.status = 200});
+  const _Page(this.body, {this.status = 200, this.disconnect = false});
   final String body;
   final int status;
+  final bool disconnect;
 }
 
 /// One request the fixture site saw, so a test asserts the wire — the method,
@@ -84,10 +89,36 @@ class _Site {
       request.response.write('not found');
     } else {
       final page = queue.length > 1 ? queue.removeAt(0) : queue.first;
+      if (page.disconnect) {
+        final socket = await request.response.detachSocket(writeHeaders: false);
+        socket.destroy();
+        return;
+      }
       request.response.statusCode = page.status;
       request.response.write(page.body);
     }
     await request.response.close();
+  }
+}
+
+/// Injects a timeout at the transport boundary without waiting on a timer.
+class _ContentTimeout implements BookSourceTransport {
+  _ContentTimeout(this.body);
+
+  final String body;
+  final attempts = <Uri>[];
+
+  @override
+  Future<String> request({
+    required BookSourceStage stage,
+    required String path,
+  }) async {
+    expect(stage, BookSourceStage.content);
+    attempts.add(Uri.parse(path));
+    if (attempts.length == 1) {
+      throw TimeoutException('private transport detail');
+    }
+    return body;
   }
 }
 
@@ -219,6 +250,572 @@ BookSourcePipeline _pipeline(
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
   tearDownAll(NativeLibrary.dispose);
+
+  test(
+    'HTML chapter applies POST, charset and option JS only when fetched',
+    () async {
+      const options =
+          '{"method":"POST","charset":"gbk","body":"v=书",'
+          '"js":"result.replace(\'/original\',\'/actual\')"}';
+      const tail = ' , $options';
+      final site = await _Site.start({
+        '/book': [const _Page('<h1>书</h1><a class="toc" href="/toc">目录</a>')],
+        '/toc': [
+          _Page(
+            '<li><a href="/chapter/original${tail.replaceAll('"', '&quot;')}">第一章</a></li>',
+          ),
+        ],
+        '/chapter/actual': [const _Page('<div id="content">正文</div>')],
+      });
+      addTearDown(site.close);
+      final source = _htmlSource(site.origin);
+      (source['ruleContent'] as Map<String, String>)['title'] = '@js:baseUrl';
+      final pipeline = _pipeline(source);
+      final (book, toc) = await pipeline.details(
+        HtmlBook(title: '书', url: Uri.parse('${site.origin}/book')),
+      );
+      final chapter = toc.single;
+      expect(chapter.storeKey, contains('/chapter/original'));
+      expect(chapter.persistedAddress, '${site.origin}/chapter/original$tail');
+      final reopened = SourceChapter.fromAddress(
+        chapter.name,
+        chapter.persistedAddress,
+        bookUrl: book.url,
+        chapterKey: chapter.storeKey,
+      );
+      expect(site.seen.map((r) => r.path), ['/book', '/toc']);
+      final result = await pipeline.chapter(reopened, book: book);
+      expect(result.text, '正文');
+      expect(result.title, '${site.origin}/chapter/original,$options');
+      expect(site.seen.map((r) => r.path), [
+        '/book',
+        '/toc',
+        '/chapter/actual',
+      ]);
+      expect(site.seen.last.method, 'POST');
+      expect(ascii.decode(site.seen.last.body), 'v=%CA%E9');
+    },
+  );
+
+  test('HTML rejects an invalid chapter address before option JS runs', () async {
+    final site = await _Site.start({});
+    addTearDown(site.close);
+    final state = SourceHostState();
+    final invalid = Uri.parse(site.origin).replace(
+      userInfo: 'probe',
+      path: '/chapter',
+    );
+    final options = jsonEncode({
+      'js': 'cache.put("invalid-address-script", true); result',
+    });
+    final chapter = SourceChapter.fromAddress('第一章', '$invalid,$options');
+    final pipeline = _pipeline(_htmlSource(site.origin), state: state);
+    await expectLater(
+      pipeline.chapter(chapter),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          '非法书源地址：$invalid',
+        ),
+      ),
+    );
+    expect(await state.entry(site.origin, 'invalid-address-script'), isNull);
+    expect(site.seen, isEmpty);
+  });
+
+  for (final json in [false, true]) {
+    final adapter = json ? 'JSON' : 'HTML';
+    for (final query in ['中', '%D6%D0']) {
+      test('$adapter content option script sees raw query $query', () async {
+        final site = await _Site.start({
+          '/chapter': [
+            _Page(json ? '{"text":"正文"}' : '<div id="content">正文</div>'),
+          ],
+        });
+        addTearDown(site.close);
+        final source = json
+            ? _jsonSource(site.origin, '')
+            : _htmlSource(site.origin);
+        final expected = '${site.origin}/chapter?q=$query#part';
+        final script =
+            'if (result !== ${jsonEncode(expected)}) throw new Error(result); result';
+        final address =
+            '$expected,${jsonEncode({'charset': 'gbk', 'js': script})}';
+        final chapter = SourceChapter.fromAddress(
+          '第一章',
+          address,
+          bookUrl: Uri.parse('${site.origin}/book'),
+          chapterKey: 'stable-key',
+        );
+        final key = chapter.storeKey;
+        final persistedAddress = chapter.persistedAddress;
+        final pipeline = _pipeline(source);
+        final body = await pipeline.chapter(chapter);
+        expect(body.text, '正文');
+        expect(chapter.storeKey, key);
+        expect(chapter.persistedAddress, persistedAddress);
+        expect(site.seen.map((r) => '${r.method} ${r.target}'), [
+          'GET /chapter?q=%D6%D0%23part',
+        ]);
+      });
+    }
+    test('$adapter content recovers one disconnected first request', () async {
+      final site = await _Site.start({
+        '/chapter/1': [
+          const _Page('', disconnect: true),
+          _Page(
+            json ? '{"text":"recovered"}' : '<div id="content">recovered</div>',
+          ),
+        ],
+      });
+      addTearDown(site.close);
+      final url = '${site.origin}/chapter/1';
+      final check =
+          '''
+if (result.code() !== 500 || result.url() !== "$url" ||
+    result.body() !== 'connection' || baseUrl !== '${site.origin}') {
+  throw new Error('unexpected initial response');
+}
+java.getStrResponse();
+''';
+      final source = json
+          ? _jsonSource(site.origin, check)
+          : _htmlSource(site.origin, checkJs: check);
+      source['header'] = '''@js:
+var calls = Number(source.get('header-calls') || '0') + 1;
+source.put('header-calls', String(calls));
+JSON.stringify({'X-Header-Eval': String(calls)});
+''';
+      final pipeline = _pipeline(source);
+      final response = await pipeline.chapter(
+        SourceChapter('第一章', Uri.parse(url)),
+      );
+      expect(response.text, 'recovered');
+      expect(site.seen.map((r) => '${r.method} ${r.path}'), [
+        'GET /chapter/1',
+        'GET /chapter/1',
+      ]);
+      expect(site.seen.map((r) => r.headers['x-header-eval']), ['1', '1']);
+    });
+
+    for (final charset in ['gbk', null]) {
+      test(
+        '$adapter content option sees raw query on recovery (${charset ?? 'default'})',
+        () async {
+          final site = await _Site.start({
+            '/chapter': [
+              const _Page('', disconnect: true),
+              _Page(
+                json
+                    ? '{"text":"recovered"}'
+                    : '<div id="content">recovered</div>',
+              ),
+            ],
+          });
+          addTearDown(site.close);
+          const check = 'java.initUrl(); java.getStrResponse();';
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          final options = jsonEncode({
+            'charset': ?charset,
+            'js': '''
+var pass = Number(cache.get('url-option-pass') || '0') + 1;
+cache.put('url-option-pass', String(pass));
+result.replace('中', '中&pass=' + pass);
+''',
+          });
+          final chapter = SourceChapter.fromAddress(
+            '第一章',
+            '${site.origin}/chapter?q=中,$options',
+          );
+          final body = await _pipeline(source).chapter(chapter);
+          expect(body.text, 'recovered');
+          final query = charset == 'gbk' ? '%D6%D0' : '%E4%B8%AD';
+          final target = 'GET /chapter?q=$query';
+          expect(
+            site.seen.map((request) => '${request.method} ${request.target}'),
+            ['$target&pass=1', '$target&pass=2'],
+          );
+        },
+      );
+    }
+
+    test(
+      '$adapter recovery does not send a relative option JS result',
+      () async {
+        final site = await _Site.start({
+          '/chapter/1': [const _Page('', disconnect: true)],
+          '/chapter/child': [
+            _Page(
+              json
+                  ? '{"text":"wrong page"}'
+                  : '<div id="content">wrong page</div>',
+            ),
+          ],
+        });
+        addTearDown(site.close);
+        const check = 'java.initUrl(); java.getStrResponse();';
+        final source = json
+            ? _jsonSource(site.origin, check)
+            : _htmlSource(site.origin, checkJs: check);
+        final options = jsonEncode({
+          'js': '''
+var pass = Number(cache.get('url-option-pass') || '0') + 1;
+cache.put('url-option-pass', String(pass));
+pass == 1 ? result : 'child';
+''',
+        });
+        final chapter = SourceChapter.fromAddress(
+          '第一章',
+          '${site.origin}/chapter/1,$options',
+        );
+        final pipeline = _pipeline(source);
+        addTearDown(pipeline.cancel);
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(isA<SourceStageDiagnostic>()),
+        );
+        expect(
+          site.seen.map((request) => '${request.method} ${request.target}'),
+          ['GET /chapter/1'],
+        );
+      },
+    );
+
+    for (final reanalyze in [false, true]) {
+      test(
+        '$adapter recovery after a relative option URL (valid reanalysis: $reanalyze)',
+        () async {
+          final site = await _Site.start({
+            '/chapter/1': [
+              const _Page('', disconnect: true),
+              _Page(
+                json
+                    ? '{"text":"stale target"}'
+                    : '<div id="content">stale target</div>',
+              ),
+            ],
+            '/chapter/fixed': [
+              _Page(
+                json
+                    ? '{"text":"correct page"}'
+                    : '<div id="content">correct page</div>',
+              ),
+            ],
+          });
+          addTearDown(site.close);
+          final check = reanalyze
+              ? 'java.initUrl(); java.initUrl(); java.getStrResponse();'
+              : 'try { java.initUrl(); } catch (_) {} java.getStrResponse();';
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          final options = jsonEncode({
+            'js': '''
+var pass = Number(cache.get('option-called') || '0') + 1;
+cache.put('option-called', String(pass));
+pass === 1 ? result : pass === 2 ? 'child' : '${site.origin}/chapter/fixed';
+''',
+          });
+          final chapter = SourceChapter.fromAddress(
+            '第一章',
+            '${site.origin}/chapter/1,$options',
+          );
+          final pipeline = _pipeline(source);
+          addTearDown(pipeline.cancel);
+          Object? failure;
+          String? body;
+          try {
+            body = (await pipeline.chapter(chapter)).text;
+          } catch (error) {
+            failure = error;
+          }
+          expect(
+            site.seen.map((request) => '${request.method} ${request.target}'),
+            ['GET /chapter/1', if (reanalyze) 'GET /chapter/fixed'],
+          );
+          if (reanalyze) {
+            expect(failure, isNull);
+            expect(body, 'correct page');
+          } else {
+            expect(
+              failure,
+              isA<SourceStageDiagnostic>().having(
+                (error) => error.kind,
+                'kind',
+                SourceStageFailureKind.connection,
+              ),
+            );
+          }
+        },
+      );
+    }
+
+    for (final rewrite in [false, true]) {
+      test(
+        '$adapter recovery sees the chapter origin before option JS (rewrite: $rewrite)',
+        () async {
+          final site = await _Site.start({
+            '/chapter/1': [
+              const _Page('', disconnect: true),
+              _Page(
+                json ? '{"text":"recovered"}' : '<div id="content">recovered</div>',
+              ),
+            ],
+          });
+          addTearDown(site.close);
+          const sourceOrigin = 'http://source.test:8080';
+          final attempted = '${site.origin}/chapter/1';
+          final initialOrigin = rewrite ? 'https://CHAPTER.test:443' : site.origin;
+          final initial = '$initialOrigin/start/1?x=1';
+          final text = rewrite
+              ? '$initial,${jsonEncode({'js': jsonEncode(attempted)})}'
+              : attempted;
+          final check = '''
+if (result.code() === 500) {
+  if (result.url() !== "$attempted" || result.body() !== 'connection' ||
+      baseUrl !== "$initialOrigin") throw new Error('incorrect recovery inputs');
+  result = java.getStrResponse();
+} else if (baseUrl !== '$sourceOrigin') {
+  throw new Error('ordinary response binding changed');
+}
+result;
+''';
+          final source = json
+              ? _jsonSource(sourceOrigin, check)
+              : _htmlSource(sourceOrigin, checkJs: check);
+          final chapter = SourceChapter.fromAddress('第一章', text);
+          final pipeline = _pipeline(source);
+          final response = await pipeline.chapter(chapter);
+          expect(response.text, 'recovered');
+          expect(site.seen.map((r) => '${r.method} ${r.target}'), [
+            'GET /chapter/1',
+            'GET /chapter/1',
+          ]);
+          final ordinary = await _pipeline(source).chapter(chapter);
+          expect(ordinary.text, 'recovered');
+          expect(site.seen, hasLength(3));
+        },
+      );
+    }
+
+    for (final (tocPath, relativePath, chapterPath) in [
+      ('/catalog/index', 'chapter/1', '/catalog/chapter/1'),
+      ('/root/a/%2E%2E/index', '../chapter', '/chapter'),
+    ]) {
+      test(
+        '$adapter recovery retains literal authority and chapter path from $tocPath',
+        () async {
+          const logicalOrigin = 'https://BOOK.test:443';
+          const query = '?q=a%23b';
+          final pages = <String, List<_Page>>{
+            chapterPath: [
+              const _Page('', disconnect: true),
+              _Page(
+                json
+                    ? '{"text":"recovered"}'
+                    : '<div id="content">recovered</div>',
+              ),
+            ],
+          };
+          final site = await _Site.start(pages);
+          addTearDown(site.close);
+          final attempted = '${site.origin}$chapterPath$query';
+          final rewrite =
+              'result.replace(new RegExp("^https?://[^/]+"), '
+              '${jsonEncode(site.origin)})';
+          final tail = ',${jsonEncode({'js': rewrite})}';
+          final relative = '$relativePath$query$tail';
+          pages['/book'] = [
+            _Page(
+              json
+                  ? jsonEncode({
+                      'name': '书',
+                      'items': [
+                        {'name': '第一章', 'url': relative},
+                      ],
+                    })
+                  : '<h1>书</h1><li><a href="${relative.replaceAll('"', '&quot;')}">第一章</a></li>',
+            ),
+          ];
+          final check =
+              '''
+if (result.code() === 500) {
+  if (baseUrl !== '$logicalOrigin' || result.url() !== '$attempted') {
+    throw new Error('wrong recovery context');
+  }
+  result = java.getStrResponse();
+}
+result;
+''';
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          final bookUrl = '$logicalOrigin$tocPath';
+          final pipeline = _pipeline(source);
+          final (book, chapters) = await pipeline.details(
+            HtmlBook(
+              title: '书',
+              url: Uri.parse(bookUrl),
+              rawAddress:
+                  '$bookUrl,${jsonEncode({'js': jsonEncode('${site.origin}/book')})}',
+            ),
+          );
+          final chapter = chapters.single;
+          final storedKey = chapter.storeKey;
+          expect(storedKey, 'https://book.test$chapterPath$query');
+          expect(site.seen.map((r) => r.path), ['/book']);
+          final reopened = SourceChapter.fromAddress(
+            chapter.name,
+            chapter.persistedAddress,
+            bookUrl: book.url,
+            chapterKey: storedKey,
+          );
+          final result = await _pipeline(source).chapter(reopened, book: book);
+          expect(result.text, 'recovered');
+          expect(
+            chapter.persistedAddress,
+            '$logicalOrigin$chapterPath$query$tail',
+          );
+          expect(reopened.storeKey, storedKey);
+          expect(reopened.progressKey, storedKey);
+          expect(site.seen.map((r) => r.target), [
+            '/book',
+            '$chapterPath$query',
+            '$chapterPath$query',
+          ]);
+        },
+      );
+    }
+
+    test(
+      '$adapter first content WebView POST preserves HTTP bootstrap failure',
+      () async {
+        final site = await _Site.start({
+          '/chapter/1': [
+            const _Page('', disconnect: true),
+            const _Page('bootstrap'),
+          ],
+        });
+        addTearDown(site.close);
+        final address = '${site.origin}/chapter/1';
+        const check = '''
+if (result.code() !== 500 || result.body() !== 'connection') {
+  throw new Error('expected a bootstrap connection diagnosis');
+}
+java.getStrResponse();
+''';
+        final engine = _RenderedAdapter(
+          json ? '{"text":"rendered"}' : '<div id="content">rendered</div>',
+        );
+        final adapterFactory = _RenderedFactory(engine);
+        final transport = HttpSourceTransport();
+        final hostState = SourceHostState();
+        final pipeline = json
+            ? JsonSourcePipeline(
+                _jsonSource(site.origin, check),
+                transport,
+                hostState: hostState,
+                webViewFactory: adapterFactory,
+              )
+            : HtmlSourcePipeline(
+                _htmlSource(site.origin, checkJs: check),
+                transport,
+                hostState: hostState,
+                webViewFactory: adapterFactory,
+              );
+        await expectLater(
+          pipeline.chapter(
+            SourceChapter.fromAddress(
+              '第一章',
+              '$address,{"method":"POST","body":"v=1","webView":true}',
+            ),
+          ),
+          throwsA(anyOf(isA<HttpException>(), isA<SocketException>())),
+        );
+        expect(site.seen.map((r) => '${r.method} ${r.path}'), ['POST /chapter/1']);
+        expect(engine.requests, isEmpty);
+      },
+    );
+  }
+
+  for (final json in [false, true]) {
+    final label = json ? 'JSON' : 'HTML';
+    const origin = 'http://127.0.0.1:12345';
+    final url = Uri.parse('$origin/chapter/1');
+    final body = json
+        ? '{"text":"recovered"}'
+        : '<div id="content">recovered</div>';
+    for (final action in [
+      'recover',
+      'return-500',
+      'invalid-result',
+      'throw',
+      'cancel',
+      'no-hook',
+    ]) {
+      test('$label first content timeout: $action', () async {
+        final transport = _ContentTimeout(body);
+        final check = switch (action) {
+          'recover' => 'java.getStrResponse();',
+          'return-500' => 'result;',
+          'invalid-result' => '42;',
+          'throw' => 'throw new Error("recovery failed");',
+          'cancel' => 'java.getStrResponse();',
+          _ => '',
+        };
+        final script = check.isEmpty
+            ? ''
+            : '''
+if (result.code() !== 500 || result.body() !== 'timeout' || result.url() !== '$url') {
+  throw new Error('unexpected timeout response');
+}
+java.toast('entered recovery');
+$check
+''';
+        final messages = <String>[];
+        late final BookSourcePipeline pipeline;
+        pipeline = openBookSourcePipeline(
+          json
+              ? _jsonSource(origin, script)
+              : _htmlSource(origin, checkJs: script),
+          transport,
+          hostState: SourceHostState(),
+          onHostMessage: (m) {
+            if (m.kind == 'toast') messages.add(m.message);
+            if (action == 'cancel' && m.message == 'entered recovery') {
+              pipeline.cancel();
+            }
+          },
+        );
+        final read = pipeline.chapter(SourceChapter('第一章', url));
+        if (action == 'recover') {
+          expect((await read).text, 'recovered');
+          expect(transport.attempts, [url, url]);
+        } else {
+          await expectLater(
+            read,
+            throwsA(
+              action == 'cancel'
+                  ? isA<SourceRequestCancelled>()
+                  : isA<SourceStageDiagnostic>().having(
+                      (d) => d.kind,
+                      'kind',
+                      SourceStageFailureKind.timeout,
+                    ),
+            ),
+          );
+          expect(transport.attempts, [url]);
+        }
+        expect(messages, switch (action) {
+          'no-hook' => <String>[],
+          _ => ['entered recovery'],
+        });
+      });
+    }
+  }
 
   group('loginCheckJs runs at each stage boundary', () {
     test('the search rules read the response the check returned', () async {
@@ -535,39 +1132,52 @@ result;
     });
 
     for (final json in [false, true]) {
-      test('reopened relative ${json ? 'JSON' : 'HTML'} chapter reanalysis keeps its book base', () async {
-        final site = await _Site.start({
-          '/book/chapter/2': [
-            _Page(json ? _gateJson : _gatePage),
-            _Page(json ? '{"text":"正文"}' : '<div id="content">正文</div>'),
-          ],
-        });
-        addTearDown(site.close);
-        const check = '''
+      test(
+        'reopened relative ${json ? 'JSON' : 'HTML'} chapter reanalysis keeps its book base',
+        () async {
+          final site = await _Site.start({
+            '/book/chapter/2': [
+              _Page(json ? _gateJson : _gatePage),
+              _Page(json ? '{"text":"正文"}' : '<div id="content">正文</div>'),
+            ],
+          });
+          addTearDown(site.close);
+          const check = '''
 if (result.body().indexOf('1234') > -1) {
   java.initUrl();
   result = java.getStrResponse();
 }
 result;
 ''';
-        final source = json
-            ? _jsonSource(site.origin, check)
-            : _htmlSource(site.origin, checkJs: check);
-        final pipeline = _pipeline(source);
-        final book = HtmlBook(url: Uri.parse('${site.origin}/book/1'), title: '书');
-        final chapter = SourceChapter.fromAddress(
-          '第二章',
-          'chapter/2,{"webView":false}',
-          bookUrl: book.url,
-          chapterKey: 'chapter/2,{"webView":false}',
-        );
-        expect((await pipeline.chapter(chapter, book: book)).text, '正文');
-        expect(site.seen.map((request) => request.path), [
-          '/book/chapter/2',
-          '/book/chapter/2',
-        ]);
-        expect(chapter.progressKey, 'chapter/2,{"webView":false}');
-      });
+          final source = json
+              ? _jsonSource(site.origin, check)
+              : _htmlSource(site.origin, checkJs: check);
+          (source['ruleContent'] as Map<String, String>)['title'] =
+              '@js:baseUrl';
+          final pipeline = _pipeline(source);
+          final book = HtmlBook(
+            url: Uri.parse('${site.origin}/book/1'),
+            title: '书',
+          );
+          final chapter = SourceChapter.fromAddress(
+            '第二章',
+            'chapter/2,{"webView":false}',
+            bookUrl: book.url,
+            chapterKey: 'chapter/2,{"webView":false}',
+          );
+          final result = await pipeline.chapter(chapter, book: book);
+          expect(result.text, '正文');
+          expect(
+            result.title,
+            '${site.origin}/book/chapter/2,{"webView":false}',
+          );
+          expect(site.seen.map((request) => request.path), [
+            '/book/chapter/2',
+            '/book/chapter/2',
+          ]);
+          expect(chapter.progressKey, 'chapter/2,{"webView":false}');
+        },
+      );
     }
 
     test('the 🔞🔲第一版主 shape re-runs the address analysis with initUrl', () async {

@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 
+import '../domain/contracts.dart';
 import 'book_source_service.dart';
 import 'html4_unescape.dart';
 import 'html_source_pipeline.dart';
 import 'json_source_pipeline.dart';
-import 'js_source_runtime.dart' show SourceHostMessage;
+import 'js_source_runtime.dart' show SourceHostMessage, SourceStageResponse;
 import 'source_host_state.dart';
 import 'source_url_rules.dart';
 
@@ -14,6 +15,46 @@ import 'source_url_rules.dart';
 export 'html_source_pipeline.dart'
     show HtmlBook, HtmlChapterBody, SourceChapterImage, extractChapterImages;
 export 'json_source_pipeline.dart' show SourceChapter;
+
+/// Fetches the first actual content response and runs its login hook once.
+/// Only diagnosed transport failures get the synthetic Legado error response;
+/// an ordinary HTTP response follows the normal check path, even if it is 500.
+Future<SourceStageResponse> fetchContentWithLoginCheck({
+  required Uri url,
+  required Future<SourceStageResponse> Function() fetch,
+  required Future<SourceStageResponse> Function(SourceStageResponse) check,
+  Future<SourceStageResponse> Function(SourceStageResponse)? checkRecovery,
+  required SourceCancellation cancellation,
+}) async {
+  final SourceStageResponse response;
+  try {
+    response = await fetch();
+  } on SourceStageDiagnostic catch (failure) {
+    final body = switch (failure.kind) {
+      SourceStageFailureKind.connection => 'connection',
+      SourceStageFailureKind.timeout => 'timeout',
+      _ => null,
+    };
+    if (body == null) rethrow;
+    cancellation.throwIfCancelled();
+    SourceStageResponse? recovered;
+    try {
+      recovered = await (checkRecovery ?? check)(
+        SourceStageResponse(body: body, url: url, statusCode: 500),
+      );
+    } on SourceRequestCancelled {
+      rethrow;
+    } on Exception {
+      // Recovery failure leaves the original request diagnostic authoritative.
+    } on UnsupportedError {
+      // A named refusal during recovery also leaves the original failure intact.
+    }
+    cancellation.throwIfCancelled();
+    if (recovered != null && recovered.statusCode != 500) return recovered;
+    rethrow;
+  }
+  return check(response);
+}
 
 /// The frozen source's check keyword (`BookSource.getCheckKeyword`).
 ///
@@ -59,6 +100,21 @@ bool sourceIsTrue(String? value) {
     r'^(false|no|not|0)$',
     caseSensitive: false,
   ).hasMatch(sourceKotlinTrim(value));
+}
+
+// Frozen AppPattern.wordCountRegex; Android Pattern's \s uses White_Space.
+final _tocWordCountToken = RegExp(
+  r'(?:^|字数[：:、]?|\p{White_Space}+)[0-9万千百.]{1,6}字',
+  unicode: true,
+);
+
+/// The visible `BookChapter.tag` in the frozen default-enabled `tocCountWords`
+/// path (`BookChapterList.kt:236-260`). Remove only the first matched text,
+/// including its prefix, without trimming; volume tags bypass decomposition.
+String sourceTocTag(String updateTime, {required bool isVolume}) {
+  if (isVolume) return updateTime;
+  final token = _tocWordCountToken.firstMatch(updateTime)?.group(0);
+  return token == null ? updateTime : updateTime.replaceFirst(token, '');
 }
 
 /// `HtmlFormatter.wrapHtmlRegex`: the tag family that stands for a paragraph

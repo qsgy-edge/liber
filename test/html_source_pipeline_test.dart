@@ -7,8 +7,10 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart' show SourceChapter;
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
+import 'package:liber/source/source_stage_diagnostic.dart';
 
 import 'native_library.dart';
 
@@ -76,6 +78,129 @@ void main() {
   tearDownAll(NativeLibrary.dispose);
 
   test(
+    'reader regression: HTML body script precedes next rule substitution',
+    () async {
+      final transport = SitePages({
+        '/chapter/1':
+            '<div class="con">FIRST</div><a class="next" href="/chapter/2">next</a>',
+        '/chapter/2': '<div class="con">SECOND</div>',
+      });
+      final source = _pageSource(
+        nextContentUrl: '{{source.get("nextRule") || "/missing"}}',
+      );
+      (source['ruleContent'] as Map)['content'] =
+          '@js: source.put("nextRule", java.getString(".con@text") == "FIRST" ? "/chapter/2" : "/chapter/3"); java.getString(".con@text")';
+      final body = await HtmlSourcePipeline(source, transport).chapter(
+        SourceChapter('TOC', Uri.parse('https://a.test/chapter/1')),
+        nextChapterUrl: 'https://a.test/chapter/3',
+      );
+      expect(body.text, contains('SECOND'));
+      expect(transport.requests, ['/chapter/1', '/chapter/2']);
+    },
+  );
+
+  test(
+    'reader regression: erased HTML content fails and volume survives',
+    () async {
+      final transport = SitePages({
+        '/chapter/1': '<div class="con"><p>ADVERTISEMENT</p></div>',
+      });
+      final source = _pageSource();
+      (source['ruleContent'] as Map)['replaceRegex'] = '##ADVERTISEMENT##';
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      await expectLater(
+        HtmlSourcePipeline(source, transport).chapter(chapter),
+        throwsA(isA<SourceStageDiagnostic>()),
+      );
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(
+          SourceChapter('TOC', chapter.url, isVolume: true),
+        )).text.trim(),
+        isEmpty,
+      );
+    },
+  );
+  test(
+    'reader regression: joined HTML replacement unescapes entities',
+    () async {
+      final transport = SitePages({
+        '/chapter/1': '<div class="con"><p>ADVERTISEMENT</p></div>',
+      });
+      final source = _pageSource();
+      (source['ruleContent'] as Map)['replaceRegex'] =
+          '##ADVERTISEMENT##&copy;';
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(chapter)).text,
+        contains('©'),
+      );
+    },
+  );
+
+  test(
+    'HTML trims Kotlin blank characters before joined replacement',
+    () async {
+      final source = _pageSource();
+      (source['ruleContent'] as Map)['content'] = '@js:String.fromCharCode(28)';
+      (source['ruleContent'] as Map)['replaceRegex'] = r'##^$##READABLE';
+      final pipeline = HtmlSourcePipeline(
+        source,
+        SitePages({'/chapter/1': '<p>unused</p>'}),
+      );
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      expect((await pipeline.chapter(chapter)).text, '　　READABLE');
+    },
+  );
+
+  test(
+    'reader regression: blank page, erased body and HTML4 replacement',
+    () async {
+      final transport = SitePages({
+        '/chapter/1': '<div class="con"></div><a href="/chapter/2">next</a>',
+        '/chapter/2': '<div class="con"><p>READABLE</p></div>',
+      });
+      final source = _pageSource(nextContentUrl: '@CSS:a@href');
+      final pipeline = HtmlSourcePipeline(source, transport);
+      final chapter = SourceChapter(
+        'TOC',
+        Uri.parse('https://a.test/chapter/1'),
+      );
+      final body = await pipeline.chapter(chapter);
+      expect(body.text, contains('READABLE'));
+      expect(transport.requests, ['/chapter/1', '/chapter/2']);
+
+      transport.pages['/chapter/1'] =
+          '<div class="con"><p>ADVERTISEMENT</p></div>';
+      (source['ruleContent'] as Map)['replaceRegex'] = '##ADVERTISEMENT##';
+      (source['ruleContent'] as Map)['title'] = '@js: "NEW TITLE"';
+      await expectLater(
+        HtmlSourcePipeline(source, transport).chapter(chapter),
+        throwsA(isA<SourceStageDiagnostic>()),
+      );
+      final volume = SourceChapter('TOC', chapter.url, isVolume: true);
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(volume)).title,
+        'NEW TITLE',
+      );
+      (source['ruleContent'] as Map)['replaceRegex'] =
+          '##ADVERTISEMENT##&copy;';
+      expect(
+        (await HtmlSourcePipeline(source, transport).chapter(chapter)).text,
+        contains('©'),
+      );
+    },
+  );
+
+  test(
     'source JSON drives all directory pages and only same-chapter content pages',
     () async {
       final source =
@@ -111,6 +236,201 @@ void main() {
       await expectLater(pipeline.chapter(chapters.first), throwsStateError);
     },
   );
+
+  for (final (label, title, expected) in [
+    ('U+0085', '\u0085', '\u0085'),
+    ('U+001C', '\u001C', null),
+    ('mixed text', ' \u001CTitle\u0085 ', ' \u001CTitle\u0085 '),
+  ]) {
+    test('HTML content title uses selected blankness: $label', () async {
+      final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));
+      final codes = title.codeUnits.join(',');
+      final pipeline = HtmlSourcePipeline({
+        'bookSourceUrl': 'https://a.test',
+        'ruleContent': {
+          'content': '@CSS:p@text',
+          'title': '@js: String.fromCharCode($codes)',
+        },
+      }, SitePages({'/c/1': '<p>HTML BODY</p>'}));
+
+      final body = await pipeline.chapter(chapter);
+      expect(body.text, 'HTML BODY');
+      expect(body.title?.codeUnits, expected?.codeUnits);
+    });
+  }
+
+  for (final (script, message) in [
+    ('throw new Error("optional title failed")', 'optional title failed'),
+    (
+      'throw new RangeError("Maximum call stack size exceeded")',
+      'Maximum call stack size exceeded',
+    ),
+    (
+      'throw Object.assign(new Error("out of memory"), {name: "InternalError"})',
+      'out of memory',
+    ),
+  ]) {
+    test(
+      'ordinary HTML title failure keeps body and reports once: $message',
+      () async {
+        final messages = <SourceHostMessage>[];
+        final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));
+        final pipeline = HtmlSourcePipeline(
+          {
+            'bookSourceUrl': 'https://a.test',
+            'ruleContent': {'title': '@js: $script', 'content': '@CSS:p@text'},
+          },
+          SitePages({'/c/1': '<p>HTML BODY</p>'}),
+        )..onHostMessage = messages.add;
+
+        final body = await pipeline.chapter(chapter);
+        expect(body.text.trim(), 'HTML BODY');
+        expect(body.title ?? chapter.name, '目录标题');
+        expect(messages.single.kind, 'ruleContent.title');
+        expect(messages.single.message, contains(message));
+      },
+    );
+  }
+
+  for (final (member, category, call) in [
+    ('java.readFile', 'policy', 'java.readFile("not-used.txt")'),
+    (
+      'java.openUrl',
+      'host-input',
+      'java.openUrl("file:///not-an-http-address", "title")',
+    ),
+  ]) {
+    test(
+      'named $member refusal survives invalid headers in HTML title',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        final paths = <String>[];
+        server.listen((request) async {
+          paths.add(request.uri.path);
+          request.response.write('<p>HTML BODY</p>');
+          await request.response.close();
+        });
+        final base = 'http://127.0.0.1:${server.port}';
+        final pipeline = HtmlSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {
+            'content': '@CSS:p@text',
+            'title':
+                '@js: try { $call; } catch (_) {} '
+                'try { java.head("$base/unused", {bad: 1}); } catch (_) {} '
+                '"unpublished"',
+          },
+        }, HttpSourceTransport());
+        final messages = <SourceHostMessage>[];
+        pipeline.onHostMessage = messages.add;
+        addTearDown(pipeline.cancel);
+
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            isA<SourceScriptError>()
+                .having((error) => error.category, 'category', category)
+                .having((error) => error.message, 'member', contains(member)),
+          ),
+        );
+        expect(messages.where((m) => m.kind == 'ruleContent.title'), isEmpty);
+        expect(paths, ['/c/1']);
+      },
+    );
+  }
+
+  for (final cancelInNotice in [false, true]) {
+    test(
+      '${cancelInNotice ? "cancel on title diagnostic" : "refuse hatch scheme"} in HTML title',
+      () async {
+        final rule = cancelInNotice
+            ? '@js: throw new Error("optional title")'
+            : '@js: java.openUrl("file:///not-an-http-address", "title")';
+        const base = 'https://a.test';
+        final pipeline = HtmlSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {'content': '@CSS:p@text', 'title': rule},
+        }, SitePages({'/c/1': '<p>BODY</p>'}));
+        final notices = <SourceHostMessage>[];
+        pipeline.onHostMessage = (notice) {
+          notices.add(notice);
+          if (cancelInNotice && notice.kind == 'ruleContent.title') {
+            pipeline.cancel();
+          }
+        };
+        addTearDown(pipeline.cancel);
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            cancelInNotice
+                ? isA<SourceRequestCancelled>()
+                : isA<SourceScriptError>()
+                      .having((e) => e.category, 'category', 'host-input')
+                      .having(
+                        (e) => e.message,
+                        'member',
+                        contains('java.openUrl'),
+                      ),
+          ),
+        );
+        expect(
+          notices.where((m) => m.kind == 'ruleContent.title'),
+          hasLength(cancelInNotice ? 1 : 0),
+        );
+      },
+    );
+  }
+
+  for (final (category, rule) in [
+    ('policy', '@js: java.readFile("not-used.txt")'),
+    ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
+    ('timeout', '@js: while (true) {}'),
+  ]) {
+    test(
+      '$category in HTML title still fails the chapter load',
+      () async {
+        const base = 'https://a.test';
+        final pipeline = HtmlSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {'content': '@CSS:p@text', 'title': rule},
+        }, SitePages({'/c/1': '<p>HTML BODY</p>'}));
+        final messages = <SourceHostMessage>[];
+        pipeline.onHostMessage = (message) {
+          messages.add(message);
+          if (category == 'cancelled' && message.kind == 'toast') {
+            pipeline.cancel();
+          }
+        };
+        addTearDown(pipeline.cancel);
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        final error = isA<SourceScriptError>().having(
+          (error) => error.category,
+          'category',
+          category,
+        );
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            category == 'policy'
+                ? error.having(
+                    (error) => error.message,
+                    'member',
+                    contains('java.readFile'),
+                  )
+                : error,
+          ),
+        );
+        expect(messages.where((m) => m.kind == 'ruleContent.title'), isEmpty);
+        if (category == 'cancelled') {
+          expect(messages.single.message, 'cancel title');
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 55)),
+    );
+  }
 
   test(
     'the content title reads after the joined body and replacement',
@@ -150,12 +470,12 @@ void main() {
           'replaceRegex': '##（广告）##{{source.put("seenHtml","replace");""}}',
           'title':
               '@js: (source.get("seenHtml") || "none") + "|" + '
-              'java.getString(".chapter-title@text")',
+              'java.getString(".chapter-title@text") + "|" + baseUrl',
         },
       }, transport);
       final (_, chapters) = await pipeline.details(_hit());
       final body = await pipeline.chapter(chapters.single);
-      expect(body.title, 'replace|第一页标题');
+      expect(body.title, 'replace|第一页标题|https://a.test/chapter/1');
       expect(body.text, '　　HTML BODY\n　　HTML PAGE2');
     },
   );

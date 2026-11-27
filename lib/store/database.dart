@@ -216,8 +216,12 @@ class Chapters extends Table {
   /// matched nothing.
   TextColumn get tag => text().nullable()();
 
-  /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
+  /// A volume marker from the source (`ruleToc.isVolume`).
   BoolColumn get isVolume => boolean().withDefault(const Constant(false))();
+
+  /// A published volume uses its tag instead of fetching content. Null keeps
+  /// the original inference for an older or otherwise unclassified row.
+  BoolColumn get rendersTagAsContent => boolean().nullable()();
 
   /// A chapter the source marks as VIP (`ruleToc.isVip`).
   BoolColumn get isVip => boolean().withDefault(const Constant(false))();
@@ -512,19 +516,22 @@ class SourceTlsExceptions extends Table {
   ],
 )
 class SpaceDatabase extends _$SpaceDatabase {
-  /// A database over an existing executor (an in-memory one in tests).
-  SpaceDatabase(super.executor);
+  /// A database over a local executor (an in-memory one in tests).
+  SpaceDatabase(super.executor) : usesBackgroundIsolate = false;
 
   /// The space's SQLite file, opened in a background isolate.
   SpaceDatabase.file(File file)
-    : super(NativeDatabase.createInBackground(file, setup: _waitOutLocks));
+    : usesBackgroundIsolate = true,
+      super(NativeDatabase.createInBackground(file, setup: _waitOutLocks));
+
+  final bool usesBackgroundIsolate;
 
   @override
   int get schemaVersion => latestVersion;
 
   /// The schema version this build writes. Each released version has a snapshot
   /// in `drift_schemas/` and a step in `schema_versions.dart`.
-  static const latestVersion = 7;
+  static const latestVersion = 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -548,6 +555,7 @@ class SpaceDatabase extends _$SpaceDatabase {
       // `is_volume`, `is_vip`, `is_pay`, #13).
       // v6 → v7 keeps grants/file locators separate from stable root/book IDs
       // and preserves the old local import correlation during adoption (#121).
+      // v7 → v8 stores a network volume's read route independently of its name.
       await stepByStep(
         from1To2: migrateToV2,
         from2To3: migrateToV3,
@@ -555,6 +563,7 @@ class SpaceDatabase extends _$SpaceDatabase {
         from4To5: migrateToV5,
         from5To6: migrateToV6,
         from6To7: migrateToV7,
+        from7To8: migrateToV8,
       )(m, from, to);
     },
     beforeOpen: (details) async {

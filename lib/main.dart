@@ -617,13 +617,70 @@ class _LiberHomePageState extends State<LiberHomePage> {
       ),
     ];
 
+    final compactToolbar = MediaQuery.sizeOf(context).width < 600;
+    final settingsActions =
+        <({IconData icon, String label, VoidCallback? open})>[
+          (
+            icon: Icons.language,
+            label: l10n.actionInterfaceLanguage,
+            open: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => InterfaceLanguagePage(
+                        store: shelf.store,
+                        onLocaleChanged: _applyInterfaceLocale,
+                      ),
+                    ),
+                  ),
+          ),
+          (
+            icon: Icons.translate,
+            label: l10n.readerScriptTitle,
+            open: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ReaderScriptPage(store: shelf.store),
+                    ),
+                  ),
+          ),
+          (
+            icon: Icons.swap_horiz,
+            label: l10n.actionAutoChangeSource,
+            open: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AutoChangeSourcePage(store: shelf.store),
+                    ),
+                  ),
+          ),
+          (
+            icon: Icons.route,
+            label: l10n.actionSystemProxy,
+            open: shelf == null
+                ? null
+                : () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => SystemProxyPage(store: shelf.store),
+                    ),
+                  ),
+          ),
+        ];
+    Widget readingAction(IconData icon, String label, VoidCallback? open) {
+      if (compactToolbar) {
+        return IconButton(icon: Icon(icon), tooltip: label, onPressed: open);
+      }
+      return TextButton.icon(
+        icon: Icon(icon),
+        label: Text(label),
+        onPressed: open,
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        // #40 entry region: the app bar's actions. `精确搜索` is the
-        // multi-source search entry (`PreciseSearchPage`); the page reads the
-        // space's sources itself, so this hunk needs nothing but the shelf.
-        // #28's own entry is `界面语言`, beside #27's `中文转换` and #69's
-        // `自动换源`.
         actions: [
           IconButton(
             key: const ValueKey('book-source-management'),
@@ -641,59 +698,17 @@ class _LiberHomePageState extends State<LiberHomePage> {
             tooltip: l10n.bookSourcesTitle,
             icon: const Icon(Icons.source_outlined),
           ),
-          IconButton(
-            onPressed: shelf == null
-                ? null
-                : () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (_) => InterfaceLanguagePage(
-                        store: shelf.store,
-                        onLocaleChanged: _applyInterfaceLocale,
-                      ),
-                    ),
-                  ),
-            tooltip: l10n.actionInterfaceLanguage,
-            icon: const Icon(Icons.language),
-          ),
-          IconButton(
-            onPressed: shelf == null
-                ? null
-                : () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ReaderScriptPage(store: shelf.store),
-                    ),
-                  ),
-            tooltip: l10n.readerScriptTitle,
-            icon: const Icon(Icons.translate),
-          ),
-          // #69's own entry: the frozen `AppConfig.autoChangeSource`, one row
-          // the shelf reads when it opens a book whose source is deleted.
-          IconButton(
-            onPressed: shelf == null
-                ? null
-                : () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AutoChangeSourcePage(store: shelf.store),
-                    ),
-                  ),
-            tooltip: l10n.actionAutoChangeSource,
-            icon: const Icon(Icons.swap_horiz),
-          ),
-          // #87's own entry: whether the requests this product sends through
-          // `dart:io`'s `HttpClient` follow the machine's proxy configuration.
-          IconButton(
-            onPressed: shelf == null
-                ? null
-                : () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (_) => SystemProxyPage(store: shelf.store),
-                    ),
-                  ),
-            tooltip: l10n.actionSystemProxy,
-            icon: const Icon(Icons.route),
-          ),
-          TextButton.icon(
-            onPressed: shelf == null
+          if (!compactToolbar)
+            for (final action in settingsActions)
+              IconButton(
+                icon: Icon(action.icon),
+                tooltip: action.label,
+                onPressed: action.open,
+              ),
+          readingAction(
+            Icons.manage_search,
+            l10n.actionPreciseSearch,
+            shelf == null
                 ? null
                 : () async {
                     await Navigator.of(context).push<void>(
@@ -703,11 +718,11 @@ class _LiberHomePageState extends State<LiberHomePage> {
                     );
                     if (mounted) setState(() => _onlineRevision++);
                   },
-            icon: const Icon(Icons.manage_search),
-            label: Text(l10n.actionPreciseSearch),
           ),
-          TextButton.icon(
-            onPressed: shelf == null
+          readingAction(
+            Icons.travel_explore,
+            l10n.actionSourceTrial,
+            shelf == null
                 ? null
                 : () async {
                     await Navigator.of(context).push<void>(
@@ -719,38 +734,53 @@ class _LiberHomePageState extends State<LiberHomePage> {
                     if (mounted) setState(() => _onlineRevision++);
                     await _refreshShelfViews();
                   },
-            icon: const Icon(Icons.travel_explore),
-            label: Text(l10n.actionSourceTrial),
           ),
+          if (compactToolbar)
+            PopupMenuButton<VoidCallback>(
+              enabled: shelf != null,
+              onSelected: (open) => open(),
+              itemBuilder: (_) => [
+                for (final action in settingsActions)
+                  PopupMenuItem(value: action.open, child: Text(action.label)),
+              ],
+            ),
         ],
       ),
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: _libraryBusy
-                ? null
-                : (index) {
-                    setState(() => _selectedIndex = index);
-                  },
-            labelType: NavigationRailLabelType.all,
-            destinations: [
-              NavigationRailDestination(
-                icon: const Icon(Icons.menu_book_outlined),
-                selectedIcon: const Icon(Icons.menu_book),
-                label: Text(l10n.shelfTitle),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.folder_outlined),
-                selectedIcon: const Icon(Icons.folder),
-                label: Text(l10n.navLocalLibrary),
-              ),
-              NavigationRailDestination(
-                icon: const Icon(Icons.import_export_outlined),
-                selectedIcon: const Icon(Icons.import_export),
-                label: Text(l10n.navMigration),
-              ),
-            ],
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: compactToolbar ? 112 : double.infinity,
+            ),
+            child: NavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _libraryBusy
+                  ? null
+                  : (index) {
+                      setState(() => _selectedIndex = index);
+                    },
+              labelType: NavigationRailLabelType.all,
+              destinations: [
+                NavigationRailDestination(
+                  icon: const Icon(Icons.menu_book_outlined),
+                  selectedIcon: const Icon(Icons.menu_book),
+                  label: Text(l10n.shelfTitle, textAlign: TextAlign.center),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.folder_outlined),
+                  selectedIcon: const Icon(Icons.folder),
+                  label: Text(
+                    l10n.navLocalLibrary,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.import_export_outlined),
+                  selectedIcon: const Icon(Icons.import_export),
+                  label: Text(l10n.navMigration, textAlign: TextAlign.center),
+                ),
+              ],
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(child: pages[_selectedIndex]),
@@ -877,42 +907,51 @@ class _BookshelfPageState extends State<_BookshelfPage> {
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.auto_stories, size: 48),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                l10n.controlledSourceTitle,
-                                style: theme.textTheme.titleLarge,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(l10n.controlledSourceDescription),
-                              const SizedBox(height: 18),
-                              Text(
-                                widget.run.message?.text(l10n) ??
-                                    l10n.notRunYet,
-                                key: const ValueKey('run-status'),
-                              ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final stacked = constraints.maxWidth < 440;
+                        final details = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.controlledSourceTitle,
+                              style: theme.textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(l10n.controlledSourceDescription),
+                            const SizedBox(height: 18),
+                            Text(
+                              widget.run.message?.text(l10n) ?? l10n.notRunYet,
+                              key: const ValueKey('run-status'),
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed:
+                                  widget.run.stage == BookSourceStage.completed
+                                  ? null
+                                  : widget.onRunSource,
+                              icon: const Icon(Icons.play_arrow),
+                              label: Text(l10n.runControlledSource),
+                            ),
+                          ],
+                        );
+                        return Flex(
+                          direction: stacked ? Axis.vertical : Axis.horizontal,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.auto_stories, size: 48),
+                            if (stacked) ...[
                               const SizedBox(height: 12),
-                              FilledButton.icon(
-                                onPressed:
-                                    widget.run.stage ==
-                                        BookSourceStage.completed
-                                    ? null
-                                    : widget.onRunSource,
-                                icon: const Icon(Icons.play_arrow),
-                                label: Text(l10n.runControlledSource),
-                              ),
+                              details,
+                              const SizedBox(height: 16),
+                            ] else ...[
+                              const SizedBox(width: 20),
+                              Expanded(child: details),
                             ],
-                          ),
-                        ),
-                        _StageList(current: widget.run.stage),
-                      ],
+                            _StageList(current: widget.run.stage),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -1082,7 +1121,7 @@ class _StageList extends StatelessWidget {
                     : null,
               ),
               const SizedBox(width: 8),
-              Text(stages[i].$2),
+              Flexible(child: Text(stages[i].$2)),
             ],
           ),
       ],

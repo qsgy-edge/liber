@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../domain/contracts.dart' show SourceRequestCancelled;
 import '../l10n/app_localizations.dart';
 import '../store/shelf.dart';
+import '../store/space_store.dart' show matchesBookIdentity;
 import 'book_source_pipeline.dart';
 import 'book_source_service.dart';
 import 'chapter_list_tile.dart';
@@ -63,7 +65,15 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   List<HtmlBook> hits = [];
   HtmlBook? selected;
   List<SourceChapter> chapters = [];
+  late int _catalogRevision;
+  String? _catalogBookId;
   bool busy = true;
+  Completer<void>? _adding;
+  final _pendingCatalogAdds =
+      <
+        (HtmlBook, List<SourceChapter>, int),
+        ({String? bookId, Future<void> done})
+      >{};
 
   /// What the page last did, or null before it has done anything: the
   /// initial line is the build's, because it is copy (`lib/l10n/`).
@@ -138,6 +148,10 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           setState(() {
             selected = hit;
             inShelf = entry.shelved;
+            _catalogBookId = entry.id;
+            _catalogRevision =
+                entry.chapterCatalogRevision ??
+                widget.service.store.chapterCatalogRevision;
             chapters = [
               for (final chapter in entry.chapters)
                 // The stored row's `url` is the address text the TOC rule
@@ -150,6 +164,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                   chapterKey: chapter.chapterKey,
                   tag: chapter.tag,
                   isVolume: chapter.isVolume,
+                  rendersTagAsContent: chapter.rendersTagAsContent,
                   isVip: chapter.isVip,
                   isPay: chapter.isPay,
                   // The row's own variable text travels with the chapter it
@@ -234,19 +249,63 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
       error = null;
       status = AppLocalizations.of(context).readingDetailsAndToc;
     });
+    final shelf = widget.service;
     try {
-      final (book, items) = await _withTls(() => pipeline.details(hit));
-      final existing = await widget.service.find(
-        sourceUrl,
-        book.identityAddress,
-      );
-      if (existing != null) {
-        await widget.service.updateCatalog(sourceUrl, book, items);
+      // A reopened book must start its analysis after its queued publication,
+      // not adopt the revision of a different set of chapters afterwards.
+      final pending = _pendingCatalogAdds.entries.toList();
+      if (pending.isNotEmpty) {
+        final identity = hit.identityAddress;
+        final row = await shelf.store.bookByNaturalKey(sourceUrl, identity);
+        if (!mounted) return;
+        final sameCatalog = <Future<void>>[];
+        for (final entry in pending) {
+          final add = entry.value;
+          final address = entry.key.$1.identityAddress;
+          bool sameBook;
+          if (add.bookId != null) {
+            sameBook = add.bookId == row?.id;
+          } else if (address == identity) {
+            sameBook = true;
+          } else if (row == null) {
+            // With no row, compare what the queued add would insert to what
+            // the reopened hit can find. This comparison is directional.
+            sameBook = matchesBookIdentity(address, identity);
+          } else {
+            final pendingRow = await shelf.store.bookByNaturalKey(
+              sourceUrl,
+              address,
+            );
+            if (!mounted) return;
+            sameBook = pendingRow?.id == row.id;
+          }
+          if (sameBook) sameCatalog.add(add.done);
+        }
+        if (sameCatalog.isNotEmpty) {
+          await Future.wait(sameCatalog);
+          if (!mounted) return;
+        }
       }
+      final revision = shelf.store.chapterCatalogRevision;
+      final (book, items) = await _withTls(() => pipeline.details(hit));
+      if (!mounted) return;
+      final existing = await shelf.find(sourceUrl, book.identityAddress);
+      if (!mounted) return;
+      final published = existing == null
+          ? null
+          : await shelf.updateCatalog(
+              sourceUrl,
+              book,
+              items,
+              expectedBookId: existing.id,
+              expectedRevision: revision,
+            );
       if (mounted) {
         setState(() {
           selected = book;
           inShelf = existing?.shelved == true;
+          _catalogBookId = existing?.id;
+          _catalogRevision = published ?? revision;
           chapters = items;
           busy = false;
         });
@@ -265,11 +324,49 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     HtmlBook book, [
     List<SourceChapter> items = const [],
   ]) async {
+    // A repeat of this selection shares its pending catalog publication.
+    // Distinct adds still queue with their original revision.
+    final shelf = widget.service;
+    final source = widget.source;
+    final sourceUrl = this.sourceUrl;
+    final revision = items.isEmpty ? null : _catalogRevision;
+    final expectedBookId = _catalogBookId;
+    final catalog = revision == null ? null : (book, items, revision);
+    if (catalog != null && _pendingCatalogAdds.containsKey(catalog)) return;
+    final previousAdd = _adding;
+    final adding = _adding = Completer<void>();
+    if (catalog != null) {
+      _pendingCatalogAdds[catalog] = (
+        bookId: expectedBookId,
+        done: adding.future,
+      );
+    }
     try {
-      await widget.service.add(widget.source, book, items);
+      if (previousAdd != null) await previousAdd.future;
+      final store = shelf.store;
+      if (items.isEmpty) {
+        await shelf.add(source, book);
+      } else {
+        final published = await store.transaction(() async {
+          final row = await store.bookByNaturalKey(
+            sourceUrl,
+            book.identityAddress,
+          );
+          final id = row?.id;
+          if ((expectedBookId != null && expectedBookId != id) ||
+              (id != null && !store.isChapterCatalogCurrent(id, revision!))) {
+            throw const SourceRequestCancelled();
+          }
+          return shelf.add(source, book, items);
+        });
+        if (mounted && selected == book && chapters == items) {
+          _catalogBookId = published.bookId;
+          _catalogRevision = published.revision!;
+        }
+      }
       if (!mounted) return;
       setState(() {
-        if (selected?.url == book.url) inShelf = true;
+        if (selected?.identityAddress == book.identityAddress) inShelf = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -282,23 +379,62 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           () => error = AppLocalizations.of(context).addToShelfFailed('$e'),
         );
       }
+    } finally {
+      if (catalog != null) _pendingCatalogAdds.remove(catalog);
+      if (identical(_adding, adding)) _adding = null;
+      adding.complete();
     }
   }
 
   Future<void> read(int index, [int offset = 0]) async {
+    if (busy) return;
     final book = selected!;
-    // Reading a book nobody added still tracks a position, and a position
-    // belongs to a book row; the row stays off the shelf.
-    final bookId =
-        (await widget.service.find(sourceUrl, book.identityAddress))?.id ??
-        await widget.service.ensureBook(widget.source, book);
+    final openingPipeline = pipeline;
+    final openedChapters = chapters;
+    late final String bookId;
+    String? resolvedBookId;
+    var lookedUpBook = false;
+    while (mounted) {
+      if (busy ||
+          selected != book ||
+          chapters != openedChapters ||
+          pipeline != openingPipeline) {
+        return;
+      }
+      // A catalog add can start during either shelf await below.
+      if (_adding case final adding?) {
+        await adding.future;
+        continue;
+      }
+      final id = _catalogBookId ?? resolvedBookId;
+      if (id != null) {
+        bookId = id;
+        break;
+      }
+      if (!lookedUpBook) {
+        resolvedBookId = (await widget.service.find(
+          sourceUrl,
+          book.identityAddress,
+        ))?.id;
+        lookedUpBook = true;
+      } else {
+        // Reading off the shelf still needs a row to track the position.
+        resolvedBookId = await widget.service.ensureBook(widget.source, book);
+      }
+    }
     if (!mounted) return;
+    // Only a publication of this selection can advance its revision without
+    // replacing its chapters. A store-wide revision could legitimize old rows.
+    final revision = _catalogRevision;
+    var handedBook = book;
+    var handedChapters = openedChapters;
     // Ownership rule: whoever runs an analysis owns its pipeline. The reader
     // runs the chapter fetch through this one, so it takes it over and cancels
     // it in its own dispose; this page opens a fresh pipeline for whatever it
     // runs next. Disposing this page must never cancel work the reader still
     // holds.
     final readerPipeline = pipeline;
+    _catalogBookId = bookId;
     pipeline = _openPipeline(readerPipeline.transport);
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -306,19 +442,27 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
           pipeline: readerPipeline,
           book: book,
           bookId: bookId,
-          chapters: chapters,
+          chapters: openedChapters,
+          chapterCatalogRevision: revision,
           service: widget.service,
           chapterIndex: index,
           textOffset: offset,
-          // The reader's content stage writes the entity state through the
-          // shared host surface; its final snapshots replace the details
-          // carriers here, so a later add publishes the completed state rather
-          // than the stale details/TOC text (#132).
+          // The returned carriers are also used when adding an off-shelf book.
           onEntityState: (updatedBook, updatedChapters) {
-            if (!mounted) return;
+            if (!mounted ||
+                busy ||
+                selected != handedBook ||
+                chapters != handedChapters ||
+                _catalogRevision != revision ||
+                !widget.service.store.isChapterCatalogCurrent(
+                  bookId,
+                  revision,
+                )) {
+              return;
+            }
             setState(() {
-              selected = updatedBook;
-              chapters = updatedChapters;
+              handedBook = selected = updatedBook;
+              handedChapters = chapters = updatedChapters;
             });
           },
         ),
