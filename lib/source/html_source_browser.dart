@@ -390,35 +390,43 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     final book = selected!;
     final openingPipeline = pipeline;
     final openedChapters = chapters;
-    while (true) {
-      final adding = _adding;
-      if (adding == null) break;
-      await adding.future;
-      if (!mounted ||
-          busy ||
+    late final String bookId;
+    String? resolvedBookId;
+    var lookedUpBook = false;
+    while (mounted) {
+      if (busy ||
           selected != book ||
           chapters != openedChapters ||
           pipeline != openingPipeline) {
         return;
       }
+      // A catalog add can start during either shelf await below.
+      if (_adding case final adding?) {
+        await adding.future;
+        continue;
+      }
+      final id = _catalogBookId ?? resolvedBookId;
+      if (id != null) {
+        bookId = id;
+        break;
+      }
+      if (!lookedUpBook) {
+        resolvedBookId = (await widget.service.find(
+          sourceUrl,
+          book.identityAddress,
+        ))?.id;
+        lookedUpBook = true;
+      } else {
+        // Reading off the shelf still needs a row to track the position.
+        resolvedBookId = await widget.service.ensureBook(widget.source, book);
+      }
     }
+    if (!mounted) return;
+    // Only a publication of this selection can advance its revision without
+    // replacing its chapters. A store-wide revision could legitimize old rows.
     final revision = _catalogRevision;
     var handedBook = book;
     var handedChapters = openedChapters;
-    // Reading a book nobody added still tracks a position, and a position
-    // belongs to a book row; the row stays off the shelf.
-    final bookId =
-        _catalogBookId ??
-        (await widget.service.find(sourceUrl, book.identityAddress))?.id ??
-        await widget.service.ensureBook(widget.source, book);
-    if (!mounted ||
-        busy ||
-        selected != book ||
-        chapters != openedChapters ||
-        _catalogRevision != revision ||
-        pipeline != openingPipeline) {
-      return;
-    }
     // Ownership rule: whoever runs an analysis owns its pipeline. The reader
     // runs the chapter fetch through this one, so it takes it over and cancels
     // it in its own dispose; this page opens a fresh pipeline for whatever it
