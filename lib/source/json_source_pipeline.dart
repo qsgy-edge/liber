@@ -2673,10 +2673,15 @@ class SourceChapter {
     this.isPay = false,
     this.variable,
     this.fetchContext,
-  }) : _rendersTagAsContent = null;
+    this._rendersTagAsContent,
+  });
 
-  SourceChapter._copy(SourceChapter chapter, this.name, this.variable)
-    : url = chapter.url,
+  SourceChapter._copy(
+    SourceChapter chapter,
+    this.name,
+    this.variable,
+    this._rendersTagAsContent,
+  ) : url = chapter.url,
       rawAddress = chapter.rawAddress,
       storedKey = chapter.storedKey,
       addressBase = chapter.addressBase,
@@ -2684,8 +2689,7 @@ class SourceChapter {
       isVolume = chapter.isVolume,
       isVip = chapter.isVip,
       isPay = chapter.isPay,
-      fetchContext = chapter.fetchContext,
-      _rendersTagAsContent = chapter.rendersTagAsContent;
+      fetchContext = chapter.fetchContext;
 
   final bool? _rendersTagAsContent;
 
@@ -2730,6 +2734,7 @@ class SourceChapter {
     String? chapterKey,
     String? tag,
     bool isVolume = false,
+    bool? rendersTagAsContent,
     bool isVip = false,
     bool isPay = false,
     String? variable,
@@ -2752,6 +2757,7 @@ class SourceChapter {
       addressBase: bookUrl,
       tag: tag,
       isVolume: isVolume,
+      rendersTagAsContent: rendersTagAsContent,
       isVip: isVip,
       isPay: isPay,
       variable: variable,
@@ -2772,7 +2778,7 @@ class SourceChapter {
   /// the manual/imported default when this carrier has no parsed value.
   final String? tag;
 
-  /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
+  /// The source's `ruleToc.isVolume` marker, independent of the read route.
   final bool isVolume;
 
   /// A chapter the source marks as VIP (`ruleToc.isVip`).
@@ -2804,12 +2810,20 @@ class SourceChapter {
   /// field retained. A metadata or content-stage copy must not drop the
   /// variable it started from.
   SourceChapter withVariable(String? variable) =>
-      SourceChapter._copy(this, name, variable);
+      SourceChapter._copy(this, name, variable, _rendersTagAsContent);
 
   /// Changes the name without reclassifying the original TOC address. A
   /// readable volume must not start using its tag because of a content title.
-  SourceChapter withName(String name) =>
-      name == this.name ? this : SourceChapter._copy(this, name, variable);
+  SourceChapter withName(String name) => name == this.name
+      ? this
+      : SourceChapter._copy(this, name, variable, _volumeReadRoute);
+
+  /// A fresh catalog records the initial route; reopening and re-adding a
+  /// legacy row without renaming it keeps its missing classification.
+  bool? get catalogReadRoute =>
+      storedKey == null ? _volumeReadRoute : _rendersTagAsContent;
+
+  bool? get _volumeReadRoute => isVolume ? rendersTagAsContent : null;
 
   /// Identity derived from the TOC target. An addressless volume instead uses
   /// its frozen identity text, which distinguishes volumes on the same page.
@@ -2855,13 +2869,11 @@ class SourceChapter {
     return '$url${sourceUrlOptionTailOf(address)}';
   }
 
-  /// The frozen `WebBook.getContentAwait` volume shortcut
-  /// (`WebBook.kt:307-310`): a volume chapter whose own URL text starts with its
-  /// title has no page behind it, so the chapter's `tag` is its content and
-  /// nothing is fetched. The empty-URL fallback (`BookChapterList.kt:229-243`)
-  /// writes exactly `title + index` into the URL, which is the shape this reads.
+  /// The TOC's volume shortcut, or the route already published for this row.
+  /// The initial test uses the TOC name, including `title + index` when its URL
+  /// is empty. A persisted route keeps later content titles out of this test.
   bool get rendersTagAsContent =>
-      _rendersTagAsContent ?? (isVolume && address.startsWith(name));
+      isVolume && (_rendersTagAsContent ?? address.startsWith(name));
 }
 
 class SourceReadingResult {

@@ -340,8 +340,9 @@ classifies each volume once for publication: its tag is the content, or the
 reader fetches the body. The stored classification survives renames and
 reopening without changing the chapter key, request text/options, retained body
 handoff, or progress. Rows without a stored classification keep the existing
-inference until a normal TOC publication. Refresh publishes the new TOC names
-and classifications. The #146 exact index/stored-title check still governs
+inference until a normal TOC publication; an earlier title write records the
+previously inferred route together with the new name. Refresh publishes the
+new TOC names and classifications. The #146 exact index/stored-title check still governs
 variable restoration.
 
 [Named difference (#138)](https://github.com/qsgy-edge/liber/issues/138#issuecomment-7212617132):

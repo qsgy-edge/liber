@@ -2974,6 +2974,19 @@ class $ChaptersTable extends Chapters
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _rendersTagAsContentMeta =
+      const VerificationMeta('rendersTagAsContent');
+  @override
+  late final GeneratedColumn<bool> rendersTagAsContent = GeneratedColumn<bool>(
+    'renders_tag_as_content',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("renders_tag_as_content" IN (0, 1))',
+    ),
+  );
   static const VerificationMeta _isVipMeta = const VerificationMeta('isVip');
   @override
   late final GeneratedColumn<bool> isVip = GeneratedColumn<bool>(
@@ -3020,6 +3033,7 @@ class $ChaptersTable extends Chapters
     chapterIndex,
     tag,
     isVolume,
+    rendersTagAsContent,
     isVip,
     isPay,
     variable,
@@ -3089,6 +3103,15 @@ class $ChaptersTable extends Chapters
         isVolume.isAcceptableOrUnknown(data['is_volume']!, _isVolumeMeta),
       );
     }
+    if (data.containsKey('renders_tag_as_content')) {
+      context.handle(
+        _rendersTagAsContentMeta,
+        rendersTagAsContent.isAcceptableOrUnknown(
+          data['renders_tag_as_content']!,
+          _rendersTagAsContentMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_vip')) {
       context.handle(
         _isVipMeta,
@@ -3144,6 +3167,10 @@ class $ChaptersTable extends Chapters
         DriftSqlType.bool,
         data['${effectivePrefix}is_volume'],
       )!,
+      rendersTagAsContent: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}renders_tag_as_content'],
+      ),
       isVip: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_vip'],
@@ -3181,8 +3208,12 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
   /// matched nothing.
   final String? tag;
 
-  /// A volume heading rather than a readable chapter (`ruleToc.isVolume`).
+  /// A volume marker from the source (`ruleToc.isVolume`).
   final bool isVolume;
+
+  /// A published volume uses its tag instead of fetching content. Null keeps
+  /// the original inference for an older or otherwise unclassified row.
+  final bool? rendersTagAsContent;
 
   /// A chapter the source marks as VIP (`ruleToc.isVip`).
   final bool isVip;
@@ -3200,6 +3231,7 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     required this.chapterIndex,
     this.tag,
     required this.isVolume,
+    this.rendersTagAsContent,
     required this.isVip,
     required this.isPay,
     this.variable,
@@ -3218,6 +3250,9 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       map['tag'] = Variable<String>(tag);
     }
     map['is_volume'] = Variable<bool>(isVolume);
+    if (!nullToAbsent || rendersTagAsContent != null) {
+      map['renders_tag_as_content'] = Variable<bool>(rendersTagAsContent);
+    }
     map['is_vip'] = Variable<bool>(isVip);
     map['is_pay'] = Variable<bool>(isPay);
     if (!nullToAbsent || variable != null) {
@@ -3235,6 +3270,9 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       chapterIndex: Value(chapterIndex),
       tag: tag == null && nullToAbsent ? const Value.absent() : Value(tag),
       isVolume: Value(isVolume),
+      rendersTagAsContent: rendersTagAsContent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rendersTagAsContent),
       isVip: Value(isVip),
       isPay: Value(isPay),
       variable: variable == null && nullToAbsent
@@ -3256,6 +3294,9 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       chapterIndex: serializer.fromJson<int>(json['chapterIndex']),
       tag: serializer.fromJson<String?>(json['tag']),
       isVolume: serializer.fromJson<bool>(json['isVolume']),
+      rendersTagAsContent: serializer.fromJson<bool?>(
+        json['rendersTagAsContent'],
+      ),
       isVip: serializer.fromJson<bool>(json['isVip']),
       isPay: serializer.fromJson<bool>(json['isPay']),
       variable: serializer.fromJson<String?>(json['variable']),
@@ -3272,6 +3313,7 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
       'chapterIndex': serializer.toJson<int>(chapterIndex),
       'tag': serializer.toJson<String?>(tag),
       'isVolume': serializer.toJson<bool>(isVolume),
+      'rendersTagAsContent': serializer.toJson<bool?>(rendersTagAsContent),
       'isVip': serializer.toJson<bool>(isVip),
       'isPay': serializer.toJson<bool>(isPay),
       'variable': serializer.toJson<String?>(variable),
@@ -3286,6 +3328,7 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     int? chapterIndex,
     Value<String?> tag = const Value.absent(),
     bool? isVolume,
+    Value<bool?> rendersTagAsContent = const Value.absent(),
     bool? isVip,
     bool? isPay,
     Value<String?> variable = const Value.absent(),
@@ -3297,6 +3340,9 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     chapterIndex: chapterIndex ?? this.chapterIndex,
     tag: tag.present ? tag.value : this.tag,
     isVolume: isVolume ?? this.isVolume,
+    rendersTagAsContent: rendersTagAsContent.present
+        ? rendersTagAsContent.value
+        : this.rendersTagAsContent,
     isVip: isVip ?? this.isVip,
     isPay: isPay ?? this.isPay,
     variable: variable.present ? variable.value : this.variable,
@@ -3314,6 +3360,9 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
           : this.chapterIndex,
       tag: data.tag.present ? data.tag.value : this.tag,
       isVolume: data.isVolume.present ? data.isVolume.value : this.isVolume,
+      rendersTagAsContent: data.rendersTagAsContent.present
+          ? data.rendersTagAsContent.value
+          : this.rendersTagAsContent,
       isVip: data.isVip.present ? data.isVip.value : this.isVip,
       isPay: data.isPay.present ? data.isPay.value : this.isPay,
       variable: data.variable.present ? data.variable.value : this.variable,
@@ -3330,6 +3379,7 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
           ..write('chapterIndex: $chapterIndex, ')
           ..write('tag: $tag, ')
           ..write('isVolume: $isVolume, ')
+          ..write('rendersTagAsContent: $rendersTagAsContent, ')
           ..write('isVip: $isVip, ')
           ..write('isPay: $isPay, ')
           ..write('variable: $variable')
@@ -3346,6 +3396,7 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
     chapterIndex,
     tag,
     isVolume,
+    rendersTagAsContent,
     isVip,
     isPay,
     variable,
@@ -3361,6 +3412,7 @@ class BookChapter extends DataClass implements Insertable<BookChapter> {
           other.chapterIndex == this.chapterIndex &&
           other.tag == this.tag &&
           other.isVolume == this.isVolume &&
+          other.rendersTagAsContent == this.rendersTagAsContent &&
           other.isVip == this.isVip &&
           other.isPay == this.isPay &&
           other.variable == this.variable);
@@ -3374,6 +3426,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
   final Value<int> chapterIndex;
   final Value<String?> tag;
   final Value<bool> isVolume;
+  final Value<bool?> rendersTagAsContent;
   final Value<bool> isVip;
   final Value<bool> isPay;
   final Value<String?> variable;
@@ -3386,6 +3439,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     this.chapterIndex = const Value.absent(),
     this.tag = const Value.absent(),
     this.isVolume = const Value.absent(),
+    this.rendersTagAsContent = const Value.absent(),
     this.isVip = const Value.absent(),
     this.isPay = const Value.absent(),
     this.variable = const Value.absent(),
@@ -3399,6 +3453,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     required int chapterIndex,
     this.tag = const Value.absent(),
     this.isVolume = const Value.absent(),
+    this.rendersTagAsContent = const Value.absent(),
     this.isVip = const Value.absent(),
     this.isPay = const Value.absent(),
     this.variable = const Value.absent(),
@@ -3415,6 +3470,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     Expression<int>? chapterIndex,
     Expression<String>? tag,
     Expression<bool>? isVolume,
+    Expression<bool>? rendersTagAsContent,
     Expression<bool>? isVip,
     Expression<bool>? isPay,
     Expression<String>? variable,
@@ -3428,6 +3484,8 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
       if (chapterIndex != null) 'chapter_index': chapterIndex,
       if (tag != null) 'tag': tag,
       if (isVolume != null) 'is_volume': isVolume,
+      if (rendersTagAsContent != null)
+        'renders_tag_as_content': rendersTagAsContent,
       if (isVip != null) 'is_vip': isVip,
       if (isPay != null) 'is_pay': isPay,
       if (variable != null) 'variable': variable,
@@ -3443,6 +3501,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     Value<int>? chapterIndex,
     Value<String?>? tag,
     Value<bool>? isVolume,
+    Value<bool?>? rendersTagAsContent,
     Value<bool>? isVip,
     Value<bool>? isPay,
     Value<String?>? variable,
@@ -3456,6 +3515,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
       chapterIndex: chapterIndex ?? this.chapterIndex,
       tag: tag ?? this.tag,
       isVolume: isVolume ?? this.isVolume,
+      rendersTagAsContent: rendersTagAsContent ?? this.rendersTagAsContent,
       isVip: isVip ?? this.isVip,
       isPay: isPay ?? this.isPay,
       variable: variable ?? this.variable,
@@ -3487,6 +3547,9 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
     if (isVolume.present) {
       map['is_volume'] = Variable<bool>(isVolume.value);
     }
+    if (rendersTagAsContent.present) {
+      map['renders_tag_as_content'] = Variable<bool>(rendersTagAsContent.value);
+    }
     if (isVip.present) {
       map['is_vip'] = Variable<bool>(isVip.value);
     }
@@ -3512,6 +3575,7 @@ class ChaptersCompanion extends UpdateCompanion<BookChapter> {
           ..write('chapterIndex: $chapterIndex, ')
           ..write('tag: $tag, ')
           ..write('isVolume: $isVolume, ')
+          ..write('rendersTagAsContent: $rendersTagAsContent, ')
           ..write('isVip: $isVip, ')
           ..write('isPay: $isPay, ')
           ..write('variable: $variable, ')
@@ -9902,6 +9966,7 @@ typedef $$ChaptersTableCreateCompanionBuilder =
       required int chapterIndex,
       Value<String?> tag,
       Value<bool> isVolume,
+      Value<bool?> rendersTagAsContent,
       Value<bool> isVip,
       Value<bool> isPay,
       Value<String?> variable,
@@ -9916,6 +9981,7 @@ typedef $$ChaptersTableUpdateCompanionBuilder =
       Value<int> chapterIndex,
       Value<String?> tag,
       Value<bool> isVolume,
+      Value<bool?> rendersTagAsContent,
       Value<bool> isVip,
       Value<bool> isPay,
       Value<String?> variable,
@@ -9980,6 +10046,11 @@ class $$ChaptersTableFilterComposer
 
   ColumnFilters<bool> get isVolume => $composableBuilder(
     column: $table.isVolume,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get rendersTagAsContent => $composableBuilder(
+    column: $table.rendersTagAsContent,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10061,6 +10132,11 @@ class $$ChaptersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get rendersTagAsContent => $composableBuilder(
+    column: $table.rendersTagAsContent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isVip => $composableBuilder(
     column: $table.isVip,
     builder: (column) => ColumnOrderings(column),
@@ -10131,6 +10207,11 @@ class $$ChaptersTableAnnotationComposer
   GeneratedColumn<bool> get isVolume =>
       $composableBuilder(column: $table.isVolume, builder: (column) => column);
 
+  GeneratedColumn<bool> get rendersTagAsContent => $composableBuilder(
+    column: $table.rendersTagAsContent,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isVip =>
       $composableBuilder(column: $table.isVip, builder: (column) => column);
 
@@ -10199,6 +10280,7 @@ class $$ChaptersTableTableManager
                 Value<int> chapterIndex = const Value.absent(),
                 Value<String?> tag = const Value.absent(),
                 Value<bool> isVolume = const Value.absent(),
+                Value<bool?> rendersTagAsContent = const Value.absent(),
                 Value<bool> isVip = const Value.absent(),
                 Value<bool> isPay = const Value.absent(),
                 Value<String?> variable = const Value.absent(),
@@ -10211,6 +10293,7 @@ class $$ChaptersTableTableManager
                 chapterIndex: chapterIndex,
                 tag: tag,
                 isVolume: isVolume,
+                rendersTagAsContent: rendersTagAsContent,
                 isVip: isVip,
                 isPay: isPay,
                 variable: variable,
@@ -10225,6 +10308,7 @@ class $$ChaptersTableTableManager
                 required int chapterIndex,
                 Value<String?> tag = const Value.absent(),
                 Value<bool> isVolume = const Value.absent(),
+                Value<bool?> rendersTagAsContent = const Value.absent(),
                 Value<bool> isVip = const Value.absent(),
                 Value<bool> isPay = const Value.absent(),
                 Value<String?> variable = const Value.absent(),
@@ -10237,6 +10321,7 @@ class $$ChaptersTableTableManager
                 chapterIndex: chapterIndex,
                 tag: tag,
                 isVolume: isVolume,
+                rendersTagAsContent: rendersTagAsContent,
                 isVip: isVip,
                 isPay: isPay,
                 variable: variable,

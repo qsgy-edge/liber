@@ -164,6 +164,7 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
                   chapterKey: chapter.chapterKey,
                   tag: chapter.tag,
                   isVolume: chapter.isVolume,
+                  rendersTagAsContent: chapter.rendersTagAsContent,
                   isVip: chapter.isVip,
                   isPay: chapter.isPay,
                   // The row's own variable text travels with the chapter it

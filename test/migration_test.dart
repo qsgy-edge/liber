@@ -9,6 +9,8 @@ import 'generated_migrations/schema_v2.dart' as v2;
 import 'generated_migrations/schema_v3.dart' as v3;
 import 'generated_migrations/schema_v4.dart' as v4;
 import 'generated_migrations/schema_v5.dart' as v5;
+import 'generated_migrations/schema_v6.dart' as v6;
+import 'generated_migrations/schema_v7.dart' as v7;
 
 /// The generated migration tests: the schemas in `drift_schemas/` are the
 /// released versions, `drift_dev schema steps` turns them into the upgrade
@@ -239,25 +241,99 @@ void main() {
     // The chapter keeps its key, its name and its address, and reads as a plain
     // chapter with no tag: nothing extracted a marker before #13, so nothing is
     // invented for an old row.
-    final chapter = await database.select(database.chapters).getSingle();
+    final atV6 = v6.DatabaseAtV6(schema.newConnection());
+    final chapter = await atV6.select(atV6.chapters).getSingle();
     expect(chapter.bookId, 'book-1');
     expect(chapter.chapterKey, 'https://s/1/1');
     expect(chapter.name, '第一章');
     expect(chapter.url, 'https://s/1/1');
     expect(chapter.chapterIndex, 0);
     expect(chapter.tag, isNull);
-    expect(chapter.isVolume, isFalse);
-    expect(chapter.isVip, isFalse);
-    expect(chapter.isPay, isFalse);
+    expect(chapter.isVolume, 0);
+    expect(chapter.isVip, 0);
+    expect(chapter.isPay, 0);
 
     // The D4 progress key is untouched, so the stored position still names the
     // chapter it named.
     final progress = await database.select(database.progress).getSingle();
     expect(progress.chapterKey, 'https://s/1/1');
     expect(progress.textOffset, 120);
+    await atV6.close();
     await database.close();
     schema.close();
   });
+
+  test(
+    'v7 → v8 retains existing chapters and positions without guessing routes',
+    () async {
+      final schema = await verifier.schemaAt(7);
+      final old = v7.DatabaseAtV7(schema.newConnection());
+      addTearDown(schema.close);
+      const bookId = 'network-book';
+      const key = 'https://s/vol/1';
+      const address = '$key,{"method":"GET"}';
+      await old
+          .into(old.books)
+          .insert(v7.BooksCompanion.insert(id: bookId, title: '书'));
+      await old
+          .into(old.chapters)
+          .insert(
+            v7.ChaptersCompanion.insert(
+              bookId: bookId,
+              chapterKey: key,
+              name: '目录卷',
+              url: const Value(address),
+              chapterIndex: 0,
+              tag: const Value('卷标'),
+              isVolume: const Value(1),
+              isVip: const Value(1),
+              variable: const Value('{"previous":"1"}'),
+            ),
+          );
+      await old
+          .into(old.progress)
+          .insert(
+            v7.ProgressCompanion.insert(
+              bookId: bookId,
+              chapterKey: const Value(key),
+              chapterIndex: const Value(0),
+              textOffset: const Value(42),
+            ),
+          );
+      await old.close();
+
+      final database = SpaceDatabase(schema.newConnection());
+      addTearDown(database.close);
+      await verifier.migrateAndValidate(database, 8);
+      final chapter = await database.select(database.chapters).getSingle();
+      expect(
+        chapter,
+        const BookChapter(
+          bookId: bookId,
+          chapterKey: key,
+          name: '目录卷',
+          url: address,
+          chapterIndex: 0,
+          tag: '卷标',
+          isVolume: true,
+          isVip: true,
+          isPay: false,
+          variable: '{"previous":"1"}',
+        ),
+      );
+      expect(chapter.rendersTagAsContent, isNull);
+      final progress = await database.select(database.progress).getSingle();
+      expect(
+        (
+          progress.bookId,
+          progress.chapterKey,
+          progress.chapterIndex,
+          progress.textOffset,
+        ),
+        (bookId, key, 0, 42),
+      );
+    },
+  );
 }
 
 /// A v1 database holding what v1 could hold: two rows for one network book

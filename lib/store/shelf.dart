@@ -248,7 +248,6 @@ class ShelfService {
 
   /// Returns the name to keep in the catalog, or null if publication no longer
   /// belongs to this read. An off-shelf read can hand the name to [add].
-  /// The displayed title stays independent of the catalog name.
   Future<String?> saveChapterTitle({
     required String bookId,
     required String sourceRef,
@@ -259,13 +258,6 @@ class ShelfService {
     required bool Function() isCurrent,
   }) async {
     if (sourceKotlinIsBlank(title) || !isCurrent()) return null;
-    // Reopening tests the *stored* address against the stored name. Preserve
-    // the catalog name only if the new name would divert a fetch to the tag.
-    bool hidesBodyOnReopen(String address) =>
-        chapter.isVolume &&
-        !address.startsWith(chapter.name) &&
-        address.startsWith(title);
-
     return store.transaction(() async {
       final owner = await store.bookById(bookId);
       if (owner == null ||
@@ -279,9 +271,7 @@ class ShelfService {
         if (owner.shelved || await store.hasChapters(bookId) || !isCurrent()) {
           return null;
         }
-        return hidesBodyOnReopen(chapter.persistedAddress)
-            ? chapter.name
-            : title;
+        return title;
       }
       final address = chapter.persistedAddress;
       if (!isCurrent() ||
@@ -290,14 +280,20 @@ class ShelfService {
           (row.url ?? row.chapterKey) != address ||
           row.tag != chapter.tag ||
           row.isVolume != chapter.isVolume ||
+          (row.rendersTagAsContent != null &&
+              row.rendersTagAsContent != chapter.rendersTagAsContent) ||
           row.isVip != chapter.isVip ||
           row.isPay != chapter.isPay) {
         return null;
       }
-      if (row.name == title || hidesBodyOnReopen(address)) {
-        return row.name;
-      }
-      await store.updateChapterName(row, title);
+      if (row.name == title) return title;
+      await store.updateChapterName(
+        row,
+        title,
+        rendersTagAsContent: row.isVolume && row.rendersTagAsContent == null
+            ? chapter.rendersTagAsContent
+            : null,
+      );
       if (!isCurrent()) throw const SourceRequestCancelled();
       return title;
     });
@@ -750,6 +746,7 @@ class ShelfService {
         chapterIndex: index,
         tag: chapters[index].tag,
         isVolume: chapters[index].isVolume,
+        rendersTagAsContent: chapters[index].catalogReadRoute,
         isVip: chapters[index].isVip,
         isPay: chapters[index].isPay,
         variable: chapters[index].variable,

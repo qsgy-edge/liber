@@ -236,6 +236,9 @@ class _ResumePipeline extends ScriptedPipeline {
     HtmlBook? book,
     String? nextChapterUrl,
   }) async {
+    if (chapter.rendersTagAsContent) {
+      return HtmlChapterBody(chapter.tag ?? '', 0);
+    }
     chapterCalls.add('${chapter.url}');
     return HtmlChapterBody(
       chapterText,
@@ -1433,10 +1436,12 @@ void main() {
       BookChapter(
         bookId: id,
         chapterKey: key,
-        name: '目录标题',
+        name: '/chapter',
         url: address,
         chapterIndex: 0,
-        isVolume: false,
+        tag: '只应显示正文',
+        isVolume: true,
+        rendersTagAsContent: false,
         isVip: false,
         isPay: false,
         variable: '{"loaded":"old"}',
@@ -1452,7 +1457,7 @@ void main() {
     final resume = (await shelf.lastRead())!;
     final pipeline = _ResumePipeline(
       '{"loaded":"new"}',
-      contentTitle: '正文标题',
+      contentTitle: '/chapter?q=',
       chapterText: '$first\n　　第二段\n　　第三段',
     );
 
@@ -1468,7 +1473,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('正文标题'), findsOneWidget);
+    expect(find.text('/chapter?q='), findsOneWidget);
+    expect(find.textContaining('第二段'), findsOneWidget);
     expect(pipeline.detailsCalls, isEmpty);
     expect(pipeline.chapterCalls, ['$key#part']);
     final read = (await store.progressOf(id))!;
@@ -1482,7 +1488,8 @@ void main() {
     expect(entry.id, id);
     final row = (await store.chaptersOf(id)).single;
     expect((row.chapterKey, row.url), (key, address));
-    expect(row.name, '正文标题');
+    expect(row.name, '/chapter?q=');
+    expect(row.rendersTagAsContent, isFalse);
     expect(row.variable, '{"loaded":"new"}');
     expect(await store.progressOf(id), read);
     expect(tester.takeException(), isNull);

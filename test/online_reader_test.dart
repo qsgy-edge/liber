@@ -667,7 +667,7 @@ void main() {
 
   for (final shelved in [true, false]) {
     testWidgets(
-      'volume shows a URL-prefix title without changing its catalog on ${shelved ? 'shelf' : 'add'}',
+      'volume saves a URL-prefix title and stays readable on ${shelved ? 'shelf' : 'add'}',
       (tester) async {
         const address = '$sourceUrl/c/1,{"method":"GET"}';
         const title = '$sourceUrl/c';
@@ -702,19 +702,22 @@ void main() {
         expect(find.text(title), findsOneWidget);
         expect(find.textContaining('第0段'), findsOneWidget);
         final returned = handed!.single;
-        expect(returned.name, catalogName);
+        expect(returned.name, title);
         expect(returned.progressKey, '$sourceUrl/c/1');
         expect(returned.address, '/c/1,{"method":"GET"}');
         expect(returned.fetchContext, same(chapter.fetchContext));
         if (shelved) {
-          expect(await store.chaptersOf(bookId), before);
+          expect(
+            (await store.chaptersOf(bookId)).single,
+            before.single.copyWith(name: title),
+          );
         } else {
           expect(await store.chaptersOf(bookId), isEmpty);
           await shelf.add(source, book, handed!);
         }
         final reopened = (await shelf.find(sourceUrl, bookUrl))!;
         final row = reopened.chapters.single;
-        expect(row.name, catalogName);
+        expect(row.name, title);
         expect(row.url, address);
         expect(row.tag, '卷标');
         expect(row.isVip, isTrue);
@@ -726,7 +729,9 @@ void main() {
           chapterKey: row.chapterKey,
           tag: row.tag,
           isVolume: row.isVolume,
+          rendersTagAsContent: row.rendersTagAsContent,
         );
+        expect(row.rendersTagAsContent, isFalse);
         expect(reopenedChapter.rendersTagAsContent, isFalse);
       },
     );

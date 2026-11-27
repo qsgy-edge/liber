@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/store_message.dart';
+import 'package:liber/source/json_source_pipeline.dart';
 import 'package:liber/store/legacy_import.dart';
+import 'package:liber/store/shelf.dart';
 import 'package:liber/store/workspace.dart';
 
 import 'temp_directory.dart';
@@ -316,6 +318,57 @@ void main() {
     expect((await store.progressOf(network.id))!.textOffset, 300);
     await workspace.close();
   });
+
+  test(
+    're-importing a legacy chapter cannot erase a published volume route',
+    () async {
+      final (legacy, workspace) = await workspaceWithStores();
+      addTearDown(workspace.close);
+      final store = await workspace.openSpace();
+      final shelf = ShelfService(store);
+      await legacy.run(store);
+      const sourceUrl = 'https://example.test';
+      final entry = (await shelf.find(sourceUrl, '$sourceUrl/book/1'))!;
+      expect(
+        entry.chapters.every((row) => row.rendersTagAsContent == null),
+        isTrue,
+      );
+      final first = entry.chapters.first;
+      final chapter = SourceChapter(
+        '目录卷',
+        Uri.parse(first.url!),
+        isVolume: true,
+      );
+      await shelf.updateCatalog(sourceUrl, entry.htmlBook, [
+        chapter,
+        SourceChapter(
+          entry.chapters.last.name,
+          Uri.parse(entry.chapters.last.url!),
+        ),
+      ]);
+      const title = '$sourceUrl/book/1';
+      expect(
+        await shelf.saveChapterTitle(
+          bookId: entry.id,
+          sourceRef: sourceUrl,
+          book: entry.htmlBook,
+          chapter: chapter,
+          chapterIndex: 0,
+          title: title,
+          isCurrent: () => true,
+        ),
+        title,
+      );
+      final published = (await store.chaptersOf(entry.id)).first;
+      expect((published.name, published.rendersTagAsContent), (title, false));
+      final report = await legacy.run(store, force: true);
+      expect(report.imported, isTrue);
+      final rows = await store.chaptersOf(entry.id);
+      expect(rows.first, published);
+      expect(rows.last, entry.chapters.last);
+      expect((await store.progressOf(entry.id))!.chapterIndex, 1);
+    },
+  );
 
   test('无法解析的旧文件被报告并保留原文件', () async {
     final (legacy, workspace) = await workspaceWithStores();

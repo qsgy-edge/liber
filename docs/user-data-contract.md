@@ -212,10 +212,11 @@ Relational, never a mask:
 - **A network volume's read route is independent of its mutable chapter name.**
   A published TOC stores one nullable Boolean on the volume's chapter row:
   true for the existing tag-only route, false for fetching the chapter body,
-  and null for rows without a classification. For older and imported rows,
-  keep the previous inference until normal TOC publication. Reading a new
-  title updates the chapter name only. The key, request text, progress and local
-  chapters are unchanged; the marker stores no chapter content.
+  and null for rows without a classification. Older and imported rows retain
+  the previous inference until normal TOC publication. If a title write comes
+  first, it records the previously inferred route before replacing the name.
+  For already classified rows a title write updates only the name. The key,
+  request text, progress and local chapters are unchanged.
 - **The reader renders one bounded window, never a whole document.** Measured on the
   development machine (Dart JIT, test engine and font, 800 px):
   - loading a 500 MB TXT (524 290 200 bytes, 176 232 000 code units) with

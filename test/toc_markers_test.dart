@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liber/domain/contracts.dart';
@@ -259,6 +260,179 @@ void main() {
     expect(body.pages, 0);
     expect(transport.requests, hasLength(requests));
   });
+
+  for (final json in [false, true]) {
+    test(
+      '${json ? 'JSON' : 'HTML'} volume route survives title save and fresh content fetch',
+      () async {
+        final source = json ? _jsonSource() : _htmlSource();
+        const title = '$_base/v';
+        const key = '$_base/v/1';
+        const raw = '/v/1,{"method":"GET"}';
+        const saved = '$key,{"method":"GET"}';
+        final content = source['ruleContent'] as Map<String, dynamic>;
+        content['title'] = json ? r'$.chapterTitle' : 'h2@text';
+        final site = json ? _jsonSite() : _site();
+        site.pages['/toc/1'] = json
+            ? jsonEncode({
+                'list': [
+                  {'label': '目录卷', 'href': raw, 'volume': true, 'time': '不应显示'},
+                  {'label': '卷标', 'volume': true, 'time': '没有正文'},
+                  {
+                    'label': '/skip',
+                    'href': '/skip/1',
+                    'volume': true,
+                    'time': '沿用真实地址前缀',
+                  },
+                ],
+              })
+            : '<div id="list">'
+                  '<li class="vol"><a href=\'/v/1,{"method":"GET"}\'>目录卷</a><em>不应显示</em></li>'
+                  '<li class="vol"><a>卷标</a><em>没有正文</em></li>'
+                  '<li class="vol"><a href="/skip/1">/skip</a><em>沿用真实地址前缀</em></li>'
+                  '</div>';
+        final page = json
+            ? jsonEncode({'body': '卷正文', 'chapterTitle': title})
+            : '<h2>$title</h2><div id="con">卷正文</div>';
+        site.pages['/v/1'] = page;
+        final pipeline = json
+            ? JsonSourcePipeline(source, site)
+            : HtmlSourcePipeline(source, site);
+        addTearDown(pipeline.cancel);
+        final (book, chapters) = await pipeline.details(_hit());
+        final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+        addTearDown(store.close);
+        final shelf = ShelfService(store);
+        final id = (await shelf.add(source, book, chapters)).bookId;
+        final first = await pipeline.chapter(chapters.first);
+        expect((first.text, first.title), ('卷正文', title));
+        expect(
+          await shelf.saveChapterTitle(
+            bookId: id,
+            sourceRef: _base,
+            book: book,
+            chapter: chapters.first,
+            chapterIndex: 0,
+            title: first.title!,
+            isCurrent: () => true,
+          ),
+          title,
+        );
+        await shelf.saveProgress(
+          id,
+          chapterKey: key,
+          chapterIndex: 0,
+          textOffset: 2,
+        );
+        final reopened = (await shelf.find(_base, '$_bookUrl'))!;
+        final rows = reopened.chapters;
+        expect(rows.map((row) => row.rendersTagAsContent), [false, true, true]);
+        expect(
+          (rows.first.name, rows.first.url, rows.first.chapterKey),
+          (title, saved, key),
+        );
+        final coldSite = _Pages({'/v/1': page});
+        final cold = json
+            ? JsonSourcePipeline(source, coldSite)
+            : HtmlSourcePipeline(source, coldSite);
+        addTearDown(cold.cancel);
+        final restored = [
+          for (final row in rows)
+            SourceChapter.fromAddress(
+              row.name,
+              row.url!,
+              bookUrl: book.url,
+              chapterKey: row.chapterKey,
+              tag: row.tag,
+              isVolume: row.isVolume,
+              rendersTagAsContent: row.rendersTagAsContent,
+            ),
+        ];
+        expect((await cold.chapter(restored.first)).text, '卷正文');
+        expect((await cold.chapter(restored[1])).text, '没有正文');
+        expect((await cold.chapter(restored[2])).text, '沿用真实地址前缀');
+        expect(coldSite.requests, [Uri.parse(key)]);
+        await shelf.remove(id);
+        await shelf.add(source, book, restored);
+        expect(await store.chaptersOf(id), rows);
+        expect(await store.progressOf(id), reopened.progress);
+        await shelf.updateCatalog(_base, book, chapters);
+        final refreshed = await store.chaptersOf(id);
+        expect(
+          (refreshed.first.name, refreshed.first.rendersTagAsContent),
+          ('目录卷', false),
+        );
+        expect(await store.progressOf(id), reopened.progress);
+      },
+    );
+  }
+
+  test(
+    'an unclassified volume keeps its route through re-add and first title write',
+    () async {
+      final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));
+      addTearDown(store.close);
+      final shelf = ShelfService(store);
+      const source = {'bookSourceUrl': _base};
+      final book = HtmlBook(url: _bookUrl, title: '书');
+      final id = (await shelf.add(source, book)).bookId;
+      const key = '$_base/v/1';
+      const title = '$_base/v';
+      const address = '/v/1,{"method":"GET"}';
+      const legacy = '目录卷';
+      const rowTag = '卷标';
+      await store.putChapters(id, [
+        BookChapter(
+          bookId: id,
+          chapterKey: key,
+          name: legacy,
+          url: address,
+          chapterIndex: 0,
+          isVolume: true,
+          isVip: false,
+          isPay: false,
+          tag: rowTag,
+        ),
+      ]);
+      final restored = SourceChapter.fromAddress(
+        legacy,
+        address,
+        bookUrl: _bookUrl,
+        chapterKey: key,
+        tag: rowTag,
+        isVolume: true,
+      );
+      expect(restored.rendersTagAsContent, isFalse);
+      await shelf.remove(id);
+      await shelf.add(source, book, [restored.withVariable('kept')]);
+      expect((await store.chaptersOf(id)).single.rendersTagAsContent, isNull);
+      await shelf.saveProgress(
+        id,
+        chapterKey: key,
+        chapterIndex: 0,
+        textOffset: 3,
+      );
+      final before = (await store.chaptersOf(id)).single;
+      final progress = await store.progressOf(id);
+      expect(
+        await shelf.saveChapterTitle(
+          bookId: id,
+          sourceRef: _base,
+          book: book,
+          chapter: restored,
+          chapterIndex: 0,
+          title: title,
+          isCurrent: () => true,
+        ),
+        title,
+      );
+      expect(
+        (await store.chaptersOf(id)).single,
+        before.copyWith(name: title, rendersTagAsContent: const Value(false)),
+      );
+      expect(await store.progressOf(id), progress);
+    },
+  );
 
   test('the store keeps the four markers across a write and a read', () async {
     final store = SpaceStore(SpaceDatabase(NativeDatabase.memory()));

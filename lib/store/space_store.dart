@@ -620,14 +620,26 @@ class SpaceStore {
           .getSingleOrNull() !=
       null;
 
-  /// Updates only the name; the caller checks ownership in the same transaction.
-  Future<void> updateChapterName(BookChapter chapter, String name) async {
+  /// Renames the row, also recording an inferred route for unclassified volumes.
+  /// The caller checks ownership in the same transaction.
+  Future<void> updateChapterName(
+    BookChapter chapter,
+    String name, {
+    bool? rendersTagAsContent,
+  }) async {
     await (db.update(db.chapters)..where(
           (row) =>
               row.bookId.equals(chapter.bookId) &
               row.chapterKey.equals(chapter.chapterKey),
         ))
-        .write(ChaptersCompanion(name: Value(name)));
+        .write(
+          ChaptersCompanion(
+            name: Value(name),
+            rendersTagAsContent: rendersTagAsContent == null
+                ? const Value.absent()
+                : Value(rendersTagAsContent),
+          ),
+        );
   }
 
   // --- Progress (D4) -------------------------------------------------------

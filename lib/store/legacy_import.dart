@@ -323,6 +323,23 @@ class LegacyImport {
         );
       }
       if (rows.isNotEmpty) {
+        if (existing != null) {
+          // A retired JSON snapshot cannot describe a published volume's
+          // route or title. Do not overwrite that chapter on an exact match.
+          final classified = {
+            for (final row in await store.chaptersOf(id))
+              if (row.rendersTagAsContent != null) row.chapterKey: row,
+          };
+          for (var index = 0; index < rows.length; index++) {
+            final incoming = rows[index];
+            final current = classified[incoming.chapterKey];
+            if (current != null && current.url == incoming.url) {
+              rows[index] = current.copyWith(
+                chapterIndex: incoming.chapterIndex,
+              );
+            }
+          }
+        }
         await store.putChapters(id, rows);
         chapters += rows.length;
       }
