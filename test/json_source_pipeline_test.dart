@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -14,6 +15,28 @@ import 'package:liber/source/source_host_state.dart';
 import 'package:liber/source/native_library.dart';
 
 import 'native_library.dart';
+
+class _TitleHostTransport extends HttpSourceTransport {
+  _TitleHostTransport(this.body, this.hostFailure);
+
+  final String body;
+  final Object? hostFailure;
+  final requests = <String>[];
+
+  @override
+  Future<SourceHttpResponse> send(SourceHttpRequest request) async {
+    final path = request.url.path;
+    requests.add('${request.method} $path');
+    if (path == '/failing' && hostFailure != null) throw hostFailure!;
+    if (path != '/chapter') throw StateError('Unexpected request: $path');
+    return SourceHttpResponse(
+      statusCode: 200,
+      headers: const {},
+      body: body,
+      url: request.url,
+    );
+  }
+}
 
 void main() {
   setUpAll(() => NativeLibrary.initialize(libraryPath: nativeLibraryPath()));
@@ -297,6 +320,95 @@ void main() {
         expect(paths, ['/c/1']);
       },
     );
+  }
+
+  for (final html in [true, false]) {
+    const base = 'https://fixture.test';
+    for (final (name, category, call, failure, diagnostic) in [
+      (
+        'transport timeout',
+        'timeout',
+        'java.get("$base/failing", {})',
+        TimeoutException('fixture timed out'),
+        null,
+      ),
+      (
+        'response cap',
+        'response-cap',
+        'java.get("$base/failing", {})',
+        const SourceIoLimitExceeded('response'),
+        null,
+      ),
+      (
+        'nested URL options',
+        'host-input',
+        'java.get(\'$base/unused,{"method":"POST"}\', {})',
+        null,
+        'nested URL options unsupported',
+      ),
+      (
+        'nested rule refusal',
+        'host',
+        html
+            ? r'java.getString("@xpath://p")'
+            : r'java.getString("$.data[?(@.title.length() > 1)].content")',
+        null,
+        'java.getString',
+      ),
+    ]) {
+      test(
+        '${html ? "HTML" : "JSON"} title preserves $name after bad input',
+        () async {
+          final transport = _TitleHostTransport(
+            html ? '<p>body</p>' : '{"body":"body","data":[]}',
+            failure,
+          );
+          final source = <String, dynamic>{
+            'bookSourceUrl': base,
+            'ruleContent': {
+              'content': html ? '@CSS:p@text' : r'$.body',
+              'title':
+                  '@js: try { $call; } catch (_) {} '
+                  'try { java.head("$base/unused", {bad: 1}); } catch (_) {} '
+                  '"unpublished"',
+            },
+          };
+          final pipeline = html
+              ? HtmlSourcePipeline(source, transport)
+              : JsonSourcePipeline(source, transport);
+          final messages = <SourceHostMessage>[];
+          pipeline.onHostMessage = messages.add;
+          addTearDown(pipeline.cancel);
+          final error = isA<SourceScriptError>().having(
+            (e) => e.category,
+            'category',
+            category,
+          );
+          await expectLater(
+            pipeline.chapter(
+              SourceChapter('Catalog name', Uri.parse('$base/chapter')),
+            ),
+            throwsA(
+              diagnostic == null
+                  ? error
+                  : error.having(
+                      (e) => e.message,
+                      'diagnostic',
+                      contains(diagnostic),
+                    ),
+            ),
+          );
+          expect(
+            messages.where((message) => message.kind == 'ruleContent.title'),
+            isEmpty,
+          );
+          expect(transport.requests, [
+            'GET /chapter',
+            if (failure != null) 'GET /failing',
+          ]);
+        },
+      );
+    }
   }
 
   for (final cancelInNotice in [false, true]) {

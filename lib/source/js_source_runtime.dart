@@ -968,17 +968,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             result = JsResult.err(error);
           } else {
             final failure = _classify(error);
-            // Ordinary bad input must not hide an earlier named refusal from
-            // the stage. Return each call's own error to the source script.
+            // A later ordinary input error must not replace a failure the
+            // stage must report. Each call still returns its own bridge error.
             final previous = hostFailure;
-            final previousRefused =
-                previous != null &&
-                (previous.category == 'policy' ||
-                    (previous.category == 'host-input' &&
-                        previous._mustPropagate));
-            if (!previousRefused ||
+            if (previous == null ||
+                sourceTitleFailureIsOrdinary(previous) ||
                 failure.category != 'host-input' ||
-                failure._mustPropagate) {
+                !sourceTitleFailureIsOrdinary(failure)) {
               hostFailure = failure;
             }
             result = JsResult.err(
@@ -1918,9 +1914,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // carries one keeps this product's existing refusal by name. `java.ajax`,
     // `java.ajaxAll` and `java.connect` build an `AnalyzeUrl` and parse its tail.
     if (!allowUrlOptions && (url.contains(',{') || url.contains(', {'))) {
-      throw const SourceScriptError(
+      throw const SourceScriptError._(
         'host-input',
         'nested URL options unsupported',
+        true,
       );
     }
     return url;
