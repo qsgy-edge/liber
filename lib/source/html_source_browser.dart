@@ -325,6 +325,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
   ]) async {
     // A repeat of this selection shares its pending catalog publication.
     // Distinct adds still queue with their original revision.
+    final shelf = widget.service;
+    final source = widget.source;
+    final sourceUrl = this.sourceUrl;
     final revision = items.isEmpty ? null : _catalogRevision;
     final expectedBookId = _catalogBookId;
     final catalog = revision == null ? null : (book, items, revision);
@@ -339,10 +342,9 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
     }
     try {
       if (previousAdd != null) await previousAdd.future;
-      final shelf = widget.service;
       final store = shelf.store;
       if (items.isEmpty) {
-        await shelf.add(widget.source, book);
+        await shelf.add(source, book);
       } else {
         final published = await store.transaction(() async {
           final row = await store.bookByNaturalKey(
@@ -350,12 +352,11 @@ class _HtmlSourceBrowserState extends State<HtmlSourceBrowser> {
             book.identityAddress,
           );
           final id = row?.id;
-          if (!mounted ||
-              (expectedBookId != null && expectedBookId != id) ||
+          if ((expectedBookId != null && expectedBookId != id) ||
               (id != null && !store.isChapterCatalogCurrent(id, revision!))) {
             throw const SourceRequestCancelled();
           }
-          return shelf.add(widget.source, book, items);
+          return shelf.add(source, book, items);
         });
         if (mounted && selected == book && chapters == items) {
           _catalogBookId = published.bookId;
