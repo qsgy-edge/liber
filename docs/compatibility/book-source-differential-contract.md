@@ -342,13 +342,15 @@ reopening without changing the chapter key, request text/options, retained body
 handoff, or progress. Rows without a stored classification keep the existing
 inference until a normal TOC publication; an earlier title write records the
 previously inferred route together with the new name. Refresh publishes the
-new TOC names and classifications. The #146 exact index/stored-title check still governs
-variable restoration.
+new TOC names and classifications. The #146 exact index/stored-title check
+still governs variable restoration.
 
 [Named difference (#138)](https://github.com/qsgy-edge/liber/issues/138#issuecomment-7212617132):
 the frozen reference can re-evaluate the address against the new title when
-no cached body exists; Liber keeps the published read route. Existing tag-only
-output is unchanged. This adds no persistent chapter-content cache or prefetch.
+no cached body exists; Liber keeps the published read route. On the tag-only
+route, Liber still displays the tag, while [the selected reference's source](https://github.com/LegadoTeam/legado/blob/a7d37f1707a70a459ad708f4fe79341d1e42d716/app/src/main/java/io/legado/app/model/webBook/WebBook.kt#L427-L430)
+returns an empty body. Both skip the request. This adds no persistent
+chapter-content cache or prefetch.
 
 ### Chapter body image layout (#138)
 
