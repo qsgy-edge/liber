@@ -604,6 +604,7 @@ class HtmlSourcePipeline implements BookSourcePipeline {
         source: script,
         input: {
           ..._scriptInput(keyword, result, content: content),
+          if (label.isNotEmpty) '__ruleField': label,
           if (elementsResult) '__elementsResult': true,
         },
         timeout: const Duration(seconds: 30),

@@ -356,59 +356,105 @@ void main() {
         'java.getString',
       ),
     ]) {
-      test(
-        '${html ? "HTML" : "JSON"} title preserves $name after bad input',
-        () async {
-          final transport = _TitleHostTransport(
-            html ? '<p>body</p>' : '{"body":"body","data":[]}',
-            failure,
-          );
-          final source = <String, dynamic>{
-            'bookSourceUrl': base,
-            'ruleContent': {
-              'content': html ? '@CSS:p@text' : r'$.body',
-              'title':
-                  '@js: try { $call; } catch (_) {} '
-                  'try { java.head("$base/unused", {bad: 1}); } catch (_) {} '
-                  '"unpublished"',
-            },
-          };
-          final pipeline = html
-              ? HtmlSourcePipeline(source, transport)
-              : JsonSourcePipeline(source, transport);
-          final messages = <SourceHostMessage>[];
-          pipeline.onHostMessage = messages.add;
-          addTearDown(pipeline.cancel);
-          final error = isA<SourceScriptError>().having(
-            (e) => e.category,
-            'category',
-            category,
-          );
-          await expectLater(
-            pipeline.chapter(
-              SourceChapter('Catalog name', Uri.parse('$base/chapter')),
-            ),
-            throwsA(
-              diagnostic == null
-                  ? error
-                  : error.having(
-                      (e) => e.message,
-                      'diagnostic',
-                      contains(diagnostic),
-                    ),
-            ),
-          );
-          expect(
-            messages.where((message) => message.kind == 'ruleContent.title'),
-            isEmpty,
-          );
-          expect(transport.requests, [
-            'GET /chapter',
-            if (failure != null) 'GET /failing',
-          ]);
-        },
-      );
+      for (final (later, laterCall) in [
+        ('bad input', 'java.head("$base/unused", {bad: 1})'),
+        (
+          'nested script error',
+          r'''java.getString("@js: throw new Error('later')")''',
+        ),
+      ]) {
+        test(
+          '${html ? "HTML" : "JSON"} title preserves $name after $later',
+          () async {
+            final transport = _TitleHostTransport(
+              html ? '<p>body</p>' : '{"body":"body","data":[]}',
+              failure,
+            );
+            final source = <String, dynamic>{
+              'bookSourceUrl': base,
+              'ruleContent': {
+                'content': html ? '@CSS:p@text' : r'$.body',
+                'title':
+                    '@js: try { $call; } catch (_) {} '
+                    'try { $laterCall; } catch (_) {} '
+                    '"unpublished"',
+              },
+            };
+            final pipeline = html
+                ? HtmlSourcePipeline(source, transport)
+                : JsonSourcePipeline(source, transport);
+            final messages = <SourceHostMessage>[];
+            pipeline.onHostMessage = messages.add;
+            addTearDown(pipeline.cancel);
+            final error = isA<SourceScriptError>().having(
+              (e) => e.category,
+              'category',
+              category,
+            );
+            await expectLater(
+              pipeline.chapter(
+                SourceChapter('Catalog name', Uri.parse('$base/chapter')),
+              ),
+              throwsA(
+                diagnostic == null
+                    ? error
+                    : error.having(
+                        (e) => e.message,
+                        'diagnostic',
+                        contains(diagnostic),
+                      ),
+              ),
+            );
+            expect(
+              messages.where((message) => message.kind == 'ruleContent.title'),
+              isEmpty,
+            );
+            expect(transport.requests, [
+              'GET /chapter',
+              if (failure != null) 'GET /failing',
+            ]);
+          },
+        );
+      }
     }
+
+    test(
+      '${html ? "HTML" : "JSON"} login check keeps last ordinary host error',
+      () async {
+        final transport = _TitleHostTransport(
+          html ? '<p>body</p>' : '{"body":"body"}',
+          TimeoutException('login fixture timed out'),
+        );
+        final source = <String, dynamic>{
+          'bookSourceUrl': base,
+          'loginCheckJs':
+              'try { java.get("$base/failing", {}); } catch (_) {} '
+              'try { java.head("$base/unused", {bad: 1}); } catch (_) {} result',
+          'ruleContent': {'content': html ? '@CSS:p@text' : r'$.body'},
+        };
+        final pipeline = html
+            ? HtmlSourcePipeline(source, transport)
+            : JsonSourcePipeline(source, transport);
+        addTearDown(pipeline.cancel);
+        final messages = <SourceHostMessage>[];
+        pipeline.onHostMessage = messages.add;
+        await expectLater(
+          pipeline.chapter(
+            SourceChapter('Catalog name', Uri.parse('$base/chapter')),
+          ),
+          throwsA(
+            isA<SourceScriptError>()
+                .having((e) => e.category, 'category', 'host-input')
+                .having((e) => e.message, 'diagnostic', 'invalid headers'),
+          ),
+        );
+        expect(transport.requests, ['GET /chapter', 'GET /failing']);
+        expect(
+          messages.where((m) => m.kind == 'loginCheckJs').single.message,
+          contains('invalid headers'),
+        );
+      },
+    );
   }
 
   for (final cancelInNotice in [false, true]) {

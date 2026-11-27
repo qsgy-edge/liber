@@ -374,7 +374,10 @@ class JsonSourcePipeline implements BookSourcePipeline {
     try {
       return await _runtime.evaluate(
         source: script,
-        input: _scriptInput(keyword, result, content: content),
+        input: {
+          ..._scriptInput(keyword, result, content: content),
+          if (label.isNotEmpty) '__ruleField': label,
+        },
         timeout: const Duration(seconds: 30),
         cancellation: _cancellation,
       );

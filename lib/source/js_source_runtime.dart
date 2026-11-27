@@ -730,6 +730,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // Consume Dart-only stage metadata before exposing the input to scripts.
     input = {...input};
     final elementsResult = input.remove('__elementsResult') == true;
+    final chapterTitle = input.remove('__ruleField') == 'ruleContent.title';
     final chapterVariableRowKey =
         input.remove('__chapterVariableRowKey') as String?;
     final provenance = checkResponse ? _StageResponseProvenance() : null;
@@ -900,6 +901,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
               request.id,
               input,
               token,
+              chapterTitle: chapterTitle,
               provenance: responseProvenance,
             );
           } else if (method == 'connect') {
@@ -968,15 +970,21 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             result = JsResult.err(error);
           } else {
             final failure = _classify(error);
-            // A later ordinary input error must not replace a failure the
-            // stage must report. Each call still returns its own bridge error.
             final previous = hostFailure;
-            if (previous == null ||
-                sourceTitleFailureIsOrdinary(previous) ||
-                failure.category != 'host-input' ||
-                !sourceTitleFailureIsOrdinary(failure)) {
-              hostFailure = failure;
-            }
+            // Only chapter titles may recover from ordinary rule errors. A
+            // later recoverable failure must not hide a fatal title failure;
+            // elsewhere keep the existing precedence for named refusals.
+            final keepPrevious =
+                previous != null &&
+                (chapterTitle
+                    ? !sourceTitleFailureIsOrdinary(previous) &&
+                          sourceTitleFailureIsOrdinary(failure)
+                    : (previous.category == 'policy' ||
+                              (previous.category == 'host-input' &&
+                                  previous._mustPropagate)) &&
+                          failure.category == 'host-input' &&
+                          !failure._mustPropagate);
+            if (!keepPrevious) hostFailure = failure;
             result = JsResult.err(
               failure.category == 'policy'
                   ? JsError.bridge(failure.message)
@@ -1903,6 +1911,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     Map<String, Object?> outerInput,
     SourceCancellation token, {
     bool allowUrlOptions = false,
+    bool chapterTitle = false,
   }) async {
     final url = await expandSourceUrl(
       rawUrl,
@@ -1914,10 +1923,10 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     // carries one keeps this product's existing refusal by name. `java.ajax`,
     // `java.ajaxAll` and `java.connect` build an `AnalyzeUrl` and parse its tail.
     if (!allowUrlOptions && (url.contains(',{') || url.contains(', {'))) {
-      throw const SourceScriptError._(
+      throw SourceScriptError._(
         'host-input',
         'nested URL options unsupported',
-        true,
+        chapterTitle,
       );
     }
     return url;
@@ -2188,6 +2197,7 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     BigInt requestId,
     Map<String, Object?> outerInput,
     SourceCancellation token, {
+    required bool chapterTitle,
     _StageResponseProvenance? provenance,
   }) async {
     if (host == null || payload is! Map) {
@@ -2198,7 +2208,13 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     if (method is! String || rawUrl is! String) {
       throw const SourceScriptError('host-input', 'invalid request');
     }
-    final url = await _expandHostUrl(rawUrl, requestId, outerInput, token);
+    final url = await _expandHostUrl(
+      rawUrl,
+      requestId,
+      outerInput,
+      token,
+      chapterTitle: chapterTitle,
+    );
     final rawHeaders = payload['headers'] ?? const <String, String>{};
     if (rawHeaders is! Map ||
         rawHeaders.entries.any((e) => e.key is! String || e.value is! String)) {
