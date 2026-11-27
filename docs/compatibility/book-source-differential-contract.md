@@ -335,12 +335,19 @@ and failure category under the named diagnostic difference.
 In Spec A / #138, an ordinary content-title rule error keeps the readable body
 and incoming title, with one diagnostic. Cancellation, an actual timeout, and
 named refusals still propagate. A successful nonblank content title is displayed
-and normally saved as the existing chapter name, without changing the chapter
-key, request text, or progress. A readable volume keeps its catalog name if
-saving the content title would make the stored address start with the new name
-and switch reopening to the volume's tag instead of fetching the body. This
-exception applies to the shelf write and to off-shelf handoff, not to display.
-Refreshing the catalog publishes the new TOC names.
+and saved as the existing chapter name, including off-shelf handoff. The TOC
+classifies each volume once for publication: its tag is the content, or the
+reader fetches the body. The stored classification survives renames and
+reopening without changing the chapter key, request text/options, retained body
+handoff, or progress. Rows without a stored classification keep the existing
+inference until a normal TOC publication. Refresh publishes the new TOC names
+and classifications. The #146 exact index/stored-title check still governs
+variable restoration.
+
+[Named difference (#138)](https://github.com/qsgy-edge/liber/issues/138#issuecomment-7212617132):
+the frozen reference can re-evaluate the address against the new title when
+no cached body exists; Liber keeps the published read route. Existing tag-only
+output is unchanged. This adds no persistent chapter-content cache or prefetch.
 
 ### Chapter body image layout (#138)
 
