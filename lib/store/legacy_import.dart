@@ -324,8 +324,8 @@ class LegacyImport {
       }
       if (rows.isNotEmpty) {
         if (existing != null) {
-          // A retired JSON snapshot cannot describe a published volume's
-          // route or title. Do not overwrite that chapter on an exact match.
+          // A retired JSON snapshot carries a chapter URI, not the current
+          // request options, name, or read route. Keep them for the same key.
           final classified = {
             for (final row in await store.chaptersOf(id))
               if (row.rendersTagAsContent != null) row.chapterKey: row,
@@ -333,7 +333,7 @@ class LegacyImport {
           for (var index = 0; index < rows.length; index++) {
             final incoming = rows[index];
             final current = classified[incoming.chapterKey];
-            if (current != null && current.url == incoming.url) {
+            if (current != null) {
               rows[index] = current.copyWith(
                 chapterIndex: incoming.chapterIndex,
               );

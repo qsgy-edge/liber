@@ -334,9 +334,11 @@ void main() {
         isTrue,
       );
       final first = entry.chapters.first;
+      final request = '${first.chapterKey},{"method":"POST"}';
       final chapter = SourceChapter(
         '目录卷',
-        Uri.parse(first.url!),
+        Uri.parse(first.chapterKey),
+        rawAddress: request,
         isVolume: true,
       );
       await shelf.updateCatalog(sourceUrl, entry.htmlBook, [
@@ -361,6 +363,10 @@ void main() {
       );
       final published = (await store.chaptersOf(entry.id)).first;
       expect((published.name, published.rendersTagAsContent), (title, false));
+      expect(
+        (published.chapterKey, published.url),
+        (first.chapterKey, request),
+      );
       final report = await legacy.run(store, force: true);
       expect(report.imported, isTrue);
       final rows = await store.chaptersOf(entry.id);
