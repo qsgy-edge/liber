@@ -312,14 +312,23 @@ void main() {
     );
   }
 
-  for (final (category, rule) in [
-    ('policy', '@js: java.readFile("not-used.txt")'),
-    ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
-    ('timeout', '@js: while (true) {}'),
-    ('js', '@js: new ArrayBuffer(80 * 1024 * 1024); "unpublished"'),
+  for (final (failure, category, rule) in [
+    ('policy', 'policy', '@js: java.readFile("not-used.txt")'),
+    ('cancelled', 'cancelled', '@js: java.toast("cancel title"); "unpublished"'),
+    ('timeout', 'timeout', '@js: while (true) {}'),
+    (
+      'native heap limit',
+      'js',
+      '@js: new ArrayBuffer(80 * 1024 * 1024); "unpublished"',
+    ),
+    (
+      'native stack limit',
+      'js',
+      '@js: function recurse() { return 1 + recurse(); } recurse()',
+    ),
   ]) {
     test(
-      '${category == 'js' ? 'native heap limit' : category} in HTML title still fails the chapter load',
+      '$failure in HTML title still fails the chapter load',
       () async {
         const base = 'https://a.test';
         final pipeline = HtmlSourcePipeline({

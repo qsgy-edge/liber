@@ -497,8 +497,8 @@ class SourceScriptError implements Exception {
 /// the script passed to a member (`host-input`), or malformed rule text the
 /// evaluator refused with [FormatException]. Everything else propagates
 /// unchanged, because the disposition does not authorize a catch-all:
-/// cancellation, a real timeout, named refusals, native heap/engine failures
-/// and the runtime's `host-method`, I/O-cap, `network`, `host` and `cleanup`
+/// cancellation, a real timeout, named refusals, native setup or resource
+/// failures, and the runtime's `host-method`, I/O-cap, `network`, `host` and `cleanup`
 /// failures belong to the stage, not the title.
 bool sourceTitleFailureIsOrdinary(Object error) => switch (error) {
   SourceScriptError(:final category, :final _mustPropagate) =>
@@ -1833,7 +1833,12 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     if (error is IOException) return const SourceScriptError('network');
     if (error is JsError_Cancelled) return const SourceScriptError('cancelled');
-    if (error is JsError_MemoryLimit || error is JsError_Engine) {
+    // These native setup and resource failures are not source-rule exceptions.
+    if (error is JsError_Context ||
+        error is JsError_Storage ||
+        error is JsError_Engine ||
+        error is JsError_MemoryLimit ||
+        error is JsError_StackOverflow) {
       return const SourceScriptError._('js', '', true);
     }
     if (error is JsError) return const SourceScriptError('js');
