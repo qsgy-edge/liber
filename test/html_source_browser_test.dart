@@ -136,6 +136,24 @@ class _AddGateShelf extends ShelfService {
   }
 }
 
+class _BookMissGateStore extends SpaceStore {
+  _BookMissGateStore() : super(SpaceDatabase(NativeDatabase.memory()));
+
+  int missesUntilPause = 0;
+  final lookupMiss = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<ShelfBook?> bookByNaturalKey(String sourceRef, String bookUrl) async {
+    final row = await super.bookByNaturalKey(sourceRef, bookUrl);
+    if (row == null && missesUntilPause > 0 && --missesUntilPause == 0) {
+      lookupMiss.complete();
+      await release.future;
+    }
+    return row;
+  }
+}
+
 class _EnsureBookGateShelf extends _AddGateShelf {
   _EnsureBookGateShelf(super.store);
   final provisionalBook = Completer<String>();
@@ -988,6 +1006,49 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('read and add share one book after an overlapping lookup miss', (
+    tester,
+  ) async {
+    final stagedStore = _BookMissGateStore();
+    addTearDown(stagedStore.close);
+    final stagedShelf = ShelfService(stagedStore);
+    final book = HtmlBook(url: Uri.parse(bookUrl), title: 'Book');
+    final pipeline = ScriptedPipeline(chapterText: '目录已出版的正文');
+    await tester.pumpWidget(
+      localizedApp(
+        home: HtmlSourceBrowser(
+          source: source,
+          keyword: '',
+          service: stagedShelf,
+          directBook: book,
+          pipeline: pipeline,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The browser's read-only find misses first; pause the create lookup.
+    stagedStore.missesUntilPause = 2;
+    try {
+      await tester.tap(find.text('Book章'));
+      await tester.pump();
+      expect(stagedStore.lookupMiss.isCompleted, isTrue);
+      await tester.tap(find.text('加入书架'));
+      await tester.pumpAndSettle();
+    } finally {
+      stagedStore.release.complete();
+    }
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final entry = (await stagedShelf.onlineShelf()).single;
+    expect(find.textContaining('目录已出版的正文'), findsOneWidget);
+    expect(pipeline.chapterCalls, ['$bookUrl/1']);
+    expect(
+      (await stagedStore.progressOf(entry.id))?.chapterKey,
+      entry.chapters.single.chapterKey,
+    );
+  });
 
   testWidgets('a catalog refreshed during ensureBook rejects the old read', (
     tester,

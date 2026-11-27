@@ -651,7 +651,7 @@ class ShelfService {
     Map<String, dynamic> source,
     HtmlBook book, {
     required bool shelved,
-  }) async {
+  }) => store.transaction(() async {
     // A source the space already knows stays as it is: the shelf's job is the
     // book, and an object that arrived from a file must not re-enable a source
     // the user turned off (D7's flags are the product's).
@@ -705,7 +705,7 @@ class ShelfService {
       ),
     );
     return (await store.bookById(id))!;
-  }
+  });
 
   Future<List<ShelfEntry>> _entries(Iterable<ShelfBook> books) async => [
     for (final book in books) await _entry(book),
