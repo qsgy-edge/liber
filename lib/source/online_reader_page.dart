@@ -182,14 +182,11 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
   /// fetched keeps the carrier it was handed.
   String? _bookVariable;
   final Map<int, String?> _chapterVariables = {};
-  final _chapterNames = <int, String>{};
+  final _renamedChapters = <int, SourceChapter>{};
   int _loadGeneration = 0;
 
-  SourceChapter _chapterAt(int index) {
-    final chapter = widget.chapters[index];
-    final name = _chapterNames[index];
-    return name == null ? chapter : chapter.withName(name);
-  }
+  SourceChapter _chapterAt(int index) =>
+      _renamedChapters[index] ?? widget.chapters[index];
 
   /// The current chapter's display title, replaced by the title rules.
   String chapterTitle = '';
@@ -433,7 +430,9 @@ class _OnlineReaderPageState extends State<OnlineReaderPage> {
       requireCatalog();
       if (accepted == null) return;
       accepted.publish();
-      if (accepted.name != chapter.name) _chapterNames[next] = accepted.name;
+      if (accepted.name != chapter.name) {
+        _renamedChapters[next] = chapter.withName(accepted.name);
+      }
       _bookVariable = result.bookVariable;
       _chapterVariables[next] = result.chapterVariable;
       _display(next, content, layout, isCurrent);

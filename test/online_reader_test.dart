@@ -35,7 +35,7 @@ class ScriptedPipeline extends HtmlSourcePipeline {
 
   /// Holds the second chapter response so the loading header can be observed.
   final Completer<void>? gate;
-  final String? contentTitle;
+  String? contentTitle;
   final String? secondBody;
   int calls = 0;
 
@@ -736,6 +736,64 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    're-adding a legacy volume after two title changes keeps its read route',
+    (tester) async {
+      const key = '$sourceUrl/c/1';
+      const request = '$key,{"method":"GET"}';
+      const original = '目录卷';
+      const collision = '$sourceUrl/c';
+      const source = {'bookSourceUrl': sourceUrl};
+      final book = HtmlBook(url: Uri.parse(bookUrl), title: '书');
+      await store.putChapters(bookId, [
+        BookChapter(
+          bookId: bookId,
+          chapterKey: key,
+          name: original,
+          url: request,
+          chapterIndex: 0,
+          isVolume: true,
+          isVip: false,
+          isPay: false,
+        ),
+      ]);
+      final chapter = SourceChapter.fromAddress(
+        original,
+        request,
+        bookUrl: book.url,
+        chapterKey: key,
+        isVolume: true,
+      );
+      final pipeline = ScriptedPipeline(contentTitle: collision);
+      List<SourceChapter>? handoff;
+      await tester.pumpWidget(
+        localizedApp(
+          home: OnlineReaderPage(
+            pipeline: pipeline,
+            book: book,
+            bookId: bookId,
+            chapters: [chapter],
+            service: shelf,
+            onEntityState: (_, chapters) => handoff = chapters,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      var row = (await store.chaptersOf(bookId)).single;
+      expect((row.name, row.rendersTagAsContent), (collision, false));
+      pipeline.contentTitle = original;
+      await tester.tap(find.text('重新加载'));
+      await tester.pumpAndSettle();
+      row = (await store.chaptersOf(bookId)).single;
+      expect((row.name, row.rendersTagAsContent), (original, false));
+      final progress = await store.progressOf(bookId);
+      await shelf.add(source, book, handoff!);
+      expect((await store.chaptersOf(bookId)).single, row);
+      expect(await store.progressOf(bookId), progress);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('renaming a readable volume does not turn its address into a tag', () {
     final target = Uri.parse('$sourceUrl/c/1');
