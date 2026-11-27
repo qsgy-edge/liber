@@ -30,6 +30,18 @@ prerequisites. A shared adapter change reruns its affected platform rows, and
 existing v1 scope, product policies and data-import/local-library contracts
 retain their boundaries.
 
+## Platform delivery order
+
+The [migration map's platform delivery order](https://github.com/qsgy-edge/liber/issues/1#issuecomment-7212192785)
+prioritizes Windows, Linux and Android. A spec may deliver on those platforms when its
+applicable rows pass there. macOS and iOS are tracked as a supplemental
+milestone; their product work and validation are deferred, and their missing
+rows stay `not-run` without blocking non-Apple delivery. Ordinary reading,
+WebView and native-library/provider evidence retain their existing owners and
+per-platform acceptance requirements. Existing CI and claim rules are
+unchanged: neither a successful build nor acceptance on another platform
+closes a deferred Apple row or establishes a five-platform verdict.
+
 ## Verdict
 
 1. **Six phases, Windows-first.** The proven vertical slice, the local library
