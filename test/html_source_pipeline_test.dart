@@ -7,6 +7,7 @@ import 'package:liber/domain/contracts.dart';
 import 'package:liber/source/book_source_pipeline.dart' show SourceChapter;
 import 'package:liber/source/book_source_service.dart';
 import 'package:liber/source/html_source_pipeline.dart';
+import 'package:liber/source/http_source_transport.dart';
 import 'package:liber/source/js_source_runtime.dart';
 import 'package:liber/source/native_library.dart';
 import 'package:liber/source/source_stage_diagnostic.dart';
@@ -258,22 +259,87 @@ void main() {
     });
   }
 
-  test('ordinary HTML title failure keeps body and reports once', () async {
-    final messages = <SourceHostMessage>[];
-    final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));
-    final pipeline = HtmlSourcePipeline({
-      'bookSourceUrl': 'https://a.test',
-      'ruleContent': {
-        'content': '@CSS:p@text',
-        'title': '@js: throw new Error("optional title failed")',
-      },
-    }, SitePages({'/c/1': '<p>HTML BODY</p>'}))..onHostMessage = messages.add;
+  for (final (script, message) in [
+    ('throw new Error("optional title failed")', 'optional title failed'),
+    (
+      'throw new RangeError("Maximum call stack size exceeded")',
+      'Maximum call stack size exceeded',
+    ),
+    (
+      'throw Object.assign(new Error("out of memory"), {name: "InternalError"})',
+      'out of memory',
+    ),
+  ]) {
+    test(
+      'ordinary HTML title failure keeps body and reports once: $message',
+      () async {
+        final messages = <SourceHostMessage>[];
+        final chapter = SourceChapter('目录标题', Uri.parse('https://a.test/c/1'));
+        final pipeline = HtmlSourcePipeline(
+          {
+            'bookSourceUrl': 'https://a.test',
+            'ruleContent': {'title': '@js: $script', 'content': '@CSS:p@text'},
+          },
+          SitePages({'/c/1': '<p>HTML BODY</p>'}),
+        )..onHostMessage = messages.add;
 
-    final body = await pipeline.chapter(chapter);
-    expect(body.text.trim(), 'HTML BODY');
-    expect(body.title ?? chapter.name, '目录标题');
-    expect(messages.single.message, contains('optional title failed'));
-  });
+        final body = await pipeline.chapter(chapter);
+        expect(body.text.trim(), 'HTML BODY');
+        expect(body.title ?? chapter.name, '目录标题');
+        expect(messages.single.kind, 'ruleContent.title');
+        expect(messages.single.message, contains(message));
+      },
+    );
+  }
+
+  for (final (member, category, call) in [
+    ('java.readFile', 'policy', 'java.readFile("not-used.txt")'),
+    (
+      'java.openUrl',
+      'host-input',
+      'java.openUrl("file:///not-an-http-address", "title")',
+    ),
+  ]) {
+    test(
+      'named $member refusal survives invalid headers in HTML title',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => server.close(force: true));
+        final paths = <String>[];
+        server.listen((request) async {
+          paths.add(request.uri.path);
+          request.response.write('<p>HTML BODY</p>');
+          await request.response.close();
+        });
+        final base = 'http://127.0.0.1:${server.port}';
+        final pipeline = HtmlSourcePipeline({
+          'bookSourceUrl': base,
+          'ruleContent': {
+            'content': '@CSS:p@text',
+            'title':
+                '@js: try { $call; } catch (_) {} '
+                'try { java.head("$base/unused", {bad: 1}); } catch (_) {} '
+                '"unpublished"',
+          },
+        }, HttpSourceTransport());
+        final messages = <SourceHostMessage>[];
+        pipeline.onHostMessage = messages.add;
+        addTearDown(pipeline.cancel);
+
+        final chapter = SourceChapter('目录标题', Uri.parse('$base/c/1'));
+        await expectLater(
+          pipeline.chapter(chapter),
+          throwsA(
+            isA<SourceScriptError>()
+                .having((error) => error.category, 'category', category)
+                .having((error) => error.message, 'member', contains(member)),
+          ),
+        );
+        expect(messages.where((m) => m.kind == 'ruleContent.title'), isEmpty);
+        expect(paths, ['/c/1']);
+      },
+    );
+  }
 
   for (final cancelInNotice in [false, true]) {
     test(
@@ -303,32 +369,28 @@ void main() {
                 ? isA<SourceRequestCancelled>()
                 : isA<SourceScriptError>()
                       .having((e) => e.category, 'category', 'host-input')
-                      .having((e) => e.message, 'member', contains('java.openUrl')),
+                      .having(
+                        (e) => e.message,
+                        'member',
+                        contains('java.openUrl'),
+                      ),
           ),
         );
-        expect(notices.where((m) => m.kind == 'ruleContent.title'),
-            hasLength(cancelInNotice ? 1 : 0));
+        expect(
+          notices.where((m) => m.kind == 'ruleContent.title'),
+          hasLength(cancelInNotice ? 1 : 0),
+        );
       },
     );
   }
 
-  for (final (failure, category, rule) in [
-    ('policy', 'policy', '@js: java.readFile("not-used.txt")'),
-    ('cancelled', 'cancelled', '@js: java.toast("cancel title"); "unpublished"'),
-    ('timeout', 'timeout', '@js: while (true) {}'),
-    (
-      'native heap limit',
-      'js',
-      '@js: new ArrayBuffer(80 * 1024 * 1024); "unpublished"',
-    ),
-    (
-      'native stack limit',
-      'js',
-      '@js: function recurse() { return 1 + recurse(); } recurse()',
-    ),
+  for (final (category, rule) in [
+    ('policy', '@js: java.readFile("not-used.txt")'),
+    ('cancelled', '@js: java.toast("cancel title"); "unpublished"'),
+    ('timeout', '@js: while (true) {}'),
   ]) {
     test(
-      '$failure in HTML title still fails the chapter load',
+      '$category in HTML title still fails the chapter load',
       () async {
         const base = 'https://a.test';
         final pipeline = HtmlSourcePipeline({

@@ -497,9 +497,9 @@ class SourceScriptError implements Exception {
 /// the script passed to a member (`host-input`), or malformed rule text the
 /// evaluator refused with [FormatException]. Everything else propagates
 /// unchanged, because the disposition does not authorize a catch-all:
-/// cancellation, a real timeout, named refusals, native setup or resource
-/// failures, and the runtime's `host-method`, I/O-cap, `network`, `host` and `cleanup`
-/// failures belong to the stage, not the title.
+/// cancellation, a real timeout, named refusals, native setup failures, and
+/// the runtime's `host-method`, I/O-cap, `network`, `host` and `cleanup` failures
+/// belong to the stage, not the title.
 bool sourceTitleFailureIsOrdinary(Object error) => switch (error) {
   SourceScriptError(:final category, :final _mustPropagate) =>
     !_mustPropagate && (category == 'js' || category == 'host-input'),
@@ -967,14 +967,24 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
             // I/O boundary failures below still terminate the execution.
             result = JsResult.err(error);
           } else {
-            hostFailure = _classify(error);
-            // A refusal is the source's only view of the policy, so its message
-            // names the member and the policy instead of the bare category; the
-            // reason is also in the source log.
+            final failure = _classify(error);
+            // Ordinary bad input must not hide an earlier named refusal from
+            // the stage. Return each call's own error to the source script.
+            final previous = hostFailure;
+            final previousRefused =
+                previous != null &&
+                (previous.category == 'policy' ||
+                    (previous.category == 'host-input' &&
+                        previous._mustPropagate));
+            if (!previousRefused ||
+                failure.category != 'host-input' ||
+                failure._mustPropagate) {
+              hostFailure = failure;
+            }
             result = JsResult.err(
-              hostFailure!.category == 'policy'
-                  ? JsError.bridge(hostFailure!.message)
-                  : JsError.bridge(hostFailure!.category),
+              failure.category == 'policy'
+                  ? JsError.bridge(failure.message)
+                  : JsError.bridge(failure.category),
             );
           }
         }
@@ -1833,12 +1843,11 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     }
     if (error is IOException) return const SourceScriptError('network');
     if (error is JsError_Cancelled) return const SourceScriptError('cancelled');
-    // These native setup and resource failures are not source-rule exceptions.
+    // Native setup failures are distinct from source-rule exceptions. The
+    // stack/heap variants can also come from those exceptions' name and text.
     if (error is JsError_Context ||
         error is JsError_Storage ||
-        error is JsError_Engine ||
-        error is JsError_MemoryLimit ||
-        error is JsError_StackOverflow) {
+        error is JsError_Engine) {
       return const SourceScriptError._('js', '', true);
     }
     if (error is JsError) return const SourceScriptError('js');
@@ -1869,6 +1878,8 @@ class InProcessSourceScriptRuntime implements SourceScriptRuntime {
     JsError_Type(:final field0) => field0,
     JsError_Reference(:final field0) => field0,
     JsError_Bridge(:final field0) => field0,
+    JsError_MemoryLimit(:final field0) => field0,
+    JsError_StackOverflow(:final field0) => field0,
     JsError_Syntax(:final message) => message,
     _ => null,
   };
